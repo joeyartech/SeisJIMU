@@ -35,7 +35,6 @@ use m_computebox, only: cb
         !flat arrays
         real,dimension(:),allocatable :: vx,vy,vz,p
         real,dimension(:),allocatable :: prev_vx,prev_vy,prev_vz,prev_p !for time derivatives
-        !dir$ attributes align: 64:: vx,vy,vz,p
         real,dimension(:),allocatable :: cpml_dvx_dx,cpml_dvy_dy,cpml_dvz_dz, cpml_dp_dz,cpml_dp_dx,cpml_dp_dy !for cpml
     end type
     

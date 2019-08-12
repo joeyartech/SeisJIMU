@@ -83,20 +83,15 @@ use m_model, only:m
         dry=(lry-fry)/(nr-1)
         drz=(lrz-frz)/(nr-1)
         
-        ox=m%ox
-        oy=m%oy
-        oz=m%oz
-        
         acqui%nsrc=ns
         if(allocated(acqui%src))deallocate(acqui%src)
         allocate(acqui%src(ns))
         
-        
         sx=fsx; sy=fsy; sz=fsz
         do i=1,ns
-            acqui%src(i)%x=sx-ox
-            acqui%src(i)%y=sy-oy
-            acqui%src(i)%z=sz-oz
+            acqui%src(i)%x=sx
+            acqui%src(i)%y=sy
+            acqui%src(i)%z=sz
             sx=sx+dsx
             sy=sy+dsy
             sz=sz+dsz
@@ -109,9 +104,9 @@ use m_model, only:m
             
             rx=frx; ry=fry; rz=frz;
             do j=1,nr
-                acqui%src(i)%rcv(j)%x=rx-ox
-                acqui%src(i)%rcv(j)%y=ry-oy
-                acqui%src(i)%rcv(j)%z=rz-oz
+                acqui%src(i)%rcv(j)%x=rx
+                acqui%src(i)%rcv(j)%y=ry
+                acqui%src(i)%rcv(j)%z=rz
                 rx=rx+drx
                 ry=ry+dry
                 rz=rz+drz
@@ -142,30 +137,25 @@ use m_model, only:m
         doffy=(loffy-foffy)/(noff-1)
         dz=(lz-fz)/(noff-1)
         
-        ox=m%ox
-        oy=m%oy
-        oz=m%oz
-        
         acqui%nsrc=ns
         if(allocated(acqui%src))deallocate(acqui%src)
         allocate(acqui%src(ns))
         
-        
         sx=fsx; sy=fsy; sz=fsz
         do i=1,ns
-            acqui%src(i)%x=sx-ox
-            acqui%src(i)%y=sy-oy
-            acqui%src(i)%z=sz-oz
+            acqui%src(i)%x=sx
+            acqui%src(i)%y=sy
+            acqui%src(i)%z=sz
             
             acqui%src(i)%nrcv=noff
             if(allocated(acqui%src(i)%rcv))deallocate(acqui%src(i)%rcv)
             allocate(acqui%src(i)%rcv(noff))
             
-            rx=sx+foffx; ry=sy+foffy; rz=fz;
+            rx=sx+foffx; ry=sy+foffy; rz=fz;  !NOTE no need foffz for rz !
             do j=1,noff
-                acqui%src(i)%rcv(j)%x=rx-ox
-                acqui%src(i)%rcv(j)%y=ry-oy
-                acqui%src(i)%rcv(j)%z=rz-oz
+                acqui%src(i)%rcv(j)%x=rx
+                acqui%src(i)%rcv(j)%y=ry
+                acqui%src(i)%rcv(j)%z=rz
                 rx=rx+doffx
                 ry=ry+doffy
                 rz=rz+dz

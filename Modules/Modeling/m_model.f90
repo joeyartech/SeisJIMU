@@ -99,7 +99,7 @@ use m_arrayop
         if(alive) then
             m%is_isotropic=.false.
             call alloc(m%eps,m%nz,m%nx,m%ny)
-            open(12,file=tmp4//'.eps',access='direct',recl=n,action='read',status='old')
+            open(12,file=tmp4//'_eps',access='direct',recl=n,action='read',status='old')
             read(12,rec=1) m%eps
             close(12)
             call hud('eps model is read.')
@@ -112,7 +112,7 @@ use m_arrayop
         if(alive) then
             m%is_isotropic=.false.
             call alloc(m%del,m%nz,m%nx,m%ny)
-            open(12,file=tmp4//'.del',access='direct',recl=n,action='read',status='old')
+            open(12,file=tmp4//'_del',access='direct',recl=n,action='read',status='old')
             read(12,rec=1) m%del
             close(12)
             call hud('del model is read.')

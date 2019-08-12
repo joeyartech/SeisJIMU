@@ -14,7 +14,7 @@ use m_arrayop
             write(*,*) 'No. of processors:', mpiworld%nproc
             write(*,*) 'No. of shots:',nshots
             if(nshots<mpiworld%nproc) then
-                call hud('ERROR: Shot number < Processor number. Some processors will be idle..')
+                call hud('ERROR: Shot number < Processor number. Some processors will be always idle..')
                 stop
             endif
         endif
@@ -41,6 +41,15 @@ use m_arrayop
         nshot_per_processor=count(shotlist>0)
         
         write(*,'(a,i2,a)') ' Proc# '//mpiworld%cproc//' has ',nshot_per_processor,' assigned shots.'
+        
+        !if nshot_per_processor is not same for each processor,
+        !update_wavelet='stack' mode will be stuck due to collective communication in m_matchfilter.f90
+        if(mpiworld%is_master) then
+            if(nshot_per_processor * mpiworld%nproc /= nshots) then
+                write(*,*) 'WARNING: unequal shot numbers on processors. If you are using UPDATE_WAVELET=''stack'', the code will be stuck due to collective communication in m_matchfilter'
+                write(*,*) 'WARNING: Therefore you should STOP right now!'
+            endif
+        endif
         
     end subroutine
 

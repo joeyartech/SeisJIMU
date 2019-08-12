@@ -7,7 +7,7 @@ use m_shot, only:shot
 use m_computebox, only: cb
 
     private fdcoeff_o4,fdcoeff_o8,c1x,c1y,c1z,c2x,c2y,c2z,c3x,c3y,c3z,c4x,c4y,c4z
-    private k_x,k_y,k_z,npower,rcoef,f_hh,f_zz
+    private k_x,k_y,k_z,npower,rcoef,f_hh,f_zz, threshold
     public
     
     !FD coeff
@@ -38,7 +38,6 @@ use m_computebox, only: cb
         !flat arrays
         real,dimension(:),allocatable :: vx,vy,vz,shh,szz
         real,dimension(:),allocatable :: prev_vx,prev_vy,prev_vz,prev_shh,prev_szz !for time derivatives
-        !dir$ attributes align: 64:: vx,vy,vz,shh,szz
         real,dimension(:),allocatable :: cpml_dvx_dx,cpml_dvy_dy,cpml_dvz_dz,cpml_dshh_dx,cpml_dshh_dy,cpml_dszz_dz !for cpml
     end type
     

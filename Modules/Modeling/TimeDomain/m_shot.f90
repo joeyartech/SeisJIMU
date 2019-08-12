@@ -66,6 +66,14 @@ use m_hicks
             call init_shot_from_data
         endif
         
+        !shift position to be 0-based
+        shot%src%x=shot%src%x - m%ox
+        shot%src%y=shot%src%y - m%oy
+        shot%src%z=shot%src%z - m%oz
+        shot%rcv(:)%x=shot%rcv(:)%x - m%ox
+        shot%rcv(:)%y=shot%rcv(:)%y - m%oy
+        shot%rcv(:)%z=shot%rcv(:)%z - m%oz
+        
         !read wavelet
         shot%src%fpeak=get_setup_real('PEAK_FREQUENCY')
         file_wavelet=get_setup_file('FILE_WAVELET')
@@ -142,6 +150,8 @@ use m_hicks
             write(*,*)'================================='
             write(*,*)'Shot# '//shot%cindex//' info:'
             write(*,*)'================================='
+            write(*,*)'  nt,dt:',shot%src%nt,shot%src%dt
+            write(*,*)'---------------------------------'
             write(*,*)'  sz,isz:',shot%src%z,shot%src%iz
             write(*,*)'  sx,isx:',shot%src%x,shot%src%ix
             write(*,*)'  sy,isy:',shot%src%y,shot%src%iy
