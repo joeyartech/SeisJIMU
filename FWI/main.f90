@@ -51,6 +51,10 @@ use m_optimizer
     !initialize optimizer
     call init_optimizer(m%n*npar)
     
+    open(12,file='initial%pg',action='write',access='direct',recl=4*m%n*2)
+    write(12,rec=1) current%pg
+    close(12)
+    
     call optimizer
     
     

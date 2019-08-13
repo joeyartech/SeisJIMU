@@ -44,7 +44,7 @@ use m_boundarystore
         
         !field
         call init_field_localmodel
-        call init_field(sfield) !source field
+        call init_field(sfield, if_save_previous=.true.) !source field, allocate prev arrays no matter of use them or not
         if(present(if_will_do_rfield)) then
         if(if_will_do_rfield) then
             call init_field(rfield) !receiver field

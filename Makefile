@@ -4,8 +4,8 @@ OMP=openmp
 #OPTRPT=-qopt-report=5  -qopt-report-file=stderr -qopt-report-phase=vec
 
 #for Intel
-FLAGF90= -xHost -O3 -Ofast -ipo -parallel -q$(OMP) -traceback -assume byterecl   $(OPTRPT)
-# FLAGF90= -g -debug -W1 -WB -q$(OMP) -traceback -assume byterecl
+FLAGF90= -xHost -O3 -Ofast -parallel -q$(OMP) -traceback -assume byterecl   $(OPTRPT)
+# FLAGF90= -g -debug -check all -check noarg_temp_created -W1 -WB -q$(OMP) -traceback -assume byterecl
 FLAGF77= $(FLAGF90)
 MOD= -module $(DIR)mod
 
@@ -60,8 +60,8 @@ OBJ0=$(system:.f90=.o) $(externf77:.f=.o) $(externf90:.f90=.o) $(signal:.f90=.o)
 # FWD #
 #######
 
-WaveEq=AC
-# WaveEq=AC_VTI
+#WaveEq=AC
+WaveEq=AC_VTI
 Solver=FDSG
 Domain=TimeDomain
 

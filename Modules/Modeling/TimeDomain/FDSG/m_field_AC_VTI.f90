@@ -11,7 +11,7 @@ use m_computebox, only: cb
     public
     
     !FD coeff
-    real,dimension(2),parameter :: fdcoeff_o4 = [1.125,      -1./24]
+    real,dimension(2),parameter :: fdcoeff_o4 = [1.125,      -1./24.]
     real,dimension(4),parameter :: fdcoeff_o8 = [1225./1024, -245./3072., 49./5120., -5./7168]
     
     real :: c1x, c1y, c1z
@@ -72,10 +72,10 @@ use m_computebox, only: cb
     end subroutine
     
     subroutine check_model
-        !Reduce delta to epsilon-0.01 when:
+        !Reduce delta when:
         !  delta > epsilon, which will cause numerical instability
-        where (cb%del > cb%eps)
-            cb%del=cb%eps-0.01
+        where (cb%del > cb%eps-0.5/threshold)
+            cb%del=cb%eps-0.5/threshold
         endwhere
     end
     
@@ -135,6 +135,10 @@ use m_computebox, only: cb
         where (inv2epsmdel >threshold)
             inv2epsmdel=threshold
         endwhere
+        
+        pbuoz(cb%ifz,:,:)=1./cb%rho(cb%ifz,:,:)
+        pbuox(:,cb%ifx,:)=1./cb%rho(:,cb%ifx,:)
+        pbuoy(:,:,cb%ify)=1./cb%rho(:,:,cb%ify)
         
         do iz=cb%ifz+1,cb%ilz
             pbuoz(iz,:,:)=0.5/cb%rho(iz,:,:)+0.5/cb%rho(iz-1,:,:)
@@ -821,7 +825,7 @@ use m_computebox, only: cb
         ilx=min(sb(4),rb(4),cb%mx)
         ify=max(sb(5),rb(5),1)
         ily=min(sb(6),rb(6),cb%my)
-        if(m%is_cubic) then
+        if(.not.m%is_cubic) then
             ify=1; ily=1
         endif
         
@@ -835,8 +839,8 @@ use m_computebox, only: cb
         do iy=ify,ily
         do ix=ifx,ilx
         do iz=ifz,ilz
-            i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field indexing
-            j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%my+1 !computebox indexing
+            i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
+            j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !corr has no boundary layers
             
             dsshh=sf%prev_shh(i)-sf%shh(i)
             dsszz=sf%prev_szz(i)-sf%szz(i)
@@ -867,7 +871,7 @@ use m_computebox, only: cb
         ilx=min(sb(4),rb(4),cb%mx-1)
         ify=max(sb(5),rb(5),1)
         ily=min(sb(6),rb(6),cb%my-1)
-        if(m%is_cubic) then
+        if(.not.m%is_cubic) then
             ify=1; ily=1
         endif
         
@@ -886,8 +890,8 @@ use m_computebox, only: cb
         do iy=ify,ily
         do ix=ifx,ilx
         do iz=ifz,ilz
-            i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field indexing
-            j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !computebox indexing
+            i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
+            j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !corr has no boundary layers
             
             iz_ix_iy  =i          !iz,ix,iy
             izp1_ix_iy=i+1        !iz+1,ix,iy

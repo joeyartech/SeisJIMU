@@ -2,9 +2,14 @@ module m_shotlist
 use m_message
 use m_arrayop
 
+    public
+    private if_first_in
+
     integer,dimension(:),allocatable :: shotlist
     
     integer nshot_per_processor
+    
+    logical :: if_first_in=.true.
 
     contains
     
@@ -40,15 +45,19 @@ use m_arrayop
         !real number of shots for each processor
         nshot_per_processor=count(shotlist>0)
         
-        write(*,'(a,i2,a)') ' Proc# '//mpiworld%cproc//' has ',nshot_per_processor,' assigned shots.'
+        if(if_first_in) then
+            write(*,'(a,i2,a)') ' Proc# '//mpiworld%cproc//' has ',nshot_per_processor,' assigned shots.'
         
-        !if nshot_per_processor is not same for each processor,
-        !update_wavelet='stack' mode will be stuck due to collective communication in m_matchfilter.f90
-        if(mpiworld%is_master) then
-            if(nshot_per_processor * mpiworld%nproc /= nshots) then
-                write(*,*) 'WARNING: unequal shot numbers on processors. If you are using UPDATE_WAVELET=''stack'', the code will be stuck due to collective communication in m_matchfilter'
-                write(*,*) 'WARNING: Therefore you should STOP right now!'
+            !if nshot_per_processor is not same for each processor,
+            !update_wavelet='stack' mode will be stuck due to collective communication in m_matchfilter.f90
+            if(mpiworld%is_master) then
+                if(nshot_per_processor * mpiworld%nproc /= nshots) then
+                    write(*,*) 'WARNING: unequal shot numbers on processors. If you are using UPDATE_WAVELET=''stack'', the code will be stuck due to collective communication in m_matchfilter'
+                    write(*,*) 'WARNING: Therefore you should STOP right now!'
+                endif
             endif
+            
+            if_first_in=.false.
         endif
         
     end subroutine

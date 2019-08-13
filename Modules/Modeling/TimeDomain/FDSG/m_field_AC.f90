@@ -108,7 +108,7 @@ use m_computebox, only: cb
         call inflate_alias(invkpa,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily],pinvkpa)
         
         pkpa=cb%vp*cb%vp*cb%rho
-        invkpa=1./kpa
+        pinvkpa=1./pkpa
         
         pbuoz(cb%ifz,:,:)=1./cb%rho(cb%ifz,:,:)
         pbuox(:,cb%ifx,:)=1./cb%rho(:,cb%ifx,:)
@@ -867,12 +867,6 @@ use m_computebox, only: cb
         !and the unit of gradient scaling factor is [1/N/m] (in m_scaling)
         !(parameters are unitless)
         grad=grad*m%cell_size
-        
-!        if(m%rho(1,1,1)>10.) then !density is in [kg/m3]
-!            grad=grad*1e6
-!            call hud('Gradient has been x1e6 to avoid potential fp underflow')
-!            call hud('(If rho is in [kg/m3], gkpa magnitude can be ~1e-36)')
-!        endif
         
     end subroutine
     
