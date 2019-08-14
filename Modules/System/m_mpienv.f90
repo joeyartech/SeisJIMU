@@ -73,7 +73,6 @@ use mpi
     
     
     subroutine mpiworld_finalize
-        character(256) :: exe
         character(10)  :: date
         character(10)  :: time
         character(10)  :: zone

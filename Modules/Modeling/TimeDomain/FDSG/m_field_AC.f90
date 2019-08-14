@@ -27,8 +27,8 @@ use m_computebox, only: cb
     real,parameter :: rcoef=0.001
     
     !local models
-    real,dimension(:),allocatable ::  buox, buoy, buoz, kpa, invkpa
-    real,dimension(:,:,:),pointer :: pbuox,pbuoy,pbuoz,pkpa,pinvkpa !aliases
+    real,dimension(:),allocatable,target ::  buox, buoy, buoz, kpa, invkpa
+    real,dimension(:,:,:),pointer        :: pbuox,pbuoy,pbuoz,pkpa,pinvkpa !aliases
     
     !fields
     type t_field
@@ -161,12 +161,13 @@ use m_computebox, only: cb
         character(*) :: name
         
         if(mpiworld%is_master) write(*,*) name//' sample values:',minval(f%p),maxval(f%p)
-        if(any(f%p-1.==f%p)) then
-            write(*,*) 'ERROR: '//name//' values become +-Infinity !!'
-            stop
-        endif
+        
+        !if(any(f%p-1.==f%p)) then !this is not a good numerical judgement..
+        !    write(*,*) 'ERROR: '//name//' values become +-Infinity on Shot# '//shot%cindex//' !!'
+        !    stop
+        !endif
         if(any(isnan(f%p))) then
-            write(*,*) 'ERROR: '//name//' values become NaN !!'
+            write(*,*) 'ERROR: '//name//' values become NaN on Shot# '//shot%cindex//' !!'
             stop
         endif
         

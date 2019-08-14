@@ -6,7 +6,7 @@ use m_field
 use m_boundarystore
 
     private
-    public wavelet,sbloom,rbloom
+    public sbloom,rbloom
     public init_propagator,propagator_forward,propagator_adjoint
     
     integer :: it      !index of time instant

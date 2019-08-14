@@ -27,10 +27,10 @@ use m_computebox, only: cb
     real,parameter :: rcoef=0.001
     
     !local models
-    real,dimension(:),allocatable ::  buox, buoy, buoz
-    real,dimension(:),allocatable ::  kpa, kpa_1p2eps, kpa_sqrt1p2del, inv2epsmdel, invkpa
-    real,dimension(:,:,:),pointer :: pbuox,pbuoy,pbuoz
-    real,dimension(:,:,:),pointer :: pkpa,pkpa_1p2eps,pkpa_sqrt1p2del,pinv2epsmdel,pinvkpa
+    real,dimension(:),allocatable,target ::  buox, buoy, buoz
+    real,dimension(:),allocatable,target ::  kpa, kpa_1p2eps, kpa_sqrt1p2del, inv2epsmdel, invkpa
+    real,dimension(:,:,:),pointer        :: pbuox,pbuoy,pbuoz
+    real,dimension(:,:,:),pointer        :: pkpa,pkpa_1p2eps,pkpa_sqrt1p2del,pinv2epsmdel,pinvkpa
     real,parameter :: threshold=1000.  !upper bound for inv2epsmdel
     
     !fields
@@ -163,7 +163,6 @@ use m_computebox, only: cb
         call alloc(f%vz,cb%n)
         call alloc(f%shh,cb%n)
         call alloc(f%szz,cb%n)
-        
         if(present(if_save_previous)) then
         if(if_save_previous) then
             !wavefield at previous incident timestep for gradient computation
@@ -189,12 +188,12 @@ use m_computebox, only: cb
         character(*) :: name
         
         if(mpiworld%is_master) write(*,*) name//' sample values:',minval(f%szz),maxval(f%szz)
-        if(any(f%szz-1.==f%szz)) then
-            write(*,*) 'ERROR: '//name//' values become +-Infinity !!'
-            stop
-        endif
+        !if(any(f%szz-1.==f%szz)) then !this is not a good numerical judgement..
+        !    write(*,*) 'ERROR: '//name//' values become +-Infinity on Shot# '//shot%cindex//' !!'
+        !    stop
+        !endif
         if(any(isnan(f%szz))) then
-            write(*,*) 'ERROR: '//name//' values become NaN !!'
+            write(*,*) 'ERROR: '//name//' values become NaN on Shot# '//shot%cindex//' !!'
             stop
         endif
     end subroutine

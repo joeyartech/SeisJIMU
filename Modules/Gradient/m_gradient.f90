@@ -9,8 +9,6 @@ use m_objectivefunc
 use m_matchfilter
 use m_laplacian_smoothing_sparse
 
-
-use m_weighting
     
     public
     
@@ -51,7 +49,7 @@ use m_weighting
             call check_model
             call check_discretization !CFL condition, dispersion etc.
             
-            !propagator and wavefield
+            !init propagator and wavefield
             call init_propagator(if_will_do_rfield=.true.)
             
             !*******************************
@@ -59,6 +57,8 @@ use m_weighting
             call propagator_forward(if_will_backpropagate=.true.)
             !*******************************
             
+            !update shot%src%wavelet
+            !while wavelet in m_propagator is un-touched
             update_wavelet=get_setup_char('UPDATE_WAVELET',default='per shot')
             if(update_wavelet/='no') call gradient_matchfilter_data
             
@@ -67,6 +67,7 @@ use m_weighting
             write(12) dsyn
             close(12)
             
+            !fobjective and data residual
             call alloc(dres,shot%rcv(1)%nt,shot%nrcv)
             call objectivefunc_data_norm_residual
             
@@ -77,10 +78,11 @@ use m_weighting
             if(present(if_gradient)) then
             if(if_gradient) then
                 
+                !adjoint source
                 if(update_wavelet/='no') then
                     call matchfilter_correlate_filter_residual(shot%src%nt,shot%nrcv,dres)
                 endif
-            
+                
                 call alloc(cb%gradient,cb%mz,cb%mx,cb%my,2) !(:,:,:,1) is gkpa, (:,:,:,2) is grho0
                 !*******************************
                 !intensive computation
@@ -147,10 +149,10 @@ use m_weighting
             call matchfilter_estimate(shot%src%nt,shot%nrcv,dsyn,dobs,if_stack=.false.)
         endif
         
-        call matchfilter_apply_to_wavelet(shot%src%nt,wavelet)
+        call matchfilter_apply_to_wavelet(shot%src%nt,shot%src%wavelet)
         
-        open(12,file='wavelet_estimates',access='direct',recl=4*shot%src%nt)
-        write(12,rec=shot%index) wavelet
+        open(12,file='wavelet_estimates',access='direct',recl=4*shot%src%nt) !for purpose of quality control of results
+        write(12,rec=shot%index) shot%src%wavelet
         close(12)
         
         call matchfilter_apply_to_data(shot%src%nt,shot%nrcv,dsyn)
