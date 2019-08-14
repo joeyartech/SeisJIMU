@@ -120,6 +120,7 @@ use m_laplacian_smoothing_sparse
 
             !smoothing
             if(get_setup_logical('IF_SMOOTHING',default=.true.)) then
+                call hud('Initialize Laplacian smoothing')
                 call init_laplacian_smoothing([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],m%is_cubic,shot%src%fpeak)
                 do ipar=1,2
                     call laplacian_smoothing_extend_mirror(gradient(:,:,:,ipar),m%itopo)

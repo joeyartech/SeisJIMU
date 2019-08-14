@@ -135,10 +135,12 @@ use m_sysio
     end subroutine
     
     
-    subroutine init_laplacian_smoothing(n,d,cubic,frequency)
+    subroutine init_laplacian_smoothing(n,d,frequency,o_addmirror,o_frac)
         integer,dimension(3) :: n
         real,dimension(3) :: d
-        logical :: cubic
+        
+        real,optional :: o_addmirror
+        real,dimension(3),optional :: o_frac
         
         character(:),allocatable :: tmp
         
@@ -146,15 +148,28 @@ use m_sysio
         nx=n(2); dx=d(2)
         ny=n(3); dy=d(3)
         
-        is_cubic=cubic
+        if(ny==1) then
+            is_cubic=.false.
+        else
+            is_cubic=.true.
+        endif
         
         freq=frequency
         
-        call hud('Initialize Laplacian smoothing')
-        iaddmirror=nint( get_setup_real('SMOOTHING_ADDMIRROR',default=dz) /dz ) +1
+        if(present(o_addmirror)) then
+            iaddmirror=nint(o_addmirror/dz)+1
+        else
+            iaddmirror=nint( get_setup_real('SMOOTHING_ADDMIRROR',default=dz) /dz ) +1
+        endif
         
-        tmp=get_setup_char('SMOOTH_GRADIENT_WAVELENGTH_FRACTION',default='1 1 1')
-        read(tmp,*)frac_z,frac_x,frac_y
+        if(present(o_frac)) then
+            frac_z=o_frac(1)
+            frac_x=o_frac(2)
+            frac_y=o_frac(3)
+        else
+            tmp=get_setup_char('SMOOTH_GRADIENT_WAVELENGTH_FRACTION',default='1 1 1')
+            read(tmp,*)frac_z,frac_x,frac_y
+        endif
         
     end subroutine
     
