@@ -323,31 +323,31 @@ use m_shot
 
         !---damping in the z direction
         ! origin of the pml layer (position of right edge minus thickness, in meters)
-        zoriginbottom = 0.
-        zorigintop = (cb%mz-1)*m%dz
+        zorigintop = 0.
+        zoriginbottom = (cb%mz-1)*m%dz
 
         do i = cb%ifz,cb%ilz
             ! abscissa of current grid point along the damping profile
             zval = m%dz*(i-1)
             
-            !---bottom edge
-            !define damping profile at the grid points
-            abscissa_in_pml = zoriginbottom - zval
-            if(abscissa_in_pml >= 0.)then
-                abscissa_normalized = abscissa_in_pml / thickness_pml_z
-                d_z(i) = d0_z * abscissa_normalized**npower
-                alpha_prime_z(i) = alpha_max_pml * (1. - abscissa_normalized)
-            !  cb%icpml(i,:,:)=.true.
-            endif
-            
             !---top edge
             !define damping profile at the grid points
-            abscissa_in_pml = zval - zorigintop
+            abscissa_in_pml = zorigintop - zval
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_z
                 d_z(i) = d0_z * abscissa_normalized**npower
                 alpha_prime_z(i) = alpha_max_pml * (1. - abscissa_normalized)
                 ! cb%icpml(i,:,:)=.true.
+            endif
+            
+            !---bottom edge
+            !define damping profile at the grid points
+            abscissa_in_pml = zval - zoriginbottom
+            if(abscissa_in_pml >= 0.)then
+                abscissa_normalized = abscissa_in_pml / thickness_pml_z
+                d_z(i) = d0_z * abscissa_normalized**npower
+                alpha_prime_z(i) = alpha_max_pml * (1. - abscissa_normalized)
+            !  cb%icpml(i,:,:)=.true.
             endif
             
             !just in case ?
