@@ -126,7 +126,7 @@ use m_computebox, only: cb
         pkpa=cb%vp*cb%vp*cb%rho
         pkpa_1p2eps=pkpa*(1.+2.*cb%eps)
         pkpa_sqrt1p2del=pkpa*sqrt(1.+2.*cb%del)
-        pinvkpa=1./pkpa
+        invkpa=1./kpa
         pinv2epsmdel=0.5/(cb%eps-cb%del)
         
         !for elliptical VTI (eps==del) modeling is ok 

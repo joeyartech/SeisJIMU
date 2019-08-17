@@ -108,7 +108,7 @@ use m_computebox, only: cb
         call inflate_alias(invkpa,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily],pinvkpa)
         
         pkpa=cb%vp*cb%vp*cb%rho
-        pinvkpa=1./pkpa
+        invkpa=1./kpa
         
         pbuoz(cb%ifz,:,:)=1./cb%rho(cb%ifz,:,:)
         pbuox(:,cb%ifx,:)=1./cb%rho(:,cb%ifx,:)
