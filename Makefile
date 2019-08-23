@@ -4,16 +4,16 @@ OMP=openmp
 #OPTRPT=-qopt-report=5  -qopt-report-file=stderr -qopt-report-phase=vec
 
 #for Intel
-FLAGF90= -xHost -O3 -Ofast -parallel -q$(OMP) -traceback -assume byterecl   $(OPTRPT)
+FLAGF90= -xHost -O3 -Ofast -parallel -q$(OMP) -fno-alias -traceback -assume byterecl   $(OPTRPT)
 # FLAGF90= -g -debug -check all -check noarg_temp_created -W1 -WB -q$(OMP) -traceback -assume byterecl
 FLAGF77= $(FLAGF90)
 MOD= -module $(DIR)mod
 
 # #for GNU
-# FLAGF77= -Ofast -f$(OMP)                         -fbacktrace  #-flto
-# FLAGF90= -Ofast -f$(OMP) -ffree-line-length-none -fbacktrace
-# # FLAGF77= -g -Wall -fcheck=all                         -fbacktrace
-# # FLAGF90= -g -Wall -fcheck=all -ffree-line-length-none -fbacktrace
+# # FLAGF77= -Ofast -f$(OMP)                         -fbacktrace  #-flto
+# # FLAGF90= -Ofast -f$(OMP) -ffree-line-length-none -fbacktrace
+# FLAGF77= -g -Wall -f$(OMP) -fcheck=all                         -fbacktrace
+# FLAGF90= -g -Wall -f$(OMP) -fcheck=all -ffree-line-length-none -fbacktrace
 # MOD=-J $(DIR)mod
 
 
@@ -60,7 +60,7 @@ OBJ0=$(system:.f90=.o) $(externf77:.f=.o) $(externf90:.f90=.o) $(signal:.f90=.o)
 # FWD #
 #######
 
-#WaveEq=AC
+# WaveEq=AC
 WaveEq=AC_VTI
 Solver=FDSG
 Domain=TimeDomain
