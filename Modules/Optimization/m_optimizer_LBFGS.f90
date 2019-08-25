@@ -9,31 +9,24 @@ use m_linesearcher
     private
     public init_optimizer, optimizer, current
 
-    !Method: Nonlinear Conjugate Gradient
+    !Method: limited-memory BFGS
     !                                                     !
     ! x_{0}=x0                                            !
     ! x_{k+1}=x_k+\alpha_k d_k                            !
     !                                                     !
     ! where the descent direction d_k is                  !
     !                                                     !
-    ! d_k=-Q_k \nabla f_k + \beta_k d_{k-1}               !
+    ! d_k=-Q_k \nabla f_k                                 !
     !                                                     !
-    ! where Q_k       : preconditioner at iteration k     !
+    ! where Q_k       : l-BFGS approximation of the       !
+    !                   inverse Hessian at iteration k    !
+    !                   including preconditioning info    !
     !      \nabla f_k : gradient of f in x_k              !
-    !      \beta_k    : scalar computed through the       !
-    !                   Dai and Yuan formula              !
     !                                                     !
     ! and alpha_k is the steplength computed by linesearch!
     !                                                     !
-    ! Computation of the descent direction given by the 
-    ! preconditioned nonlinear conjugate gradient algorithm 
-    ! of Dai and Yuan 
-    ! Y. DAI AND Y. YUAN, A nonlinear conjugate gradient  !
-    ! method with a strong global convergence property,   !
-    ! SIAM Journal on Optimization, 10 (1999), pp. 177-182!
-    !                                                     !
-    ! See also Nocedal, Numerical optimization,           !
-    ! 2nd edition p.132                                   !
+    ! See also Numerical Optimization, Nocedal, 2nd edition, 2006 !
+    ! Algorithm 7.4 & 7.5 p. 178-179 !
     
     
     real f0 !initial fobjective
@@ -48,9 +41,9 @@ use m_linesearcher
     type(t_forwardmap) :: perturb
     type(t_forwardmap) :: previous
     
-    !history of computed gradients
-    real,dimension(:,:),allocatable :: gradient_history
-    integer,parameter :: l=1 !save one previous gradient in history
+    !history of vector pairs
+    real,dimension(:,:),allocatable :: sk,yk
+    integer :: l !use l vector pairs to approx inv Hessian
     
     logical :: debug
     
@@ -80,6 +73,9 @@ use m_linesearcher
         if(if_scaling) call linesearch_scaling(current)
         f0=current%f
         
+        !reinitialize alpha in each iterate
+        if_reinitialize_alpha=get_setup_logical('IF_REINITIALIZE_ALPHA',default=.false.)
+        
         !initialize preconditioner and apply
         call init_preconditioner
         call preconditioner_apply(current%g,current%pg)
@@ -89,10 +85,13 @@ use m_linesearcher
         current%d=-current%pg
         current%gdotd=sum(current%g*current%d)
         
-        !gradient history
-        call alloc(gradient_history,n,l,initialize=.false.)
-        gradient_history(:,1)=current%g
-        
+        !vector pairs history
+        l=get_setup_int('NPAIRS',default=5); if(l<1) l=1
+        call alloc(sk,n,l)
+        call alloc(yk,n,l)
+        sk(:,1)=current%x(:)
+        yk(:,1)=current%g(:)
+
         !initialize perturb point
         call alloc(perturb%x, n,initialize=.false.)
         call alloc(perturb%g, n,initialize=.false.)
@@ -108,8 +107,8 @@ use m_linesearcher
     subroutine optimizer
         character(7) :: result
         
-        real nom, denom
-        
+        integer m !declaration here can avoid conflict with m in m_model.f90
+        real,dimension(:),allocatable :: q, alpha, rho, r      
         
         call optimizer_print_info('start')
         call hud('============ START OPTIMIZATON ============')
@@ -124,7 +123,7 @@ use m_linesearcher
             endif
             
             !linesearcher finds steplength
-            call linesearcher(iterate,current,perturb,gradient_history,result=result)
+            call linesearcher(iterate,current,perturb,result=result)
             
             select case(result)
                 case('success')
@@ -135,22 +134,70 @@ use m_linesearcher
                 
                 previous%d=current%d
                 
-                
-                !!!!!!!!!!!!!!!!!!!!!!!!!!!
-                !! NLCG, Dai-Yuan's beta !!
-                !!!!!!!!!!!!!!!!!!!!!!!!!!!
-                !compute beta
-                nom=sum(perturb%g*perturb%pg)
-                denom=sum((perturb%g-gradient_history(:,1))*previous%d)
-                beta=nom/denom
-                
-                !Safeguard 
-                if((beta.ge.1e5).or.(beta.le.-1e5)) then     
-                    beta=0.
+
+                !!!!!!!!!!!!!!!!!!!
+                !! Precond LBFGS !!
+                !!!!!!!!!!!!!!!!!!!
+                !update sk,yk pairs
+                if(iterate<=l) then
+                    sk(:,iterate)=current%x(:)-sk(:,iterate)
+                    yk(:,iterate)=current%g(:)-yk(:,iterate)
+                else
+                    sk(:,l)=current%x(:)-sk(:,l)
+                    yk(:,l)=current%g(:)-yk(:,l)
                 endif
                 
-                !new descent direction
-                current%d=-perturb%pg+beta*previous%d
+                m=min(iterate,l)
+                call alloc(q,    n,initialize=.false.)
+                call alloc(alpha,m,initialize=.false.)
+                call alloc(rho,  m,initialize=.false.)
+
+                q = current%g
+
+                !1st part of two-loop recursion
+                do i=m,1,-1
+                    rho(i) = 1./dot_product(yk(:,i),sk(:,i))
+                    alpha(i) = rho(i)*dot_product(sk(:,i),q(:))
+                    q(:) = q(:) - alpha(i)*yk(:,i)
+                enddo
+                
+! print*,yk
+! print*,sk
+! print*,rho
+! print*,alpha
+! print*,q
+                
+                !preconditioner provides seed for initial guess of inv Hessian
+                call preconditioner_apply(q,q)
+
+                gamma_num   = dot_product(sk(:,m),yk(:,m))
+                gamma_denom = norm2(yk(:,m))
+                gamma_denom = gamma_denom*gamma_denom
+
+                gamma=gamma_num/gamma_denom
+
+                r = gamma*q
+
+                !2nd part of two-loop recursion
+                do i=1,m
+                    beta = rho(i)*dot_product(yk(:,i),r(:))
+                    r(:) = r(:) + (alpha(i)-beta)*sk(:,i)
+                enddo
+                current%d = -r
+                
+! print*,gamma,gamma_num,gamma_denom
+! print*,beta
+! print*,current%d
+! pause
+                
+                !save sk,yk pairs
+                if(iterate+1.le.l) then !fill in history
+                    sk(:,iterate+1)=current%x(:)
+                    yk(:,iterate+1)=current%g(:)
+                else !shift and replace oldest pairs
+                    sk(:,1:l-1)=sk(:,2:l);  sk(:,l)=current%x(:)
+                    yk(:,1:l-1)=yk(:,2:l);  yk(:,l)=current%g(:)
+                endif
                 
                 !inner product of g and d for Wolfe condition
                 current%gdotd=sum(current%g*current%d)
@@ -183,7 +230,7 @@ use m_linesearcher
                 case('start')
                     open(16,file='iterate.log')
                     write(16,'(a)'      ) ' **********************************************************************'
-                    write(16,'(a)'      ) '                 NONLINEAR CONJUGATE GRADIENT ALGORITHM                '
+                    write(16,'(a)'      ) '                 LIMITED MEMORY BFGS ALGORITHM                '
                     write(16,'(a)'      ) ' **********************************************************************'
                     write(16,'(a,es8.2)') '     Min update allowed        : ',  min_update
                     write(16,'(a,i5)'   ) '     Max iteration allowed     : ',  max_iterate

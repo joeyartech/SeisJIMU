@@ -5,7 +5,7 @@ use m_parameterization
 use m_preconditioner
 
     private
-    public alpha, isearch, imodeling, max_search, max_modeling, if_project_x, n
+    public alpha, isearch, imodeling, max_search, max_modeling, if_project_x, if_scaling, n
     public t_forwardmap, linesearcher, linesearch_scaling
     
     ! This linesearch enforces the Wolfe          !
@@ -34,6 +34,8 @@ use m_preconditioner
     real :: alpha=alpha0  !very initial steplength
     real :: alphaL=0., alphaR=0.
     
+    logical :: if_reinitialize_alpha=.false.
+    
     !counter
     integer :: isearch=0 !number of linesearch performed
     integer :: imodeling=1 !number of modeling performed
@@ -43,6 +45,9 @@ use m_preconditioner
     !projection
     logical :: if_project_x=.true.
     real,parameter :: threshold=0.
+    
+    !scaling
+    logical :: if_scaling=.true.
     
     type t_forwardmap
         real,dimension(:),allocatable :: x !point
@@ -57,10 +62,10 @@ use m_preconditioner
     
     contains
     
-    subroutine linesearcher(iterate,current,perturb,l,gradient_history,result)
-        integer,intent(in) :: iterate, l
+    subroutine linesearcher(iterate,current,perturb,gradient_history,result)
+        integer,intent(in) :: iterate
         type(t_forwardmap),intent(inout) :: current, perturb
-        real,dimension(n,l),intent(inout) :: gradient_history
+        real,dimension(:,:),intent(inout),optional :: gradient_history
         character(7) :: result
         
         logical :: first_condition, second_condition
@@ -68,17 +73,19 @@ use m_preconditioner
         !initialize
         alphaL=0.
         alphaR=0.
-        !alpha=alpha0  !keep use alpha in previous iterate..
+        if(if_reinitialize_alpha) alpha=alpha0 !reinitialize alpha in each iterate may help convergence for LBFGS method..
 !         if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Initial alphaL/alpha/alphaR =',alphaL,alpha,alphaR
         if(mpiworld%is_master) write(*,'(a, 2x,es8.2)')   ' Initial alpha =',alpha
         if(mpiworld%is_master) write(*,*) 'Initial f,||g|| =',current%f,sqrt(sum(current%g*current%g))
         perturb%x=current%x+alpha*current%d
         
-        !for gradient history
-        i=1
-        !save gradient
-        gradient_history(:,i)=current%g
-        i=i+1; if(i>l) i=1;
+        !save gradients
+        if(present(gradient_history)) then
+            l=size(gradient_history,2) !number of gradient in history
+            i=1
+            gradient_history(:,i)=current%g
+            i=i+1; if(i>l) i=1;
+        endif
         
         !linesearch loop
         loop: do isearch=1,max_search
@@ -91,7 +98,7 @@ use m_preconditioner
             call gradient_modeling(if_gradient=.true.)
             perturb%f=fobjective
             call parameterization_transform('m2x',perturb%x,perturb%g)
-            call linesearch_scaling(perturb)
+            if(if_scaling) call linesearch_scaling(perturb)
             call preconditioner_apply(perturb%g,perturb%pg)
             imodeling=imodeling+1
             
@@ -104,6 +111,10 @@ use m_preconditioner
             !second_condition= (abs(perturb%gdotd) >= c2*abs(current%gdotd)) !strong Wolfe condition
             second_condition= (perturb%gdotd >= c2*current%gdotd) !strong Wolfe condition
             
+! print*,'1st cond',perturb%f,current%f,current%gdotd, first_condition
+! print*,'2nd cond',perturb%gdotd, second_condition
+! print*,'alpha(3)',alphaL,alpha,alpha_R
+
             !1st condition OK, 2nd condition OK => use alpha
             if(first_condition .and. second_condition) then
                 call hud('Wolfe conditions are satisfied')
@@ -139,8 +150,10 @@ use m_preconditioner
                     alpha=0.5*(alphaL+alphaR)
                     perturb%x=current%x+alpha*current%d
                     !save gradient
-                    gradient_history(:,i)=perturb%g
-                    i=i+1; if(i>l) i=1;
+                    if(present(gradient_history)) then
+                        gradient_history(:,i)=perturb%g
+                        i=i+1; if(i>l) i=1;
+                    endif
                 endif
                 
                 !2nd condition BAD => increase alpha unless alphaR=0.
@@ -155,8 +168,10 @@ use m_preconditioner
                     endif
                     perturb%x=current%x+alpha*current%d
                     !save gradient
-                    gradient_history(:,i)=perturb%g
-                    i=i+1; if(i>l) i=1;
+                    if(present(gradient_history)) then
+                        gradient_history(:,i)=perturb%g
+                        i=i+1; if(i>l) i=1;
+                    endif
                 endif
                 
             endif
