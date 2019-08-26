@@ -31,10 +31,10 @@ use singleton
         filter = nom/(denom+eps)
         
         open(12,file='matchfilters_amp',access='direct',recl=4*nt) !for purpose of quality control of results
-        write(12,rec=index) abs(filter)
+        write(12,rec=index) real(abs(filter),kind=4)
         close(12)
         open(12,file='matchfilters_phase',access='direct',recl=4*nt) !for purpose of quality control of results
-        write(12,rec=index) atan(filter)
+        write(12,rec=index) real(atan(filter),kind=4)
         close(12)
         
         if(if_stack) then

@@ -230,7 +230,7 @@ use m_linesearcher
                 case('start')
                     open(16,file='iterate.log')
                     write(16,'(a)'      ) ' **********************************************************************'
-                    write(16,'(a)'      ) '                 LIMITED MEMORY BFGS ALGORITHM                '
+                    write(16,'(a)'      ) '                     LIMITED MEMORY BFGS ALGORITHM                     '
                     write(16,'(a)'      ) ' **********************************************************************'
                     write(16,'(a,es8.2)') '     Min update allowed        : ',  min_update
                     write(16,'(a,i5)'   ) '     Max iteration allowed     : ',  max_iterate

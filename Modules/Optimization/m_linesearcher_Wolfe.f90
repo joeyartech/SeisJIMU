@@ -5,7 +5,7 @@ use m_parameterization
 use m_preconditioner
 
     private
-    public alpha, isearch, imodeling, max_search, max_modeling, if_project_x, if_scaling, n
+    public alpha, isearch, imodeling, max_search, max_modeling, if_project_x, if_reinitialize_alpha, if_scaling, n
     public t_forwardmap, linesearcher, linesearch_scaling
     
     ! This linesearch enforces the Wolfe          !
