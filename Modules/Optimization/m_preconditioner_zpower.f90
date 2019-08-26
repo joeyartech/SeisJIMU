@@ -20,17 +20,16 @@ use m_parameterization, only: npar
     subroutine preconditioner_apply(g,pg)
         real,dimension(m%nz,m%nx,m%ny,npar) :: g,pg
         
-        real(kind=8) :: norm1,norm2
+        real :: old_norm
         
         do i=1,npar
-            norm1=sqrt(sum(dprod(g(:,:,:,i),g(:,:,:,i))))
+            old_norm = norm2(g(:,:,:,i))
             do iy=1,m%ny
             do ix=1,m%nx
                 pg(:,ix,iy,i)=g(:,ix,iy,i)*precond
             enddo
             enddo
-            norm2=sqrt(sum(dprod(pg(:,:,:,i),pg(:,:,:,i))))
-            pg(:,:,:,i)=pg(:,:,:,i)*norm1/norm2
+            pg(:,:,:,i) = pg(:,:,:,i) * old_norm / norm2(pg(:,:,:,i))
         enddo
     end subroutine
 

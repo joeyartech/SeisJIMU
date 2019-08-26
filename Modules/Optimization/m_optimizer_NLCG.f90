@@ -80,10 +80,13 @@ use m_linesearcher
         if(if_scaling) call linesearch_scaling(current)
         f0=current%f
         
+        !reinitialize alpha in each iterate
+        if_reinitialize_alpha=get_setup_logical('IF_REINITIALIZE_ALPHA',default=.false.)
+        
         !initialize preconditioner and apply
         call init_preconditioner
         call preconditioner_apply(current%g,current%pg)
-        g0norm=sqrt(sum(current%g*current%g))
+        g0norm=norm2(current%g)
         
         !current descent direction
         current%d=-current%pg
@@ -117,7 +120,7 @@ use m_linesearcher
         !iteration loop
         loop: do iterate=1,max_iterate
         
-            if (sqrt(sum(current%d*current%d)) < min_update) then
+            if (norm2(current%d) < min_update) then
                 call hud('Maximum iteration number reached or convergence criteria met')
                 call optimizer_print_info('criteria')
                 exit loop
@@ -194,10 +197,10 @@ use m_linesearcher
                     write(16,'(a)'      ) ' **********************************************************************'
                     write(16,'(a)'      ) '  Iter#      f         f/f0    ||g||/||g0||    alpha     nls  Modeling#'
                                    !e.g.  !    0    1.00E+00    1.00E+00    1.00E+00    1.00E+00      0       1
-                    write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, current%f, current%f/f0, sqrt(sum(current%g*current%g))/g0norm, alpha, isearch, imodeling
+                    write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, current%f, current%f/f0, norm2(current%g)/g0norm, alpha, isearch, imodeling
                     open(18,file='model_update',access='stream')
                 case('update')
-                    write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, current%f, current%f/f0, sqrt(sum(current%g*current%g))/g0norm, alpha, isearch, imodeling
+                    write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, current%f, current%f/f0, norm2(current%g)/g0norm, alpha, isearch, imodeling
                     
                     call parameterization_transform('x2m',current%x)
                     if(if_par_vp) write(18) m%vp

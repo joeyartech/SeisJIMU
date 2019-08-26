@@ -76,7 +76,7 @@ use m_preconditioner
         if(if_reinitialize_alpha) alpha=alpha0 !reinitialize alpha in each iterate may help convergence for LBFGS method..
 !         if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Initial alphaL/alpha/alphaR =',alphaL,alpha,alphaR
         if(mpiworld%is_master) write(*,'(a, 2x,es8.2)')   ' Initial alpha =',alpha
-        if(mpiworld%is_master) write(*,*) 'Initial f,||g|| =',current%f,sqrt(sum(current%g*current%g))
+        if(mpiworld%is_master) write(*,*) 'Initial f,||g|| =',current%f,norm2(current%g)
         perturb%x=current%x+alpha*current%d
         
         !save gradients
@@ -178,7 +178,7 @@ use m_preconditioner
             
             !if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Linesearch alphaL/alpha/alphaR =',alphaL,alpha,alphaR
             if(mpiworld%is_master) write(*,'(a, 2x,es8.2)')   ' Linesearch alpha =',alpha
-            if(mpiworld%is_master) write(*,*) 'f,||g|| =',perturb%f,sqrt(sum(perturb%g*perturb%g))
+            if(mpiworld%is_master) write(*,*) 'f,||g|| =',perturb%f,norm2(perturb%g)
         
         enddo loop
         
