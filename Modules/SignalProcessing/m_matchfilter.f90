@@ -11,7 +11,7 @@ use singleton
     
     contains
     
-    subroutine matchfilter_estimate(nt,nd,dsyn,dobs,if_stack)
+    subroutine matchfilter_estimate(nt,nd,dsyn,dobs,index,if_stack)
         integer nt,nd
         real,dimension(nt,nd) :: dsyn,dobs
         logical if_stack
@@ -29,6 +29,13 @@ use singleton
         allocate(filter(nt))
         
         filter = nom/(denom+eps)
+        
+        open(12,file='matchfilters_amp',access='direct',recl=4*nt) !for purpose of quality control of results
+        write(12,rec=index) abs(filter)
+        close(12)
+        open(12,file='matchfilters_phase',access='direct',recl=4*nt) !for purpose of quality control of results
+        write(12,rec=index) atan(filter)
+        close(12)
         
         if(if_stack) then
             call mpi_allreduce(MPI_IN_PLACE, filter, nt, MPI_DOUBLE_COMPLEX, MPI_SUM, mpiworld%communicator, mpiworld%ierr)

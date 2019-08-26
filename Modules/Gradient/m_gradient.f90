@@ -60,7 +60,16 @@ use m_laplacian_smoothing_sparse
             !update shot%src%wavelet
             !while wavelet in m_propagator is un-touched
             update_wavelet=get_setup_char('UPDATE_WAVELET',default='per shot')
-            if(update_wavelet/='no') call gradient_matchfilter_data
+            if(update_wavelet/='no') then
+                call gradient_matchfilter_data
+                
+                !write wavelet updates for QC
+                if(mpiworld%is_master) then
+                    open(12,file='wavelet_estimates',access='stream',position='append')
+                    write(12) shot%src%wavelet
+                    close(12)
+                endif
+            endif
             
             !write synthetic data
             open(12,file='synth_data_'//shot%cindex,access='stream')
@@ -145,16 +154,12 @@ use m_laplacian_smoothing_sparse
         if(update_wavelet=='stack') then
             !average wavelet across all processors
             !note: if more shots than processors, non-assigned shots will not contribute to this averaging
-            call matchfilter_estimate(shot%src%nt,shot%nrcv,dsyn,dobs,if_stack=.true.)
+            call matchfilter_estimate(shot%src%nt,shot%nrcv,dsyn,dobs,shot%index,if_stack=.true.)
         else
-            call matchfilter_estimate(shot%src%nt,shot%nrcv,dsyn,dobs,if_stack=.false.)
+            call matchfilter_estimate(shot%src%nt,shot%nrcv,dsyn,dobs,shot%index,if_stack=.false.)
         endif
         
         call matchfilter_apply_to_wavelet(shot%src%nt,shot%src%wavelet)
-        
-        open(12,file='wavelet_estimates',access='direct',recl=4*shot%src%nt) !for purpose of quality control of results
-        write(12,rec=shot%index) shot%src%wavelet
-        close(12)
         
         call matchfilter_apply_to_data(shot%src%nt,shot%nrcv,dsyn)
         
