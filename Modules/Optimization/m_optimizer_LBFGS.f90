@@ -74,7 +74,7 @@ use m_linesearcher
         f0=current%f
         
         !reinitialize alpha in each iterate
-        if_reinitialize_alpha=get_setup_logical('IF_REINITIALIZE_ALPHA',default=.false.)
+        if_reinitialize_alpha=get_setup_logical('IF_REINITIALIZE_ALPHA',default=.true.)
         
         !initialize preconditioner and apply
         call init_preconditioner
