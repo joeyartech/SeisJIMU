@@ -94,9 +94,9 @@ use m_computebox, only: cb
         
         !CFL condition
         if (m%is_cubic) then
-            cfl = cb%velmax*shot%src%dt/m%dmin / (sqrt(3.)*(sum(abs(fdcoeff_o4))))! ~0.494
+            cfl = cb%velmax*shot%src%dt/m%dmin * (sqrt(3.)*(sum(abs(fdcoeff_o4))))! ~0.494
         else
-            cfl = cb%velmax*shot%src%dt/m%dmin / (sqrt(2.)*(sum(abs(fdcoeff_o4))))! ~0.606
+            cfl = cb%velmax*shot%src%dt/m%dmin * (sqrt(2.)*(sum(abs(fdcoeff_o4))))! ~0.606
         end if
         if(mpiworld%is_master) write(*,*) 'CFL value:',CFL
         
