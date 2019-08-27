@@ -65,7 +65,7 @@ use m_laplacian_smoothing_sparse
                 
                 !write wavelet updates for QC
                 if(mpiworld%is_master) then
-                    open(12,file='wavelet_estimates',access='stream',position='append')
+                    open(12,file='wavelet_update',access='stream',position='append')
                     write(12) shot%src%wavelet
                     close(12)
                 endif
