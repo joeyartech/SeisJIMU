@@ -210,11 +210,15 @@ use m_sysio
         
         real,dimension(:),allocatable :: vector,frac_lambda
         real :: old_norm
+        real,dimension(:,:,:),allocatable :: table_one
         
         if(preserve=='L1norm') then
             old_norm = sum(abs(gradient))
         elseif(preserve=='L2norm') then
             old_norm = norm2(gradient)
+        elseif(preserve=='scale1') then
+            allocate(table_one(nz,nx,ny))
+            table_one=1.
         endif
         
         !z axis
@@ -255,12 +259,55 @@ use m_sysio
             deallocate(vector,frac_lambda)
         endif
         
+        !redo smoothing on table_one for normalization
+        if(preserve=='scale1') then
+            !z axis
+            allocate(vector(nz),frac_lambda(nz))
+            do iy=1,ny
+            do ix=1,nx
+                vector=table_one(:,ix,iy)
+                frac_lambda=velocity(:,ix,iy)/freq*frac_z
+                call smooth_1D_nonstationary(nz,dz,vector,frac_lambda)
+                table_one(:,ix,iy)=vector
+            enddo
+            enddo
+            deallocate(vector,frac_lambda)
+            
+            !x axis
+            allocate(vector(nx),frac_lambda(nx))
+            do iy=1,ny
+            do iz=1,nz
+                vector=table_one(iz,:,iy)
+                frac_lambda=velocity(iz,:,iy)/freq*frac_x
+                call smooth_1D_nonstationary(nx,dx,vector,frac_lambda)
+                table_one(iz,:,iy)=vector
+            enddo
+            enddo
+            deallocate(vector,frac_lambda)
+            
+            !y axis
+            if(is_cubic) then
+                allocate(vector(ny),frac_lambda(ny))
+                do ix=1,nx
+                do iz=1,nz
+                    vector=table_one(iz,ix,:)
+                    frac_lambda=velocity(iz,ix,:)/freq*frac_y
+                    call smooth_1D_nonstationary(ny,dy,vector,frac_lambda)
+                    table_one(iz,ix,:)=vector
+                enddo
+                enddo
+                deallocate(vector,frac_lambda)
+            endif
+        endif
+        
         !normalization
         if(preserve=='L1norm') then
             gradient = gradient * old_norm / sum(abs(gradient))
         elseif(preserve=='L2norm') then
             gradient = gradient * old_norm / norm2(gradient)
-        !elseif(preserve=='scale1') then !don't expect this behavior is better..
+        elseif(preserve=='scale1') then
+            gradient = gradient / table_one
+            deallocate(table_one)
         endif
         
     end subroutine
