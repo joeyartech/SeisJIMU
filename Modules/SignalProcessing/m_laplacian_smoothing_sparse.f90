@@ -135,7 +135,7 @@ use m_sysio
         if(present(o_preserve)) then
             preserve=o_preserve
         else
-            preserve=get_setup_char('SMOOTH_GRADIENT_PRESERVE_MAGNITUDE',default='L2norm')
+            preserve=get_setup_char('SMOOTH_GRADIENT_PRESERVE_MAGNITUDE',default='nopreserve')
         endif
         
     end subroutine
