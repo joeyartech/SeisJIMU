@@ -210,7 +210,7 @@ use m_boundarystore
         
         !save previous time-step wavefield
         if(present(gradient)) then
-            call field_save_previous(sfield)
+            call field_save_previous(sfield,sbloom(:,it))
         endif
         
         call alloc(seismo,shot%nrcv,nt,initialize=.false.)
@@ -319,7 +319,7 @@ use m_boundarystore
             !!actually we don't need to do so because the updates are available during timestepping, thus save mem space
             !!however this would lead to updating sfield and rfield simultaneously which makes the code harder to manage..
             if(present(gradient)) then
-                call field_save_previous(sfield)
+                call field_save_previous(sfield,sbloom(:,it))
             endif
             
             call cpu_time(t12)

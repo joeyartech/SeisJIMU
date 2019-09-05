@@ -184,12 +184,57 @@ use m_computebox, only: cb
         f%cpml_dp_dz=0.
     end subroutine
     
-    subroutine field_save_previous(f)
+    subroutine field_save_previous(f,bl)
         type(t_field) :: f
-        f%prev_vx=f%vx
-        f%prev_vy=f%vy
-        f%prev_vz=f%vz
-        f%prev_p=f%p
+        integer,dimension(6) :: bl
+        
+        ifz=bl(1)+2
+        ilz=bl(2)-2
+        ifx=bl(3)+2
+        ilx=bl(4)-2
+        ify=bl(5)+2
+        ily=bl(6)-2
+        
+        if(m%if_freesurface) ifz=max(ifz,1)
+        
+        if(.not. m%is_cubic) then
+            ify=1; ily=1;
+        endif
+        
+        call flat_cp(f%prev_vx,f%vx,ifz,ilz,ifx,ilx,ify,ily)
+        call flat_cp(f%prev_vy,f%vy,ifz,ilz,ifx,ilx,ify,ily)
+        call flat_cp(f%prev_vz,f%vz,ifz,ilz,ifx,ilx,ify,ily)
+        call flat_cp(f%prev_p ,f%p, ifz,ilz,ifx,ilx,ify,ily)
+        
+    end subroutine
+    
+    subroutine flat_cp(prev_a,a,ifz,ilz,ifx,ilx,ify,ily)
+        real,dimension(*) :: prev_a,a
+        
+        nz=cb%nz
+        nx=cb%nx
+        ny=cb%ny
+        
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,iy,i,iz_ix_iy)
+        !$omp do schedule(dynamic) collapse(2)
+        do iy=ify,ily
+        do ix=ifx,ilx
+        
+            !dir$ simd
+            do iz=ifz,ilz
+            
+                i=(iz-cb%ifz)+(ix-cb%ifx)*nz+(iy-cb%ify)*nz*nx+1
+                
+                prev_a(i)=a(i)
+                
+            enddo
+            
+        enddo
+        enddo
+        !$omp enddo 
+        !$omp end parallel
+        
     end subroutine
     
     subroutine write_field(iunit,f,if_difference)
