@@ -660,13 +660,13 @@ use m_computebox, only: cb
     
     !========= for wavefield correlation ===================
     !gkpa = -1/kpa2 dp_dt x adjp
-    !dp_dt^it+1 ~= ^it+1.5 - p^it+0.5
+    !dp_dt^it+1 ~= p^it+1.5 - p^it+0.5
     ! adjp^it+1 is not available, use adjp^it+0.5 instead (->very accurate gkpa)
     
     !grho = dvx_dt x adjvx + dvy_dt x adjvy + dvz_dt x adjvz
     !dv_dt^it+0.5 ~= v^it+1 - v^it
     ! adjv^it+0.5 is not available, use adjv^it instead (->grho is reasonably accurate)
-    !use v[i+1]-v[i] to approximate v[i+0.5], so is adjv
+    !use (v[i+1]+v[i])/2 to approximate v[i+0.5], so is adjv
     
     subroutine field_correlation_stresses(it,sf,rf,sb,rb,corr)
         type(t_field) :: sf,rf

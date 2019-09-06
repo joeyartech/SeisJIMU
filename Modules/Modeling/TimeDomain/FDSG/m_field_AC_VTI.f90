@@ -666,13 +666,13 @@ use m_computebox, only: cb
     !ISO:  gkpa = -1/kpa2           dshh_dt                     x             adjshh
     !VTI:  gkpa = -1/2epsmdel/kpa2 [dshh_dt dszz_dt] [    1      sqrt1p2del] [adjshh]
     !                                                [sqrt1p2del   1p2eps  ] [adjsqq]
-    !dshh_dt^it+1 ~= ^it+1.5 - shh^it+0.5
+    !dshh_dt^it+1 ~= shh^it+1.5 - shh^it+0.5
     ! adjshh^it+1 is not available, use adjshh^it+0.5 instead (->very accurate gkpa)
     
     !grho = dvx_dt x adjvx + dvy_dt x adjvy + dvz_dt x adjvz
     !dv_dt^it+0.5 ~= v^it+1 - shh^it
     ! adjv^it+0.5 is not available, use adjv^it instead (->grho is reasonably accurate)
-    !use v[i+1]-v[i] to approximate v[i+0.5], so is adjv
+    !use (v[i+1]+v[i])/2 to approximate v[i+0.5], so is adjv
     
     subroutine field_correlation_stresses(it,sf,rf,sb,rb,corr)
         type(t_field) :: sf,rf
