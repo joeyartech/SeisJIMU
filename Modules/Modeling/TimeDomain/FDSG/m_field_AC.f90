@@ -718,7 +718,7 @@ use m_computebox, only: cb
     subroutine field_correlation_scaling(grad)
         real,dimension(cb%mz,cb%mx,cb%my,2) :: grad
         
-        grad(:,:,:,1)=grad(:,:,:,1) * (-lm%invkpa(1:cb%mz,1:cb%mx,1:cb%my)*lm%invkpa(1:cb%mz,1:cb%mx,1:cb%my))
+        grad(:,:,:,1)=grad(:,:,:,1) * (-lm%invkpa(1:cb%mz,1:cb%mx,1:cb%my))
         
         !set unit of gkpa to be [m3], grho to be [m5/s2]
         !such that after multiplied by (kpa_max-kpa_min) or (rho_max-rho_min) (will be done in m_parameterization)
@@ -1023,7 +1023,7 @@ use m_computebox, only: cb
                 dvx_dx= c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix))  +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
                 dvz_dz= c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix))  +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
                 
-                dsp=kpa(iz_ix)*(dvx_dx+dvz_dz)
+                dsp=dvx_dx+dvz_dz !will be multiplied by kpa outside
                  rp=rf_p(i)*2.    !rp=rf%prev_p(i)+rf%p(i)
                 
                 corr(j)=corr(j) + 0.5*dsp*rp
@@ -1130,17 +1130,18 @@ use m_computebox, only: cb
                 iz_ixm1=i  -cb%nz  !iz,ix-1
                 iz_ixp1=i  +cb%nz  !iz,ix+1
                 
-                dp_dx= c1x*(sf_p(iz_ix)-sf_p(iz_ixm1)) +c2x*(sf_p(iz_ixp1)-sf_p(iz_ixm2))
-                dp_dz= c1z*(sf_p(iz_ix)-sf_p(izm1_ix)) +c2z*(sf_p(izp1_ix)-sf_p(izm2_ix))
-                
-                
-                dsvx=buox(iz_ix)*dp_dx
-                dsvz=buoz(iz_ix)*dp_dz
+                !dp_dx= c1x*(sf_p(iz_ix)-sf_p(iz_ixm1)) +c2x*(sf_p(iz_ixp1)-sf_p(iz_ixm2))
+                !dp_dz= c1z*(sf_p(iz_ix)-sf_p(izm1_ix)) +c2z*(sf_p(izp1_ix)-sf_p(izm2_ix))
+                                
+                dsvx  = buox(iz_ix  )*(c1x*(sf_p(iz_ix  )-sf_p(iz_ixm1)) +c2x*(sf_p(iz_ixp1)-sf_p(iz_ixm2)))
+                      + buox(iz_ixp1)*(c1x*(sf_p(iz_ixp1)-sf_p(iz_ix  )) +c2x*(sf_p(iz_ixp2)-sf_p(iz_ixm1)))
+                dsvz  = buoz(iz_ix  )*(c1z*(sf_p(iz_ix  )-sf_p(izm1_ix)) +c2z*(sf_p(izp1_ix)-sf_p(izm2_ix)))
+                      + buoz(izp1_ix)*(c1z*(sf_p(izp1_ix)-sf_p(iz_ix  )) +c2z*(sf_p(izp2_ix)-sf_p(izm1_ix)))
 
-                rvx=rf_vx(iz_ix)
-                rvz=rf_vz(iz_ix)
+                rvx=rf_vx(iz_ix) + rf_vx(iz_ixp1)
+                rvz=rf_vz(iz_ix) + rf_vz(izp1_ix)
                 
-                corr(j)=corr(j) + 0.25*( dsvx*rvx + dsvz*rvz )
+                corr(j)=corr(j) + 0.25*( dsvx*rvx + dsvz*rvz ) !will be interp back to integer points outside
                 
             enddo
             
