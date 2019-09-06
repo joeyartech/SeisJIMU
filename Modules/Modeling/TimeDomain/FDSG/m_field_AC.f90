@@ -616,7 +616,7 @@ use m_computebox, only: cb
         ify=max(sb(5),rb(5),1)
         ily=min(sb(6),rb(6),cb%my)
         
-        call corrxd_flat_stresses(sf%vx,sf%vz,rf%p,lm%kpa,corr,&
+        call corrxd_flat_stresses(sf%vx,sf%vz,rf%p,corr,&
                                   ifz,ilz,ifx,ilx,ify,ily)
         
     end subroutine
@@ -653,14 +653,14 @@ use m_computebox, only: cb
     subroutine field_correlation_scaling(grad)
         real,dimension(cb%mz,cb%mx,cb%my,2) :: grad
         
-        grad(:,:,:,1)=grad(:,:,:,1) * (-lm%invkpa(1:cb%mz,1:cb%mx,1:cb%my))
+        grad(:,:,:,1)=grad(:,:,:,1) * (-lm%invkpa(1:cb%mz,1:cb%mx,1:cb%my)) 
         
         !set unit of gkpa to be [m3], grho to be [m5/s2]
-        !such that after multiplied by (kpa_max-kpa_min) or (rho_max-rho_min) (will be done in m_parameterization)
+        !such that after multiplied by (kpa_max-kpa_min) or (rho_max-rho_min) (will be done in m_parameterization.f90)
         !the unit of parameter update is [Nm], same as Lagrangian
-        !and the unit of gradient scaling factor is [1/N/m] (in m_scaling)
-        !(parameters are unitless)
-        grad=grad*m%cell_size
+        !and the unit of gradient scaling factor is [1/N/m] (in m_scaling.f90)
+        !therefore parameters become unitless
+        grad=grad*m%cell_size*shot%src%dt
         
     end subroutine
     
@@ -767,9 +767,9 @@ use m_computebox, only: cb
                 iz_ix  =i    !iz,ix
                 izp1_ix=i+1  !iz+1,ix
                 
-                iz_ixm2=i-2*nz  !iz,ix-2
-                iz_ixm1=i  -nz  !iz,ix-1
-                iz_ixp1=i  +nz  !iz,ix+1
+                iz_ixm2=i  -2*nz  !iz,ix-2
+                iz_ixm1=i    -nz  !iz,ix-1
+                iz_ixp1=i    +nz  !iz,ix+1
                 
                 dp_dx= c1x*(p(iz_ix)-p(iz_ixm1)) +c2x*(p(iz_ixp1)-p(iz_ixm2))
                 dp_dz= c1z*(p(iz_ix)-p(izm1_ix)) +c2z*(p(izp1_ix)-p(izm2_ix))
@@ -894,7 +894,7 @@ use m_computebox, only: cb
                 
                 iz_ixm1=i  -nz  !iz,ix-1
                 iz_ixp1=i  +nz  !iz,ix+1
-                iz_ixp2=i +2*nz !iz,ix+2
+                iz_ixp2=i  +2*nz !iz,ix+2
                 
                 dvx_dx= c1x*(vx(iz_ixp1)-vx(iz_ix))  +c2x*(vx(iz_ixp2)-vx(iz_ixm1))
                 dvz_dz= c1z*(vz(izp1_ix)-vz(iz_ix))  +c2z*(vz(izp2_ix)-vz(izm1_ix))
@@ -918,11 +918,10 @@ use m_computebox, only: cb
     end subroutine
 
     subroutine corrxd_flat_stresses(sf_vx,sf_vz,rf_p,   &
-                                    kpa,                &
                                     corr,               &
                                     ifz,ilz,ifx,ilx,ify,ily)
         real,dimension(*) :: sf_vx,sf_vz,rf_p
-        real,dimension(*) :: kpa,corr
+        real,dimension(*) :: corr
         
         dvx_dx=0.;dvz_dz=0.
         
@@ -951,9 +950,9 @@ use m_computebox, only: cb
                 izp1_ix=i+1  !iz+1,ix
                 izp2_ix=i+2  !iz+2,ix
                 
-                iz_ixm1=i  -cb%nz  !iz,ix-1
-                iz_ixp1=i  +cb%nz  !iz,ix+1
-                iz_ixp2=i +2*cb%nz !iz,ix+2
+                iz_ixm1=i    -cb%nz  !iz,ix-1
+                iz_ixp1=i    +cb%nz  !iz,ix+1
+                iz_ixp2=i  +2*cb%nz  !iz,ix+2
                 
                 dvx_dx= c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix))  +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
                 dvz_dz= c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix))  +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
@@ -1035,15 +1034,13 @@ use m_computebox, only: cb
         real,dimension(*) :: buox,buoz
         real,dimension(*) :: corr
         
-        dp_dx=0.; dp_dz=0.;
-        
         dsvx=0.; dsvz=0.
          rvx=0.; rvz=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
-        !$omp         iz_ix,izp1_ix,&
-        !$omp         dp_dx,dp_dz,&
+        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
+        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
         !$omp         dsvx,dsvz,&
         !$omp          rvx, rvz)
         !$omp do schedule(dynamic)
@@ -1060,14 +1057,16 @@ use m_computebox, only: cb
                 izm1_ix=i-1  !iz-1,ix
                 iz_ix  =i    !iz,ix
                 izp1_ix=i+1  !iz+1,ix
+                izp2_ix=i+2  !iz+2,ix
                 
-                iz_ixm2=i-2*cb%nz  !iz,ix-2
-                iz_ixm1=i  -cb%nz  !iz,ix-1
-                iz_ixp1=i  +cb%nz  !iz,ix+1
+                iz_ixm2=i  -2*cb%nz  !iz,ix-2
+                iz_ixm1=i    -cb%nz  !iz,ix-1
+                iz_ixp1=i    +cb%nz  !iz,ix+1
+                iz_ixp2=i  +2*cb%nz  !iz,ix+2
                 
                 !dp_dx= c1x*(sf_p(iz_ix)-sf_p(iz_ixm1)) +c2x*(sf_p(iz_ixp1)-sf_p(iz_ixm2))
                 !dp_dz= c1z*(sf_p(iz_ix)-sf_p(izm1_ix)) +c2z*(sf_p(izp1_ix)-sf_p(izm2_ix))
-                                
+                
                 dsvx  = buox(iz_ix  )*(c1x*(sf_p(iz_ix  )-sf_p(iz_ixm1)) +c2x*(sf_p(iz_ixp1)-sf_p(iz_ixm2))) &
                       + buox(iz_ixp1)*(c1x*(sf_p(iz_ixp1)-sf_p(iz_ix  )) +c2x*(sf_p(iz_ixp2)-sf_p(iz_ixm1)))
                 dsvz  = buoz(iz_ix  )*(c1z*(sf_p(iz_ix  )-sf_p(izm1_ix)) +c2z*(sf_p(izp1_ix)-sf_p(izm2_ix))) &
