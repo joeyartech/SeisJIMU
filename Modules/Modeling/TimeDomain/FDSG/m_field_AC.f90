@@ -38,7 +38,6 @@ use m_computebox, only: cb
     type t_field
         sequence
         !flat arrays
-        !real,dimension(:,:,:),allocatable :: prev_vx,prev_vy,prev_vz,prev_p !for time derivatives
         real,dimension(:,:,:),allocatable :: vx,vy,vz,p
         real,dimension(:,:,:),allocatable :: cpml_dvx_dx,cpml_dvy_dy,cpml_dvz_dz !for cpml
         real,dimension(:,:,:),allocatable :: cpml_dp_dz, cpml_dp_dx, cpml_dp_dy
@@ -129,19 +128,8 @@ use m_computebox, only: cb
         
     end subroutine
     
-    subroutine init_field(f,if_save_previous)
+    subroutine init_field(f)
         type(t_field) :: f
-        logical,optional :: if_save_previous
-        
-!         if(present(if_save_previous)) then
-!         if(if_save_previous) then
-!             !wavefield at previous incident timestep for gradient computation
-!             call alloc(f%prev_vx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-!             call alloc(f%prev_vy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-!             call alloc(f%prev_vz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-!             call alloc(f%prev_p, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-!         endif
-!         endif
         
         call alloc(f%vx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%vy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -183,59 +171,6 @@ use m_computebox, only: cb
         f%cpml_dp_dy=0.
         f%cpml_dp_dz=0.
     end subroutine
-    
-    subroutine field_save_previous(f,bl)
-        type(t_field) :: f
-        integer,dimension(6) :: bl
-        
-!         ifz=bl(1)+2
-!         ilz=bl(2)-2
-!         ifx=bl(3)+2
-!         ilx=bl(4)-2
-!         ify=bl(5)+2
-!         ily=bl(6)-2
-!         
-!         if(m%if_freesurface) ifz=max(ifz,1)
-!         
-!         if(.not. m%is_cubic) then
-!             ify=1; ily=1;
-!         endif
-!         
-!         call flat_cp(f%prev_vx,f%vx,ifz,ilz,ifx,ilx,ify,ily)
-!         call flat_cp(f%prev_vy,f%vy,ifz,ilz,ifx,ilx,ify,ily)
-!         call flat_cp(f%prev_vz,f%vz,ifz,ilz,ifx,ilx,ify,ily)
-!         call flat_cp(f%prev_p ,f%p, ifz,ilz,ifx,ilx,ify,ily)
-        
-    end subroutine
-    
-!     subroutine flat_cp(prev_a,a,ifz,ilz,ifx,ilx,ify,ily)
-!         real,dimension(*) :: prev_a,a
-!         
-!         nz=cb%nz
-!         nx=cb%nx
-!         ny=cb%ny
-!         
-!         !$omp parallel default (shared)&
-!         !$omp private(iz,ix,iy,i,iz_ix_iy)
-!         !$omp do schedule(dynamic) collapse(2)
-!         do iy=ify,ily
-!         do ix=ifx,ilx
-!         
-!             !dir$ simd
-!             do iz=ifz,ilz
-!             
-!                 i=(iz-cb%ifz)+(ix-cb%ifx)*nz+(iy-cb%ify)*nz*nx+1
-!                 
-!                 prev_a(i)=a(i)
-!                 
-!             enddo
-!             
-!         enddo
-!         enddo
-!         !$omp enddo 
-!         !$omp end parallel
-!         
-!     end subroutine
     
     subroutine write_field(iunit,f,if_difference)
         type(t_field) :: f
@@ -660,8 +595,8 @@ use m_computebox, only: cb
     
     !========= for wavefield correlation ===================
     !gkpa = -1/kpa2 dp_dt x adjp
-    !dp_dt^it+1 ~= ^it+1.5 - p^it+0.5
-    ! adjp^it+1 is not available, use adjp^it+0.5 instead (->very accurate gkpa)
+    !dp_dt^it+0.5 = kpa*Dv^it
+    ! adjp^it+0.5
     
     !grho = dvx_dt x adjvx + dvy_dt x adjvy + dvz_dt x adjvz
     !dv_dt^it+0.5 ~= v^it+1 - v^it
@@ -1133,9 +1068,9 @@ use m_computebox, only: cb
                 !dp_dx= c1x*(sf_p(iz_ix)-sf_p(iz_ixm1)) +c2x*(sf_p(iz_ixp1)-sf_p(iz_ixm2))
                 !dp_dz= c1z*(sf_p(iz_ix)-sf_p(izm1_ix)) +c2z*(sf_p(izp1_ix)-sf_p(izm2_ix))
                                 
-                dsvx  = buox(iz_ix  )*(c1x*(sf_p(iz_ix  )-sf_p(iz_ixm1)) +c2x*(sf_p(iz_ixp1)-sf_p(iz_ixm2)))
+                dsvx  = buox(iz_ix  )*(c1x*(sf_p(iz_ix  )-sf_p(iz_ixm1)) +c2x*(sf_p(iz_ixp1)-sf_p(iz_ixm2))) &
                       + buox(iz_ixp1)*(c1x*(sf_p(iz_ixp1)-sf_p(iz_ix  )) +c2x*(sf_p(iz_ixp2)-sf_p(iz_ixm1)))
-                dsvz  = buoz(iz_ix  )*(c1z*(sf_p(iz_ix  )-sf_p(izm1_ix)) +c2z*(sf_p(izp1_ix)-sf_p(izm2_ix)))
+                dsvz  = buoz(iz_ix  )*(c1z*(sf_p(iz_ix  )-sf_p(izm1_ix)) +c2z*(sf_p(izp1_ix)-sf_p(izm2_ix))) &
                       + buoz(izp1_ix)*(c1z*(sf_p(izp1_ix)-sf_p(iz_ix  )) +c2z*(sf_p(izp2_ix)-sf_p(izm1_ix)))
 
                 rvx=rf_vx(iz_ix) + rf_vx(iz_ixp1)
