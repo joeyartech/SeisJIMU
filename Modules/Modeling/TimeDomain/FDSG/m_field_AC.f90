@@ -653,7 +653,9 @@ use m_computebox, only: cb
     subroutine field_correlation_scaling(grad)
         real,dimension(cb%mz,cb%mx,cb%my,2) :: grad
         
-        grad(:,:,:,1)=grad(:,:,:,1) * (-lm%invkpa(1:cb%mz,1:cb%mx,1:cb%my)) 
+        grad(:,:,:,1)=grad(:,:,:,1) * (-lm%invkpa(1:cb%mz,1:cb%mx,1:cb%my))
+
+        grad(:,:,:,2)=grad(:,:,:,2) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
         
         !set unit of gkpa to be [m3], grho to be [m5/s2]
         !such that after multiplied by (kpa_max-kpa_min) or (rho_max-rho_min) (will be done in m_parameterization.f90)
@@ -1064,13 +1066,20 @@ use m_computebox, only: cb
                 iz_ixp1=i    +cb%nz  !iz,ix+1
                 iz_ixp2=i  +2*cb%nz  !iz,ix+2
                 
-                !dp_dx= c1x*(sf_p(iz_ix)-sf_p(iz_ixm1)) +c2x*(sf_p(iz_ixp1)-sf_p(iz_ixm2))
-                !dp_dz= c1z*(sf_p(iz_ix)-sf_p(izm1_ix)) +c2z*(sf_p(izp1_ix)-sf_p(izm2_ix))
+                !dsvx  = buox(iz_ix  )*(c1x*(sf_p(iz_ix  )-sf_p(iz_ixm1)) +c2x*(sf_p(iz_ixp1)-sf_p(iz_ixm2))) &
+                !      + buox(iz_ixp1)*(c1x*(sf_p(iz_ixp1)-sf_p(iz_ix  )) +c2x*(sf_p(iz_ixp2)-sf_p(iz_ixm1)))
+                !dsvz  = buoz(iz_ix  )*(c1z*(sf_p(iz_ix  )-sf_p(izm1_ix)) +c2z*(sf_p(izp1_ix)-sf_p(izm2_ix))) &
+                !      + buoz(izp1_ix)*(c1z*(sf_p(izp1_ix)-sf_p(iz_ix  )) +c2z*(sf_p(izp2_ix)-sf_p(izm1_ix)))
                 
-                dsvx  = buox(iz_ix  )*(c1x*(sf_p(iz_ix  )-sf_p(iz_ixm1)) +c2x*(sf_p(iz_ixp1)-sf_p(iz_ixm2))) &
-                      + buox(iz_ixp1)*(c1x*(sf_p(iz_ixp1)-sf_p(iz_ix  )) +c2x*(sf_p(iz_ixp2)-sf_p(iz_ixm1)))
-                dsvz  = buoz(iz_ix  )*(c1z*(sf_p(iz_ix  )-sf_p(izm1_ix)) +c2z*(sf_p(izp1_ix)-sf_p(izm2_ix))) &
-                      + buoz(izp1_ix)*(c1z*(sf_p(izp1_ix)-sf_p(iz_ix  )) +c2z*(sf_p(izp2_ix)-sf_p(izm1_ix)))
+                !dsvx  = (c1x*(sf_p(iz_ix  )-sf_p(iz_ixm1)) +c2x*(sf_p(iz_ixp1)-sf_p(iz_ixm2))) &
+                !      + (c1x*(sf_p(iz_ixp1)-sf_p(iz_ix  )) +c2x*(sf_p(iz_ixp2)-sf_p(iz_ixm1)))
+                !dsvz  = (c1z*(sf_p(iz_ix  )-sf_p(izm1_ix)) +c2z*(sf_p(izp1_ix)-sf_p(izm2_ix))) &
+                !      + (c1z*(sf_p(izp1_ix)-sf_p(iz_ix  )) +c2z*(sf_p(izp2_ix)-sf_p(izm1_ix)))
+                !normally ifort -O should simplify above operations, but not sure gfortran -O could do the same (LMK)
+                !nevertheless, explicitly simplify above operations as follows
+
+                dsvx  = c1x*(sf_p(iz_ixp1)-sf_p(iz_ixm1)) +c2x*(sf_p(iz_ixp1)-sf_p(iz_ixm2) + sf_p(iz_ixp2)-sf_p(iz_ixm1))
+                dsvz  = c1z*(sf_p(izp1_ix)-sf_p(izm1_ix)) +c2z*(sf_p(izp1_ix)-sf_p(izm2_ix) + sf_p(izp2_ix)-sf_p(izm1_ix))
 
                 rvx=rf_vx(iz_ix) + rf_vx(iz_ixp1)
                 rvz=rf_vz(iz_ix) + rf_vz(izp1_ix)
