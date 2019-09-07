@@ -204,10 +204,8 @@ use m_boundarystore
         
         integer,parameter :: time_dir=-1 !time direction
         
-        
         !reinitialize memory for incident wavefield reconstruction
         call field_cpml_reinitialize(sfield)
-        
 
         call alloc(seismo,shot%nrcv,nt,initialize=.false.)
         seismo=transpose(dres) !to save mem space, seismo could be just time slices..
@@ -317,7 +315,6 @@ use m_boundarystore
             if(if_snapshot) then
             if(mod(it-1,it_delta_snapshot)==0 .or. it==ift) then
                 call write_field(20,sfield)
-!                 call write_field(22,sfield,if_difference=.true.) !s^it+1.5 - s^it+0.5
                 call write_field(24,rfield)
                 write(26)gradient(:,:,:,1)
                 write(28)gradient(:,:,:,2)

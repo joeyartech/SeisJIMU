@@ -585,14 +585,15 @@ use m_computebox, only: cb
     end subroutine
     
     !========= for wavefield correlation ===================   
-    !grho = dvx_dt x adjvx + dvy_dt x adjvy + dvz_dt x adjvz
-    !dv_dt^it+0.5 ~= v^it+1 - v^it
-    ! adjv^it+0.5 is not available, use adjv^it instead (->grho is reasonably accurate)
-    !use v[i+1]-v[i] to approximate v[i+0.5], so is adjv
+    !grho = dv_dt      \dot adjv
+    !     = b \nabla p \dot adjv
+    !(\nabla p)^it+0.5 ~= v^it+1 - v^it
+    
+    !! adjv^it+0.5 is not available, use adjv^it instead (->grho is reasonably accurate)
+    !!use v[i+1]-v[i] to approximate v[i+0.5], so is adjv
 
-    !gkpa = -1/kpa2 dp_dt x adjp
-    !dp_dt^it+0.5 = kpa*Dv^it
-    ! adjp^it+0.5
+    !gkpa = -1/kpa2    dp_dt \dot adjp 
+    !     = -1/kpa \nablda.v \dot adjp
 
     subroutine field_correlation_velocities(it,sf,rf,sb,rb,corr)
         type(t_field) :: sf,rf
