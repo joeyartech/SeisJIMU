@@ -655,7 +655,7 @@ use m_computebox, only: cb
         
         grad(:,:,:,1)=grad(:,:,:,1) * (-lm%invkpa(1:cb%mz,1:cb%mx,1:cb%my))
 
-        grad(:,:,:,2)=grad(:,:,:,2) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
+        grad(:,:,:,2)=grad(:,:,:,2) * lm%buoz(1:cb%mz,1:cb%mx,1:cb%my)
         
         !set unit of gkpa to be [m3], grho to be [m5/s2]
         !such that after multiplied by (kpa_max-kpa_min) or (rho_max-rho_min) (will be done in m_parameterization.f90)
