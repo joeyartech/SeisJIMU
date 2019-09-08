@@ -608,13 +608,13 @@ use m_computebox, only: cb
         ily=min(sb(6),rb(6),cb%my-2)
         
         if(m%is_cubic) then
-            call corr3d_flat_vp(sf%vx,sf%vy,sf%vz,rf%p,&
-                                corr,                  &
-                                ifz,ilz,ifx,ilx,ify,ily)
+            call corr3d_flat_gkpa(sf%vx,sf%vy,sf%vz,rf%p,&
+                                  corr,                  &
+                                  ifz,ilz,ifx,ilx,ify,ily)
         else
-            call corr2d_flat_vp(sf%vx,sf%vz,rf%p,&
-                                corr,            &
-                                ifz,ilz,ifx,ilx)
+            call corr2d_flat_gkpa(sf%vx,sf%vz,rf%p,&
+                                  corr,            &
+                                  ifz,ilz,ifx,ilx)
         endif
         
     end subroutine
@@ -633,13 +633,13 @@ use m_computebox, only: cb
         ily=min(sb(6),rb(6),cb%my-2)
         
         if(m%is_cubic) then
-            call corr3d_flat_pv(sf%p,rf%vx,rf%vy,rf%vz,&
-                                corr,                  &
-                                ifz,ilz,ifx,ilx,ify,ily)
+            call corr3d_flat_grho(sf%p,rf%vx,rf%vy,rf%vz,&
+                                  corr,                  &
+                                  ifz,ilz,ifx,ilx,ify,ily)
         else
-            call corr2d_flat_pv(sf%p,rf%vx,rf%vz,&
-                                corr,            &
-                                ifz,ilz,ifx,ilx)
+            call corr2d_flat_grho(sf%p,rf%vx,rf%vz,&
+                                  corr,            &
+                                  ifz,ilz,ifx,ilx)
         endif
         
     end subroutine
@@ -913,9 +913,9 @@ use m_computebox, only: cb
         
     end subroutine
     
-    subroutine corr3d_flat_vp(sf_vx,sf_vy,sf_vz,rf_p,&
-                              corr,                  &
-                              ifz,ilz,ifx,ilx,ify,ily)
+    subroutine corr3d_flat_gkpa(sf_vx,sf_vy,sf_vz,rf_p,&
+                                corr,                  &
+                                ifz,ilz,ifx,ilx,ify,ily)
         real,dimension(*) :: sf_vx,sf_vy,sf_vz,rf_p
         real,dimension(*) :: corr
         
@@ -977,9 +977,9 @@ use m_computebox, only: cb
         
     end subroutine
 
-    subroutine corr2d_flat_vp(sf_vx,sf_vz,rf_p,&
-                              corr,            &
-                              ifz,ilz,ifx,ilx)
+    subroutine corr2d_flat_gkpa(sf_vx,sf_vz,rf_p,&
+                                corr,            &
+                                ifz,ilz,ifx,ilx)
         real,dimension(*) :: sf_vx,sf_vz,rf_p
         real,dimension(*) :: corr
         
@@ -1031,9 +1031,9 @@ use m_computebox, only: cb
 
     end subroutine
     
-    subroutine corr3d_flat_pv(sf_p,rf_vx,rf_vy,rf_vz,&
-                              corr,                  &
-                              ifz,ilz,ifx,ilx,ify,ily)
+    subroutine corr3d_flat_grho(sf_p,rf_vx,rf_vy,rf_vz,&
+                                corr,                  &
+                                ifz,ilz,ifx,ilx,ify,ily)
         real,dimension(*) :: sf_p,rf_vx,rf_vy,rf_vz
         real,dimension(*) :: corr
         
@@ -1100,9 +1100,9 @@ use m_computebox, only: cb
         
     end subroutine
     
-    subroutine corr2d_flat_pv(sf_p,rf_vx,rf_vz,&
-                              corr,            &
-                              ifz,ilz,ifx,ilx)
+    subroutine corr2d_flat_grho(sf_p,rf_vx,rf_vz,&
+                                corr,            &
+                                ifz,ilz,ifx,ilx)
         real,dimension(*) :: sf_p,rf_vx,rf_vz
         real,dimension(*) :: corr
         
