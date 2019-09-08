@@ -982,7 +982,7 @@ use m_computebox, only: cb
          rshh=0.;  rszz=0.
         
         !$omp parallel default (shared)&
-        !$omp private(iz,ix,iy,i,&
+        !$omp private(iz,ix,iy,i,j,&
         !$omp         izm1_ix_iy,iz_ix_iy,izp1_ix_iy,izp2_ix_iy,&
         !$omp         iz_ixm1_iy,iz_ixp1_iy,iz_ixp2_iy,&
         !$omp         iz_ix_iym1,iz_ix_iyp1,iz_ix_iyp2,&
@@ -1043,7 +1043,7 @@ use m_computebox, only: cb
          rshh=0.;  rszz=0.
         
         !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,&
+        !$omp private(iz,ix,i,j,&
         !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
         !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
         !$omp         dsshh,dsszz,&

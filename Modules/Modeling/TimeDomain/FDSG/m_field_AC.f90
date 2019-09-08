@@ -593,6 +593,9 @@ use m_computebox, only: cb
     !     = b \nabla p \dot adjv
     !p^it+0.5, v^it, adjv^it
     !use (v[i+1]+v[i])/2 to approximate v[i+0.5], so is adjv
+    !
+    !image = p \dot adjp
+    !p^it+0.5, adjp^it+0.5
     
     subroutine field_correlation_gkpa(it,sf,rf,sb,rb,corr)
         type(t_field) :: sf,rf
@@ -657,6 +660,29 @@ use m_computebox, only: cb
         !and the unit of gradient scaling factor is [1/N/m] (in m_scaling.f90)
         !therefore parameters become unitless
         grad=grad*m%cell_size*shot%src%dt
+        
+    end subroutine
+    
+    subroutine field_deconvolution_image(it,sf,rf,sb,rb,nom,denom)
+        type(t_field) :: sf,rf
+        integer,dimension(6) :: sb,rb
+        real,dimension(*) :: nom,denom
+        
+        !nonzero only when sf touches rf
+        ifz=max(sb(1),rb(1),2)
+        ilz=min(sb(2),rb(2),cb%mz-2)
+        ifx=max(sb(3),rb(3),2)
+        ilx=min(sb(4),rb(4),cb%mx-2)
+        ify=max(sb(5),rb(5),2)
+        ily=min(sb(6),rb(6),cb%my-2)
+        
+        if(.not.m%is_cubic) then
+            ify=1
+            ily=1
+        endif
+        
+        call deconxd_flat_image(sf%p,rf%p,nom,denom,  &
+                               ifz,ilz,ifx,ilx,ify,ily)
         
     end subroutine
     
@@ -930,7 +956,7 @@ use m_computebox, only: cb
          rp=0.
         
         !$omp parallel default (shared)&
-        !$omp private(iz,ix,iy,i,&
+        !$omp private(iz,ix,iy,i,j,&
         !$omp         izm1_ix_iy,iz_ix_iy,izp1_ix_iy,izp2_ix_iy,&
         !$omp         iz_ixm1_iy,iz_ixp1_iy,iz_ixp2_iy,&
         !$omp         iz_ix_iym1,iz_ix_iyp1,iz_ix_iyp2,&
@@ -992,7 +1018,7 @@ use m_computebox, only: cb
          rp=0.
         
         !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,&
+        !$omp private(iz,ix,i,j,&
         !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
         !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
         !$omp         dvx_dx,dvz_dz,&
@@ -1157,5 +1183,39 @@ use m_computebox, only: cb
         
     end subroutine
     
-    
+    subroutine deconxd_flat_image(sf_p,rf_p,nom,denom,   &
+                                  ifz,ilz,ifx,ilx,ify,ily)
+        real,dimension(*) :: sf_p,rf_p
+        real,dimension(*) :: nom,denom
+        
+        nz=cb%nz
+        nx=cb%nx
+        
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,iy,i,j)
+        !$omp do schedule(dynamic) collapse(2)
+        do iy=ify,ily
+        do ix=ifx,ilx
+        
+            !dir$ simd
+            do iz=ifz,ilz
+                
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !corr has no boundary layers
+                
+                !image(j)=image(j) + (sf_p(i)*rf_p(i))/(sf_p(i)*sf_p(i) + 1e-4)
+                !image(j)=image(j) + (sf_p(i)*rf_p(i))/(sf_p(i)*sf_p(i) + 1e-4)
+                
+                  nom(j)=  nom(j) + sf_p(i)*rf_p(i)
+                denom(j)=denom(j) + sf_p(i)*sf_p(i)
+                
+            end do
+            
+        end do
+        end do
+        !$omp end do
+        !$omp end parallel
+        
+    end subroutine
+
 end

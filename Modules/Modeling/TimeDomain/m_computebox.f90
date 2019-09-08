@@ -39,7 +39,7 @@ use m_shot
         
         real,dimension(:,:,:),allocatable :: vp,rho,eps,del
         real,dimension(:),allocatable :: b_x,b_y,b_z,a_x,a_y,a_z
-        real,dimension(:,:,:,:),allocatable :: gradient
+        real,dimension(:,:,:,:),allocatable :: gradient,image
         
     end type
     

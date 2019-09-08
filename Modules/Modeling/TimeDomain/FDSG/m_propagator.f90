@@ -195,9 +195,9 @@ use m_boundarystore
 
     end subroutine
     
-    subroutine propagator_adjoint(dout,gradient)
+    subroutine propagator_adjoint(dout,gradient,image)
         real,dimension(nt),optional :: dout
-        real,dimension(cb%mz,cb%mx,cb%my,2),optional :: gradient
+        real,dimension(cb%mz,cb%mx,cb%my,2),optional :: gradient,image
         
         real,dimension(:,:),allocatable :: seismo
         
@@ -267,6 +267,9 @@ use m_boundarystore
             !use sfield%v^it+1 to compute sfield%s_dt^it+0.5, as backward step 4
             if(present(gradient)) then
                 call field_correlation_gkpa(it,sfield,rfield,sbloom(:,it),rbloom(:,it),gradient(:,:,:,1))
+            endif
+            if(present(image)) then
+                call field_deconvolution_image(it,sfield,rfield,sbloom(:,it),rbloom(:,it),image(:,:,:,1),image(:,:,:,2))
             endif
             call cpu_time(t6)
             tt6=tt6+t6-t5
