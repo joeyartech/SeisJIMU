@@ -632,18 +632,17 @@ use m_computebox, only: cb
     end subroutine
     
     !========= for wavefield correlation ===================
-    !grho = dv_dt      \dot adjv
-    !     = b \nabla p \dot adjv
-    !(\nabla p)^it+0.5 ~= v^it+1 - v^it
-
-    !! adjv^it+0.5 is not available, use adjv^it instead (->grho is reasonably accurate)
-    !!use v[i+1]-v[i] to approximate v[i+0.5], so is adjv
-    
     !gkpa = -1/2epsmdel/kpa2 [dshh_dt dszz_dt] [    1      sqrt1p2del] [adjshh]
     !                                          [sqrt1p2del   1p2eps  ] [adjsqq]
     !     =           -1/kpa (dsvx_dx+dsvy_dy)*adjshh + dsvz_dz*adjszz)
-       
-    subroutine field_correlation_velocities(it,sf,rf,sb,rb,corr)
+    !v^it+1, s^it+0.5, adjs^it+0.5
+    !
+    !grho = dv_dt                       \dot adjv
+    !     = b (dshh_dx+dshh_dy+dszz_dz) \dot adjv
+    !s^it+0.5, v^it, adjv^it
+    !use (v[i+1]+v[i])/2 to approximate v[i+0.5], so is adjv
+    
+    subroutine field_correlation_gkpa(it,sf,rf,sb,rb,corr)
         type(t_field) :: sf,rf
         integer,dimension(6) :: sb,rb
         real,dimension(*) :: corr
@@ -657,46 +656,46 @@ use m_computebox, only: cb
         ily=min(sb(6),rb(6),cb%my-2)
         
         if(m%is_cubic) then
-            call corr3d_flat_velocities(sf%shh,sf%szz,         &
-                                        rf%vx, rf%vy, rf%vz,   &
-                                        corr,                  &
-                                        ifz,ilz,ifx,ilx,ify,ily)
+            call corr3d_flat_vs(sf%vx, sf%vy, sf%vz,   &
+                                rf%shh,rf%szz,         &
+                                corr,                  &
+                                ifz,ilz,ifx,ilx,ify,ily)
         else
-            call corr2d_flat_velocities(sf%shh,sf%szz, &
-                                        rf%vx, rf%vz,  &
-                                        corr,          &
-                                        ifz,ilz,ifx,ilx)
+            call corr2d_flat_vs(sf%vx, sf%vz,  &
+                                rf%shh,rf%szz, &
+                                corr,          &
+                                ifz,ilz,ifx,ilx)
+        endif
+
+    end subroutine
+    
+    subroutine field_correlation_grho(it,sf,rf,sb,rb,corr)
+        type(t_field) :: sf,rf
+        integer,dimension(6) :: sb,rb
+        real,dimension(*) :: corr
+        
+        !nonzero only when sf touches rf
+        ifz=max(sb(1),rb(1),2)
+        ilz=min(sb(2),rb(2),cb%mz-2)
+        ifx=max(sb(3),rb(3),2)
+        ilx=min(sb(4),rb(4),cb%mx-2)
+        ify=max(sb(5),rb(5),2)
+        ily=min(sb(6),rb(6),cb%my-2)
+        
+        if(m%is_cubic) then
+            call corr3d_flat_sv(sf%shh,sf%szz,         &
+                                rf%vx, rf%vy, rf%vz,   &
+                                corr,                  &
+                                ifz,ilz,ifx,ilx,ify,ily)
+        else
+            call corr2d_flat_sv(sf%shh,sf%szz, &
+                                rf%vx, rf%vz,  &
+                                corr,          &
+                                ifz,ilz,ifx,ilx)
         endif
         
     end subroutine
     
-    subroutine field_correlation_stresses(it,sf,rf,sb,rb,corr)
-        type(t_field) :: sf,rf
-        integer,dimension(6) :: sb,rb
-        real,dimension(*) :: corr
-        
-        !nonzero only when sf touches rf
-        ifz=max(sb(1),rb(1),2)
-        ilz=min(sb(2),rb(2),cb%mz-2)
-        ifx=max(sb(3),rb(3),2)
-        ilx=min(sb(4),rb(4),cb%mx-2)
-        ify=max(sb(5),rb(5),2)
-        ily=min(sb(6),rb(6),cb%my-2)
-        
-        if(m%is_cubic) then
-            call corr3d_flat_stresses(sf%vx, sf%vy, sf%vz,   &
-                                      rf%shh,rf%szz,         &
-                                      corr,                  &
-                                      ifz,ilz,ifx,ilx,ify,ily)
-        else
-            call corr2d_flat_stresses(sf%vx, sf%vz,  &
-                                      rf%shh,rf%szz, &
-                                      corr,          &
-                                      ifz,ilz,ifx,ilx)
-        endif
-
-    end subroutine
-
     subroutine field_correlation_scaling(grad)
         real,dimension(cb%mz,cb%mx,cb%my,2) :: grad
         
@@ -709,7 +708,7 @@ use m_computebox, only: cb
         !the unit of parameter update is [Nm], same as Lagrangian
         !and the unit of gradient scaling factor is [1/N/m] (in m_scaling.f90)
         !therefore parameters become unitless
-        grad=grad*m%cell_size
+        grad=grad*m%cell_size*shot%src%dt
         
     end subroutine
     
@@ -968,10 +967,125 @@ use m_computebox, only: cb
         
     end subroutine
     
-    subroutine corr3d_flat_velocities(sf_shh,sf_szz,         &
-                                      rf_vx, rf_vy, rf_vz,   &
-                                      corr,                  &
-                                      ifz,ilz,ifx,ilx,ify,ily)
+    subroutine corr3d_flat_vs(sf_vx, sf_vy, sf_vz,   &
+                              rf_shh,rf_szz,         &
+                              corr,                  &
+                              ifz,ilz,ifx,ilx,ify,ily)
+        real,dimension(*) :: sf_vx, sf_vy, sf_vz
+        real,dimension(*) :: rf_shh,rf_szz
+        real,dimension(*) :: corr
+        
+        nz=cb%nz
+        nx=cb%nx
+        
+        dsshh=0.; dsszz=0.
+         rshh=0.;  rszz=0.
+        
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,iy,i,&
+        !$omp         izm1_ix_iy,iz_ix_iy,izp1_ix_iy,izp2_ix_iy,&
+        !$omp         iz_ixm1_iy,iz_ixp1_iy,iz_ixp2_iy,&
+        !$omp         iz_ix_iym1,iz_ix_iyp1,iz_ix_iyp2,&
+        !$omp         dsshh,dsszz,&
+        !$omp          rshh, rszz)
+        !$omp do schedule(dynamic) collapse(2)
+        do iy=ify,ily
+        do ix=ifx,ilx
+        
+            !dir$ simd
+            do iz=ifz,ilz
+                
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !corr has no boundary layers
+                
+                izm1_ix_iy=i-1  !iz-1,ix,iy
+                iz_ix_iy  =i    !iz,ix,iy
+                izp1_ix_iy=i+1  !iz+1,ix,iy
+                izp2_ix_iy=i+2  !iz+2,ix,iy
+                
+                iz_ixm1_iy=i    -nz  !iz,ix-1,iy
+                iz_ixp1_iy=i    +nz  !iz,ix+1,iy
+                iz_ixp2_iy=i  +2*nz  !iz,ix+2,iy
+                
+                iz_ix_iym1=i    -nz*nx  !iz,ix,iy-1
+                iz_ix_iyp1=i    +nz*nx  !iz,ix,iy+1
+                iz_ix_iyp2=i  +2*nz*nx  !iz,ix,iy+2
+                
+                dsshh = c1x*(sf_vx(iz_ixp1_iy)-sf_vx(iz_ix_iy)) +c2x*(sf_vx(iz_ixp2_iy)-sf_vx(iz_ixm1_iy)) &
+                       +c1y*(sf_vy(iz_ix_iyp1)-sf_vy(iz_ix_iy)) +c2y*(sf_vy(iz_ix_iyp2)-sf_vy(iz_ix_iym1))
+                dsszz = c1z*(sf_vz(izp1_ix_iy)-sf_vz(iz_ix_iy)) +c2z*(sf_vz(izp2_ix_iy)-sf_vz(izm1_ix_iy))
+                
+                 rshh = rf_shh(i)*2. !rhh=rf%prev_shh(i)+rf%shh(i)
+                 rszz = rf_szz(i)*2.
+
+                corr(j)=corr(j) + 0.5*(dsshh*rshh + dsszz*rszz)
+                
+            end do
+            
+        end do
+        end do
+        !$omp end do
+        !$omp end parallel
+        
+    end subroutine
+    
+    subroutine corr2d_flat_vs(sf_vx, sf_vz,  &
+                              rf_shh,rf_szz, &
+                              corr,          &
+                              ifz,ilz,ifx,ilx)
+        real,dimension(*) :: sf_vx, sf_vz
+        real,dimension(*) :: rf_shh,rf_szz
+        real,dimension(*) :: corr
+        
+        nz=cb%nz
+
+        dsshh=0.; dsszz=0.
+         rshh=0.;  rszz=0.
+        
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,&
+        !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
+        !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
+        !$omp         dsshh,dsszz,&
+        !$omp          rshh, rszz)
+        !$omp do schedule(dynamic)
+        do ix=ifx,ilx
+        
+            !dir$ simd
+            do iz=ifz,ilz
+            
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !corr has no boundary layers
+                
+                izm1_ix=i-1  !iz-1,ix
+                iz_ix  =i    !iz,ix
+                izp1_ix=i+1  !iz+1,ix
+                izp2_ix=i+2  !iz+2,ix
+                
+                iz_ixm1=i    -nz  !iz,ix-1
+                iz_ixp1=i    +nz  !iz,ix+1
+                iz_ixp2=i  +2*nz  !iz,ix+2
+                
+                dsshh = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
+                dsszz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
+                
+                 rshh = rf_shh(i)*2. !rhh=rf%prev_shh(i)+rf%shh(i)
+                 rszz = rf_szz(i)*2.
+                 
+                corr(j)=corr(j) + 0.5*(dsshh*rshh + dsszz*rszz)
+
+            enddo
+            
+        enddo
+        !$omp end do 
+        !$omp end parallel
+        
+    end subroutine
+    
+    subroutine corr3d_flat_sv(sf_shh,sf_szz,         &
+                              rf_vx, rf_vy, rf_vz,   &
+                              corr,                  &
+                              ifz,ilz,ifx,ilx,ify,ily)
         real,dimension(*) :: sf_shh,sf_szz
         real,dimension(*) :: rf_vx, rf_vy, rf_vz
         real,dimension(*) :: corr
@@ -1039,10 +1153,10 @@ use m_computebox, only: cb
         
     end subroutine
     
-    subroutine corr2d_flat_velocities(sf_shh,sf_szz, &
-                                      rf_vx,rf_vz,   &
-                                      corr,          &
-                                      ifz,ilz,ifx,ilx)
+    subroutine corr2d_flat_sv(sf_shh,sf_szz, &
+                              rf_vx, rf_vz,  &
+                              corr,          &
+                              ifz,ilz,ifx,ilx)
         real,dimension(*) :: sf_shh,sf_szz
         real,dimension(*) :: rf_vx, rf_vz
         real,dimension(*) :: corr
@@ -1097,121 +1211,6 @@ use m_computebox, only: cb
         !$omp end parallel
         
     end subroutine
-
-    subroutine corr3d_flat_stresses(sf_vx, sf_vy, sf_vz,   &
-                                    rf_shh,rf_szz,         &
-                                    corr,                  &
-                                    ifz,ilz,ifx,ilx,ify,ily)
-        real,dimension(*) :: sf_vx, sf_vy, sf_vz
-        real,dimension(*) :: rf_shh,rf_szz
-        real,dimension(*) :: corr
-        
-        nz=cb%nz
-        nx=cb%nx
-        
-        dsshh=0.; dsszz=0.
-         rshh=0.;  rszz=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,iy,i,&
-        !$omp         izm1_ix_iy,iz_ix_iy,izp1_ix_iy,izp2_ix_iy,&
-        !$omp         iz_ixm1_iy,iz_ixp1_iy,iz_ixp2_iy,&
-        !$omp         iz_ix_iym1,iz_ix_iyp1,iz_ix_iyp2,&
-        !$omp         dsshh,dsszz,&
-        !$omp          rshh, rszz)
-        !$omp do schedule(dynamic) collapse(2)
-        do iy=ify,ily
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-                
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !corr has no boundary layers
-                
-                izm1_ix_iy=i-1  !iz-1,ix,iy
-                iz_ix_iy  =i    !iz,ix,iy
-                izp1_ix_iy=i+1  !iz+1,ix,iy
-                izp2_ix_iy=i+2  !iz+2,ix,iy
-                
-                iz_ixm1_iy=i    -nz  !iz,ix-1,iy
-                iz_ixp1_iy=i    +nz  !iz,ix+1,iy
-                iz_ixp2_iy=i  +2*nz  !iz,ix+2,iy
-                
-                iz_ix_iym1=i    -nz*nx  !iz,ix,iy-1
-                iz_ix_iyp1=i    +nz*nx  !iz,ix,iy+1
-                iz_ix_iyp2=i  +2*nz*nx  !iz,ix,iy+2
-                
-                dsshh = c1x*(sf_vx(iz_ixp1_iy)-sf_vx(iz_ix_iy)) +c2x*(sf_vx(iz_ixp2_iy)-sf_vx(iz_ixm1_iy)) &
-                       +c1y*(sf_vy(iz_ix_iyp1)-sf_vy(iz_ix_iy)) +c2y*(sf_vy(iz_ix_iyp2)-sf_vy(iz_ix_iym1))
-                dsszz = c1z*(sf_vz(izp1_ix_iy)-sf_vz(iz_ix_iy)) +c2z*(sf_vz(izp2_ix_iy)-sf_vz(izm1_ix_iy))
-                
-                 rshh = rf_shh(i)*2. !rhh=rf%prev_shh(i)+rf%shh(i)
-                 rszz = rf_szz(i)*2.
-
-                corr(j)=corr(j) + 0.5*(dsshh*rshh + dsszz*rszz)
-                
-            end do
-            
-        end do
-        end do
-        !$omp end do
-        !$omp end parallel
-        
-    end subroutine
-
-    subroutine corr2d_flat_stresses(sf_vx, sf_vz,  &
-                                    rf_shh,rf_szz, &
-                                    corr,          &
-                                    ifz,ilz,ifx,ilx)
-        real,dimension(*) :: sf_vx, sf_vz
-        real,dimension(*) :: rf_shh,rf_szz
-        real,dimension(*) :: corr
-        
-        nz=cb%nz
-
-        dsshh=0.; dsszz=0.
-         rshh=0.;  rszz=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,&
-        !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-        !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dsshh,dsszz,&
-        !$omp          rshh, rszz)
-        !$omp do schedule(dynamic)
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-            
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !corr has no boundary layers
-                
-                izm1_ix=i-1  !iz-1,ix
-                iz_ix  =i    !iz,ix
-                izp1_ix=i+1  !iz+1,ix
-                izp2_ix=i+2  !iz+2,ix
-                
-                iz_ixm1=i    -nz  !iz,ix-1
-                iz_ixp1=i    +nz  !iz,ix+1
-                iz_ixp2=i  +2*nz  !iz,ix+2
-                
-                dsshh = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
-                dsszz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
-                
-                 rshh = rf_shh(i)*2. !rhh=rf%prev_shh(i)+rf%shh(i)
-                 rszz = rf_szz(i)*2.
-
-                corr(j)=corr(j) + 0.5*(dsshh*rshh + dsszz*rszz)
-
-            enddo
-            
-        enddo
-        !$omp end do 
-        !$omp end parallel
-        
-    end subroutine
-
-
+    
+    
 end

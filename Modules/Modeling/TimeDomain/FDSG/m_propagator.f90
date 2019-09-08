@@ -180,7 +180,6 @@ use m_boundarystore
         
         if(mpiworld%is_master) then
             write(*,*) 'time add source velocities',tt1
-            write(*,*) 'time add source velocities',tt1
             write(*,*) 'time update velocities    ',tt2
             write(*,*) 'time add source stresses  ',tt3
             write(*,*) 'time update stresses      ',tt4
@@ -264,10 +263,10 @@ use m_boundarystore
             call cpu_time(t5)
             tt5=tt5+t5-t4
 
-            !gkpa: sfield%s_dt^it+0.5 * rfield%s^it+0.5
-            !      sfield%s_dt^it+0.5 = kpa * FD of sfield%v^it+1 (as backward step 4)
+            !gkpa: sfield%s_dt^it+0.5 \dot rfield%s^it+0.5
+            !use sfield%v^it+1 to compute sfield%s_dt^it+0.5, as backward step 4
             if(present(gradient)) then
-                call field_correlation_stresses(it,sfield,rfield,sbloom(:,it),rbloom(:,it),gradient(:,:,:,1))
+                call field_correlation_gkpa(it,sfield,rfield,sbloom(:,it),rbloom(:,it),gradient(:,:,:,1))
             endif
             call cpu_time(t6)
             tt6=tt6+t6-t5
@@ -301,10 +300,10 @@ use m_boundarystore
             call cpu_time(t11)
             tt11=tt11+t11-t10
 
-            !grho: sfield%v_dt^it * rfield%v^it
-            !      sfield%v_dt^it = buo * FD^T of sfield%s^it+0.5 (as backward step 2)
+            !grho: sfield%v_dt^it \dot rfield%v^it
+            !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
             if(present(gradient)) then
-                call field_correlation_velocities(it,sfield,rfield,sbloom(:,it),rbloom(:,it),gradient(:,:,:,2))
+                call field_correlation_grho(it,sfield,rfield,sbloom(:,it),rbloom(:,it),gradient(:,:,:,2))
             endif
             call cpu_time(t12)
             tt12=tt12+t12-t11
