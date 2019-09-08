@@ -657,15 +657,15 @@ use m_computebox, only: cb
         ily=min(sb(6),rb(6),cb%my-1)
         
         if(m%is_cubic) then
-            call corr3d_flat_stresses(sf%vx, sf%vy, sf%vz,   &
-                                      rf%shh,rf%szz,         &
-                                      corr,                  &
-                                      ifz,ilz,ifx,ilx,ify,ily)
+            call corr3d_flat_velocities(sf%shh,sf%szz,         &
+                                        rf%vx, rf%vy, rf%vz,   &
+                                        corr,                  &
+                                        ifz,ilz,ifx,ilx,ify,ily)
         else
-            call corr2d_flat_stresses(sf%vx, sf%vz,  &
-                                      rf%shh,rf%szz, &
-                                      corr,          &
-                                      ifz,ilz,ifx,ilx)
+            call corr2d_flat_velocities(sf%shh,sf%szz, &
+                                        rf%vx, rf%vz,  &
+                                        corr,          &
+                                        ifz,ilz,ifx,ilx)
         endif
         
     end subroutine
@@ -684,15 +684,15 @@ use m_computebox, only: cb
         ily=min(sb(6),rb(6),cb%my)
         
         if(m%is_cubic) then
-            call corr3d_flat_velocities(sf%shh,sf%szz,         &
-                                        rf%vx, rf%vy, rf%vz,   &
-                                        corr,                  &
-                                        ifz,ilz,ifx,ilx,ify,ily)
+            call corr3d_flat_stresses(sf%vx, sf%vy, sf%vz,   &
+                                      rf%shh,rf%szz,         &
+                                      corr,                  &
+                                      ifz,ilz,ifx,ilx,ify,ily)
         else
-            call corr2d_flat_velocities(sf%shh,sf%szz, &
-                                        rf%vx, rf%vz,  &
-                                        corr,          &
-                                        ifz,ilz,ifx,ilx)
+            call corr2d_flat_stresses(sf%vx, sf%vz,  &
+                                      rf%shh,rf%szz, &
+                                      corr,          &
+                                      ifz,ilz,ifx,ilx)
         endif
 
     end subroutine
