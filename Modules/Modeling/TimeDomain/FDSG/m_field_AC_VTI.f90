@@ -649,12 +649,12 @@ use m_computebox, only: cb
         real,dimension(*) :: corr
         
         !nonzero only when sf touches rf
-        ifz=max(sb(1),rb(1),1)
-        ilz=min(sb(2),rb(2),cb%mz-1)
-        ifx=max(sb(3),rb(3),1)
-        ilx=min(sb(4),rb(4),cb%mx-1)
-        ify=max(sb(5),rb(5),1)
-        ily=min(sb(6),rb(6),cb%my-1)
+        ifz=max(sb(1),rb(1),2)
+        ilz=min(sb(2),rb(2),cb%mz-2)
+        ifx=max(sb(3),rb(3),2)
+        ilx=min(sb(4),rb(4),cb%mx-2)
+        ify=max(sb(5),rb(5),2)
+        ily=min(sb(6),rb(6),cb%my-2)
         
         if(m%is_cubic) then
             call corr3d_flat_velocities(sf%shh,sf%szz,         &
@@ -676,12 +676,12 @@ use m_computebox, only: cb
         real,dimension(*) :: corr
         
         !nonzero only when sf touches rf
-        ifz=max(sb(1),rb(1),1)
-        ilz=min(sb(2),rb(2),cb%mz)
-        ifx=max(sb(3),rb(3),1)
-        ilx=min(sb(4),rb(4),cb%mx)
-        ify=max(sb(5),rb(5),1)
-        ily=min(sb(6),rb(6),cb%my)
+        ifz=max(sb(1),rb(1),2)
+        ilz=min(sb(2),rb(2),cb%mz-2)
+        ifx=max(sb(3),rb(3),2)
+        ilx=min(sb(4),rb(4),cb%mx-2)
+        ify=max(sb(5),rb(5),2)
+        ily=min(sb(6),rb(6),cb%my-2)
         
         if(m%is_cubic) then
             call corr3d_flat_stresses(sf%vx, sf%vy, sf%vz,   &
