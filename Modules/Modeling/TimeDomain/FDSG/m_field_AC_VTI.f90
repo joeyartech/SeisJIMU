@@ -1054,8 +1054,8 @@ use m_computebox, only: cb
             !dir$ simd
             do iz=ifz,ilz
             
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !corr has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz !corr has no boundary layers
                 
                 izm1_ix=i-1  !iz-1,ix
                 iz_ix  =i    !iz,ix
@@ -1069,11 +1069,11 @@ use m_computebox, only: cb
                 dsshh = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
                 dsszz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
                 
-                 rshh = rf_shh(i)*2. !rhh=rf%prev_shh(i)+rf%shh(i)
-                 rszz = rf_szz(i)*2.
-                 
+                 rshh = rf_shh(iz_ix)*2. !rhh=rf%prev_shh(i)+rf%shh(i)
+                 rszz = rf_szz(iz_ix)*2.
+                
                 corr(j)=corr(j) + 0.5*(dsshh*rshh + dsszz*rszz)
-
+                
             enddo
             
         enddo
