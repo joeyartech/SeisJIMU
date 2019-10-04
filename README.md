@@ -1,5 +1,5 @@
 # LEGO
-A module based modeling &amp; inversion (FWI) code
+A module based modeling, migration and inversion code  
 
 
 ~Version 1.1  

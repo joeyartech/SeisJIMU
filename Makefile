@@ -3,18 +3,18 @@ OMP=openmp
 
 #OPTRPT=-qopt-report=5  -qopt-report-file=stderr -qopt-report-phase=vec
 
-#for Intel
-FLAGF90= -xHost -O3 -Ofast -ipo -parallel -q$(OMP) -fno-alias -traceback -assume byterecl   $(OPTRPT)
-# FLAGF90= -g -debug -check all -check noarg_temp_created -W1 -WB -q$(OMP) -traceback -assume byterecl
-FLAGF77= $(FLAGF90)
-MOD= -module $(DIR)mod
+# #for Intel
+# FLAGF90= -xHost -O3 -Ofast -ipo -parallel -q$(OMP) -fno-alias -traceback -assume byterecl   $(OPTRPT)
+# # FLAGF90= -g -debug -check all -check noarg_temp_created -W1 -WB -q$(OMP) -traceback -assume byterecl
+# FLAGF77= $(FLAGF90)
+# MOD= -module $(DIR)mod
 
-# #for GNU
-# # FLAGF77= -Ofast -f$(OMP)                         -fbacktrace  #-flto
-# # FLAGF90= -Ofast -f$(OMP) -ffree-line-length-none -fbacktrace
+#for GNU
+FLAGF77= -Ofast -f$(OMP)                         -fbacktrace  #-flto
+FLAGF90= -Ofast -f$(OMP) -ffree-line-length-none -fbacktrace
 # FLAGF77= -g -Wall -f$(OMP) -fcheck=all                         -fbacktrace
 # FLAGF90= -g -Wall -f$(OMP) -fcheck=all -ffree-line-length-none -fbacktrace
-# MOD=-J $(DIR)mod
+MOD=-J $(DIR)mod
 
 
 
@@ -107,6 +107,10 @@ OBJ_FWI=$(OBJ_FWD) $(gradient:.f90=.o) $(optimization:.f90=.o)
 fwd : $(OBJ_FWD) FWD/main.o $(DIR)mod exe
 	mpif90 $(FLAGF90) $(OBJ_FWD) FWD/main.o $(MOD)  -o exe/fwd_$(WaveEq)_$(Solver)
 	(cd exe; ln -sf fwd_$(WaveEq)_$(Solver) FWD)
+
+rtm : $(OBJ_FWD) RTM/main.o $(DIR)mod exe
+	mpif90 $(FLAGF90) $(OBJ_FWD) RTM/main.o $(MOD)  -o exe/rtm_$(WaveEq)_$(Solver)
+	(cd exe; ln -sf rtm_$(WaveEq)_$(Solver) RTM)
 
 fwi : $(OBJ_FWI) FWI/main.o $(DIR)mod exe
 	mpif90 $(FLAGF90) $(OBJ_FWI) FWI/main.o $(MOD)  -o exe/fwi_$(WaveEq)_$(Solver)_$(Norm)_$(Preco)_$(LineS)_$(Optim)
