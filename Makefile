@@ -108,10 +108,6 @@ fwd : $(OBJ_FWD) FWD/main.o $(DIR)mod exe
 	mpif90 $(FLAGF90) $(OBJ_FWD) FWD/main.o $(MOD)  -o exe/fwd_$(WaveEq)_$(Solver)
 	(cd exe; ln -sf fwd_$(WaveEq)_$(Solver) FWD)
 
-rtm : $(OBJ_FWD) RTM/main.o $(DIR)mod exe
-	mpif90 $(FLAGF90) $(OBJ_FWD) RTM/main.o $(MOD)  -o exe/rtm_$(WaveEq)_$(Solver)
-	(cd exe; ln -sf rtm_$(WaveEq)_$(Solver) RTM)
-
 fwi : $(OBJ_FWI) FWI/main.o $(DIR)mod exe
 	mpif90 $(FLAGF90) $(OBJ_FWI) FWI/main.o $(MOD)  -o exe/fwi_$(WaveEq)_$(Solver)_$(Norm)_$(Preco)_$(LineS)_$(Optim)
 	(cd exe; ln -sf fwi_$(WaveEq)_$(Solver)_$(Norm)_$(Preco)_$(LineS)_$(Optim) FWI)
