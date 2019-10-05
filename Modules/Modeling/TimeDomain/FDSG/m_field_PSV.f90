@@ -28,7 +28,7 @@ use m_computebox, only: cb
     !local models in computebox
     type t_localmodel
         sequence
-        real,dimension(:,:),allocatable ::  buox, buoz, lda, ldap2mu, mu
+        real,dimension(:,:),allocatable ::  buox, buoz, ldap2mu, lda, mu
     end type
     
     type(t_localmodel) :: lm
@@ -39,8 +39,11 @@ use m_computebox, only: cb
         !flat arrays
         real,dimension(:,:),allocatable :: vx,vz,sxx,szz,sxz
         real,dimension(:,:),allocatable :: cpml_dvx_dx,cpml_dvz_dz,cpml_dvx_dz,cpml_dvz_dx !for cpml
-        real,dimension(:,:),allocatable :: cpml_dsxx_dx,cmpl_dszz_dz,cpml_dxz_dx,cpml_dxz_dz
+        real,dimension(:,:),allocatable :: cpml_dsxx_dx,cmpl_dszz_dz,cpml_dsxz_dx,cpml_dsxz_dz
     end type
+
+    !sampling factor
+    real,parameter :: factor_xx=0.6666667 , factor_zz=0.3333333
     
     !hicks interpolation
     logical :: if_hicks
@@ -98,16 +101,12 @@ use m_computebox, only: cb
     
         call alloc(lm%buox,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
         call alloc(lm%buoz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
-        call alloc(lm%lda, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
         call alloc(lm%ldap2mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
+        call alloc(lm%lda, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
         call alloc(lm%mu,  [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
         
         lm%ldap2mu(:,:)=cb%vp(:,:)*cb%vp(:,:)*cb%rho(:,:,:)
         lm%lda(:,:)=lm%ldap2mu(:,:)-2*cb%vs(:,:)*cb%vs(:,:)*cb%rho(:,:,:)
-
-        do iz=cb%ifz+1,cb%ilz
-            lm%buoz(iz,ix)=0.25
-        enddo
 
         do ix=cb%ifx,cb%ilx
         do iz=cb%ifz,cb%ilz
@@ -140,12 +139,14 @@ use m_computebox, only: cb
         call alloc(f%szz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(f%sxz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         
-        call alloc(f%cpml_dvx_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(f%cpml_dvz_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(f%cpml_dsxx_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(f%cpml_dszz_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(f%cpml_dsxz_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(f%cpml_dsxz_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(f%cpml_dvx_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(f%cpml_dvz_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(f%cpml_dvx_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(f%cpml_dvz_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(f%cpml_dsxx_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(f%cpml_dszz_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(f%cpml_dsxz_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(f%cpml_dsxz_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         
     end subroutine
     
@@ -170,6 +171,8 @@ use m_computebox, only: cb
         type(t_field) :: f
         f%cpml_dvx_dx=0.
         f%cpml_dvz_dz=0.
+        f%cpml_dvx_dz=0.
+        f%cpml_dvz_dx=0.
         f%cpml_dsxx_dx=0.
         f%cpml_dszz_dz=0.
         f%cpml_dsxz_dx=0.
@@ -183,18 +186,26 @@ use m_computebox, only: cb
     
     !========= forward propagation =================
     !WE: du_dt = MDu
-    !u=[vx vy vz p]^T, p=(sxx+syy+szz)/3=sxx+syy+szz
-    !  [diag3(b)  0  ]    [0   0   0   dx]
-    !M=[   0     kpa ], D=|0   0   0   dy|
-    !  (b=1/rho)          |0   0   0   dz|
-    !                     [dx  dy  dz  0 ]
+    !u=[vx vy vz sxx szz sxz]^T, p=(2sxx+szz)/3
+    !  [b                     ]    [      dx 0  dz]
+    !  |  b                   |    |      0  dz dx|
+    !M=|   lda+2mu   lda      |, D=|dx 0          |
+    !  |      lda   lda+2mu   |    |0  dz         |
+    !  [                    mu]    [dz dx         ]
+    !  (b=1/rho)
     !
     !Discretization (staggered grid in space and time):
     !  (grid index)     (real index)
-    !  s(iz,ix,iy):=   s[iz,ix,iy]^it+0.5,it+1.5,...
-    ! vx(iz,ix,iy):=  vx[iz,ix-0.5,iy]^it,it+1,...
-    ! vy(iz,ix,iy):=  vy[iz,ix,iy-0.5]^it,it+1,...
-    ! vz(iz,ix,iy):=  vy[iz-0.5,ix,iy]^it,it+1,...
+    ! sxx,szz(iz,ix):=  sxx,szz[iz,ix]^it+0.5,it+1.5,...
+    !      vx(iz,ix):=  vx[iz,ix-0.5]^it,it+1,...
+    !      vz(iz,ix):=  vy[iz-0.5,ix]^it,it+1,...
+    !     sxz(iz,ix):=  sxz[iz-0.5,ix-0.5]^it,it+1,...
+    ! in space:
+    ! <---*---<  
+    ! |   |   |  * integer point   - sxx,szz - lda+2mu,lda 
+    ! x---v---x  < half in x dir   - vx      - buox  
+    ! |   |   |  v half in z dir   - vz      - buoz
+    ! <---*---<  x half in x&z dir - sxz     - mu
     
     !add RHS to v^it
     subroutine put_velocities(time_dir,it,w,f)
@@ -246,9 +257,9 @@ use m_computebox, only: cb
         
         if(m%if_freesurface) ifz=max(ifz,1)
         
-        call fd2d_flat_velocities(f%vx,f%vz,f%p,                      &
-                                  f%cpml_dp_dx,f%cpml_dp_dz,          &
-                                  lm%buox,lm%buoz,                    &
+        call fd2d_flat_velocities(f%vx,f%vz,f%sxx,f%szz,f%sxz,                                &
+                                  f%cpml_dsxx_dx,f%cpml_dszz_dz,f%cpml_dsxz_dx,f%cpml_dsxz_dz,&
+                                  lm%buox,lm%buoz,                                            &
                                   ifz,ilz,ifx,ilx,time_dir*shot%src%dt)
         
         !apply free surface boundary condition if needed
@@ -286,13 +297,15 @@ use m_computebox, only: cb
         if(if_hicks) then
             select case (shot%src%icomp)
                 case (1)
-                f%p(ifz:ilz,ifx:ilx) = f%p(ifz:ilz,ifx:ilx) + source_term *shot%src%interp_coeff
+                f%sxx(ifz:ilz,ifx:ilx) = f%sxx(ifz:ilz,ifx:ilx) + source_term *shot%src%interp_coeff
+                f%szz(ifz:ilz,ifx:ilx) = f%szz(ifz:ilz,ifx:ilx) + source_term *shot%src%interp_coeff
             end select
             
         else
             select case (shot%src%icomp)
                 case (1) !explosion on s[iz,ix,iy]
-                f%p(iz,ix) = f%p(iz,ix) + source_term
+                f%sxx(iz,ix) = f%sxx(iz,ix) + source_term
+                f%szz(iz,ix) = f%szz(iz,ix) + source_term
             end select
             
         endif
@@ -314,9 +327,9 @@ use m_computebox, only: cb
         
         if(m%if_freesurface) ifz=max(ifz,1)
         
-        call fd2d_flat_stresses(f%vx,f%vz,f%p,                      &
-                                f%cpml_dvx_dx,f%cpml_dvz_dz,        &
-                                lm%kpa,                             &
+        call fd2d_flat_stresses(f%vx,f%vz,f%sxx,f%szz,f%sxz,                            &
+                                f%cpml_dvx_dx,f%cpml_dvz_dz,f%cpml_dvx_dz,f%cpml_dvz_dx,&
+                                lm%ldap2mu,lda,mu,                                      &
                                 ifz,ilz,ifx,ilx,time_dir*shot%src%dt)
         
         !apply free surface boundary condition if needed
@@ -324,8 +337,8 @@ use m_computebox, only: cb
         !so explicit boundary condition: p(1,ix,iy)=0
         !and antisymmetric mirroring: p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
         if(m%if_freesurface) then
-            f%p(1,:)=0.
-            f%p(0,:)=-f%p(2,:)
+            f%szz(1,:)=0.
+            f%szz(0,:)=-f%szz(2,:)
 !             !$omp parallel default (shared)&
 !             !$omp private(ix,iy,i)
 !             !$omp do schedule(dynamic)
@@ -356,7 +369,7 @@ use m_computebox, only: cb
             if(if_hicks) then
                 select case (shot%rcv(ircv)%icomp)
                     case (1)
-                    seismo(ircv)=sum(  f%p(ifz:ilz,ifx:ilx) *shot%rcv(ircv)%interp_coeff )
+                    seismo(ircv)=sum( (factor_xx*f%sxx(ifz:ilz,ifx:ilx) + factor_zz*f%szz(ifz:ilz,ifx:ilx)) *shot%rcv(ircv)%interp_coeff )
                     case (2)
                     seismo(ircv)=sum( f%vx(ifz:ilz,ifx:ilx) *shot%rcv(ircv)%interp_coeff )
                     case (4)
@@ -365,8 +378,8 @@ use m_computebox, only: cb
                 
             else
                 select case (shot%rcv(ircv)%icomp)
-                    case (1) !p[iz,ix,iy]
-                    seismo(ircv)= f%p(iz,ix)
+                    case (1) !sxx,szz[iz,ix,iy]
+                    seismo(ircv) = factor_xx * f%sxx(iz,ix) + factor_zz * f%szz(iz,ix)
                     case (2) !vx[iz,ix-0.5,iy]
                     seismo(ircv)=f%vx(iz,ix)
                     case (4) !vz[iz-0.5,ix,iy]
@@ -388,15 +401,19 @@ use m_computebox, only: cb
     !     (reverse time) (negative derivatives)
     !
     !Discrete form (staggered grid in space and time, 2D as example):
-    ! N  [vx^it+1  ] [vx^it    ]   [ 0     0    dx(-)][vx^it+1  ]
-    !----|vz^it+1  |-|vz^it    | = | 0     0    dz(-)||vz^it+1  |  +Nsrc
-    ! dt [ s^it+1.5] [ s^it+0.5]   [dx(+) dz(+)  0   ][ s^it+0.5]
+    !    [ vx^it+1  ] [ vx^it    ]   [            dx(-)      dz(-)][ vx^it+1  ]
+    ! N  | vz^it+1  | | vz^it    |   |                 dz(-) dx(-)|| vz^it+1  |
+    !----|sxx^it+1.5|-|sxx^it+0.5| = |dx(+)                       ||sxx^it+0.5|  +Nsrc
+    ! dt |szz^it+1.5| |szz^it+0.5|   |      dz(+)                 ||szz^it+0.5|
+    !    [sxz^it+1.5] [sxz^it+0.5]   [dz(+) dx(+)                 ][sxz^it+0.5]
     !dx(-):=a1(s(ix)-s(ixm1))+a2(s(ixp1)-s(ixm2))  (O(x4))
     !dx(+):=a1(v(ixp1)-v(ix))+a2(v(ixp2)-v(ixm1))  (O(x4))
     !Adjoint:
-    ! N  [vx^it    ] [vx^it+1  ]   [ 0       0      dx(+)^T][vx^it+1  ]
-    !----|vz^it    |-|vz^it+1  | = | 0       0      dz(+)^T||vz^it+1  |  +Nsrc
-    ! dt [ s^it+0.5] [ s^it+1.5]   [dx(-)^T dz(-)^T  0     ][ s^it+0.5]
+    !    [ vx^it    ] [ vx^it+1  ]   [              dx(+)^T        dz(+)^T][ vx^it+1  ]
+    ! N  | vz^it    |-| vz^it+1  |   |                     dz(+)^T dx(+)^T|| vz^it+1  |
+    !----|sxx^it+0.5| [sxx^it+1.5] = |dx(-)^T                             ||sxx^it+0.5]  +Nsrc
+    ! dt |szz^it+0.5| [szz^it+1.5]   |        dz(-)^T                     ||szz^it+0.5]
+    !    [sxz^it+0.5] [sxz^it+1.5]   [dz(-)^T dx(-)^T                     ][sxz^it+0.5]
     !dx(+)^T=a1(s(ixm1)-s(ix))+a2(s(ixm2)-s(ixp1))=-dx(-)
     !dx(-)^T=a1(v(ix)-v(ixp1))+a2(v(ixm1)-v(ixp2))=-dx(+)
     !-dx,-dz can be regarded as -dt, thus allowing to use same code with flip of dt sign.
@@ -406,9 +423,9 @@ use m_computebox, only: cb
     !
     !In each time step:
     !d=RGAsrc, src:source term, A:put source, G:propagator, R:sampling at receivers
-    !d=[vx vy vz p]^T, R=[I  0   0 ], A=[diag3(b) 0], src=[fx fy fz p]^T
-    !                    |0 2/3 1/3|    [   0     1]
-    !                    [   0    1]
+    !d=[vx vz p]^T, R=[I  0   0 ], A=[diag2(b) 0], src=[fx fz p]^T
+    !                 |0 2/3 1/3|    [   0     1]
+    !                 [   0    1]
     !Adjoint: src=A^T N G^T M R^T d
     !M R^T:put adjoint sources, 
     !G^T:  adjoint propagator,
@@ -430,16 +447,29 @@ use m_computebox, only: cb
             if(if_hicks) then
                 select case (shot%rcv(ircv)%icomp)
                     case (1) !pressure adjsource
-                    f%p(ifz:ilz,ifx:ilx) = f%p(ifz:ilz,ifx:ilx) &
-                        +tmp* lm%kpa(ifz:ilz,ifx:ilx) *shot%rcv(ircv)%interp_coeff
+                    f%sxx(ifz:ilz,ifx:ilx) = f%sxx(ifz:ilz,ifx:ilx)  &
+                        +tmp*( factor_xx*lm%ldap2mu(ifz:ilz,ifx:ilx) &
+                              +factor_zz*lm%lda(ifz:ilz,ifx:ilx) )   &
+                        *shot%rcv(ircv)%interp_coeff
+        
+                    f%szz(ifz:ilz,ifx:ilx) = f%szz(ifz:ilz,ifx:ilx)    &
+                        +tmp*( factor_xx*lm%lda(ifz:ilz,ifx:ilx)       &
+                              +factor_zz*lm%ldap2mu(ifz:ilz,ifx:ilx) ) &
+                        *shot%rcv(ircv)%interp_coeff
                 end select
                 
             else
                 select case (shot%rcv(ircv)%icomp)
                     case (1) !pressure adjsource
-                    !p[iz,ix,iy]
-                    f%p(iz,ix) = f%p(iz,ix)  &
-                        +tmp* lm%kpa(iz,ix)
+                    !sxx[iz,ix]
+                    f%sxx(iz,ix) = f%sxx(iz,ix)            &
+                        +tmp*( factor_xx*lm%ldap2mu(iz,ix) &
+                              +factor_zz*lm%lda(iz,ix) )
+                    
+                    !szz[iz,ix]
+                    f%szz(iz,ix) = f%szz(iz,ix)            &
+                        +tmp*( factor_xx*lm%lda(iz,ix)     &
+                              +factor_zz*lm%ldap2mu(iz,ix) )
                 end select
                 
             endif
@@ -519,20 +549,25 @@ use m_computebox, only: cb
         if(if_hicks) then
             select case (shot%src%icomp)
                 case (1)
-                w = sum(lm%invkpa(ifz:ilz,ifx:ilx)*f%p(ifz:ilz,ifx:ilx) *shot%src%interp_coeff )
+                w = sum( &
+        ( lm%ldap2mu(ifz:ilz,ifx:ilx)*f%sxx(ifz:ilz,ifx:ilx) -lm%lda    (ifz:ilz,ifx:ilx)*f%szz(ifz:ilz,ifx:ilx)   &
+         -lm%lda    (ifz:ilz,ifx:ilx)*f%sxx(ifz:ilz,ifx:ilx) +lm%ldap2mu(ifz:ilz,ifx:ilx)*f%szz(ifz:ilz,ifx:ilx) ) &
+       *lm%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)  *shot%src%interp_coeff )
                 
                 case (2)
-                w = sum(     f%vx(ifz:ilz,ifx:ilx) *shot%src%interp_coeff )
+                w = sum( f%vx(ifz:ilz,ifx:ilx) *shot%src%interp_coeff )
                 
                 case (4)
-                w = sum(     f%vz(ifz:ilz,ifx:ilx) *shot%src%interp_coeff )
+                w = sum( f%vz(ifz:ilz,ifx:ilx) *shot%src%interp_coeff )
                 
             end select
             
         else
             select case (shot%src%icomp)
-                case (1) !p[iz,ix,iy]
-                w=lm%invkpa(iz,ix)*f%p(iz,ix)
+                case (1) !s[iz,ix,iy]
+                w = ( lm%ldap2mu(iz,ix)*f%sxx(iz,ix) -lm%lda    (iz,ix)*f%szz(iz,ix,iy)   &
+                     -lm%lda    (iz,ix)*f%sxx(iz,ix) +lm%ldap2mu(iz,ix)*f%szz(iz,ix,iy) ) &
+                   *lm%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)
                 
                 case (2) !vx[iz,ix-0.5,iy]
                 w=f%vx(iz,ix)
@@ -545,17 +580,37 @@ use m_computebox, only: cb
         
     end subroutine
     
-    !========= for wavefield correlation ===================   
-    !gkpa = -1/kpa2    dp_dt \dot adjp
-    !     = -1/kpa \nabla.v  \dot adjp
-    !v^it+1, p^it+0.5, adjp^it+0.5
+    !========= for wavefield correlation ===================
+    !dC/dm = \int a  dN/dm du/dt
+    !      = \int a  dN/dm M Du
+    !      = \int a -N dM/dm Du
+    !                            [0                    ]
+    !                            |  0                  |
+    !-NdM/dlda = -1/(lda+mu)/4mu |    lda+2mu  -lda    |
+    !                            |     -lda   lda+2mu  |
+    !                            [                    0]
+    !glda := [adjsxx adjszz][lda+2mu  -lda  ][dvx_dx]
+    !                       [ -lda   lda+2mu][dvz_dz]
+    !                           [0                          ]
+    !                           |  0                        |
+    !-NdM/dmu = -2/(lda+mu)/4mu |    lda+2mu                |
+    !                           |           lda+2mu         |
+    !                           [                  2(lda+mu)]
+    !                             [lda+2mu                ][   dvx_dx    ]
+    !gmu := [adjsxx adjszz adjsxz][       lda+2mu         ][   dvz_dz    ]
+    !                             [              2(lda+mu)][dvx_dz+dvz_dx]
+    !            [b    ]
+    !dN/drho M = |  b  |
+    !            [    0]
+    !grho := [adjvx adjvz][sxx_dx+sxz_dz]
+    !                     [szz_dz+sxz_dx]
     !
-    !grho = dv_dt      \dot adjv
-    !     = b \nabla p \dot adjv
-    !p^it+0.5, v^it, adjv^it
-    !use (v[i+1]+v[i])/2 to approximate v[i+0.5], so is adjv
+    !For gmu, we need to spatially interpolate adjsxz and dvx_dz+dvz_dx.
+    !For grho, we need to spatially interpolate adjvx, adjvz and sxx_dx+sxz_dz, szz_dz+sxz_dx
+    !
+    !For time, we just use v^it+1, s^it+0.5, adjs^it+0.5
     
-    subroutine field_correlation_gkpa(it,sf,rf,sb,rb,corr)
+    subroutine field_correlation_glda(it,sf,rf,sb,rb,corr)
         type(t_field) :: sf,rf
         integer,dimension(6) :: sb,rb
         real,dimension(*) :: corr
@@ -568,12 +623,33 @@ use m_computebox, only: cb
         ify=max(sb(5),rb(5),2)
         ily=min(sb(6),rb(6),cb%my-2)
         
-        call corr2d_flat_gkpa(sf%vx,sf%vz,rf%p,&
-                              corr,            &
+        call corr2d_flat_glda(sf%vx,sf%vz,   &
+                              rf%sxx,rf%szz, &
+                              corr,          &
                               ifz,ilz,ifx,ilx)
         
     end subroutine
     
+    subroutine field_correlation_gmu(it,sf,rf,sb,rb,corr)
+        type(t_field) :: sf,rf
+        integer,dimension(6) :: sb,rb
+        real,dimension(*) :: corr
+        
+        !nonzero only when sf touches rf
+        ifz=max(sb(1),rb(1),2)
+        ilz=min(sb(2),rb(2),cb%mz-2)
+        ifx=max(sb(3),rb(3),2)
+        ilx=min(sb(4),rb(4),cb%mx-2)
+        ify=max(sb(5),rb(5),2)
+        ily=min(sb(6),rb(6),cb%my-2)
+        
+        call corr2d_flat_gmu(sf%vx,sf%vz,         &
+                             rf%sxx,rf_szz,rf_sxz,&
+                             corr,                &
+                             ifz,ilz,ifx,ilx)
+        
+    end subroutine
+
     subroutine field_correlation_grho(it,sf,rf,sb,rb,corr)
         type(t_field) :: sf,rf
         integer,dimension(6) :: sb,rb
@@ -587,21 +663,24 @@ use m_computebox, only: cb
         ify=max(sb(5),rb(5),2)
         ily=min(sb(6),rb(6),cb%my-2)
         
-        call corr2d_flat_grho(sf%p,rf%vx,rf%vz,&
-                              corr,            &
+        call corr2d_flat_grho(sf%sxx,sf%szz,sf%sxz,&
+                              rf%vx,rf%vz,         &
+                              corr,                &
                               ifz,ilz,ifx,ilx)
         
     end subroutine
     
     subroutine field_correlation_scaling(grad)
-        real,dimension(cb%mz,cb%mx,cb%my,2) :: grad
+        real,dimension(cb%mz,cb%mx,3) :: grad
         
-        grad(:,:,:,1)=grad(:,:,:,1) * (-lm%invkpa(1:cb%mz,1:cb%mx,1:cb%my))
+        grad(:,:,1)=grad(:,:,1) * (-lm%inv_ldapmu_4mu(1:cb%mz,1:cb%mx))
 
-        grad(:,:,:,2)=grad(:,:,:,2) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
+        grad(:,:,2)=grad(:,:,2) * -0.5*lm%inv_ldapmu_4mu(1:cb%mz,1:cb%mx)
+
+        grad(:,:,3)=grad(:,:,3) / cb%rho(1:cb%mz,1:cb%mx)
         
         !set unit of gkpa to be [m3], grho to be [m5/s2]
-        !such that after multiplied by (kpa_max-kpa_min) or (rho_max-rho_min) (will be done in m_parameterization.f90)
+        !such that after multiplied by (lda_max-lda_min) or (rho_max-rho_min) (will be done in m_parameterization.f90)
         !the unit of parameter update is [Nm], same as Lagrangian
         !and the unit of gradient scaling factor is [1/N/m] (in m_scaling.f90)
         !therefore parameters become unitless
@@ -611,12 +690,12 @@ use m_computebox, only: cb
     
     !========= Finite-Difference on flattened arrays ==================
     
-    subroutine fd2d_flat_velocities(vx,vz,sxx,szz,sxz,              &
-                                    cpml_dsxx_dx,cpml_dsxz_dx,cpml_dsxz_dz,cpml_dszz_dz,&
-                                    buox,buoz,            &
+    subroutine fd2d_flat_velocities(vx,vz,sxx,szz,sxz,                                  &
+                                    cpml_dsxx_dx,cpml_dszz_dz,cpml_dsxz_dx,cpml_dsxz_dz,&
+                                    buox,buoz,                                          &
                                     ifz,ilz,ifx,ilx,dt)
         real,dimension(*) :: vx,vz,sxx,szz,sxz
-        real,dimension(*) :: cpml_dsxx_dx,cpml_dsxz_dx,cpml_dsxz_dz,cpml_dszz_dz
+        real,dimension(*) :: cpml_dsxx_dx,cpml_dszz_dz,cpml_dsxz_dx,cpml_dsxz_dz
         real,dimension(*) :: buox,buoz
         
         nz=cb%nz
@@ -677,7 +756,7 @@ use m_computebox, only: cb
     end subroutine
     
     subroutine fd2d_flat_stresses(vx,vz,sxx,szz,sxz,                              &
-                                  cpml_dvx_dx,cpml_dvx_dz,cpml_dvz_dz,cpml_dvz_dx,&
+                                  cpml_dvx_dx,cpml_dvz_dz,cpml_dvx_dz,cpml_dvz_dx,&
                                   ldap2mu,lda,mu,                                 &
                                   ifz,ilz,ifx,ilx,dt)
         real,dimension(*) :: vx,vz,sxx,szz,sxz
@@ -742,26 +821,24 @@ use m_computebox, only: cb
         
     end subroutine
     
-    subroutine corr2d_flat_glda(sf_vx,sf_vz,rf_p,&
-                                corr,            &
+    subroutine corr2d_flat_glda(sf_vx,sf_vz,   &
+                                rf_sxx,rf_szz, &
+                                corr,          &
                                 ifz,ilz,ifx,ilx)
-        real,dimension(*) :: sf_vx,sf_vz,rf_p
+        real,dimension(*) :: sf_vx,sf_vz
+        real,dimension(*) :: rf_sxx,rf_szz
         real,dimension(*) :: corr
         
         nz=cb%nz
         
-        dvx_dx=0.
-        dvz_dz=0.
-        
-        dsp=0.
-         rp=0.
+        sf_dvx_dx=0.
+        sf_dvz_dz=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
         !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
         !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dvx_dx,dvz_dz,&
-        !$omp         dsp,rp)
+        !$omp         sf_dvx_dx,sf_dvz_dz)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
         
@@ -779,14 +856,12 @@ use m_computebox, only: cb
                 iz_ixm1=i    -nz  !iz,ix-1
                 iz_ixp1=i    +nz  !iz,ix+1
                 iz_ixp2=i  +2*nz  !iz,ix+2
-                
-                dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
-                dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
-                
-                dsp = dvx_dx +dvz_dz
-                 rp = rf_p(i)*2.    !rp=rf%prev_p(i)+rf%p(i)
-                
-                corr(j)=corr(j) + 0.5*dsp*rp
+
+                sf_dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
+                sf_dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
+
+                corr(j)=corr(j) + ldap2mu(i)*rf_sxx(i)*sf_dvx_dx -     lda(i)*rf_sxx(i)*sf_dvz_dz &
+                                -     lda(i)*rf_szz(i)*sf_dvx_dx + ldap2mu(i)*rf_szz(i)*sf_dvz_dz
                 
             end do
             
@@ -796,26 +871,26 @@ use m_computebox, only: cb
 
     end subroutine
 
-    subroutine corr2d_flat_gmu(sf_vx,sf_vz,rf_p,&
-                                corr,            &
-                                ifz,ilz,ifx,ilx)
-        real,dimension(*) :: sf_vx,sf_vz,rf_p
+    subroutine corr2d_flat_gmu(sf_vx,sf_vz,         &
+                               rf_sxx,rf_szz,rf_sxz,&
+                               corr,                &
+                               ifz,ilz,ifx,ilx)
+        real,dimension(*) :: sf_vx,sf_vz
+        real,dimension(*) :: rf_sxx,rf_szz,rf_sxz
         real,dimension(*) :: corr
         
         nz=cb%nz
         
-        dvx_dx=0.
-        dvz_dz=0.
-        
-        dsp=0.
-         rp=0.
+        sf_dvx_dx=0.
+        sf_dvz_dz=0.
+        sf_dvz_dx_p_dvx_dz=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
         !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
         !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dvx_dx,dvz_dz,&
-        !$omp         dsp,rp)
+        !$omp         sf_dvx_dx,sf_dvz_dz,&
+        !$omp         sf_dvz_dx_p_dvx_dz)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
         
@@ -834,13 +909,17 @@ use m_computebox, only: cb
                 iz_ixp1=i    +nz  !iz,ix+1
                 iz_ixp2=i  +2*nz  !iz,ix+2
                 
-                dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
-                dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
-                
-                dsp = dvx_dx +dvz_dz
-                 rp = rf_p(i)*2.    !rp=rf%prev_p(i)+rf%p(i)
-                
-                corr(j)=corr(j) + 0.5*dsp*rp
+                sf_dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
+                sf_dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
+
+                sf_4_dvzdx_p_dvxdz = & !dvx_dz =
+
+                                    c1x*(sf_vz(iz_ixp1)-sf_vz(iz_ix)) +c2x*(sf_vz(iz_ixp2)-sf_vz(iz_ixm1)) &
+                                    +c1z*(sf_vx(izp1_ix)-sf_vx(iz_ix)) +c2z*(sf_vx(izp2_ix)-sf_vx(izm1_ix))
+
+                corr(j)=corr(j) + ldap2mu(i)*rf_sxx(i)*sf_dvx_dx &
+                                + ldap2mu(i)*rf_szz(i)*sf_dvz_dz &
+                                + 2*(lda(i)+mu(i))*rf_sxz(i)*sf_dvz_dx_p_dvx_dz
                 
             end do
             
@@ -850,23 +929,25 @@ use m_computebox, only: cb
 
     end subroutine
     
-    subroutine corr2d_flat_grho(sf_p,rf_vx,rf_vz,&
-                                corr,            &
+    subroutine corr2d_flat_grho(sf_sxx,sf_szz,sf_sxz,&
+                                rf_vx,rf_vz,         &
+                                corr,                &
                                 ifz,ilz,ifx,ilx)
-        real,dimension(*) :: sf_p,rf_vx,rf_vz
+        real,dimension(*) :: sf_sxx,sf_szz,sf_sxz
+        real,dimension(*) :: rf_vx,rf_vz
         real,dimension(*) :: corr
         
         nz=cb%nz
         
-        dsvx=0.; dsvz=0.
-         rvx=0.; rvz=0.
+        sf_2vx=0.; sf_2vz=0.
+        rf_2vx=0.; rf_2vz=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
         !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dsvx,dsvz,&
-        !$omp          rvx, rvz)
+        !$omp         sf_2vx,sf_2vz,&
+        !$omp         rf_2vx,rf_2vz)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
         
@@ -887,20 +968,24 @@ use m_computebox, only: cb
                 iz_ixp1=i    +nz  !iz,ix+1
                 iz_ixp2=i  +2*nz  !iz,ix+2
                 
-                dsvx = (c1x*(sf_sxx(iz_ix  )-sf_sxx(iz_ixm1)) +c2x*(sf_sxx(iz_ixp1)-sf_sxx(iz_ixm2))) &
-                      +(c1x*(sf_p(iz_ixp1)-sf_p(iz_ix  )) +c2x*(sf_p(iz_ixp2)-sf_p(iz_ixm1)))
-                dsvz = (c1z*(sf_p(iz_ix  )-sf_p(izm1_ix)) +c2z*(sf_p(izp1_ix)-sf_p(izm2_ix))) &
-                      +(c1z*(sf_p(izp1_ix)-sf_p(iz_ix  )) +c2z*(sf_p(izp2_ix)-sf_p(izm1_ix)))
-                !complete equation with unnecessary terms e.g. sf_p(iz_ix) for better understanding
-                !with flag -O, the compiler should automatically detect such possibilities of simplification
-                
-                dsvx= c1x*(sxx(iz_ix)-sxx(iz_ixm1)) +c2x*(sxx(iz_ixp1)-sxx(iz_ixm2))
-                dsvz= c1x*(sxz(iz_ix)-sxz(iz_ixm1)) +c2x*(sxz(iz_ixp1)-sxz(iz_ixm2))
+                sf_2vx = & !dsxx_dx = 
+                         (c1x*(sf_sxx(iz_ix  )-sf_sxx(iz_ixm1)) +c2x*(sf_sxx(iz_ixp1)-sf_sxx(iz_ixm2))) &
+                        +(c1x*(sf_sxx(iz_ixp1)-sf_sxx(iz_ix  )) +c2x*(sf_sxx(iz_ixp2)-sf_sxx(iz_ixm1))) &
+                         & !dsxz_dz =
+                        +(c1z*(sf_sxz(iz_ix  )-sf_sxz(izm1_ix)) +c2z*(sf_sxz(izp1_ix)-sf_sxz(izm2_ix))) &
+                        +(c1z*(sf_sxz(izp1_ix)-sf_sxz(iz_ix  )) +c2z*(sf_sxz(izp2_ix)-sf_sxz(izm1_ix)))
 
-                rvx = rf_vx(iz_ix) +rf_vx(iz_ixp1)
-                rvz = rf_vz(iz_ix) +rf_vz(izp1_ix)
+                sf_2vz = & !dszz_dz =
+                         (c1z*(sf_szz(iz_ix  )-sf_szz(izm1_ix)) +c2z*(sf_szz(izp1_ix)-sf_szz(izm2_ix))) &
+                        +(c1z*(sf_szz(izp1_ix)-sf_szz(iz_ix  )) +c2z*(sf_szz(izp2_ix)-sf_szz(izm1_ix))) &
+                         & !dsxz_dx =
+                        +(c1x*(sf_sxz(iz_ix  )-sf_sxz(iz_ixm1)) +c2x*(sf_sxz(iz_ixp1)-sf_sxz(iz_ixm2))) &
+                        +(c1x*(sf_sxz(iz_ixp1)-sf_sxz(iz_ix  )) +c2x*(sf_sxz(iz_ixp2)-sf_sxz(iz_ixm1)))               
+
+                rf_2vx = rf_vx(iz_ix) +rf_vx(iz_ixp1)
+                rf_2vz = rf_vz(iz_ix) +rf_vz(izp1_ix)
                 
-                corr(j)=corr(j) + 0.25*( dsvx*rvx + dsvz*rvz )
+                corr(j)=corr(j) + 0.25*( sf_2vx*rf_2vx + sf_2vz*rf_2vz )
                 
             enddo
             
