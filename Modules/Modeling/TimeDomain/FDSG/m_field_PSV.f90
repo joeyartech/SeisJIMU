@@ -38,7 +38,7 @@ use m_computebox, only: cb
         sequence
         !flat arrays
         real,dimension(:,:),allocatable :: vx,vz,sxx,szz,sxz
-        real,dimension(:,:),allocatable :: cpml_dvx_dx,cpml_dvz_dz !for cpml
+        real,dimension(:,:),allocatable :: cpml_dvx_dx,cpml_dvz_dz,cpml_dvx_dz,cpml_dvz_dx !for cpml
         real,dimension(:,:),allocatable :: cpml_dsxx_dx,cmpl_dszz_dz,cpml_dxz_dx,cpml_dxz_dz
     end type
     
@@ -53,7 +53,7 @@ use m_computebox, only: cb
     !========= use before propagation =================
     subroutine field_print_info
         !modeling method
-        call hud('WaveEq : Time-domain 2D ELastic isotropic modeling')
+        call hud('WaveEq : Time-domain 2D P-SV (elastic) isotropic modeling')
         call hud('Staggered-grid Finite-difference method')
         call hud('O(x4,t2) stencil')
         
@@ -114,7 +114,7 @@ use m_computebox, only: cb
             lm%mu(iz,ix)=0.25*(lm%ldap2mu(iz,ix)  -lm%lda(iz,ix)   &
                              + lm%ldap2mu(iz+1,ix)-lm%lda(iz+1,ix) &
                              + lm%ldap2mu(iz+1,ix+1)-lm%lda(iz+1,ix+1) &
-                             + lm%ldap2mu(iz,ix+1)-lm%lda(iz,ix+1) &)*0.5
+                             + lm%ldap2mu(iz,ix+1)-lm%lda(iz,ix+1) &)*0.5  !good approx?
         end do
         end do
 
@@ -611,12 +611,12 @@ use m_computebox, only: cb
     
     !========= Finite-Difference on flattened arrays ==================
     
-    subroutine fd2d_flat_velocities(vx,vz,p,              &
-                                    cpml_dp_dx,cpml_dp_dz,&
+    subroutine fd2d_flat_velocities(vx,vz,sxx,szz,sxz,              &
+                                    cpml_dsxx_dx,cpml_dsxz_dx,cpml_dsxz_dz,cpml_dszz_dz,&
                                     buox,buoz,            &
                                     ifz,ilz,ifx,ilx,dt)
-        real,dimension(*) :: vx,vz,p
-        real,dimension(*) :: cpml_dp_dx,cpml_dp_dz
+        real,dimension(*) :: vx,vz,sxx,szz,sxz
+        real,dimension(*) :: cpml_dsxx_dx,cpml_dsxz_dx,cpml_dsxz_dz,cpml_dszz_dz
         real,dimension(*) :: buox,buoz
         
         nz=cb%nz
@@ -676,13 +676,13 @@ use m_computebox, only: cb
         
     end subroutine
     
-    subroutine fd2d_flat_stresses(vx,vz,p,                &
-                                  cpml_dvx_dx,cpml_dvz_dz,&
-                                  kpa,                    &
+    subroutine fd2d_flat_stresses(vx,vz,sxx,szz,sxz,                              &
+                                  cpml_dvx_dx,cpml_dvx_dz,cpml_dvz_dz,cpml_dvz_dx,&
+                                  ldap2mu,lda,mu,                                 &
                                   ifz,ilz,ifx,ilx,dt)
-        real,dimension(*) :: vx,vz,p
-        real,dimension(*) :: cpml_dvx_dx,cpml_dvz_dz
-        real,dimension(*) :: kpa
+        real,dimension(*) :: vx,vz,sxx,szz,sxz
+        real,dimension(*) :: cpml_dvx_dx,cpml_dvz_dz,cpml_dvz_dz,cpml_dvz_dx
+        real,dimension(*) :: ldap2mu,lda,mu
         
         nz=cb%nz
         nx=cb%nx
@@ -887,13 +887,16 @@ use m_computebox, only: cb
                 iz_ixp1=i    +nz  !iz,ix+1
                 iz_ixp2=i  +2*nz  !iz,ix+2
                 
-                dsvx = (c1x*(sf_p(iz_ix  )-sf_p(iz_ixm1)) +c2x*(sf_p(iz_ixp1)-sf_p(iz_ixm2))) &
+                dsvx = (c1x*(sf_sxx(iz_ix  )-sf_sxx(iz_ixm1)) +c2x*(sf_sxx(iz_ixp1)-sf_sxx(iz_ixm2))) &
                       +(c1x*(sf_p(iz_ixp1)-sf_p(iz_ix  )) +c2x*(sf_p(iz_ixp2)-sf_p(iz_ixm1)))
                 dsvz = (c1z*(sf_p(iz_ix  )-sf_p(izm1_ix)) +c2z*(sf_p(izp1_ix)-sf_p(izm2_ix))) &
                       +(c1z*(sf_p(izp1_ix)-sf_p(iz_ix  )) +c2z*(sf_p(izp2_ix)-sf_p(izm1_ix)))
                 !complete equation with unnecessary terms e.g. sf_p(iz_ix) for better understanding
                 !with flag -O, the compiler should automatically detect such possibilities of simplification
                 
+                dsvx= c1x*(sxx(iz_ix)-sxx(iz_ixm1)) +c2x*(sxx(iz_ixp1)-sxx(iz_ixm2))
+                dsvz= c1x*(sxz(iz_ix)-sxz(iz_ixm1)) +c2x*(sxz(iz_ixp1)-sxz(iz_ixm2))
+
                 rvx = rf_vx(iz_ix) +rf_vx(iz_ixp1)
                 rvz = rf_vz(iz_ix) +rf_vz(izp1_ix)
                 
