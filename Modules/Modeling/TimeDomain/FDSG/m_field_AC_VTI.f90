@@ -367,9 +367,7 @@ use m_computebox, only: cb
         !so explicit boundary condition: szz(1,ix,iy)=0
         !and antisymmetric mirroring: szz(0,ix,iy)=-szz(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
         if(m%if_freesurface) then
-            f%shh(1,:,:)=0.
             f%szz(1,:,:)=0.
-            f%shh(0,:,:)=-f%shh(2,:,:)
             f%szz(0,:,:)=-f%szz(2,:,:)
 !             !$omp parallel default (shared)&
 !             !$omp private(ix,iy,i)
@@ -416,7 +414,7 @@ use m_computebox, only: cb
             else
                 select case (shot%rcv(ircv)%icomp)
                     case (1) !shh,szz[iz,ix,iy]
-                    seismo(ircv) = factor_hh * f%shh(iz,ix,iy) + factor_zz * f%szz(iz,ix,iy)
+                    seismo(ircv)=factor_hh * f%shh(iz,ix,iy) + factor_zz * f%szz(iz,ix,iy)
                     case (2) !vx[iz,ix-0.5,iy]
                     seismo(ircv)=f%vx(iz,ix,iy)
                     case (3) !vy[iz,ix,iy-0.5]
@@ -503,7 +501,7 @@ use m_computebox, only: cb
                               +factor_zz*lm%kpa_sqrt1p2del(iz,ix,iy) )
                     
                     !szz[iz,ix,iy]
-                    f%szz(iz,ix,iy) = f%szz(iz,ix,ily) &
+                    f%szz(iz,ix,iy) = f%szz(iz,ix,iy) &
                         +tmp*( factor_hh*lm%kpa_sqrt1p2del(iz,ix,iy)   &
                               +factor_zz*lm%kpa(iz,ix,iy)            )
                 end select
