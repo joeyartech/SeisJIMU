@@ -121,17 +121,17 @@ use m_computebox, only: cb
         lm%ldap2mu(:,:)=cb%vp(:,:,1)*cb%vp(:,:,1)*cb%rho(:,:,1)
         lm%lda(:,:)=lm%ldap2mu(:,:)-2*cb%vs(:,:,1)*cb%vs(:,:,1)*cb%rho(:,:,1)
 
-        do ix=cb%ifx,cb%ilx
-        do iz=cb%ifz,cb%ilz
+        do ix=cb%ifx+1,cb%ilx
+        do iz=cb%ifz+1,cb%ilz
             lm%mu(iz,ix)=0.25*( lm%ldap2mu(iz-1,ix-1)-lm%lda(iz-1,ix-1) &
+                               +lm%ldap2mu(iz-1,ix  )-lm%lda(iz-1,ix  ) &
                                +lm%ldap2mu(iz  ,ix-1)-lm%lda(iz  ,ix-1) &
-                               +lm%ldap2mu(iz+1,ix  )-lm%lda(iz+1,ix  ) &
-                               +lm%ldap2mu(iz+1,ix  )-lm%lda(iz+1,ix  ) )*0.5  !good approx?
+                               +lm%ldap2mu(iz  ,ix  )-lm%lda(iz  ,ix  ) )*0.5  !good approx?
         end do
         end do
 
-        lm%buoz(cb%ifz,:)=1./cb%rho(cb%ifz,:,1)
-        lm%buox(:,cb%ifx)=1./cb%rho(:,cb%ifx,1)
+        lm%mu(cb%ifz,:)=lm%mu(cb%ifz+1,:)
+        lm%mu(:,cb%ifx)=lm%mu(:,cb%ifx+1)
 
         do iz=cb%ifz+1,cb%ilz
             lm%buoz(iz,:)=0.5/cb%rho(iz,:,1)+0.5/cb%rho(iz-1,:,1)
@@ -140,6 +140,9 @@ use m_computebox, only: cb
         do ix=cb%ifx+1,cb%ilx
             lm%buox(:,ix)=0.5/cb%rho(:,ix,1)+0.5/cb%rho(:,ix-1,1)
         enddo
+
+        lm%buoz(cb%ifz,:)=1./cb%rho(cb%ifz,:,1)
+        lm%buox(:,cb%ifx)=1./cb%rho(:,cb%ifx,1)
 
     end subroutine
     
@@ -173,10 +176,10 @@ use m_computebox, only: cb
         !    write(*,*) 'ERROR: '//name//' values become +-Infinity on Shot# '//shot%cindex//' !!'
         !    stop
         !endif
-        if(any(isnan(f%szz))) then
-            write(*,*) 'ERROR: '//name//' values become NaN on Shot# '//shot%cindex//' !!'
-            stop
-        endif
+        !if(any(isnan(f%szz))) then
+        !    write(*,*) 'ERROR: '//name//' values become NaN on Shot# '//shot%cindex//' !!'
+        !    stop
+        !endif
         
     end subroutine
     
@@ -194,7 +197,7 @@ use m_computebox, only: cb
     
     subroutine write_field(iunit,f)
         type(t_field) :: f
-        write(iunit) f%vz
+        write(iunit) f%szz
     end subroutine
     
     !========= forward propagation =================
@@ -260,13 +263,13 @@ use m_computebox, only: cb
         integer :: time_dir, it
         type(t_field) :: f
         integer,dimension(6) :: bl
-        
-        ifz=bl(1)+1
-        ilz=bl(2)-1
-        ifx=bl(3)+1
-        ilx=bl(4)-1
-        !ify=bl(5)+1
-        !ily=bl(6)-1
+
+        ifz=bl(1)+2
+        ilz=bl(2)-2
+        ifx=bl(3)+2
+        ilx=bl(4)-2
+        !ify=bl(5)+2
+        !ily=bl(6)-2
                 
         if(m%if_freesurface) ifz=max(ifz,1)
         
@@ -275,7 +278,7 @@ use m_computebox, only: cb
                                   lm%buox,lm%buoz,                                            &
                                   ifz,ilz,ifx,ilx,time_dir*shot%src%dt)
         
-        dz_dx = dz/dx
+        dz_dx = m%dz/m%dx
 
         !apply free surface boundary condition if needed
         !free surface is located at [1,ix,iy] level
@@ -343,12 +346,12 @@ use m_computebox, only: cb
         type(t_field) :: f
         integer,dimension(6) :: bl
         
-        ifz=bl(1)+1
-        ilz=bl(2)-1
-        ifx=bl(3)+1
-        ilx=bl(4)-1
-        !ify=bl(5)+1
-        !ily=bl(6)-1
+        ifz=bl(1)+2
+        ilz=bl(2)-2
+        ifx=bl(3)+2
+        ilx=bl(4)-2
+        !ify=bl(5)+2
+        !ily=bl(6)-2
         
         if(m%if_freesurface) ifz=max(ifz,1)
         
@@ -673,7 +676,7 @@ use m_computebox, only: cb
                                  rf%vx,rf%vz,         &
                                  corr(:,:,3),         &
                                  ifz,ilz,ifx,ilx)
-        
+
     end subroutine
     
     subroutine field_correlation_scaling(corr)
@@ -681,9 +684,18 @@ use m_computebox, only: cb
         
         corr(:,:,1)=corr(:,:,1) * (-lm%inv_ldapmu_4mu(1:cb%mz,1:cb%mx))
 
-        corr(:,:,2)=corr(:,:,2) * (-0.5*lm%inv_ldapmu_4mu(1:cb%mz,1:cb%mx))
+        corr(:,:,2)=corr(:,:,2) * (-2.*lm%inv_ldapmu_4mu(1:cb%mz,1:cb%mx))
 
         corr(:,:,3)=corr(:,:,3) / cb%rho(1:cb%mz,1:cb%mx,1)
+
+
+        corr(1,:,:) = corr(2,:,:)
+        corr(cb%mz-1,:,:) = corr(cb%mz-2,:,:)
+        corr(cb%mz,  :,:) = corr(cb%mz-2,:,:)
+
+        corr(:,1,:) = corr(:,2,:)
+        corr(:,cb%mx-1,:) = corr(:,cb%mx-2,:)
+        corr(:,cb%mx  ,:) = corr(:,cb%mx-2,:)
         
         !set unit of gkpa to be [m3], grho to be [m5/s2]
         !such that after multiplied by (lda_max-lda_min) or (rho_max-rho_min) (will be done in m_parameterization.f90)

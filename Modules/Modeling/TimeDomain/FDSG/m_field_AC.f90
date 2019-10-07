@@ -651,6 +651,20 @@ use m_computebox, only: cb
         corr(:,:,:,1)=corr(:,:,:,1) * (-lm%invkpa(1:cb%mz,1:cb%mx,1:cb%my))
 
         corr(:,:,:,2)=corr(:,:,:,2) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
+
+        corr(1,:,:,:) = corr(2,:,:,:)
+        corr(cb%mz-1,:,:,:) = corr(cb%mz-2,:,:,:)
+        corr(cb%mz,  :,:,:) = corr(cb%mz-2,:,:,:)
+
+        corr(:,1,:,:) = corr(:,2,:,:)
+        corr(:,cb%mx-1,:,:) = corr(:,cb%mx-2,:,:)
+        corr(:,cb%mx  ,:,:) = corr(:,cb%mx-2,:,:)
+
+        if(m%is_cubic) then
+            corr(:,:,1,:) = corr(:,2,:,:)
+            corr(:,:,cb%my-1,:) = corr(:,:,cb%my-2,:)
+            corr(:,:,cb%my  ,:) = corr(:,:,cb%my-2,:)
+        endif
         
         !set unit of gkpa to be [m3], grho to be [m5/s2]
         !such that after multiplied by (kpa_max-kpa_min) or (rho_max-rho_min) (will be done in m_parameterization.f90)
