@@ -60,8 +60,9 @@ OBJ0=$(system:.f90=.o) $(externf77:.f=.o) $(externf90:.f90=.o) $(signal:.f90=.o)
 # FWD #
 #######
 
-WaveEq=AC
+# WaveEq=AC
 # WaveEq=AC_VTI
+WaveEq=PSV
 Solver=FDSG
 Domain=TimeDomain
 

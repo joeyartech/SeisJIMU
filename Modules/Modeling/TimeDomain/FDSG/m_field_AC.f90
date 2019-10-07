@@ -594,10 +594,10 @@ use m_computebox, only: cb
     !p^it+0.5, v^it, adjv^it
     !use (v[i+1]+v[i])/2 to approximate v[i+0.5], so is adjv
     
-    subroutine field_correlation_gkpa(it,sf,rf,sb,rb,corr)
+    subroutine field_correlation_moduli(it,sf,rf,sb,rb,corr)
         type(t_field) :: sf,rf
         integer,dimension(6) :: sb,rb
-        real,dimension(*) :: corr
+        real,dimension(cb%mz,cb%mx,cb%my,2) :: corr
         
         !nonzero only when sf touches rf
         ifz=max(sb(1),rb(1),2)
@@ -608,21 +608,21 @@ use m_computebox, only: cb
         ily=min(sb(6),rb(6),cb%my-2)
         
         if(m%is_cubic) then
-            call corr3d_flat_gkpa(sf%vx,sf%vy,sf%vz,rf%p,&
-                                  corr,                  &
-                                  ifz,ilz,ifx,ilx,ify,ily)
+            call corr3d_flat_moduli(sf%vx,sf%vy,sf%vz,rf%p,&
+                                    corr(:,:,:,1),         &
+                                    ifz,ilz,ifx,ilx,ify,ily)
         else
-            call corr2d_flat_gkpa(sf%vx,sf%vz,rf%p,&
-                                  corr,            &
-                                  ifz,ilz,ifx,ilx)
+            call corr2d_flat_moduli(sf%vx,sf%vz,rf%p,&
+                                    corr(:,:,:,1),   &
+                                    ifz,ilz,ifx,ilx)
         endif
         
     end subroutine
     
-    subroutine field_correlation_grho(it,sf,rf,sb,rb,corr)
+    subroutine field_correlation_density(it,sf,rf,sb,rb,corr)
         type(t_field) :: sf,rf
         integer,dimension(6) :: sb,rb
-        real,dimension(*) :: corr
+        real,dimension(cb%mz,cb%mx,cb%my,2) :: corr
         
         !nonzero only when sf touches rf
         ifz=max(sb(1),rb(1),2)
@@ -633,30 +633,30 @@ use m_computebox, only: cb
         ily=min(sb(6),rb(6),cb%my-2)
         
         if(m%is_cubic) then
-            call corr3d_flat_grho(sf%p,rf%vx,rf%vy,rf%vz,&
-                                  corr,                  &
-                                  ifz,ilz,ifx,ilx,ify,ily)
+            call corr3d_flat_density(sf%p,rf%vx,rf%vy,rf%vz,&
+                                     corr(:,:,:,2),         &
+                                     ifz,ilz,ifx,ilx,ify,ily)
         else
-            call corr2d_flat_grho(sf%p,rf%vx,rf%vz,&
-                                  corr,            &
-                                  ifz,ilz,ifx,ilx)
+            call corr2d_flat_density(sf%p,rf%vx,rf%vz,&
+                                     corr(:,:,:,2),   &
+                                     ifz,ilz,ifx,ilx)
         endif
         
     end subroutine
     
-    subroutine field_correlation_scaling(grad)
-        real,dimension(cb%mz,cb%mx,cb%my,2) :: grad
+    subroutine field_correlation_scaling(corr)
+        real,dimension(cb%mz,cb%mx,cb%my,2) :: corr
         
-        grad(:,:,:,1)=grad(:,:,:,1) * (-lm%invkpa(1:cb%mz,1:cb%mx,1:cb%my))
+        corr(:,:,:,1)=corr(:,:,:,1) * (-lm%invkpa(1:cb%mz,1:cb%mx,1:cb%my))
 
-        grad(:,:,:,2)=grad(:,:,:,2) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
+        corr(:,:,:,2)=corr(:,:,:,2) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
         
         !set unit of gkpa to be [m3], grho to be [m5/s2]
         !such that after multiplied by (kpa_max-kpa_min) or (rho_max-rho_min) (will be done in m_parameterization.f90)
         !the unit of parameter update is [Nm], same as Lagrangian
         !and the unit of gradient scaling factor is [1/N/m] (in m_scaling.f90)
         !therefore parameters become unitless
-        grad=grad*m%cell_size*shot%src%dt
+        corr=corr*m%cell_size*shot%src%dt
         
     end subroutine
     
@@ -913,9 +913,9 @@ use m_computebox, only: cb
         
     end subroutine
     
-    subroutine corr3d_flat_gkpa(sf_vx,sf_vy,sf_vz,rf_p,&
-                                corr,                  &
-                                ifz,ilz,ifx,ilx,ify,ily)
+    subroutine corr3d_flat_moduli(sf_vx,sf_vy,sf_vz,rf_p,&
+                                  corr,                  &
+                                  ifz,ilz,ifx,ilx,ify,ily)
         real,dimension(*) :: sf_vx,sf_vy,sf_vz,rf_p
         real,dimension(*) :: corr
         
@@ -977,9 +977,9 @@ use m_computebox, only: cb
         
     end subroutine
 
-    subroutine corr2d_flat_gkpa(sf_vx,sf_vz,rf_p,&
-                                corr,            &
-                                ifz,ilz,ifx,ilx)
+    subroutine corr2d_flat_moduli(sf_vx,sf_vz,rf_p,&
+                                  corr,            &
+                                  ifz,ilz,ifx,ilx)
         real,dimension(*) :: sf_vx,sf_vz,rf_p
         real,dimension(*) :: corr
         
@@ -1031,9 +1031,9 @@ use m_computebox, only: cb
 
     end subroutine
     
-    subroutine corr3d_flat_grho(sf_p,rf_vx,rf_vy,rf_vz,&
-                                corr,                  &
-                                ifz,ilz,ifx,ilx,ify,ily)
+    subroutine corr3d_flat_density(sf_p,rf_vx,rf_vy,rf_vz,&
+                                   corr,                  &
+                                   ifz,ilz,ifx,ilx,ify,ily)
         real,dimension(*) :: sf_p,rf_vx,rf_vy,rf_vz
         real,dimension(*) :: corr
         
@@ -1100,9 +1100,9 @@ use m_computebox, only: cb
         
     end subroutine
     
-    subroutine corr2d_flat_grho(sf_p,rf_vx,rf_vz,&
-                                corr,            &
-                                ifz,ilz,ifx,ilx)
+    subroutine corr2d_flat_density(sf_p,rf_vx,rf_vz,&
+                                   corr,            &
+                                   ifz,ilz,ifx,ilx)
         real,dimension(*) :: sf_p,rf_vx,rf_vz
         real,dimension(*) :: corr
         

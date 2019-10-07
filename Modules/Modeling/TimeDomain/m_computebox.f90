@@ -37,7 +37,7 @@ use m_shot
         
         real velmin, velmax
         
-        real,dimension(:,:,:),allocatable :: vp,rho,eps,del
+        real,dimension(:,:,:),allocatable :: vp,vs,rho,eps,del
         real,dimension(:),allocatable :: b_x,b_y,b_z,a_x,a_y,a_z
         real,dimension(:,:,:,:),allocatable :: gradient,image
         
@@ -115,12 +115,14 @@ use m_shot
         
         !models in computebox
         call alloc(cb%vp, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(cb%vs, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(cb%rho,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(cb%eps,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(cb%del,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
         !model -> computebox
         call m2cb(shape(m%vp), m%vp, cb%vp)
+        call m2cb(shape(m%vs), m%vs, cb%vs)
         call m2cb(shape(m%rho),m%rho,cb%rho)
         call m2cb(shape(m%eps),m%eps,cb%eps)
         call m2cb(shape(m%del),m%del,cb%del)
@@ -129,6 +131,7 @@ use m_shot
         !!top
         do iz=cb%ifz,0
             cb%vp (iz,:,:)=cb%vp (1,:,:)
+            cb%vs (iz,:,:)=cb%vs (1,:,:)
             cb%rho(iz,:,:)=cb%rho(1,:,:)
             cb%eps(iz,:,:)=cb%eps(1,:,:)
             cb%del(iz,:,:)=cb%del(1,:,:)
@@ -136,6 +139,7 @@ use m_shot
         !!bottom
         do iz=cb%mz+1,cb%ilz
             cb%vp (iz,:,:)=cb%vp (cb%mz,:,:)
+            cb%vs (iz,:,:)=cb%vs (cb%mz,:,:)
             cb%rho(iz,:,:)=cb%rho(cb%mz,:,:)
             cb%eps(iz,:,:)=cb%eps(cb%mz,:,:)
             cb%del(iz,:,:)=cb%del(cb%mz,:,:)
@@ -143,6 +147,7 @@ use m_shot
         !!left
         do ix=cb%ifx,0
             cb%vp (:,ix,:)=cb%vp (:,1,:)
+            cb%vs (:,ix,:)=cb%vs (:,1,:)
             cb%rho(:,ix,:)=cb%rho(:,1,:)
             cb%eps(:,ix,:)=cb%eps(:,1,:)
             cb%del(:,ix,:)=cb%del(:,1,:)
@@ -150,6 +155,7 @@ use m_shot
         !!right
         do ix=cb%mx+1,cb%ilx
             cb%vp (:,ix,:)=cb%vp (:,cb%mx,:)
+            cb%vs (:,ix,:)=cb%vs (:,cb%mx,:)
             cb%rho(:,ix,:)=cb%rho(:,cb%mx,:)
             cb%eps(:,ix,:)=cb%eps(:,cb%mx,:)
             cb%del(:,ix,:)=cb%del(:,cb%mx,:)
@@ -157,6 +163,7 @@ use m_shot
         !!front
         do iy=cb%ify,0
             cb%vp (:,:,iy)=cb%vp (:,:,1)
+            cb%vs (:,:,iy)=cb%vs (:,:,1)
             cb%rho(:,:,iy)=cb%rho(:,:,1)
             cb%eps(:,:,iy)=cb%eps(:,:,1)
             cb%del(:,:,iy)=cb%del(:,:,1)
@@ -164,17 +171,19 @@ use m_shot
         !!rear
         do iy=cb%my+1,cb%ily
             cb%vp (:,:,iy)=cb%vp (:,:,cb%my)
+            cb%vs (:,:,iy)=cb%vs (:,:,cb%my)
             cb%rho(:,:,iy)=cb%rho(:,:,cb%my)
             cb%eps(:,:,iy)=cb%eps(:,:,cb%my)
             cb%del(:,:,iy)=cb%del(:,:,cb%my)
         enddo
         
-        cb%velmin=minval(cb%vp)  !can be mud Vs in future..
+        cb%velmin=min(minval(cb%vp), minval(cb%vs,cb%vs>0.))
         cb%velmax=maxval(cb%vp*sqrt(1.+2*cb%eps)) !I don't think negative epsilon value can play a role here..
         
         call hud('Computebox value ranges:')
         if(mpiworld%iproc==0) then
             write(*,*)'vp' ,minval(cb%vp),maxval(cb%vp)
+            write(*,*)'vs' ,minval(cb%vs),maxval(cb%vs)
             write(*,*)'rho',minval(cb%rho),maxval(cb%rho)
             write(*,*)'ip' ,minval(cb%vp*cb%rho),maxval(cb%vp*cb%rho)
             write(*,*)'eps',minval(cb%eps),maxval(cb%eps)

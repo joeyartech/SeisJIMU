@@ -266,7 +266,7 @@ use m_boundarystore
             !gkpa: sfield%s_dt^it+0.5 \dot rfield%s^it+0.5
             !use sfield%v^it+1 to compute sfield%s_dt^it+0.5, as backward step 4
             if(present(gradient)) then
-                call field_correlation_gkpa(it,sfield,rfield,sbloom(:,it),rbloom(:,it),gradient(:,:,:,1))
+                call field_correlation_moduli(it,sfield,rfield,sbloom(:,it),rbloom(:,it),gradient)
             endif
             call cpu_time(t6)
             tt6=tt6+t6-t5
@@ -303,7 +303,7 @@ use m_boundarystore
             !grho: sfield%v_dt^it \dot rfield%v^it
             !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
             if(present(gradient)) then
-                call field_correlation_grho(it,sfield,rfield,sbloom(:,it),rbloom(:,it),gradient(:,:,:,2))
+                call field_correlation_density(it,sfield,rfield,sbloom(:,it),rbloom(:,it),gradient)
             endif
             call cpu_time(t12)
             tt12=tt12+t12-t11
