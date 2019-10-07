@@ -56,7 +56,7 @@ use m_computebox, only: cb
     !========= use before propagation =================
     subroutine field_print_info
         !modeling method
-        call hud('WaveEq : Time-domain 2D P-SV (elastic) isotropic modeling')
+        call hud('WaveEq : Time-domain 2D (elastic) 1st-order P-SV isotropic system')
         call hud('Staggered-grid Finite-difference method')
         call hud('O(x4,t2) stencil')
         
@@ -105,15 +105,27 @@ use m_computebox, only: cb
         call alloc(lm%lda, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
         call alloc(lm%mu,  [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
         
+        !Staggered grid:
+        ! <---*---<  
+        ! |   |   |  * integer point   - lda+2mu,lda 
+        ! x---v---x  < half in x dir   - buox  
+        ! |   |   |  v half in z dir   - buoz
+        ! <---*---<  x half in x&z dir - mu
+        !     (grid index)      (real index)
+        ! lda+2mu,lda(iz,ix) := lda+2mu,lda[iz,ix]
+        !        buox(iz,ix) := buox[iz,ix-0.5]
+        !        buoz(iz,ix) := buoz[iz-0.5,ix]
+        !          mu(iz,ix) :=   mu[iz-0.5,ix-0.5]
+
         lm%ldap2mu(:,:)=cb%vp(:,:,1)*cb%vp(:,:,1)*cb%rho(:,:,1)
         lm%lda(:,:)=lm%ldap2mu(:,:)-2*cb%vs(:,:,1)*cb%vs(:,:,1)*cb%rho(:,:,1)
 
         do ix=cb%ifx,cb%ilx
         do iz=cb%ifz,cb%ilz
-            lm%mu(iz,ix)=0.25*( lm%ldap2mu(iz,ix)  -lm%lda(iz,ix)   &
-                               +lm%ldap2mu(iz+1,ix)-lm%lda(iz+1,ix) &
-                               +lm%ldap2mu(iz+1,ix+1)-lm%lda(iz+1,ix+1) &
-                               +lm%ldap2mu(iz,ix+1)-lm%lda(iz,ix+1) )*0.5  !good approx?
+            lm%mu(iz,ix)=0.25*( lm%ldap2mu(iz-1,ix-1)-lm%lda(iz-1,ix-1) &
+                               +lm%ldap2mu(iz  ,ix-1)-lm%lda(iz  ,ix-1) &
+                               +lm%ldap2mu(iz+1,ix  )-lm%lda(iz+1,ix  ) &
+                               +lm%ldap2mu(iz+1,ix  )-lm%lda(iz+1,ix  ) )*0.5  !good approx?
         end do
         end do
 
@@ -248,13 +260,13 @@ use m_computebox, only: cb
         type(t_field) :: f
         integer,dimension(6) :: bl
         
-        ifz=bl(1)+2
+        ifz=bl(1)+1
         ilz=bl(2)-1
-        ifx=bl(3)+2
+        ifx=bl(3)+1
         ilx=bl(4)-1
-        ify=bl(5)+2
-        ily=bl(6)-1
-        
+        !ify=bl(5)+1
+        !ily=bl(6)-1
+                
         if(m%if_freesurface) ifz=max(ifz,1)
         
         call fd2d_flat_velocities(f%vx,f%vz,f%sxx,f%szz,f%sxz,                                &
@@ -262,11 +274,22 @@ use m_computebox, only: cb
                                   lm%buox,lm%buoz,                                            &
                                   ifz,ilz,ifx,ilx,time_dir*shot%src%dt)
         
+        dz_dx = dz/dx
+
         !apply free surface boundary condition if needed
         !free surface is located at [1,ix,iy] level
-        !so symmetric mirroring: vz[0.5]=vz[1.5], ie. vz(1,ix,iy)=vz(2,ix,iy) -> dp(1,ix,iy)=0.
+        !dszz=0 -> -(lda+2mu)dvz_dz = lda dvx_dx
+        !       -> -ldap2mu[1,ix]*(vz[1.5,ix]-vz[0.5,ix])/dz = lda[1,ix]*(vx[1,ix-0.5]-vx[1,ix+0.5])/dx
+        !       -> -ldap2mu(1,ix)*(vz(2  ,ix)-vz(1  ,ix))/dz = lda(1,ix)*(vx(1,ix    )-vx(1,ix+1  ))/dx
+        !       ->  ldap2mu(1,ix)*(vz(1  ,ix)-vz(2  ,ix))/dz = lda(1,ix)*(vx(1,ix    )-vx(1,ix+1  ))/dx
+        !dsxz=0 -> -dvx_dz = dvz_dx
+        !dsxz=0 -> -(vx[2,ix+0.5]-vx[0,ix+0.5])/2dz = ( (vz[0.5,ix]+vz[1.5,ix])/2 - (vz[0.5,ix+1]+vz[1.5,ix+1])/2 )/dx
+        !       -> -(vx(2,ix+1  )-vx(0,ix+1  ))/2dz = ( (vz(1  ,ix)+vz(2  ,ix))/2 - (vz(1  ,ix+1)+vz(2  ,ix+1))/2 )/dx
+        !       ->  (vx(0,ix+1  )-vx(2,ix+1  ))/ dz = ( (vz(1  ,ix)+vz(2  ,ix))   -  vz(1  ,ix+1)-vz(2  ,ix+1)    )/dx
         if(m%if_freesurface) then
-            f%vz(1,:)=f%vz(2,:)
+            do ix=ifx,ilx
+                f%vz(1,ix)= f%vz(2,ix) + lm%lda(1,ix)*(f%vx(1,ix)-f%vx(1,ix+1))*dz_dx/lm%ldap2mu(1,ix)
+                f%vx(0,ix)= f%vx(2,ix) + (f%vz(1,ix)+f%vz(2,ix)-f%vz(1,ix+1)-f%vz(2,ix+1))*dz_dx/lm%ldap2mu(1,ix) !toy2del says this condition is not needed
 !             !$omp parallel default (shared)&
 !             !$omp private(ix,iy,i)
 !             !$omp do schedule(dynamic)
@@ -279,6 +302,7 @@ use m_computebox, only: cb
 !             enddo
 !             !$omp enddo
 !             !$omp end parallel
+            enddo
         endif
         
     end subroutine
@@ -319,26 +343,26 @@ use m_computebox, only: cb
         integer,dimension(6) :: bl
         
         ifz=bl(1)+1
-        ilz=bl(2)-2
+        ilz=bl(2)-1
         ifx=bl(3)+1
-        ilx=bl(4)-2
-        ify=bl(5)+1
-        ily=bl(6)-2
+        ilx=bl(4)-1
+        !ify=bl(5)+1
+        !ily=bl(6)-1
         
         if(m%if_freesurface) ifz=max(ifz,1)
         
         call fd2d_flat_stresses(f%vx,f%vz,f%sxx,f%szz,f%sxz,                            &
                                 f%cpml_dvx_dx,f%cpml_dvz_dz,f%cpml_dvx_dz,f%cpml_dvz_dx,&
-                                lm%ldap2mu,lm%lda,lm%mu,                                      &
+                                lm%ldap2mu,lm%lda,lm%mu,                                &
                                 ifz,ilz,ifx,ilx,time_dir*shot%src%dt)
         
         !apply free surface boundary condition if needed
-        !free surface is located at [1,ix,iy] level
-        !so explicit boundary condition: p(1,ix,iy)=0
-        !and antisymmetric mirroring: p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
+        !free surface is located at [1,ix] level
+        !so explicit boundary condition: szz(1,ix)=0
+        !and antisymmetric mirroring: sxz[0.5,ix-0.5]=-sxz[1.5,ix-0.5] -> sxz(1,ix)=-sxz(2,ix)
         if(m%if_freesurface) then
             f%szz(1,:)=0.
-            f%szz(0,:)=-f%szz(2,:)
+            f%sxz(1,:)=-f%sxz(2,:)
 !             !$omp parallel default (shared)&
 !             !$omp private(ix,iy,i)
 !             !$omp do schedule(dynamic)
@@ -682,13 +706,16 @@ use m_computebox, only: cb
         nz=cb%nz
         nx=cb%nx
         
-        dp_dx=0.; dp_dz=0.
+        dsxx_dx=0.
+        dsxz_dz=0.
+        dsxz_dx=0.
+        dszz_dz=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
-        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,&
-        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,&
-        !$omp         dp_dx,dp_dz)
+        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
+        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
+        !$omp         dsxx_dx,dsxz_dz,dsxz_dx,dszz_dz)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
         
@@ -701,32 +728,34 @@ use m_computebox, only: cb
                 izm1_ix=i-1  !iz-1,ix
                 iz_ix  =i    !iz,ix
                 izp1_ix=i+1  !iz+1,ix
+                izp2_ix=i+1  !iz+2,ix
                 
                 iz_ixm2=i  -2*nz  !iz,ix-2
                 iz_ixm1=i    -nz  !iz,ix-1
                 iz_ixp1=i    +nz  !iz,ix+1
+                iz_ixp2=i  +2*nz  !iz,ix+2
                 
+
                 dsxx_dx= c1x*(sxx(iz_ix)-sxx(iz_ixm1)) +c2x*(sxx(iz_ixp1)-sxx(iz_ixm2))
-                dsxz_dx= c1x*(sxz(iz_ix)-sxz(iz_ixm1)) +c2x*(sxz(iz_ixp1)-sxz(iz_ixm2))
-                dsxz_dz= c1z*(sxz(iz_ix)-sxz(izm1_ix)) +c2z*(sxz(izp1_ix)-sxz(izm2_ix))
+                dsxz_dz= c1z*(sxz(izp1_ix)-sxz(iz_ix)) +c2z*(sxz(izp2_ix)-sxz(izm1_ix))
+
+                dsxz_dx= c1x*(sxz(iz_ixp1)-sxz(iz_ix)) +c2x*(sxz(iz_ixp2)-sxz(iz_ixm1))
                 dszz_dz= c1z*(szz(iz_ix)-szz(izm1_ix)) +c2z*(szz(izp1_ix)-szz(izm2_ix))
-                
+                                
                 !cpml
-                cpml_dsxx_dx(iz_ix)= cb%a_x(ix)*dsxx_dx + cb%b_x(ix)*cpml_dsxx_dx(iz_ix)
-                dsxx_dx=dsxx_dx*k_x + cpml_dsxx_dx(iz_ix)
+                cpml_dsxx_dx(i)= cb%a_x(ix)*dsxx_dx + cb%b_x(ix)*cpml_dsxx_dx(i)
+                cpml_dsxz_dz(i)= cb%a_z(iz)*dsxz_dz + cb%b_z(iz)*cpml_dsxz_dz(i)
+                cpml_dsxz_dx(i)= cb%a_x(ix)*dsxz_dx + cb%b_x(ix)*cpml_dsxz_dx(i)
+                cpml_dszz_dz(i)= cb%a_z(iz)*dszz_dz + cb%b_z(iz)*cpml_dszz_dz(i)
 
-                cpml_dsxz_dx(iz_ix)= cb%a_x(ix)*dsxz_dx + cb%b_x(ix)*cpml_dsxz_dx(iz_ix)
-                dsxz_dx=dsxz_dx*k_x + cpml_dsxz_dx(iz_ix)
-                
-                cpml_dsxz_dz(iz_ix)= cb%a_z(iz)*dsxz_dz + cb%b_z(iz)*cpml_dsxz_dz(iz_ix)
-                dsxz_dz=dsxz_dz*k_z + cpml_dsxz_dz(iz_ix)
-
-                cpml_dszz_dz(iz_ix)= cb%a_z(iz)*dszz_dz + cb%b_z(iz)*cpml_dszz_dz(iz_ix)
-                dszz_dz=dszz_dz*k_z + cpml_dszz_dz(iz_ix)
+                dsxx_dx=dsxx_dx*k_x + cpml_dsxx_dx(i)
+                dsxz_dz=dsxz_dz*k_z + cpml_dsxz_dz(i)
+                dsxz_dx=dsxz_dx*k_x + cpml_dsxz_dx(i)
+                dszz_dz=dszz_dz*k_z + cpml_dszz_dz(i)
                 
                 !velocity
-                vx(iz_ix)=vx(iz_ix) + dt*buox(iz_ix)*(dsxx_dx+dsxz_dz)
-                vz(iz_ix)=vz(iz_ix) + dt*buoz(iz_ix)*(dsxz_dx+dszz_dz)
+                vx(i)=vx(i) + dt*buox(i)*(dsxx_dx+dsxz_dz)
+                vz(i)=vz(i) + dt*buoz(i)*(dsxz_dx+dszz_dz)
                 
             enddo
             
@@ -747,13 +776,17 @@ use m_computebox, only: cb
         nz=cb%nz
         nx=cb%nx
         
-        dvx_dx=0.;dvz_dz=0.
+        dvx_dx=0.
+        dvz_dz=0.
+        dvx_dz=0.
+        dvz_dx=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
-        !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-        !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dvx_dx,dvz_dz)
+        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
+        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
+        !$omp         dvx_dx,dvz_dz,&
+        !$omp         dvx_dz,dvz_dx)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
         
@@ -762,37 +795,45 @@ use m_computebox, only: cb
             
                 i=(iz-cb%ifz)+(ix-cb%ifx)*nz+1
                 
+                izm2_ix=i-2  !iz-2,ix
                 izm1_ix=i-1  !iz-1,ix
                 iz_ix  =i    !iz,ix
                 izp1_ix=i+1  !iz+1,ix
                 izp2_ix=i+2  !iz+2,ix
                 
-                iz_ixm1=i  -nz  !iz,ix-1
-                iz_ixp1=i  +nz  !iz,ix+1
+                iz_ixm2=i  -2*nz !iz,ix-2
+                iz_ixm1=i  -nz   !iz,ix-1
+                iz_ixp1=i  +nz   !iz,ix+1
                 iz_ixp2=i  +2*nz !iz,ix+2
                 
+
                 dvx_dx= c1x*(vx(iz_ixp1)-vx(iz_ix))  +c2x*(vx(iz_ixp2)-vx(iz_ixm1))
-                dvx_dz= c1z*(vx(izp1_ix)-vx(iz_ix))  +c2z*(vx(izp2_ix)-vx(izm1_ix))
                 dvz_dz= c1z*(vz(izp1_ix)-vz(iz_ix))  +c2z*(vz(izp2_ix)-vz(izm1_ix))
-                dvz_dx= c1x*(vz(iz_ixp1)-vz(iz_ix))  +c2x*(vz(iz_ixp2)-vz(iz_ixm1))
                 
                 !cpml
-                cpml_dvx_dx(iz_ix)=cb%b_x(ix)*cpml_dvx_dx(iz_ix)+cb%a_x(ix)*dvx_dx
+                cpml_dvx_dx(i)=cb%b_x(ix)*cpml_dvx_dx(i)+cb%a_x(ix)*dvx_dx
+                cpml_dvz_dz(i)=cb%b_z(iz)*cpml_dvz_dz(i)+cb%a_z(iz)*dvz_dz
+
                 dvx_dx=dvx_dx*k_x + cpml_dvx_dx(iz_ix)
-
-                cpml_dvx_dz(iz_ix)=cb%b_z(ix)*cpml_dvx_dz(iz_ix)+cb%a_z(ix)*dvx_dz
-                dvx_dz=dvx_dz*k_z + cpml_dvx_dz(iz_ix)
-                
-                cpml_dvz_dz(iz_ix)=cb%b_z(iz)*cpml_dvz_dz(iz_ix)+cb%a_z(iz)*dvz_dz
                 dvz_dz=dvz_dz*k_z + cpml_dvz_dz(iz_ix)
-
-                cpml_dvz_dx(iz_ix)=cb%b_x(iz)*cpml_dvz_dx(iz_ix)+cb%a_x(iz)*dvz_dx
-                dvz_dx=dvz_dx*k_x + cpml_dvz_dx(iz_ix)
                 
-                !stresses
-                sxx(iz_ix) = sxx(iz_ix) + dt * (ldap2mu(iz_ix)*dvx_dx+lda(iz_ix)    *dvz_dz)
-                szz(iz_ix) = szz(iz_ix) + dt * (lda(iz_ix)    *dvx_dx+ldap2mu(iz_ix)*dvz_dz)
-                sxz(iz_ix) = sxz(iz_ix) + dt *       mu(iz_ix)*(dvx_dz+dvz_dx)
+                !normal stresses
+                sxx(i) = sxx(i) + dt * (ldap2mu(i)*dvx_dx+lda(i)    *dvz_dz)
+                szz(i) = szz(i) + dt * (lda(i)    *dvx_dx+ldap2mu(i)*dvz_dz)
+
+
+                dvx_dz= c1z*(vx(iz_ix)-vx(izm1_ix))  +c2z*(vx(izp1_ix)-vx(izm2_ix))
+                dvz_dx= c1x*(vz(iz_ix)-vz(iz_ixm1))  +c2x*(vz(iz_ixp1)-vz(iz_ixm2))
+
+                !cpml
+                cpml_dvx_dz(i)=cb%b_z(ix)*cpml_dvx_dz(i)+cb%a_z(ix)*dvx_dz
+                cpml_dvz_dx(i)=cb%b_x(iz)*cpml_dvz_dx(i)+cb%a_x(iz)*dvz_dx
+
+                dvx_dz=dvx_dz*k_z + cpml_dvx_dz(i)
+                dvz_dx=dvz_dx*k_x + cpml_dvz_dx(i)
+
+                !shear stress
+                sxz(i) = sxz(i) + dt * mu(i)*(dvx_dz+dvz_dx)
                 
             enddo
             
@@ -816,14 +857,17 @@ use m_computebox, only: cb
         
         sf_dvx_dx=0.
         sf_dvz_dz=0.
-        sf_dvz_dx_p_dvx_dz=0.
+        sf_4_dvzdx_p_dvxdz=0.
+        rf_4_sxz=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
-        !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-        !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
+        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
+        !$omp         iz_ixm2,izp1_ixm2,iz_ixm1,izp1_ixm1,&
+        !$omp         izm2_ixp1,izm1_ixp1,iz_ixp1,izp1_ixp1,izp2_ixp1,&
+        !$omp         iz_ixp2,izp1_ixp2,&
         !$omp         sf_dvx_dx,sf_dvz_dz,&
-        !$omp         sf_dvz_dx_p_dvx_dz)
+        !$omp         sf_4_dvzdx_p_dvxdz,rf_4_sxz)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
         
@@ -832,29 +876,56 @@ use m_computebox, only: cb
                 
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
                 j=(iz-1)     +(ix-1)     *cb%mz !corr has no boundary layers
+
+                izm2_ix= i-2  !iz-2,ix
+                izm1_ix= i-1  !iz-1,ix
+                iz_ix  = i    !iz  ,ix
+                izp1_ix= i+1  !iz+1,ix
+                izp2_ix= i+2  !iz+2,ix
+
+                iz_ixm2  = i    -2*nz  !iz  ,ix-2
+                izp1_ixm2= i+1  -2*nz  !iz+1,ix-2
+                iz_ixm1  = i      -nz  !iz  ,ix-1
+                izp1_ixm1= i+1    -nz  !iz+1,ix-1
+
+                izm2_ixp1= i-2    +nz  !iz-2,ix+1
+                izm1_ixp1= i-1    +nz  !iz-1,ix+1
+                iz_ixp1  = i      +nz  !iz  ,ix+1
+                izp1_ixp1= i+1    +nz  !iz+1,ix+1
+                izp2_ixp1= i+2    +nz  !iz+2,ix+1
+
+                iz_ixp2  = i    +2*nz  !iz  ,ix+2
+                izp1_ixp2= i+1  +2*nz  !iz+1,ix+2
                 
-                izm1_ix=i-1  !iz-1,ix
-                iz_ix  =i    !iz,ix
-                izp1_ix=i+1  !iz+1,ix
-                izp2_ix=i+2  !iz+2,ix
-                
-                iz_ixm1=i    -nz  !iz,ix-1
-                iz_ixp1=i    +nz  !iz,ix+1
-                iz_ixp2=i  +2*nz  !iz,ix+2
 
                 sf_dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
                 sf_dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
 
-                sf_4_dvzdx_p_dvxdz = & !dvx_dz =
-                                     c1x*(sf_vz(iz_ixp1)-sf_vz(iz_ix)) +c2x*(sf_vz(iz_ixp2)-sf_vz(iz_ixm1)) &
-                                    +c1z*(sf_vx(izp1_ix)-sf_vx(iz_ix)) +c2z*(sf_vx(izp2_ix)-sf_vx(izm1_ix))
-
                 corr_lda(j)=corr_lda(j) + ldap2mu(i)*rf_sxx(i)*sf_dvx_dx -     lda(i)*rf_sxx(i)*sf_dvz_dz &
                                         -     lda(i)*rf_szz(i)*sf_dvx_dx + ldap2mu(i)*rf_szz(i)*sf_dvz_dz
 
+
+                sf_4_dvzdx_p_dvxdz = &  !(dvz_dx+dvx_dz)(iz,ix)     [iz-0.5,ix-0.5]
+                                         c1x*(sf_vz(iz_ix)-sf_vz(iz_ixm1)) +c2x*(sf_vz(iz_ixp1)-sf_vz(iz_ixm2)) &
+                                       + c1z*(sf_vx(iz_ix)-sf_vx(izm1_ix)) +c2z*(sf_vx(izp1_ix)-sf_vx(izm2_ix)) &
+                                     & &
+                                     & & !(dvz_dx+dvx_dz)(iz,ix+1)   [iz-0.5,ix+0.5]
+                                       + c1x*(sf_vz(iz_ixp1)-sf_vz(iz_ix    )) +c2x*(sf_vz(iz_ixp2  )-sf_vz(iz_ixm1  )) &
+                                       + c1z*(sf_vx(iz_ixp1)-sf_vx(izm1_ixp1)) +c2z*(sf_vx(izp1_ixp1)-sf_vx(izm2_ixp1)) &
+                                     & &
+                                     & & !(dvz_dx+dvx_dz)(iz+1,ix)   [iz+0.5,ix-0.5]
+                                       + c1x*(sf_vz(izp1_ix)-sf_vz(izp1_ixm1)) +c2x*(sf_vz(izp1_ixp1)-sf_vz(izp1_ixm2)) &
+                                       + c1z*(sf_vx(izp1_ix)-sf_vx(iz_ix    )) +c2z*(sf_vx(izp2_ix  )-sf_vx(izm1_ix  )) &
+                                     & &
+                                     & & !(dvz_dx+dvx_dz)(iz+1,ix+1) [iz+0.5,ix+0.5]
+                                       + c1x*(sf_vz(izp1_ixp1)-sf_vz(izp1_ix)) +c2x*(sf_vz(izp1_ixp2)-sf_vz(izp1_ixm1)) &
+                                       + c1z*(sf_vx(izp1_ixp1)-sf_vx(iz_ixp1)) +c2z*(sf_vx(izp2_ixp1)-sf_vx(izm1_ixp1))
+
+                rf_4_sxz = rf_sxz(iz_ix) + rf_sxz(izp1_ix) + rf_sxz(iz_ixp1) + rf_sxz(izp1_ixp1)
+
                 corr_mu(j)=corr_mu(j) + ldap2mu(i)*rf_sxx(i)*sf_dvx_dx &
                                       + ldap2mu(i)*rf_szz(i)*sf_dvz_dz &
-                                      + 2*(lda(i)+mu(i))*rf_sxz(i)*sf_dvz_dx_p_dvx_dz
+                                      + 2.*(lda(i)+mu(i))*0.0625*rf_4_sxz*sf_4_dvzdx_p_dvxdz
                 
             end do
             
@@ -874,14 +945,18 @@ use m_computebox, only: cb
         
         nz=cb%nz
         
-        sf_2vx=0.; sf_2vz=0.
-        rf_2vx=0.; rf_2vz=0.
+        sf_2_dsxxdx_p_dsxzdz=0.
+        sf_2_dsxzdx_p_dszzdz=0.
+        rf_2vx=0.
+        rf_2vz=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         sf_2vx,sf_2vz,&
+        !$omp         iz_ixm2,iz_ixm1,izp1_ixm1,&
+        !$omp         izm1_ixp1,iz_ixp1,izp1_ixp1,izp2_ixp1,&
+        !$omp         iz_ixp2,izp1_ixp2,&
+        !$omp         sf_2_dsxxdx_p_dsxzdz,sf_2_dsxzdx_p_dszzdz,&
         !$omp         rf_2vx,rf_2vz)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
@@ -898,29 +973,38 @@ use m_computebox, only: cb
                 izp1_ix=i+1  !iz+1,ix
                 izp2_ix=i+2  !iz+2,ix
                 
-                iz_ixm2=i  -2*nz  !iz,ix-2
-                iz_ixm1=i    -nz  !iz,ix-1
-                iz_ixp1=i    +nz  !iz,ix+1
-                iz_ixp2=i  +2*nz  !iz,ix+2
-                
-                sf_2vx =& !dsxx_dx = 
-                        & c1x*(sf_sxx(iz_ix  )-sf_sxx(iz_ixm1)) +c2x*(sf_sxx(iz_ixp1)-sf_sxx(iz_ixm2)) &
-                        &+c1x*(sf_sxx(iz_ixp1)-sf_sxx(iz_ix  )) +c2x*(sf_sxx(iz_ixp2)-sf_sxx(iz_ixm1)) &
-                          !dsxz_dz =
-                        &+c1z*(sf_sxz(iz_ix  )-sf_sxz(izm1_ix)) +c2z*(sf_sxz(izp1_ix)-sf_sxz(izm2_ix)) &
-                        &+c1z*(sf_sxz(izp1_ix)-sf_sxz(iz_ix  )) +c2z*(sf_sxz(izp2_ix)-sf_sxz(izm1_ix))
+                iz_ixm2  = i    -2*nz  !iz  ,ix-2
+                iz_ixm1  = i      -nz  !iz  ,ix-1
+                izp1_ixm1= i+1    -nz  !iz-1,ix-1
 
-                sf_2vz =& !dszz_dz =
-                        & c1z*(sf_szz(iz_ix  )-sf_szz(izm1_ix)) +c2z*(sf_szz(izp1_ix)-sf_szz(izm2_ix)) &
-                        &+c1z*(sf_szz(izp1_ix)-sf_szz(iz_ix  )) +c2z*(sf_szz(izp2_ix)-sf_szz(izm1_ix)) &
-                          !dsxz_dx =
-                        &+c1x*(sf_sxz(iz_ix  )-sf_sxz(iz_ixm1)) +c2x*(sf_sxz(iz_ixp1)-sf_sxz(iz_ixm2)) &
-                        &+c1x*(sf_sxz(iz_ixp1)-sf_sxz(iz_ix  )) +c2x*(sf_sxz(iz_ixp2)-sf_sxz(iz_ixm1))
+                izm1_ixp1= i-1    +nz  !iz-1,ix+1
+                iz_ixp1  = i      +nz  !iz  ,ix+1
+                izp1_ixp1= i+1    +nz  !iz+1,ix+1
+                izp2_ixp1= i+2    +nz  !iz+2,ix+1
 
-                rf_2vx = rf_vx(iz_ix) +rf_vx(iz_ixp1)
-                rf_2vz = rf_vz(iz_ix) +rf_vz(izp1_ix)
+                iz_ixp2  = i    +2*nz  !iz ,ix+2
+                izp1_ixp2= i+1  +2*nz  !iz+1,ix+2
                 
-                corr(j)=corr(j) + 0.25*( sf_2vx*rf_2vx + sf_2vz*rf_2vz )
+                sf_2_dsxxdx_p_dsxzdz = &   !(dsxx_dx+dsxz_dz)(iz,ix)   [iz,ix-0.5]
+                                           c1x*(sf_sxx(iz_ix  )-sf_sxx(iz_ixm1)) +c2x*(sf_sxx(iz_ixp1)-sf_sxx(iz_ixm2)) &
+                                         + c1z*(sf_sxz(izp1_ix)-sf_sxz(iz_ix  )) +c2z*(sf_sxz(izp2_ix)-sf_sxz(izm1_ix)) &
+                                       & &
+                                       & & !(dsxx_dx+dsxz_dz)(iz,ix+1) [iz,ix+0.5]
+                                         + c1x*(sf_sxx(iz_ixp1  )-sf_sxx(iz_ix  )) +c2x*(sf_sxx(iz_ixp2  )-sf_sxx(iz_ixm1  )) &
+                                         + c1z*(sf_sxz(izp1_ixp1)-sf_sxz(iz_ixp1)) +c2z*(sf_sxz(izp2_ixp1)-sf_sxz(izm1_ixp1))
+
+                sf_2_dsxzdx_p_dszzdz = &  !(dsxz_dx+dszz_dz)(iz,ix)   [iz-0.5,ix]
+                                           c1x*(sf_sxz(iz_ixp1)-sf_sxz(iz_ix  )) +c2x*(sf_sxz(iz_ixp2)-sf_sxz(iz_ixm1)) &
+                                         + c1z*(sf_szz(iz_ix  )-sf_szz(izm1_ix)) +c2z*(sf_szz(izp1_ix)-sf_szz(izm1_ix)) &
+                                       & &
+                                       & & !(dsxz_dx+dszz_dz)(iz+1,ix) [iz+0.5,ix]
+                                         + c1x*(sf_sxz(izp1_ixp1)-sf_sxz(izp1_ix)) +c2x*(sf_sxz(izp1_ixp2)-sf_sxz(izp1_ixm1)) &
+                                         + c1z*(sf_szz(izp1_ix  )-sf_szz(iz_ix  )) +c2z*(sf_szz(izp2_ix  )-sf_szz(iz_ix    ))
+
+                rf_2vx = rf_vx(iz_ix) + rf_vx(iz_ixp1)
+                rf_2vz = rf_vz(iz_ix) + rf_vz(izp1_ix)
+                
+                corr(j)=corr(j) + 0.25*( rf_2vx*sf_2_dsxxdx_p_dsxzdz + rf_2vz*sf_2_dsxzdx_p_dszzdz )
                 
             enddo
             
