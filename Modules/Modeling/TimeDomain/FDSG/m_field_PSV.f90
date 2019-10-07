@@ -56,9 +56,10 @@ use m_computebox, only: cb
     !========= use before propagation =================
     subroutine field_print_info
         !modeling method
-        call hud('WaveEq : Time-domain 2D (elastic) 1st-order P-SV isotropic system')
+        call hud('WaveEq : Time-domain isotropic P-SV (2D elastic) system')
+        call hud('1st-order Velocity-Stress formulation')
         call hud('Staggered-grid Finite-difference method')
-        call hud('O(x4,t2) stencil')
+        call hud('Cartesian O(x4,t2) stencil')
         
         !stencil constant
         if(mpiworld%is_master) then

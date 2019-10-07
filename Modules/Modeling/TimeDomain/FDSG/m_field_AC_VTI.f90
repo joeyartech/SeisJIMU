@@ -60,9 +60,10 @@ use m_computebox, only: cb
     !========= use before propagation =================
     subroutine field_print_info
         !modeling method
-        call hud('WaveEq : Time-domain ACoustic VTI modeling')
+        call hud('WaveEq : Time-domain VTI 2D/3D (pseudo) ACoustic system')
+        call hud('1st-order Velocity-Stress formulation')
         call hud('Staggered-grid Finite-difference method')
-        call hud('O(x4,t2) stencil')
+        call hud('Cartesian O(x4,t2) stencil')
         
         !stencil constant
         if(mpiworld%is_master) then
