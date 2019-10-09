@@ -79,18 +79,18 @@ use m_computebox, only: cb
     
     subroutine check_discretization
         !grid dispersion condition
-        if (5.*m%dmax > cb%velmin/shot%src%fpeak/2.) then  !FDTDo4 rule
+        if (5.*m%cell_diagonal > cb%velmin/shot%src%fpeak/2.) then  !FDTDo4 rule
             write(*,*) 'WARNING: Shot# '//shot%cindex//' can have grid dispersion!'
-            write(*,*) 'Shot# '//shot%cindex//' 5*dx, velmin, fpeak:',5.*m%dmax, cb%velmin,shot%src%fpeak
+            write(*,*) 'Shot# '//shot%cindex//' 5*dx, velmin, fpeak:',5.*m%cell_diagonal, cb%velmin,shot%src%fpeak
         endif
         
         !CFL condition
-        cfl = cb%velmax*shot%src%dt/m%dmin * (sqrt(2.)*(sum(abs(fdcoeff_o4))))! ~0.606
+        cfl = cb%velmax*shot%src%dt*m%cell_inv_diagonal*sum(abs(fdcoeff_o4))! ~0.606
         if(mpiworld%is_master) write(*,*) 'CFL value:',CFL
         
         if(cfl>1.) then
             write(*,*) 'ERROR: CFL > 1 on shot# '//shot%cindex//'!'
-            write(*,*) 'Shot# '//shot%cindex//' velmax, dt, dx:',cb%velmax,shot%src%dt,m%dmin
+            write(*,*) 'Shot# '//shot%cindex//' velmax, dt, dx:',cb%velmax,shot%src%dt,m%cell_inv_diagonal
             stop
         endif
         
@@ -99,7 +99,12 @@ use m_computebox, only: cb
     !========= use inside propagation =================
     
     subroutine init_field_localmodel
-    
+        
+        ! (Lamé par)  (Rock phy)  (Seismic wave)     (Voigt)
+        ! lda+2mu   = K+0.75G   = rho*Vp^2         = c11=c33
+        ! lda       = K-2/3G    = rho*(Vp^2-2Vs^2) = c13
+        ! mu        = G         = rho*Vs^2         = c44
+
         call alloc(lm%buox,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
         call alloc(lm%buoz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
         call alloc(lm%ldap2mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
@@ -129,6 +134,7 @@ use m_computebox, only: cb
                                +lm%ldap2mu(iz  ,ix  )-lm%lda(iz  ,ix  ) )*0.5  !good approx?
         end do
         end do
+        !need harmonic average for better accuracy (SOFI2D Users Guide, p. 8)
 
         lm%mu(cb%ifz,:)=lm%mu(cb%ifz+1,:)
         lm%mu(:,cb%ifx)=lm%mu(:,cb%ifx+1)
@@ -265,11 +271,11 @@ use m_computebox, only: cb
         integer,dimension(6) :: bl
 
         ifz=bl(1)+2
-        ilz=bl(2)-2
+        ilz=bl(2)-1
         ifx=bl(3)+2
-        ilx=bl(4)-2
+        ilx=bl(4)-1
         !ify=bl(5)+2
-        !ily=bl(6)-2
+        !ily=bl(6)-1
                 
         if(m%if_freesurface) ifz=max(ifz,1)
         
@@ -702,7 +708,7 @@ use m_computebox, only: cb
         !the unit of parameter update is [Nm], same as Lagrangian
         !and the unit of gradient scaling factor is [1/N/m] (in m_scaling.f90)
         !therefore parameters become unitless
-        corr=corr*m%cell_size*shot%src%dt
+        corr=corr*m%cell_volume*shot%src%dt
         
     end subroutine
     
@@ -756,10 +762,10 @@ use m_computebox, only: cb
                 dszz_dz= c1z*(szz(iz_ix)-szz(izm1_ix)) +c2z*(szz(izp1_ix)-szz(izm2_ix))
                                 
                 !cpml
-                cpml_dsxx_dx(i)= cb%a_x(ix)*dsxx_dx + cb%b_x(ix)*cpml_dsxx_dx(i)
-                cpml_dsxz_dz(i)= cb%a_z(iz)*dsxz_dz + cb%b_z(iz)*cpml_dsxz_dz(i)
-                cpml_dsxz_dx(i)= cb%a_x(ix)*dsxz_dx + cb%b_x(ix)*cpml_dsxz_dx(i)
-                cpml_dszz_dz(i)= cb%a_z(iz)*dszz_dz + cb%b_z(iz)*cpml_dszz_dz(i)
+                cpml_dsxx_dx(i)= cb%b_x(ix)*cpml_dsxx_dx(i) + cb%a_x(ix)*dsxx_dx
+                cpml_dsxz_dz(i)= cb%b_z(iz)*cpml_dsxz_dz(i) + cb%a_z(iz)*dsxz_dz 
+                cpml_dsxz_dx(i)= cb%b_x(ix)*cpml_dsxz_dx(i) + cb%a_x(ix)*dsxz_dx
+                cpml_dszz_dz(i)= cb%b_z(iz)*cpml_dszz_dz(i) + cb%a_z(iz)*dszz_dz
 
                 dsxx_dx=dsxx_dx*k_x + cpml_dsxx_dx(i)
                 dsxz_dz=dsxz_dz*k_z + cpml_dsxz_dz(i)
