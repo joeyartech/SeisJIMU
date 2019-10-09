@@ -210,7 +210,7 @@ use m_shot
         real,parameter :: k_y = 1.
         real,parameter :: k_z = 1.
         real,parameter :: npower=2.
-        real,parameter :: rcoef=0.001
+        real,parameter :: Rcoef=0.001
     
         real                            :: thickness_pml_x,thickness_pml_y,thickness_pml_z
         real                            :: d0_x,d0_y,d0_z
@@ -230,9 +230,9 @@ use m_shot
         thickness_pml_y = cb%nboundarylayer * m%dy
         thickness_pml_z = cb%nboundarylayer * m%dz
         
-        d0_x = -(npower+1)/(2.*thickness_pml_x) * cb%velmax * log(rcoef)
-        d0_y = -(npower+1)/(2.*thickness_pml_y) * cb%velmax * log(rcoef) 
-        d0_z = -(npower+1)/(2.*thickness_pml_z) * cb%velmax * log(rcoef)    
+        d0_x = -(npower+1)/(2.*thickness_pml_x) * cb%velmax * log(Rcoef)  ! ref or max vp?
+        d0_y = -(npower+1)/(2.*thickness_pml_y) * cb%velmax * log(Rcoef) 
+        d0_z = -(npower+1)/(2.*thickness_pml_z) * cb%velmax * log(Rcoef)    
 !         if(mpiworld%is_master)  write(*,*) 'Coeff d0 in CPML',d0_z,d0_y,d0_x
 
         call alloc(alpha_prime_x,[cb%ifx,cb%ilx])
@@ -249,7 +249,7 @@ use m_shot
         call alloc(cb%a_y,[cb%ify,cb%ily])
         call alloc(cb%b_z,[cb%ifz,cb%ilz])
         call alloc(cb%a_z,[cb%ifz,cb%ilz])
-        
+
         !---damping in the x direction
         ! origin of the pml layer (position of right edge minus thickness, in meters)
         xoriginleft = 0.
@@ -266,7 +266,6 @@ use m_shot
                 abscissa_normalized = abscissa_in_pml / thickness_pml_x
                 d_x(i) = d0_x * abscissa_normalized**npower
                 alpha_prime_x(i) = alpha_max_pml * (1. - abscissa_normalized)
-            !  cb%icpml(:,i,:)=.true.
             endif
 
             !---right edge
@@ -276,7 +275,6 @@ use m_shot
                 abscissa_normalized = abscissa_in_pml / thickness_pml_x
                 d_x(i) = d0_x * abscissa_normalized**npower
                 alpha_prime_x(i) = alpha_max_pml * (1.- abscissa_normalized)
-            !  cb%icpml(:,i,:)=.true.
             endif
 
             !just in case ?
@@ -377,6 +375,13 @@ use m_shot
         deallocate(d_x)
         deallocate(d_y)
         deallocate(d_z)
+
+        
+open(99,file='cb%bz_az',access='direct',recl=4*cb%nz)
+write(99,rec=1) cb%b_z
+write(99,rec=2) cb%a_z
+close(99)
+        
         
     end subroutine
     

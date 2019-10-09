@@ -30,7 +30,7 @@ use m_boundarystore
     subroutine init_propagator(if_will_do_rfield)
         logical,optional :: if_will_do_rfield
         
-        integer,parameter :: initial_half_bloom=5 !half bloom width at ift, should involve hicks points
+        integer,parameter :: initial_half_bloomwidth=5 !half bloom width at ift, should involve hicks points
         
         !time window
         ift=1
@@ -60,12 +60,12 @@ use m_boundarystore
         distx = cb%velmax * dt / m%dx
         disty = cb%velmax * dt / m%dy
         
-        ! sbloom(1,1)=shot%src%iz -initial_half_bloom
-        ! sbloom(2,1)=shot%src%iz +initial_half_bloom
-        ! sbloom(3,1)=shot%src%ix -initial_half_bloom
-        ! sbloom(4,1)=shot%src%ix +initial_half_bloom
-        ! sbloom(5,1)=shot%src%iy -initial_half_bloom
-        ! sbloom(6,1)=shot%src%iy +initial_half_bloom
+        ! sbloom(1,1)=shot%src%iz -initial_half_bloomwidth
+        ! sbloom(2,1)=shot%src%iz +initial_half_bloomwidth
+        ! sbloom(3,1)=shot%src%ix -initial_half_bloomwidth
+        ! sbloom(4,1)=shot%src%ix +initial_half_bloomwidth
+        ! sbloom(5,1)=shot%src%iy -initial_half_bloomwidth
+        ! sbloom(6,1)=shot%src%iy +initial_half_bloomwidth
         ! do it=2,nt
         !     sbloom(1,it)=max(nint(sbloom(1,1)-it*distz),cb%ifz) !bloombox ifz
         !     sbloom(2,it)=min(nint(sbloom(2,1)+it*distz),cb%ilz) !bloombox ilz
@@ -84,12 +84,12 @@ sbloom(4,:)=cb%ilx
         
         if(present(if_will_do_rfield)) then
         if(if_will_do_rfield) then
-            rbloom(1,nt)=minval(shot%rcv(:)%iz) -initial_half_bloom
-            rbloom(2,nt)=maxval(shot%rcv(:)%iz) +initial_half_bloom
-            rbloom(3,nt)=minval(shot%rcv(:)%ix) -initial_half_bloom
-            rbloom(4,nt)=maxval(shot%rcv(:)%ix) +initial_half_bloom
-            rbloom(5,nt)=minval(shot%rcv(:)%iy) -initial_half_bloom
-            rbloom(6,nt)=maxval(shot%rcv(:)%iy) +initial_half_bloom
+            rbloom(1,nt)=minval(shot%rcv(:)%iz) -initial_half_bloomwidth
+            rbloom(2,nt)=maxval(shot%rcv(:)%iz) +initial_half_bloomwidth
+            rbloom(3,nt)=minval(shot%rcv(:)%ix) -initial_half_bloomwidth
+            rbloom(4,nt)=maxval(shot%rcv(:)%ix) +initial_half_bloomwidth
+            rbloom(5,nt)=minval(shot%rcv(:)%iy) -initial_half_bloomwidth
+            rbloom(6,nt)=maxval(shot%rcv(:)%iy) +initial_half_bloomwidth
             do it=nt-1,1,-1
                 it_fwd=nt-it+1
                 rbloom(1,it)=max(nint(rbloom(1,nt)-it_fwd*distz),cb%ifz) !bloombox ifz

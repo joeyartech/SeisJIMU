@@ -123,18 +123,21 @@ use m_computebox, only: cb
         !        buoz(iz,ix) := buoz[iz-0.5,ix]
         !          mu(iz,ix) :=   mu[iz-0.5,ix-0.5]
 
-        lm%ldap2mu(:,:)=cb%vp(:,:,1)*cb%vp(:,:,1)*cb%rho(:,:,1)
-        lm%lda(:,:)=lm%ldap2mu(:,:)-2*cb%vs(:,:,1)*cb%vs(:,:,1)*cb%rho(:,:,1)
-
-        do ix=cb%ifx+1,cb%ilx
-        do iz=cb%ifz+1,cb%ilz
-            lm%mu(iz,ix)=0.25*( lm%ldap2mu(iz-1,ix-1)-lm%lda(iz-1,ix-1) &
-                               +lm%ldap2mu(iz-1,ix  )-lm%lda(iz-1,ix  ) &
-                               +lm%ldap2mu(iz  ,ix-1)-lm%lda(iz  ,ix-1) &
-                               +lm%ldap2mu(iz  ,ix  )-lm%lda(iz  ,ix  ) )*0.5  !good approx?
-        end do
-        end do
-        !need harmonic average for better accuracy (SOFI2D Users Guide, p. 8)
+lm%ldap2mu(:,:)=cb%vp(:,:,1)*cb%vp(:,:,1)*cb%rho(:,:,1)
+    lm%lda(:,:)=(cb%vp(:,:,1)*cb%vp(:,:,1)-2.*cb%vs(:,:,1)*cb%vs(:,:,1))*cb%rho(:,:,1)
+     lm%mu(:,:)=cb%vs(:,:,1)*cb%vs(:,:,1)*cb%rho(:,:,1)
+        !lm%ldap2mu(:,:)=cb%vp(:,:,1)*cb%vp(:,:,1)*cb%rho(:,:,1)
+        !lm%lda(:,:)=lm%ldap2mu(:,:)-2*cb%vs(:,:,1)*cb%vs(:,:,1)*cb%rho(:,:,1)
+        !
+        !do ix=cb%ifx+1,cb%ilx
+        !do iz=cb%ifz+1,cb%ilz
+        !    lm%mu(iz,ix)=0.25*( lm%ldap2mu(iz-1,ix-1)-lm%lda(iz-1,ix-1) &
+        !                       +lm%ldap2mu(iz-1,ix  )-lm%lda(iz-1,ix  ) &
+        !                       +lm%ldap2mu(iz  ,ix-1)-lm%lda(iz  ,ix-1) &
+        !                       +lm%ldap2mu(iz  ,ix  )-lm%lda(iz  ,ix  ) )*0.5  !good approx?
+        !end do
+        !end do
+        !!need harmonic average for better accuracy (SOFI2D Users Guide, p. 8)
 
         lm%mu(cb%ifz,:)=lm%mu(cb%ifz+1,:)
         lm%mu(:,cb%ifx)=lm%mu(:,cb%ifx+1)
@@ -149,6 +152,30 @@ use m_computebox, only: cb
 
         lm%buoz(cb%ifz,:)=1./cb%rho(cb%ifz,:,1)
         lm%buox(:,cb%ifx)=1./cb%rho(:,cb%ifx,1)
+
+print*,'lm value range:'
+print*,'ldap2mu,lda,mu:'
+print*,minval(lm%ldap2mu),maxval(lm%ldap2mu)
+print*,minval(lm%lda),maxval(lm%lda)
+print*,minval(lm%mu),maxval(lm%mu)
+print*,'buox,buoz:'
+print*,minval(lm%buox),maxval(lm%buox)
+print*,minval(lm%buoz),maxval(lm%buoz)
+open(99,file='lm%ldap2mu',access='direct',recl=4*cb%n)
+write(99,rec=1)lm%ldap2mu
+close(99)
+open(99,file='lm%lda',access='direct',recl=4*cb%n)
+write(99,rec=1)lm%lda
+close(99)
+open(99,file='lm%mu',access='direct',recl=4*cb%n)
+write(99,rec=1)lm%mu
+close(99)
+open(99,file='lm%buox',access='direct',recl=4*cb%n)
+write(99,rec=1)lm%buox
+close(99)
+open(99,file='lm%buoz',access='direct',recl=4*cb%n)
+write(99,rec=1)lm%buoz
+close(99)
 
     end subroutine
     
@@ -365,7 +392,7 @@ use m_computebox, only: cb
                                 f%cpml_dvx_dx,f%cpml_dvz_dz,f%cpml_dvx_dz,f%cpml_dvz_dx,&
                                 lm%ldap2mu,lm%lda,lm%mu,                                &
                                 ifz,ilz,ifx,ilx,time_dir*shot%src%dt)
-        
+
         !apply free surface boundary condition if needed
         !free surface is located at [1,ix] level
         !so explicit boundary condition: szz(1,ix)=0
@@ -821,8 +848,8 @@ use m_computebox, only: cb
                 izp2_ix=i+2  !iz+2,ix
                 
                 iz_ixm2=i  -2*nz !iz,ix-2
-                iz_ixm1=i  -nz   !iz,ix-1
-                iz_ixp1=i  +nz   !iz,ix+1
+                iz_ixm1=i    -nz !iz,ix-1
+                iz_ixp1=i    +nz !iz,ix+1
                 iz_ixp2=i  +2*nz !iz,ix+2
                 
 
@@ -845,8 +872,8 @@ use m_computebox, only: cb
                 dvz_dx= c1x*(vz(iz_ix)-vz(iz_ixm1))  +c2x*(vz(iz_ixp1)-vz(iz_ixm2))
 
                 !cpml
-                cpml_dvx_dz(i)=cb%b_z(ix)*cpml_dvx_dz(i)+cb%a_z(ix)*dvx_dz
-                cpml_dvz_dx(i)=cb%b_x(iz)*cpml_dvz_dx(i)+cb%a_x(iz)*dvz_dx
+                cpml_dvx_dz(i)=cb%b_z(iz)*cpml_dvx_dz(i)+cb%a_z(iz)*dvx_dz
+                cpml_dvz_dx(i)=cb%b_x(ix)*cpml_dvz_dx(i)+cb%a_x(ix)*dvz_dx
 
                 dvx_dz=dvx_dz*k_z + cpml_dvx_dz(i)
                 dvz_dx=dvz_dx*k_x + cpml_dvz_dx(i)
