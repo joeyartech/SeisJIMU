@@ -15,9 +15,8 @@ use m_arrayop
         real ref_vp,ref_vs,ref_rho,ref_kpa
 
         real velmin, velmax
-        real dmin, dmax
         
-        real cell_size
+        real cell_volume, cell_diagonal, cell_inv_diagonal
         
     end type
     
@@ -48,11 +47,15 @@ use m_arrayop
             m%is_cubic=.true.
         endif
         
-        m%cell_size=m%dx*m%dy*m%dz
+        m%cell_volume=m%dx*m%dy*m%dz
         
-        m%dmin=min(m%dx,m%dz); if(m%is_cubic) m%dmin=min(m%dmin,m%dy) !maybe m%d should be sqrt(m%dx**2+m%dy**2+m%dz**2)
-        m%dmax=max(m%dx,m%dz); if(m%is_cubic) m%dmax=max(m%dmax,m%dy)
-        
+        m%cell_diagonal=sqrt(m%dx**2+m%dz**2)
+        if(m%is_cubic) m%cell_diagonal=sqrt(m%dx**2+m%dy**2+m%dz**2)
+
+        m%cell_inv_diagonal=sqrt(m%dx**(-2) + m%dz**(-2))
+        if(m%is_cubic) m%cell_inv_diagonal=sqrt(m%dx**(-2) + m%dy**(-2) + m%dz**(-2))
+
+
         n=4*m%nx*m%ny*m%nz
         
         !read models
