@@ -214,7 +214,7 @@ use m_shot
     
         real                            :: thickness_pml_x,thickness_pml_y,thickness_pml_z
         real                            :: d0_x,d0_y,d0_z
-        real,dimension(:),allocatable   :: alpha_prime_x,alpha_prime_y,alpha_prime_z
+        real,dimension(:),allocatable   :: alpha_x,alpha_y,alpha_z
         real,dimension(:),allocatable   :: d_x,d_y,d_z
         real                            :: xoriginleft,xoriginright
         real                            :: yoriginleft,yoriginright
@@ -235,9 +235,9 @@ use m_shot
         d0_z = -(npower+1)/(2.*thickness_pml_z) * cb%velmax * log(Rcoef)    
 !         if(mpiworld%is_master)  write(*,*) 'Coeff d0 in CPML',d0_z,d0_y,d0_x
 
-        call alloc(alpha_prime_x,[cb%ifx,cb%ilx])
-        call alloc(alpha_prime_y,[cb%ify,cb%ily])
-        call alloc(alpha_prime_z,[cb%ifz,cb%ilz])
+        call alloc(alpha_x,[cb%ifx,cb%ilx])
+        call alloc(alpha_y,[cb%ify,cb%ily])
+        call alloc(alpha_z,[cb%ifz,cb%ilz])
         
         call alloc(d_x,[cb%ifx,cb%ilx])
         call alloc(d_y,[cb%ify,cb%ily])
@@ -265,7 +265,7 @@ use m_shot
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_x
                 d_x(i) = d0_x * abscissa_normalized**npower
-                alpha_prime_x(i) = alpha_max_pml * (1. - abscissa_normalized)
+                alpha_x(i) = alpha_max_pml * (1. - abscissa_normalized)
             endif
 
             !---right edge
@@ -274,17 +274,17 @@ use m_shot
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_x
                 d_x(i) = d0_x * abscissa_normalized**npower
-                alpha_prime_x(i) = alpha_max_pml * (1.- abscissa_normalized)
+                alpha_x(i) = alpha_max_pml * (1.- abscissa_normalized)
             endif
 
             !just in case ?
-            if(alpha_prime_x(i) < 0.) alpha_prime_x(i) = 0.
+            if(alpha_x(i) < 0.) alpha_x(i) = 0.
 
             !c-pml parameters
-            cb%b_x(i) = exp(- (d_x(i) / k_x + alpha_prime_x(i)) * shot%src%dt)
+            cb%b_x(i) = exp(- (d_x(i) / k_x + alpha_x(i)) * shot%src%dt)
 
             !this to avoid division by zero outside the pml
-            if(abs(d_x(i)) > 1.e-6) cb%a_x(i) = d_x(i) * (cb%b_x(i) - 1.) / (k_x * (d_x(i) + k_x * alpha_prime_x(i)))
+            if(abs(d_x(i)) > 1.e-6) cb%a_x(i) = d_x(i) * (cb%b_x(i) - 1.) / (k_x * (d_x(i) + k_x * alpha_x(i)))
 
         enddo
 
@@ -303,7 +303,7 @@ use m_shot
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_y
                 d_y(i) = d0_y * abscissa_normalized**npower
-                alpha_prime_y(i) = alpha_max_pml * (1. - abscissa_normalized)
+                alpha_y(i) = alpha_max_pml * (1. - abscissa_normalized)
             !  cb%icpml(:,:,i)=.true.
             endif
 
@@ -313,18 +313,18 @@ use m_shot
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_y
                 d_y(i) = d0_y * abscissa_normalized**npower
-                alpha_prime_y(i) = alpha_max_pml * (1.- abscissa_normalized)
+                alpha_y(i) = alpha_max_pml * (1.- abscissa_normalized)
                 ! cb%icpml(:,:,i)=.true.
             endif
 
             !just in case ?
-            if(alpha_prime_y(i) < 0.) alpha_prime_y(i) = 0.
+            if(alpha_y(i) < 0.) alpha_y(i) = 0.
 
             !c-pml parameters
-            cb%b_y(i) = exp(- (d_y(i) / k_y + alpha_prime_y(i)) * shot%src%dt)
+            cb%b_y(i) = exp(- (d_y(i) / k_y + alpha_y(i)) * shot%src%dt)
 
             !this to avoid division by zero outside the pml
-            if(abs(d_y(i)) > 1.e-6) cb%a_y(i) = d_y(i) * (cb%b_y(i) - 1.) / (k_y * (d_y(i) + k_y * alpha_prime_y(i)))
+            if(abs(d_y(i)) > 1.e-6) cb%a_y(i) = d_y(i) * (cb%b_y(i) - 1.) / (k_y * (d_y(i) + k_y * alpha_y(i)))
 
         enddo
 
@@ -343,7 +343,7 @@ use m_shot
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_z
                 d_z(i) = d0_z * abscissa_normalized**npower
-                alpha_prime_z(i) = alpha_max_pml * (1. - abscissa_normalized)
+                alpha_z(i) = alpha_max_pml * (1. - abscissa_normalized)
                 ! cb%icpml(i,:,:)=.true.
             endif
             
@@ -353,35 +353,28 @@ use m_shot
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_z
                 d_z(i) = d0_z * abscissa_normalized**npower
-                alpha_prime_z(i) = alpha_max_pml * (1. - abscissa_normalized)
+                alpha_z(i) = alpha_max_pml * (1. - abscissa_normalized)
             !  cb%icpml(i,:,:)=.true.
             endif
             
             !just in case ?
-            if(alpha_prime_z(i) < 0.) alpha_prime_z(i) = 0.
+            if(alpha_z(i) < 0.) alpha_z(i) = 0.
             
             !c-pml parameters
-            cb%b_z(i) = exp(- (d_z(i) / k_z + alpha_prime_z(i)) * shot%src%dt)
+            cb%b_z(i) = exp(- (d_z(i) / k_z + alpha_z(i)) * shot%src%dt)
             
             !this to avoid division by zero outside the pml
-            if(abs(d_z(i)) > 1.e-6) cb%a_z(i) = d_z(i) * (cb%b_z(i) - 1.) / (k_z * (d_z(i) + k_z * alpha_prime_z(i)))
+            if(abs(d_z(i)) > 1.e-6) cb%a_z(i) = d_z(i) * (cb%b_z(i) - 1.) / (k_z * (d_z(i) + k_z * alpha_z(i)))
             
         enddo
         
         !no more need these variables
-        deallocate(alpha_prime_x)
-        deallocate(alpha_prime_y)
-        deallocate(alpha_prime_z)
+        deallocate(alpha_x)
+        deallocate(alpha_y)
+        deallocate(alpha_z)
         deallocate(d_x)
         deallocate(d_y)
         deallocate(d_z)
-
-        
-open(99,file='cb%bz_az',access='direct',recl=4*cb%nz)
-write(99,rec=1) cb%b_z
-write(99,rec=2) cb%a_z
-close(99)
-        
         
     end subroutine
     

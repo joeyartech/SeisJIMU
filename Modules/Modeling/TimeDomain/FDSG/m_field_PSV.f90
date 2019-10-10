@@ -99,6 +99,7 @@ use m_computebox, only: cb
     !========= use inside propagation =================
     
     subroutine init_field_localmodel
+        real,dimension(:,:),allocatable :: temp_mu
         
         ! (Lamé par)  (Rock phy)  (Seismic wave)     (Voigt)
         ! lda+2mu   = K+0.75G   = rho*Vp^2         = c11=c33
@@ -108,8 +109,10 @@ use m_computebox, only: cb
         call alloc(lm%buox,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
         call alloc(lm%buoz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
         call alloc(lm%ldap2mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
-        call alloc(lm%lda, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
+        call alloc(lm%lda, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)       
         call alloc(lm%mu,  [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
+
+        call alloc(temp_mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
         
         !Staggered grid:
         ! <---*---<  
@@ -123,24 +126,35 @@ use m_computebox, only: cb
         !        buoz(iz,ix) := buoz[iz-0.5,ix]
         !          mu(iz,ix) :=   mu[iz-0.5,ix-0.5]
 
-lm%ldap2mu(:,:)=cb%vp(:,:,1)*cb%vp(:,:,1)*cb%rho(:,:,1)
-    lm%lda(:,:)=(cb%vp(:,:,1)*cb%vp(:,:,1)-2.*cb%vs(:,:,1)*cb%vs(:,:,1))*cb%rho(:,:,1)
-     lm%mu(:,:)=cb%vs(:,:,1)*cb%vs(:,:,1)*cb%rho(:,:,1)
-        !lm%ldap2mu(:,:)=cb%vp(:,:,1)*cb%vp(:,:,1)*cb%rho(:,:,1)
-        !lm%lda(:,:)=lm%ldap2mu(:,:)-2*cb%vs(:,:,1)*cb%vs(:,:,1)*cb%rho(:,:,1)
-        !
-        !do ix=cb%ifx+1,cb%ilx
-        !do iz=cb%ifz+1,cb%ilz
-        !    lm%mu(iz,ix)=0.25*( lm%ldap2mu(iz-1,ix-1)-lm%lda(iz-1,ix-1) &
-        !                       +lm%ldap2mu(iz-1,ix  )-lm%lda(iz-1,ix  ) &
-        !                       +lm%ldap2mu(iz  ,ix-1)-lm%lda(iz  ,ix-1) &
-        !                       +lm%ldap2mu(iz  ,ix  )-lm%lda(iz  ,ix  ) )*0.5  !good approx?
-        !end do
-        !end do
-        !!need harmonic average for better accuracy (SOFI2D Users Guide, p. 8)
+        lm%ldap2mu(:,:)=cb%rho(:,:,1)*cb%vp(:,:,1)**2
+           temp_mu(:,:)=cb%rho(:,:,1)*cb%vs(:,:,1)**2
+
+        lm%lda=lm%ldap2mu-2.*temp_mu
+
+
+        temp_mu=1./temp_mu
+
+        do ix=cb%ifx+1,cb%ilx
+        do iz=cb%ifz+1,cb%ilz
+                lm%mu(iz,ix)=4./( temp_mu(iz-1,ix-1) &
+                                 +temp_mu(iz-1,ix  ) &
+                                 +temp_mu(iz  ,ix-1) &
+                                 +temp_mu(iz  ,ix  ))
+        end do
+        end do
+
+        where(isnan(lm%mu) .or. abs(lm%mu)>huge(1.))
+            lm%mu=0.
+        endwhere
 
         lm%mu(cb%ifz,:)=lm%mu(cb%ifz+1,:)
         lm%mu(:,cb%ifx)=lm%mu(:,cb%ifx+1)
+
+        !check mu values
+        if(mpiworld%is_master) then
+            write(*,*) 'lm%mu sanity:', minval(lm%mu),maxval(lm%mu), any(isnan(lm%mu)),any(abs(lm%mu)>huge(1.))
+        endif
+        
 
         do iz=cb%ifz+1,cb%ilz
             lm%buoz(iz,:)=0.5/cb%rho(iz,:,1)+0.5/cb%rho(iz-1,:,1)
@@ -153,29 +167,7 @@ lm%ldap2mu(:,:)=cb%vp(:,:,1)*cb%vp(:,:,1)*cb%rho(:,:,1)
         lm%buoz(cb%ifz,:)=1./cb%rho(cb%ifz,:,1)
         lm%buox(:,cb%ifx)=1./cb%rho(:,cb%ifx,1)
 
-print*,'lm value range:'
-print*,'ldap2mu,lda,mu:'
-print*,minval(lm%ldap2mu),maxval(lm%ldap2mu)
-print*,minval(lm%lda),maxval(lm%lda)
-print*,minval(lm%mu),maxval(lm%mu)
-print*,'buox,buoz:'
-print*,minval(lm%buox),maxval(lm%buox)
-print*,minval(lm%buoz),maxval(lm%buoz)
-open(99,file='lm%ldap2mu',access='direct',recl=4*cb%n)
-write(99,rec=1)lm%ldap2mu
-close(99)
-open(99,file='lm%lda',access='direct',recl=4*cb%n)
-write(99,rec=1)lm%lda
-close(99)
-open(99,file='lm%mu',access='direct',recl=4*cb%n)
-write(99,rec=1)lm%mu
-close(99)
-open(99,file='lm%buox',access='direct',recl=4*cb%n)
-write(99,rec=1)lm%buox
-close(99)
-open(99,file='lm%buoz',access='direct',recl=4*cb%n)
-write(99,rec=1)lm%buoz
-close(99)
+        deallocate(temp_mu)
 
     end subroutine
     
@@ -203,16 +195,16 @@ close(99)
         type(t_field) :: f
         character(*) :: name
         
-        if(mpiworld%is_master) write(*,*) name//' sample values:',minval(f%szz),maxval(f%szz)
+        if(mpiworld%is_master) write(*,*) name//' sample values:',minval(f%vz),maxval(f%vz)
         
         !if(any(f%p-1.==f%p)) then !this is not a good numerical judgement..
         !    write(*,*) 'ERROR: '//name//' values become +-Infinity on Shot# '//shot%cindex//' !!'
         !    stop
         !endif
-        !if(any(isnan(f%szz))) then
-        !    write(*,*) 'ERROR: '//name//' values become NaN on Shot# '//shot%cindex//' !!'
-        !    stop
-        !endif
+        if(any(isnan(f%vz))) then
+           write(*,*) 'ERROR: '//name//' values become NaN on Shot# '//shot%cindex//' !!'
+           stop
+        endif
         
     end subroutine
     
@@ -230,7 +222,7 @@ close(99)
     
     subroutine write_field(iunit,f)
         type(t_field) :: f
-        write(iunit) f%szz
+        write(iunit) f%vz
     end subroutine
     
     !========= forward propagation =================
