@@ -60,25 +60,25 @@ use m_boundarystore
         distx = cb%velmax * dt / m%dx
         disty = cb%velmax * dt / m%dy
         
-        ! sbloom(1,1)=shot%src%iz -initial_half_bloomwidth
-        ! sbloom(2,1)=shot%src%iz +initial_half_bloomwidth
-        ! sbloom(3,1)=shot%src%ix -initial_half_bloomwidth
-        ! sbloom(4,1)=shot%src%ix +initial_half_bloomwidth
-        ! sbloom(5,1)=shot%src%iy -initial_half_bloomwidth
-        ! sbloom(6,1)=shot%src%iy +initial_half_bloomwidth
-        ! do it=2,nt
-        !     sbloom(1,it)=max(nint(sbloom(1,1)-it*distz),cb%ifz) !bloombox ifz
-        !     sbloom(2,it)=min(nint(sbloom(2,1)+it*distz),cb%ilz) !bloombox ilz
-        !     sbloom(3,it)=max(nint(sbloom(3,1)-it*distx),cb%ifx) !bloombox ifx
-        !     sbloom(4,it)=min(nint(sbloom(4,1)+it*distx),cb%ilx) !bloombox ilx
-        !     sbloom(5,it)=max(nint(sbloom(5,1)-it*disty),cb%ify) !bloombox ify
-        !     sbloom(6,it)=min(nint(sbloom(6,1)+it*disty),cb%ily) !bloombox ily
-        ! enddo
+        sbloom(1,1)=shot%src%iz -initial_half_bloomwidth
+        sbloom(2,1)=shot%src%iz +initial_half_bloomwidth
+        sbloom(3,1)=shot%src%ix -initial_half_bloomwidth
+        sbloom(4,1)=shot%src%ix +initial_half_bloomwidth
+        sbloom(5,1)=shot%src%iy -initial_half_bloomwidth
+        sbloom(6,1)=shot%src%iy +initial_half_bloomwidth
+        do it=2,nt
+            sbloom(1,it)=max(nint(sbloom(1,1)-it*distz),cb%ifz) !bloombox ifz
+            sbloom(2,it)=min(nint(sbloom(2,1)+it*distz),cb%ilz) !bloombox ilz
+            sbloom(3,it)=max(nint(sbloom(3,1)-it*distx),cb%ifx) !bloombox ifx
+            sbloom(4,it)=min(nint(sbloom(4,1)+it*distx),cb%ilx) !bloombox ilx
+            sbloom(5,it)=max(nint(sbloom(5,1)-it*disty),cb%ify) !bloombox ify
+            sbloom(6,it)=min(nint(sbloom(6,1)+it*disty),cb%ily) !bloombox ily
+        enddo
 
-        sbloom(1,:)=cb%ifz
-        sbloom(2,:)=cb%ilz
-        sbloom(3,:)=cb%ifx
-        sbloom(4,:)=cb%ilx
+! sbloom(1,:)=cb%ifz
+! sbloom(2,:)=cb%ilz
+! sbloom(3,:)=cb%ifx
+! sbloom(4,:)=cb%ilx
 
         if(.not.m%is_cubic) sbloom(5:6,:)=1
         
