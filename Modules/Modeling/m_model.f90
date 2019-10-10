@@ -47,13 +47,15 @@ use m_arrayop
             m%is_cubic=.true.
         endif
         
-        m%cell_volume=m%dx*m%dy*m%dz
+        m%cell_volume = m%dx*m%dy*m%dz
         
         m%cell_diagonal=sqrt(m%dx**2+m%dz**2)
-        if(m%is_cubic) m%cell_diagonal=sqrt(m%dx**2+m%dy**2+m%dz**2)
-
         m%cell_inv_diagonal=sqrt(m%dx**(-2) + m%dz**(-2))
-        if(m%is_cubic) m%cell_inv_diagonal=sqrt(m%dx**(-2) + m%dy**(-2) + m%dz**(-2))
+
+        if(m%is_cubic) then
+            m%cell_diagonal=sqrt(m%dx**2+m%dy**2+m%dz**2)
+            m%cell_inv_diagonal=sqrt(m%dx**(-2) + m%dy**(-2) + m%dz**(-2))
+        endif
 
 
         n=4*m%nx*m%ny*m%nz

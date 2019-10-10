@@ -102,14 +102,16 @@ use m_computebox, only: cb
         real,dimension(:,:),allocatable :: temp_mu
         
         ! (Lamé par)  (Rock phy)  (Seismic wave)     (Voigt)
-        ! lda+2mu   = K+0.75G   = rho*Vp^2         = c11=c33
+        ! lda+2mu   = K+4/3G    = rho*Vp^2         = c11=c33
         ! lda       = K-2/3G    = rho*(Vp^2-2Vs^2) = c13
         ! mu        = G         = rho*Vs^2         = c44
+        !
+        ! Poisson ratio nv = (3K-2G)/(6k+2G) = 0.5-3/(6sqrt(Vp/Vs)+2)
 
         call alloc(lm%buox,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
         call alloc(lm%buoz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
         call alloc(lm%ldap2mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
-        call alloc(lm%lda, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)       
+        call alloc(lm%lda, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
         call alloc(lm%mu,  [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
 
         call alloc(temp_mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
@@ -125,6 +127,8 @@ use m_computebox, only: cb
         !        buox(iz,ix) := buox[iz,ix-0.5]
         !        buoz(iz,ix) := buoz[iz-0.5,ix]
         !          mu(iz,ix) :=   mu[iz-0.5,ix-0.5]
+
+!cb%vs=0.
 
         lm%ldap2mu(:,:)=cb%rho(:,:,1)*cb%vp(:,:,1)**2
            temp_mu(:,:)=cb%rho(:,:,1)*cb%vs(:,:,1)**2
@@ -143,18 +147,24 @@ use m_computebox, only: cb
         end do
         end do
 
-        where(isnan(lm%mu) .or. abs(lm%mu)>huge(1.))
+        where( isnan(lm%mu) .or. lm%mu==lm%mu+1. )
             lm%mu=0.
         endwhere
 
         lm%mu(cb%ifz,:)=lm%mu(cb%ifz+1,:)
         lm%mu(:,cb%ifx)=lm%mu(:,cb%ifx+1)
 
+!lm%mu=0.
+
         !check mu values
         if(mpiworld%is_master) then
-            write(*,*) 'lm%mu sanity:', minval(lm%mu),maxval(lm%mu), any(isnan(lm%mu)),any(abs(lm%mu)>huge(1.))
+            write(*,*) 'lm%mu sanity:', minval(lm%mu),maxval(lm%mu), any(isnan(lm%mu)), any(lm%mu==lm%mu+1.)
         endif
         
+if(mpiworld%is_master) then
+write(*,*) 'lm%ldap2mu sanity:', minval(lm%ldap2mu),maxval(lm%ldap2mu)
+write(*,*) 'lm%lda     sanity:', minval(lm%lda),maxval(lm%lda)
+endif
 
         do iz=cb%ifz+1,cb%ilz
             lm%buoz(iz,:)=0.5/cb%rho(iz,:,1)+0.5/cb%rho(iz-1,:,1)
@@ -195,7 +205,7 @@ use m_computebox, only: cb
         type(t_field) :: f
         character(*) :: name
         
-        if(mpiworld%is_master) write(*,*) name//' sample values:',minval(f%vz),maxval(f%vz)
+        if(mpiworld%is_master) write(*,*) name//' sample values:',minval(f%sxz),maxval(f%sxz)
         
         !if(any(f%p-1.==f%p)) then !this is not a good numerical judgement..
         !    write(*,*) 'ERROR: '//name//' values become +-Infinity on Shot# '//shot%cindex//' !!'
@@ -290,11 +300,11 @@ use m_computebox, only: cb
         integer,dimension(6) :: bl
 
         ifz=bl(1)+2
-        ilz=bl(2)-1
+        ilz=bl(2)-2
         ifx=bl(3)+2
-        ilx=bl(4)-1
+        ilx=bl(4)-2
         !ify=bl(5)+2
-        !ily=bl(6)-1
+        !ily=bl(6)-2
                 
         if(m%if_freesurface) ifz=max(ifz,1)
         
@@ -318,19 +328,7 @@ use m_computebox, only: cb
         if(m%if_freesurface) then
             do ix=ifx,ilx
                 f%vz(1,ix)= f%vz(2,ix) + lm%lda(1,ix)*(f%vx(1,ix)-f%vx(1,ix+1))*dz_dx/lm%ldap2mu(1,ix)
-                f%vx(0,ix)= f%vx(2,ix) + (f%vz(1,ix)+f%vz(2,ix)-f%vz(1,ix+1)-f%vz(2,ix+1))*dz_dx/lm%ldap2mu(1,ix) !toy2del says this condition is not needed
-!             !$omp parallel default (shared)&
-!             !$omp private(ix,iy,i)
-!             !$omp do schedule(dynamic)
-!             do iy=ify,ily
-!             do ix=ifx,ilx
-!                 i=(1-cb%ifz) + (ix-cb%ifx)*nz + (iy-cb%ify)*nz*nx +1 !iz=1,ix,iy
-!                 
-!                 f%vz(i)=f%vz(i+1)
-!             enddo
-!             enddo
-!             !$omp enddo
-!             !$omp end parallel
+                !f%vx(0,ix)= f%vx(2,ix) + (f%vz(1,ix)+f%vz(2,ix)-f%vz(1,ix+1)-f%vz(2,ix+1))*dz_dx/lm%ldap2mu(1,ix) !toy2del says this condition is not needed
             enddo
         endif
         
@@ -392,20 +390,6 @@ use m_computebox, only: cb
         if(m%if_freesurface) then
             f%szz(1,:)=0.
             f%sxz(1,:)=-f%sxz(2,:)
-!             !$omp parallel default (shared)&
-!             !$omp private(ix,iy,i)
-!             !$omp do schedule(dynamic)
-!             do iy=ify,ily
-!             do ix=ifx,ilx
-!                 i=(1-cb%ifz) + (ix-cb%ifx)*nz + (iy-cb%ify)*nz*nx +1 !iz=1,ix,iy 
-!                 
-!                 f%p(i)=0.
-!                 
-!                 f%p(i-1)=-f%p(i+1)
-!             enddo
-!             enddo
-!             !$omp enddo
-!             !$omp end parallel
         endif
         
     end subroutine
@@ -780,11 +764,11 @@ use m_computebox, only: cb
                 dsxz_dx= c1x*(sxz(iz_ixp1)-sxz(iz_ix)) +c2x*(sxz(iz_ixp2)-sxz(iz_ixm1))
                 dszz_dz= c1z*(szz(iz_ix)-szz(izm1_ix)) +c2z*(szz(izp1_ix)-szz(izm2_ix))
                                 
-                !cpml
-                cpml_dsxx_dx(i)= cb%b_x(ix)*cpml_dsxx_dx(i) + cb%a_x(ix)*dsxx_dx
-                cpml_dsxz_dz(i)= cb%b_z(iz)*cpml_dsxz_dz(i) + cb%a_z(iz)*dsxz_dz 
-                cpml_dsxz_dx(i)= cb%b_x(ix)*cpml_dsxz_dx(i) + cb%a_x(ix)*dsxz_dx
-                cpml_dszz_dz(i)= cb%b_z(iz)*cpml_dszz_dz(i) + cb%a_z(iz)*dszz_dz
+                ! !cpml
+                ! cpml_dsxx_dx(i)= cb%b_x(ix)*cpml_dsxx_dx(i) + cb%a_x(ix)*dsxx_dx
+                ! cpml_dsxz_dz(i)= cb%b_z(iz)*cpml_dsxz_dz(i) + cb%a_z(iz)*dsxz_dz 
+                ! cpml_dsxz_dx(i)= cb%b_x(ix)*cpml_dsxz_dx(i) + cb%a_x(ix)*dsxz_dx
+                ! cpml_dszz_dz(i)= cb%b_z(iz)*cpml_dszz_dz(i) + cb%a_z(iz)*dszz_dz
 
                 dsxx_dx=dsxx_dx*k_x + cpml_dsxx_dx(i)
                 dsxz_dz=dsxz_dz*k_z + cpml_dsxz_dz(i)
@@ -848,9 +832,9 @@ use m_computebox, only: cb
                 dvx_dx= c1x*(vx(iz_ixp1)-vx(iz_ix))  +c2x*(vx(iz_ixp2)-vx(iz_ixm1))
                 dvz_dz= c1z*(vz(izp1_ix)-vz(iz_ix))  +c2z*(vz(izp2_ix)-vz(izm1_ix))
                 
-                !cpml
-                cpml_dvx_dx(i)=cb%b_x(ix)*cpml_dvx_dx(i)+cb%a_x(ix)*dvx_dx
-                cpml_dvz_dz(i)=cb%b_z(iz)*cpml_dvz_dz(i)+cb%a_z(iz)*dvz_dz
+                ! !cpml
+                ! cpml_dvx_dx(i)=cb%b_x(ix)*cpml_dvx_dx(i)+cb%a_x(ix)*dvx_dx
+                ! cpml_dvz_dz(i)=cb%b_z(iz)*cpml_dvz_dz(i)+cb%a_z(iz)*dvz_dz
 
                 dvx_dx=dvx_dx*k_x + cpml_dvx_dx(iz_ix)
                 dvz_dz=dvz_dz*k_z + cpml_dvz_dz(iz_ix)
@@ -863,15 +847,15 @@ use m_computebox, only: cb
                 dvx_dz= c1z*(vx(iz_ix)-vx(izm1_ix))  +c2z*(vx(izp1_ix)-vx(izm2_ix))
                 dvz_dx= c1x*(vz(iz_ix)-vz(iz_ixm1))  +c2x*(vz(iz_ixp1)-vz(iz_ixm2))
 
-                !cpml
-                cpml_dvx_dz(i)=cb%b_z(iz)*cpml_dvx_dz(i)+cb%a_z(iz)*dvx_dz
-                cpml_dvz_dx(i)=cb%b_x(ix)*cpml_dvz_dx(i)+cb%a_x(ix)*dvz_dx
+                ! !cpml
+                ! cpml_dvx_dz(i)=cb%b_z(iz)*cpml_dvx_dz(i)+cb%a_z(iz)*dvx_dz
+                ! cpml_dvz_dx(i)=cb%b_x(ix)*cpml_dvz_dx(i)+cb%a_x(ix)*dvz_dx
 
-                dvx_dz=dvx_dz*k_z + cpml_dvx_dz(i)
-                dvz_dx=dvz_dx*k_x + cpml_dvz_dx(i)
+                dvx_dz=dvx_dz*k_z !+ cpml_dvx_dz(i)
+                dvz_dx=dvz_dx*k_x !+ cpml_dvz_dx(i)
 
                 !shear stress
-                sxz(i) = sxz(i) + dt * mu(i)*(dvx_dz+dvz_dx)
+                sxz(i) = sxz(i) + dt * mu(i)*dvx_dz !(dvx_dz+dvz_dx)   !a bug is somewhere related to dvx_dz...
                 
             enddo
             
