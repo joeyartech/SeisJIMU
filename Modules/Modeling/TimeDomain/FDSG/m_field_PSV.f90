@@ -43,7 +43,8 @@ use m_computebox, only: cb
     end type
 
     !sampling factor
-    real,parameter :: factor_xx=0.6666667 , factor_zz=0.3333333
+    !real,parameter :: factor_xx=0.6666667 , factor_zz=0.3333333
+    real,parameter :: factor_xx=0.5 , factor_zz=0.5
     
     !hicks interpolation
     logical :: if_hicks

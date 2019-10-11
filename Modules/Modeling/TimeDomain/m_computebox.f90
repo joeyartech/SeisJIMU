@@ -210,7 +210,7 @@ use m_shot
         real,parameter :: k_y = 1.
         real,parameter :: k_z = 1.
         real,parameter :: npower=2.
-        real,parameter :: Rcoef=0.001
+        real,parameter :: Rcoef=0.0001
     
         real                            :: thickness_pml_x,thickness_pml_y,thickness_pml_z
         real                            :: d0_x,d0_y,d0_z
