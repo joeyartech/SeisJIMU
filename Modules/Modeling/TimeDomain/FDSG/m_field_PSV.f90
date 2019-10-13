@@ -765,7 +765,7 @@ use m_computebox, only: cb
                 cpml_dsxz_dx(i)= cb%b_x(ix)     *cpml_dsxz_dx(i) + cb%a_x(ix)     *dsxz_dx
                 cpml_dszz_dz(i)= cb%b_z_half(iz)*cpml_dszz_dz(i) + cb%a_z_half(iz)*dszz_dz
 
-                dsxx_dx=dsxx_dx*kappa + cpml_dsxx_dx(i)
+                dsxx_dx=dsxx_dx*kappa + cpml_dsxx_dx(i)  !as kappa=1., division is same as multiplication
                 dsxz_dz=dsxz_dz*kappa + cpml_dsxz_dz(i)
                 dsxz_dx=dsxz_dx*kappa + cpml_dsxz_dx(i)
                 dszz_dz=dszz_dz*kappa + cpml_dszz_dz(i)
