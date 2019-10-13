@@ -38,7 +38,9 @@ use m_shot
         real velmin, velmax
         
         real,dimension(:,:,:),allocatable :: vp,vs,rho,eps,del
-        real,dimension(:),allocatable :: b_x,b_y,b_z,a_x,a_y,a_z
+        real,dimension(:),allocatable :: b_x,b_x_half,a_x,a_x_half
+        real,dimension(:),allocatable :: b_y,b_y_half,a_y,a_y_half
+        real,dimension(:),allocatable :: b_z,b_z_half,a_z,a_z_half
         real,dimension(:,:,:,:),allocatable :: gradient,image
         
     end type
@@ -205,176 +207,199 @@ use m_shot
         endif
     end subroutine
     
+    !CPML implementation from Komatitsch & Martin, 2007, Geophysics
+    !code from Geodynamics or Komatitsch's GitHub site:
+    !https://github.com/geodynamics/seismic_cpml
     subroutine build_cpml
-        real,parameter :: k_x = 1.
-        real,parameter :: k_y = 1.
-        real,parameter :: k_z = 1.
+        real,parameter :: kappa = 1.
         real,parameter :: npower=2.
-        real,parameter :: Rcoef=0.0001
-    
-        real                            :: thickness_pml_x,thickness_pml_y,thickness_pml_z
-        real                            :: d0_x,d0_y,d0_z
-        real,dimension(:),allocatable   :: alpha_x,alpha_y,alpha_z
-        real,dimension(:),allocatable   :: d_x,d_y,d_z
-        real                            :: xoriginleft,xoriginright
-        real                            :: yoriginleft,yoriginright
-        real                            :: zoriginbottom,zorigintop
-        real                            :: abscissa_in_pml,abscissa_normalized  
-        real                            :: xval,yval,zval
-        real                            :: alpha_max_pml
+        real,parameter :: Rcoef=0.001
+
+        real,dimension(:),allocatable   :: alpha_x,alpha_x_half
+        real,dimension(:),allocatable   :: alpha_y,alpha_y_half
+        real,dimension(:),allocatable   :: alpha_z,alpha_z_half
+        real,dimension(:),allocatable   :: d_x,d_x_half
+        real,dimension(:),allocatable   :: d_y,d_y_half
+        real,dimension(:),allocatable   :: d_z,d_z_half
+        
         
         alpha_max_pml = 3.1415927*shot%src%fpeak
-!         if(mpiworld%is_master)  write(*,*) 'Coeff alpha_max in CPML',alpha_max_pml
-        !---thickness of the pml layer in meters
+
         thickness_pml_x = cb%nboundarylayer * m%dx
         thickness_pml_y = cb%nboundarylayer * m%dy
         thickness_pml_z = cb%nboundarylayer * m%dz
         
-        d0_x = -(npower+1)/(2.*thickness_pml_x) * cb%velmax * log(Rcoef)  ! ref or max vp?
+        d0_x = -(npower+1)/(2.*thickness_pml_x) * cb%velmax * log(Rcoef)
         d0_y = -(npower+1)/(2.*thickness_pml_y) * cb%velmax * log(Rcoef) 
-        d0_z = -(npower+1)/(2.*thickness_pml_z) * cb%velmax * log(Rcoef)    
-!         if(mpiworld%is_master)  write(*,*) 'Coeff d0 in CPML',d0_z,d0_y,d0_x
+        d0_z = -(npower+1)/(2.*thickness_pml_z) * cb%velmax * log(Rcoef)
 
-        call alloc(alpha_x,[cb%ifx,cb%ilx])
-        call alloc(alpha_y,[cb%ify,cb%ily])
-        call alloc(alpha_z,[cb%ifz,cb%ilz])
-        
-        call alloc(d_x,[cb%ifx,cb%ilx])
-        call alloc(d_y,[cb%ify,cb%ily])
-        call alloc(d_z,[cb%ifz,cb%ilz])
+        call alloc(alpha_x,[cb%ifx,cb%ilx]); call alloc(alpha_x_half,[cb%ifx,cb%ilx])
+        call alloc(alpha_y,[cb%ify,cb%ily]); call alloc(alpha_y_half,[cb%ify,cb%ily])
+        call alloc(alpha_z,[cb%ifz,cb%ilz]); call alloc(alpha_z_half,[cb%ifz,cb%ilz])
 
-        call alloc(cb%b_x,[cb%ifx,cb%ilx])
-        call alloc(cb%a_x,[cb%ifx,cb%ilx])
-        call alloc(cb%b_y,[cb%ify,cb%ily])
-        call alloc(cb%a_y,[cb%ify,cb%ily])
-        call alloc(cb%b_z,[cb%ifz,cb%ilz])
-        call alloc(cb%a_z,[cb%ifz,cb%ilz])
+        call alloc(d_x,[cb%ifx,cb%ilx]); call alloc(d_x_half,[cb%ifx,cb%ilx])
+        call alloc(d_y,[cb%ify,cb%ily]); call alloc(d_y_half,[cb%ify,cb%ily])
+        call alloc(d_z,[cb%ifz,cb%ilz]); call alloc(d_z_half,[cb%ifz,cb%ilz])
 
-        !---damping in the x direction
-        ! origin of the pml layer (position of right edge minus thickness, in meters)
-        xoriginleft = 0.
-        xoriginright = (cb%mx-1)*m%dx
+        call alloc(cb%b_x,[cb%ifx,cb%ilx]); call alloc(cb%b_x_half,[cb%ifx,cb%ilx])
+        call alloc(cb%a_x,[cb%ifx,cb%ilx]); call alloc(cb%a_x_half,[cb%ifx,cb%ilx])
+        call alloc(cb%b_y,[cb%ify,cb%ily]); call alloc(cb%b_y_half,[cb%ify,cb%ily])
+        call alloc(cb%a_y,[cb%ify,cb%ily]); call alloc(cb%a_y_half,[cb%ify,cb%ily])
+        call alloc(cb%b_z,[cb%ifz,cb%ilz]); call alloc(cb%b_z_half,[cb%ifz,cb%ilz])
+        call alloc(cb%a_z,[cb%ifz,cb%ilz]); call alloc(cb%a_z_half,[cb%ifz,cb%ilz])
 
+
+        !x dir
         do i = cb%ifx,cb%ilx
-            ! abscissa of current grid point along the damping profile
-            xval = m%dx*(i-1)
 
-            !---left edge
-            !define damping profile at the grid points
-            abscissa_in_pml = xoriginleft - xval
+            !!left edge
+            abscissa_in_pml = -(i-1)*m%dx
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_x
-                d_x(i) = d0_x * abscissa_normalized**npower
-                alpha_x(i) = alpha_max_pml * (1. - abscissa_normalized)
+                d_x(i)          = d0_x * abscissa_normalized**npower
+                alpha_x(i)      = alpha_max_pml * (1. - abscissa_normalized)
             endif
 
-            !---right edge
-            !define damping profile at the grid points
-            abscissa_in_pml = xval - xoriginright
+            !!left edge half gridpoint
+            abscissa_in_pml = -(i-1)*m%dx + m%dx/2.
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_x
-                d_x(i) = d0_x * abscissa_normalized**npower
-                alpha_x(i) = alpha_max_pml * (1.- abscissa_normalized)
+                d_x_half(i)     = d0_x * abscissa_normalized**npower
+                alpha_x_half(i) = alpha_max_pml * (1. - abscissa_normalized)
             endif
 
-            !just in case ?
-            if(alpha_x(i) < 0.) alpha_x(i) = 0.
+            !!right edge
+            abscissa_in_pml = (i-cb%mx)*m%dx
+            if(abscissa_in_pml >= 0.)then
+                abscissa_normalized = abscissa_in_pml / thickness_pml_x
+                d_x(i)          = d0_x * abscissa_normalized**npower
+                alpha_x(i)      = alpha_max_pml * (1.- abscissa_normalized)
+            endif
 
-            !c-pml parameters
-            cb%b_x(i) = exp(- (d_x(i) / k_x + alpha_x(i)) * shot%src%dt)
+            !!right edge half gridpoint
+            abscissa_in_pml = (i-cb%mx)*m%dx - m%dx/2
+            if(abscissa_in_pml >= 0.)then
+                abscissa_normalized = abscissa_in_pml / thickness_pml_x
+                d_x_half(i)     = d0_x * abscissa_normalized**npower
+                alpha_x_half(i) = alpha_max_pml * (1.- abscissa_normalized)
+            endif
 
-            !this to avoid division by zero outside the pml
-            if(abs(d_x(i)) > 1.e-6) cb%a_x(i) = d_x(i) * (cb%b_x(i) - 1.) / (k_x * (d_x(i) + k_x * alpha_x(i)))
+            !CPML parameters
+            if(alpha_x(i)     <0.) alpha_x(i)=0.
+            if(alpha_x_half(i)<0.) alpha_x_half(i)=0.
+
+            cb%b_x(i)      = exp(-(d_x(i)     /kappa+alpha_x(i)     )*shot%src%dt)
+            cb%b_x_half(i) = exp(-(d_x_half(i)/kappa+alpha_x_half(i))*shot%src%dt)
+
+            if(abs(d_x(i)     )>1e-6) cb%a_x(i)     =d_x(i)     *(cb%b_x(i)     -1.)/(kappa*(d_x(i)     +kappa*alpha_x(i)     ))
+            if(abs(d_x_half(i))>1e-6) cb%a_x_half(i)=d_x_half(i)*(cb%b_x_half(i)-1.)/(kappa*(d_x_half(i)+kappa*alpha_x_half(i)))
 
         enddo
 
-        !---damping in the y direction
-        ! origin of the pml layer (position of right edge minus thickness, in meters)
-        yoriginleft = 0.
-        yoriginright = (cb%my-1)*m%dy
 
+        !y dir
         do i = cb%ify,cb%ily
-            ! abscissa of current grid point along the damping profile
-            yval =  m%dy*(i-1)
 
-            !---left edge
-            !define damping profile at the grid points
-            abscissa_in_pml = yoriginleft - yval
+            !!front edge
+            abscissa_in_pml = -(i-1)*m%dy
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_y
-                d_y(i) = d0_y * abscissa_normalized**npower
-                alpha_y(i) = alpha_max_pml * (1. - abscissa_normalized)
-            !  cb%icpml(:,:,i)=.true.
+                d_y(i)          = d0_y * abscissa_normalized**npower
+                alpha_y(i)      = alpha_max_pml * (1. - abscissa_normalized)
             endif
 
-            !---right edge
-            !define damping profile at the grid points
-            abscissa_in_pml = yval - yoriginright
+            !!front edge half gridpoint
+            abscissa_in_pml = -(i-1)*m%dy + m%dy/2.
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_y
-                d_y(i) = d0_y * abscissa_normalized**npower
-                alpha_y(i) = alpha_max_pml * (1.- abscissa_normalized)
-                ! cb%icpml(:,:,i)=.true.
+                d_y_half(i)     = d0_y * abscissa_normalized**npower
+                alpha_y_half(i) = alpha_max_pml * (1. - abscissa_normalized)
             endif
 
-            !just in case ?
-            if(alpha_y(i) < 0.) alpha_y(i) = 0.
+            !!rear edge
+            abscissa_in_pml = (i-cb%my)*m%dy
+            if(abscissa_in_pml >= 0.)then
+                abscissa_normalized = abscissa_in_pml / thickness_pml_y
+                d_y(i)          = d0_y * abscissa_normalized**npower
+                alpha_y(i)      = alpha_max_pml * (1.- abscissa_normalized)
+            endif
 
-            !c-pml parameters
-            cb%b_y(i) = exp(- (d_y(i) / k_y + alpha_y(i)) * shot%src%dt)
+            !!rear edge half gridpoint
+            abscissa_in_pml = (i-cb%my)*m%dy - m%dy/2
+            if(abscissa_in_pml >= 0.)then
+                abscissa_normalized = abscissa_in_pml / thickness_pml_y
+                d_y_half(i)     = d0_y * abscissa_normalized**npower
+                alpha_y_half(i) = alpha_max_pml * (1.- abscissa_normalized)
+            endif
 
-            !this to avoid division by zero outside the pml
-            if(abs(d_y(i)) > 1.e-6) cb%a_y(i) = d_y(i) * (cb%b_y(i) - 1.) / (k_y * (d_y(i) + k_y * alpha_y(i)))
+            !CPML parameters
+            if(alpha_y(i)     <0.) alpha_y(i)=0.
+            if(alpha_y_half(i)<0.) alpha_y_half(i)=0.
+
+            cb%b_y(i)      = exp(-(d_y(i)     /kappa+alpha_y(i)     )*shot%src%dt)
+            cb%b_y_half(i) = exp(-(d_y_half(i)/kappa+alpha_y_half(i))*shot%src%dt)
+
+            if(abs(d_y(i)     )>1e-6) cb%a_y(i)     =d_y(i)     *(cb%b_y(i)     -1.)/(kappa*(d_y(i)     +kappa*alpha_y(i)     ))
+            if(abs(d_y_half(i))>1e-6) cb%a_y_half(i)=d_y_half(i)*(cb%b_y_half(i)-1.)/(kappa*(d_y_half(i)+kappa*alpha_y_half(i)))
 
         enddo
 
-        !---damping in the z direction
-        ! origin of the pml layer (position of right edge minus thickness, in meters)
-        zorigintop = 0.
-        zoriginbottom = (cb%mz-1)*m%dz
 
+        !z dir
         do i = cb%ifz,cb%ilz
-            ! abscissa of current grid point along the damping profile
-            zval = m%dz*(i-1)
-            
-            !---top edge
-            !define damping profile at the grid points
-            abscissa_in_pml = zorigintop - zval
+
+            !!top edge
+            abscissa_in_pml = -(i-1)*m%dz
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_z
-                d_z(i) = d0_z * abscissa_normalized**npower
-                alpha_z(i) = alpha_max_pml * (1. - abscissa_normalized)
-                ! cb%icpml(i,:,:)=.true.
+                d_z(i)          = d0_z * abscissa_normalized**npower
+                alpha_z(i)      = alpha_max_pml * (1. - abscissa_normalized)
             endif
-            
-            !---bottom edge
-            !define damping profile at the grid points
-            abscissa_in_pml = zval - zoriginbottom
+
+            !!top edge half gridpoint
+            abscissa_in_pml = -(i-1)*m%dz + m%dz/2.
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_z
-                d_z(i) = d0_z * abscissa_normalized**npower
-                alpha_z(i) = alpha_max_pml * (1. - abscissa_normalized)
-            !  cb%icpml(i,:,:)=.true.
+                d_z_half(i)     = d0_z * abscissa_normalized**npower
+                alpha_z_half(i) = alpha_max_pml * (1. - abscissa_normalized)
             endif
-            
-            !just in case ?
-            if(alpha_z(i) < 0.) alpha_z(i) = 0.
-            
-            !c-pml parameters
-            cb%b_z(i) = exp(- (d_z(i) / k_z + alpha_z(i)) * shot%src%dt)
-            
-            !this to avoid division by zero outside the pml
-            if(abs(d_z(i)) > 1.e-6) cb%a_z(i) = d_z(i) * (cb%b_z(i) - 1.) / (k_z * (d_z(i) + k_z * alpha_z(i)))
-            
+
+            !!bottom edge
+            abscissa_in_pml = (i-cb%mz)*m%dz
+            if(abscissa_in_pml >= 0.)then
+                abscissa_normalized = abscissa_in_pml / thickness_pml_z
+                d_z(i)          = d0_z * abscissa_normalized**npower
+                alpha_z(i)      = alpha_max_pml * (1.- abscissa_normalized)
+            endif
+
+            !!bottom edge half gridpoint
+            abscissa_in_pml = (i-cb%mz)*m%dz - m%dz/2
+            if(abscissa_in_pml >= 0.)then
+                abscissa_normalized = abscissa_in_pml / thickness_pml_z
+                d_z_half(i)     = d0_z * abscissa_normalized**npower
+                alpha_z_half(i) = alpha_max_pml * (1.- abscissa_normalized)
+            endif
+
+            !CPML parameters
+            if(alpha_z(i)     <0.) alpha_z(i)=0.
+            if(alpha_z_half(i)<0.) alpha_z_half(i)=0.
+
+            cb%b_z(i)      = exp(-(d_z(i)     /kappa+alpha_z(i)     )*shot%src%dt)
+            cb%b_z_half(i) = exp(-(d_z_half(i)/kappa+alpha_z_half(i))*shot%src%dt)
+
+            if(abs(d_z(i)     )>1e-6) cb%a_z(i)     =d_z(i)     *(cb%b_z(i)     -1.)/(kappa*(d_z(i)     +kappa*alpha_z(i)     ))
+            if(abs(d_z_half(i))>1e-6) cb%a_z_half(i)=d_z_half(i)*(cb%b_z_half(i)-1.)/(kappa*(d_z_half(i)+kappa*alpha_z_half(i)))
+
         enddo
+
         
         !no more need these variables
-        deallocate(alpha_x)
-        deallocate(alpha_y)
-        deallocate(alpha_z)
-        deallocate(d_x)
-        deallocate(d_y)
-        deallocate(d_z)
+        deallocate(alpha_x,alpha_x_half)
+        deallocate(alpha_y,alpha_y_half)
+        deallocate(alpha_z,alpha_z_half)
+        deallocate(d_x,d_x_half)
+        deallocate(d_y,d_y_half)
+        deallocate(d_z,d_z_half)
         
     end subroutine
     
