@@ -219,6 +219,7 @@ use m_shot
         real,parameter :: npower=2.
         real,parameter :: Rcoef=0.001
         real,parameter :: kappa_max=7.  !increase this number if absorbing is not satisfactory at grazing incident angle
+                                        !(make in/outside PML reflection more separate..)
 
         real,dimension(:),allocatable   :: alpha_x,alpha_x_half
         real,dimension(:),allocatable   :: alpha_y,alpha_y_half
@@ -312,6 +313,9 @@ use m_shot
 
         enddo
 
+        cb%kappa_x     =1./cb%kappa_x
+        cb%kappa_x_half=1./cb%kappa_x_half
+
 
         !y dir
         do i = cb%ify,cb%ily
@@ -364,6 +368,8 @@ use m_shot
 
         enddo
 
+        cb%kappa_y     =1./cb%kappa_y
+        cb%kappa_y_half=1./cb%kappa_y_half
 
         !z dir
         do i = cb%ifz,cb%ilz
@@ -415,6 +421,9 @@ use m_shot
             if(abs(d_z_half(i))>1e-6) cb%a_z_half(i)=d_z_half(i)*(cb%b_z_half(i)-1.)/(cb%kappa_z_half(i)*(d_z_half(i)+cb%kappa_z_half(i)*alpha_z_half(i)))
 
         enddo
+
+        cb%kappa_z     =1./cb%kappa_z
+        cb%kappa_z_half=1./cb%kappa_z_half
 
         
         !no more need these variables

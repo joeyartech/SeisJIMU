@@ -7,7 +7,7 @@ use m_shot, only:shot
 use m_computebox, only: cb
 
     private fdcoeff_o4,fdcoeff_o8,c1x,c1z,c2x,c2z,c3x,c3z,c4x,c4z
-    private kappa,npower,rcoef
+    !private kappa,npower,rcoef
     public
     
     !FD coeff
@@ -19,10 +19,10 @@ use m_computebox, only: cb
     real :: c3x, c3z
     real :: c4x, c4z
     
-    !CPML
-    real,parameter :: kappa = 1.
-    real,parameter :: npower=2.
-    real,parameter :: rcoef=0.001
+    !!CPML
+    !real,parameter :: kappa=1.
+    !real,parameter :: npower=2.
+    !real,parameter :: rcoef=0.001
     
     !local models in computebox
     type t_localmodel
@@ -771,10 +771,10 @@ use m_computebox, only: cb
                 cpml_dsxz_dx(i)= cb%b_x(ix)     *cpml_dsxz_dx(i) + cb%a_x(ix)     *dsxz_dx
                 cpml_dszz_dz(i)= cb%b_z_half(iz)*cpml_dszz_dz(i) + cb%a_z_half(iz)*dszz_dz
 
-                dsxx_dx=dsxx_dx/cb%kappa_x_half(ix) + cpml_dsxx_dx(i)
-                dsxz_dz=dsxz_dz/cb%kappa_z(iz)      + cpml_dsxz_dz(i)
-                dsxz_dx=dsxz_dx/cb%kappa_x(ix)      + cpml_dsxz_dx(i)
-                dszz_dz=dszz_dz/cb%kappa_z_half(iz) + cpml_dszz_dz(i)
+                dsxx_dx=dsxx_dx*cb%kappa_x_half(ix) + cpml_dsxx_dx(i)  !kappa's should have been inversed in m_computebox.f90
+                dsxz_dz=dsxz_dz*cb%kappa_z(iz)      + cpml_dsxz_dz(i)
+                dsxz_dx=dsxz_dx*cb%kappa_x(ix)      + cpml_dsxz_dx(i)
+                dszz_dz=dszz_dz*cb%kappa_z_half(iz) + cpml_dszz_dz(i)
                 
                 !velocity
                 vx(i)=vx(i) + dt*buox(i)*(dsxx_dx+dsxz_dz)
@@ -837,8 +837,8 @@ use m_computebox, only: cb
                 cpml_dvx_dx(i)=cb%b_x(ix)*cpml_dvx_dx(i)+cb%a_x(ix)*dvx_dx
                 cpml_dvz_dz(i)=cb%b_z(iz)*cpml_dvz_dz(i)+cb%a_z(iz)*dvz_dz
 
-                dvx_dx=dvx_dx/cb%kappa_x(ix) + cpml_dvx_dx(iz_ix)
-                dvz_dz=dvz_dz/cb%kappa_z(iz) + cpml_dvz_dz(iz_ix)
+                dvx_dx=dvx_dx*cb%kappa_x(ix) + cpml_dvx_dx(iz_ix)
+                dvz_dz=dvz_dz*cb%kappa_z(iz) + cpml_dvz_dz(iz_ix)
                 
                 !normal stresses
                 sxx(i) = sxx(i) + dt * (ldap2mu(i)*dvx_dx+lda(i)    *dvz_dz)
@@ -852,8 +852,8 @@ use m_computebox, only: cb
                 cpml_dvx_dz(i)=cb%b_z_half(iz)*cpml_dvx_dz(i)+cb%a_z_half(iz)*dvx_dz
                 cpml_dvz_dx(i)=cb%b_x_half(ix)*cpml_dvz_dx(i)+cb%a_x_half(ix)*dvz_dx
 
-                dvx_dz=dvx_dz/cb%kappa_z_half(iz) + cpml_dvx_dz(i)
-                dvz_dx=dvz_dx/cb%kappa_x_half(ix) + cpml_dvz_dx(i)
+                dvx_dz=dvx_dz*cb%kappa_z_half(iz) + cpml_dvx_dz(i)
+                dvz_dx=dvz_dx*cb%kappa_x_half(ix) + cpml_dvz_dx(i)
 
                 !shear stress
                 sxz(i) = sxz(i) + dt * mu(i)*(dvx_dz+dvz_dx)
