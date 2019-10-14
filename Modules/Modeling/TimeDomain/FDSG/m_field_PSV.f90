@@ -200,7 +200,7 @@ use m_computebox, only: cb
         type(t_field) :: f
         character(*) :: name
         
-        if(mpiworld%is_master) write(*,*) name//' sample values:',minval(f%sxz),maxval(f%sxz)
+        if(mpiworld%is_master) write(*,*) name//' sample values:',minval(f%vz),maxval(f%vz)
         
         !if(any(f%p-1.==f%p)) then !this is not a good numerical judgement..
         !    write(*,*) 'ERROR: '//name//' values become +-Infinity on Shot# '//shot%cindex//' !!'
@@ -300,7 +300,7 @@ use m_computebox, only: cb
         ilx=bl(4)-2
         !ify=bl(5)+2
         !ily=bl(6)-2
-                
+
         if(m%if_freesurface) ifz=max(ifz,1)
         
         call fd2d_flat_velocities(f%vx,f%vz,f%sxx,f%szz,f%sxz,                                &
@@ -308,6 +308,7 @@ use m_computebox, only: cb
                                   lm%buox,lm%buoz,                                            &
                                   ifz,ilz,ifx,ilx,time_dir*shot%src%dt)
         
+                
         dz_dx = m%dz/m%dx
 
         !apply free surface boundary condition if needed
@@ -370,7 +371,7 @@ use m_computebox, only: cb
         ilx=bl(4)-2
         !ify=bl(5)+2
         !ily=bl(6)-2
-        
+
         if(m%if_freesurface) ifz=max(ifz,1)
         
         call fd2d_flat_stresses(f%vx,f%vz,f%sxx,f%szz,f%sxz,                            &
@@ -765,10 +766,10 @@ use m_computebox, only: cb
                 cpml_dsxz_dx(i)= cb%b_x(ix)     *cpml_dsxz_dx(i) + cb%a_x(ix)     *dsxz_dx
                 cpml_dszz_dz(i)= cb%b_z_half(iz)*cpml_dszz_dz(i) + cb%a_z_half(iz)*dszz_dz
 
-                dsxx_dx=dsxx_dx*kappa + cpml_dsxx_dx(i)  !as kappa=1., division is same as multiplication
-                dsxz_dz=dsxz_dz*kappa + cpml_dsxz_dz(i)
-                dsxz_dx=dsxz_dx*kappa + cpml_dsxz_dx(i)
-                dszz_dz=dszz_dz*kappa + cpml_dszz_dz(i)
+                dsxx_dx=dsxx_dx/cb%kappa_x_half(ix) + cpml_dsxx_dx(i)
+                dsxz_dz=dsxz_dz/cb%kappa_z(iz)      + cpml_dsxz_dz(i)
+                dsxz_dx=dsxz_dx/cb%kappa_x(ix)      + cpml_dsxz_dx(i)
+                dszz_dz=dszz_dz/cb%kappa_z_half(iz) + cpml_dszz_dz(i)
                 
                 !velocity
                 vx(i)=vx(i) + dt*buox(i)*(dsxx_dx+dsxz_dz)
@@ -831,8 +832,8 @@ use m_computebox, only: cb
                 cpml_dvx_dx(i)=cb%b_x(ix)*cpml_dvx_dx(i)+cb%a_x(ix)*dvx_dx
                 cpml_dvz_dz(i)=cb%b_z(iz)*cpml_dvz_dz(i)+cb%a_z(iz)*dvz_dz
 
-                dvx_dx=dvx_dx*kappa + cpml_dvx_dx(iz_ix)
-                dvz_dz=dvz_dz*kappa + cpml_dvz_dz(iz_ix)
+                dvx_dx=dvx_dx/cb%kappa_x(ix) + cpml_dvx_dx(iz_ix)
+                dvz_dz=dvz_dz/cb%kappa_z(iz) + cpml_dvz_dz(iz_ix)
                 
                 !normal stresses
                 sxx(i) = sxx(i) + dt * (ldap2mu(i)*dvx_dx+lda(i)    *dvz_dz)
@@ -846,8 +847,8 @@ use m_computebox, only: cb
                 cpml_dvx_dz(i)=cb%b_z_half(iz)*cpml_dvx_dz(i)+cb%a_z_half(iz)*dvx_dz
                 cpml_dvz_dx(i)=cb%b_x_half(ix)*cpml_dvz_dx(i)+cb%a_x_half(ix)*dvz_dx
 
-                dvx_dz=dvx_dz*kappa + cpml_dvx_dz(i)
-                dvz_dx=dvz_dx*kappa + cpml_dvz_dx(i)
+                dvx_dz=dvx_dz/cb%kappa_z_half(iz) + cpml_dvx_dz(i)
+                dvz_dx=dvz_dx/cb%kappa_x_half(ix) + cpml_dvz_dx(i)
 
                 !shear stress
                 sxz(i) = sxz(i) + dt * mu(i)*(dvx_dz+dvz_dx)
