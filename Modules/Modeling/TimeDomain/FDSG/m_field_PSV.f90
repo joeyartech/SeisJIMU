@@ -113,8 +113,9 @@ use m_computebox, only: cb
         call alloc(lm%ldap2mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
         call alloc(lm%lda, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
         call alloc(lm%mu,  [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
+        call alloc(lm%inv_ldapmu_4mu,  [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
 
-        call alloc(temp_mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
+        call alloc(temp_mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         
         !Staggered grid:
         ! <---*---<  
@@ -132,6 +133,10 @@ use m_computebox, only: cb
            temp_mu(:,:)=cb%rho(:,:,1)*cb%vs(:,:,1)**2
 
         lm%lda=lm%ldap2mu-2.*temp_mu
+
+        where(temp_mu>1e-6)
+            lm%inv_ldapmu_4mu=0.25/(lm%lda+temp_mu)/temp_mu
+        endwhere
 
         temp_mu=1./temp_mu
 
