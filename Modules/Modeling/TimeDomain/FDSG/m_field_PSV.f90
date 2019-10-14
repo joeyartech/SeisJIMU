@@ -28,7 +28,7 @@ use m_computebox, only: cb
     type t_localmodel
         sequence
         real,dimension(:,:),allocatable :: buox, buoz, ldap2mu, lda, mu
-        real,dimension(:,:),allocatable :: inv_ldapmu_4mu
+        real,dimension(:,:),allocatable :: two_ldapmu,inv_ldapmu_4mu
     end type
     
     type(t_localmodel) :: lm
@@ -113,7 +113,8 @@ use m_computebox, only: cb
         call alloc(lm%ldap2mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
         call alloc(lm%lda, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
         call alloc(lm%mu,  [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
-        call alloc(lm%inv_ldapmu_4mu,  [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
+        call alloc(lm%two_ldapmu,    [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
+        call alloc(lm%inv_ldapmu_4mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
 
         call alloc(temp_mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         
@@ -134,9 +135,12 @@ use m_computebox, only: cb
 
         lm%lda=lm%ldap2mu-2.*temp_mu
 
-        where(temp_mu>1e-6)
+        lm%two_ldapmu=2.*(lm%lda+temp_mu)
+
+        where(temp_mu>100.)
             lm%inv_ldapmu_4mu=0.25/(lm%lda+temp_mu)/temp_mu
         endwhere
+
 
         temp_mu=1./temp_mu
 
@@ -313,7 +317,7 @@ use m_computebox, only: cb
                                   lm%buox,lm%buoz,                                            &
                                   ifz,ilz,ifx,ilx,time_dir*shot%src%dt)
         
-                
+
         dz_dx = m%dz/m%dx
 
         !apply free surface boundary condition if needed
@@ -661,10 +665,10 @@ use m_computebox, only: cb
         ify=max(sb(5),rb(5),2)
         ily=min(sb(6),rb(6),cb%my-2)
         
-        call corr2d_flat_moduli(sf%vx,sf%vz,            &
-                                rf%sxx,rf%szz,rf%sxz,   &
-                                lm%ldap2mu,lm%lda,lm%mu,&
-                                corr(:,:,1),corr(:,:,2),&
+        call corr2d_flat_moduli(sf%vx,sf%vz,             &
+                                rf%sxx,rf%szz,rf%sxz,    &
+                                lm%ldap2mu,lm%two_ldapmu,&
+                                corr(:,:,1),corr(:,:,2), &
                                 ifz,ilz,ifx,ilx)
         
     end subroutine
@@ -692,10 +696,13 @@ use m_computebox, only: cb
     subroutine field_correlation_scaling(corr)
         real,dimension(cb%mz,cb%mx,3) :: corr
         
-        corr(:,:,1)=corr(:,:,1) * (-lm%inv_ldapmu_4mu(1:cb%mz,1:cb%mx))
+        !corr_lda
+        corr(:,:,1)=corr(:,:,1) / (-lm%two_ldapmu(1:cb%mz,1:cb%mx))
 
+        !corr_mu
         corr(:,:,2)=corr(:,:,2) * (-2.*lm%inv_ldapmu_4mu(1:cb%mz,1:cb%mx))
-
+        
+        !corr_rho
         corr(:,:,3)=corr(:,:,3) / cb%rho(1:cb%mz,1:cb%mx,1)
 
 
@@ -868,12 +875,12 @@ use m_computebox, only: cb
     
     subroutine corr2d_flat_moduli(sf_vx,sf_vz,         &
                                   rf_sxx,rf_szz,rf_sxz,&
-                                  ldap2mu,lda,mu,      &
+                                  ldap2mu,two_ldapmu,  &
                                   corr_lda,corr_mu,    &
                                   ifz,ilz,ifx,ilx)
         real,dimension(*) :: sf_vx,sf_vz
         real,dimension(*) :: rf_sxx,rf_szz,rf_sxz
-        real,dimension(*) :: ldap2mu,lda,mu
+        real,dimension(*) :: ldap2mu,two_ldapmu
         real,dimension(*) :: corr_lda,corr_mu
         
         nz=cb%nz
@@ -924,8 +931,8 @@ use m_computebox, only: cb
                 sf_dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
                 sf_dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
 
-                corr_lda(j)=corr_lda(j) + ldap2mu(i)*rf_sxx(i)*sf_dvx_dx -     lda(i)*rf_sxx(i)*sf_dvz_dz &
-                                        -     lda(i)*rf_szz(i)*sf_dvx_dx + ldap2mu(i)*rf_szz(i)*sf_dvz_dz
+                corr_lda(j)=corr_lda(j) + rf_sxx(i)*sf_dvx_dx + rf_sxx(i)*sf_dvz_dz &
+                                        + rf_szz(i)*sf_dvx_dx + rf_szz(i)*sf_dvz_dz
 
 
                 sf_4_dvzdx_p_dvxdz = &  !(dvz_dx+dvx_dz)(iz,ix)     [iz-0.5,ix-0.5]
@@ -948,7 +955,7 @@ use m_computebox, only: cb
 
                 corr_mu(j)=corr_mu(j) + ldap2mu(i)*rf_sxx(i)*sf_dvx_dx &
                                       + ldap2mu(i)*rf_szz(i)*sf_dvz_dz &
-                                      + 2.*(lda(i)+mu(i))*0.0625*rf_4_sxz*sf_4_dvzdx_p_dvxdz
+                                      + two_ldapmu(i)*0.0625*rf_4_sxz*sf_4_dvzdx_p_dvxdz
                 
             end do
             
