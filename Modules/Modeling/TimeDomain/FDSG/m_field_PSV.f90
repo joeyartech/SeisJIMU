@@ -705,12 +705,13 @@ use m_computebox, only: cb
         !corr_rho
         corr(:,:,3)=corr(:,:,3) / cb%rho(1:cb%mz,1:cb%mx,1)
 
-
-        corr(1,:,:) = corr(2,:,:)
+        corr(1,:,:) = corr(3,:,:)
+        corr(2,:,:) = corr(3,:,:)
         corr(cb%mz-1,:,:) = corr(cb%mz-2,:,:)
         corr(cb%mz,  :,:) = corr(cb%mz-2,:,:)
 
-        corr(:,1,:) = corr(:,2,:)
+        corr(:,1,:) = corr(:,3,:)
+        corr(:,2,:) = corr(:,3,:)
         corr(:,cb%mx-1,:) = corr(:,cb%mx-2,:)
         corr(:,cb%mx  ,:) = corr(:,cb%mx-2,:)
         
@@ -951,6 +952,7 @@ use m_computebox, only: cb
                                        + c1x*(sf_vz(izp1_ixp1)-sf_vz(izp1_ix)) +c2x*(sf_vz(izp1_ixp2)-sf_vz(izp1_ixm1)) &
                                        + c1z*(sf_vx(izp1_ixp1)-sf_vx(iz_ixp1)) +c2z*(sf_vx(izp2_ixp1)-sf_vx(izm1_ixp1))
 
+                        ![iz-0.5,ix-0.5]   [iz+0.5,ix-0.5]   [iz-0.5,ix+0.5]     [iz+0.5,ix+0.5]
                 rf_4_sxz = rf_sxz(iz_ix) + rf_sxz(izp1_ix) + rf_sxz(iz_ixp1) + rf_sxz(izp1_ixp1)
 
                 corr_mu(j)=corr_mu(j) + ldap2mu(i)*rf_sxx(i)*sf_dvx_dx &
@@ -1030,8 +1032,10 @@ use m_computebox, only: cb
                                        & & !(dsxz_dx+dszz_dz)(iz+1,ix) [iz+0.5,ix]
                                          + c1x*(sf_sxz(izp1_ixp1)-sf_sxz(izp1_ix)) +c2x*(sf_sxz(izp1_ixp2)-sf_sxz(izp1_ixm1)) &
                                          + c1z*(sf_szz(izp1_ix  )-sf_szz(iz_ix  )) +c2z*(sf_szz(izp2_ix  )-sf_szz(iz_ix    ))
-
+                                         
+                         ![iz,ix-0.5]      [iz,ix+0.5]
                 rf_2vx = rf_vx(iz_ix) + rf_vx(iz_ixp1)
+                         ![iz-0.5,ix]      [iz+0.5,ix]
                 rf_2vz = rf_vz(iz_ix) + rf_vz(izp1_ix)
                 
                 corr(j)=corr(j) + 0.25*( rf_2vx*sf_2_dsxxdx_p_dsxzdz + rf_2vz*sf_2_dsxzdx_p_dszzdz )

@@ -979,9 +979,9 @@ use m_computebox, only: cb
                 dvz_dz = c1z*(sf_vz(izp1_ix_iy)-sf_vz(iz_ix_iy)) +c2z*(sf_vz(izp2_ix_iy)-sf_vz(izm1_ix_iy))
                 
                 dsp = dvx_dx +dvy_dy +dvz_dz
-                 rp = rf_p(i)*2.          !rp=rf%prev_p(i)+rf%p(i)
+                 rp = rf_p(i)
                 
-                corr(j)=corr(j) + 0.5*dsp*rp
+                corr(j)=corr(j) + dsp*rp
                 
             end do
             
@@ -1034,9 +1034,9 @@ use m_computebox, only: cb
                 dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
                 
                 dsp = dvx_dx +dvz_dz
-                 rp = rf_p(i)*2.    !rp=rf%prev_p(i)+rf%p(i)
+                 rp = rf_p(i)
                 
-                corr(j)=corr(j) + 0.5*dsp*rp
+                corr(j)=corr(j) + dsp*rp
                 
             end do
             
