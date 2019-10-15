@@ -19,9 +19,9 @@ use m_weighting
         !this also help balance contributions from different component data
         do ir=1,shot%nrcv
             if(shot%rcv(ir)%icomp==1) then !for pressure data
-                dnorm = dnorm + sum(dres(:,ir)*dres(:,ir))*0.5/m%ref_kpa*m%cell_size
+                dnorm = dnorm + sum(dres(:,ir)*dres(:,ir))*0.5/m%ref_kpa*m%cell_volume
             else !for velocities data
-                dnorm = dnorm + sum(dres(:,ir)*dres(:,ir))*0.5*m%ref_rho*m%cell_size
+                dnorm = dnorm + sum(dres(:,ir)*dres(:,ir))*0.5*m%ref_rho*m%cell_volume
             endif
         enddo
         
