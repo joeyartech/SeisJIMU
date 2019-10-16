@@ -60,28 +60,28 @@ use m_field, only: t_field
             !top
             call bndcpy(action,f%vz,bnd%vz_top(:,it),[1,3],    [1,nx],[1,ny])  !old version: [0,2],[1,nx],[1,nx]
             !bottom
-            call bndcpy(action,f%vz,bnd%vz_bot(:,it),[nz-2,nz],[1,nx],[1,ny])  !old version: [nz,nz+2],[1,nx],[1,nx]
+            call bndcpy(action,f%vz,bnd%vz_bot(:,it),[nz-1,nz+1],[1,nx],[1,ny])  !old version: [nz,nz+2],[1,nx],[1,nx]
             !left
             call bndcpy(action,f%vx,bnd%vx_left(:,it), [1,nz],[1,3],    [1,ny])
             !right
-            call bndcpy(action,f%vx,bnd%vx_right(:,it),[1,nz],[nx-2,nx],[1,ny])
+            call bndcpy(action,f%vx,bnd%vx_right(:,it),[1,nz],[nx-1,nx+1],[1,ny])
             !front
             call bndcpy(action,f%vy,bnd%vy_front(:,it),[1,nz],[1,nx],[1,3])
             !rear
-            call bndcpy(action,f%vy,bnd%vy_rear(:,it), [1,nz],[1,nx],[ny-2,ny])
+            call bndcpy(action,f%vy,bnd%vy_rear(:,it), [1,nz],[1,nx],[ny-1,ny+1])
         else
             !top
             call bndcpy(action,f%vz,bnd%vz_top(:,it),[1,3],    [1,nx],[1,1])
             call bndcpy(action,f%vx,bnd%vx_top(:,it),[1,3],    [1,nx],[1,1])
             !bottom
-            call bndcpy(action,f%vz,bnd%vz_bot(:,it),[nz-2,nz],[1,nx],[1,1])
-            call bndcpy(action,f%vx,bnd%vx_bot(:,it),[nz-2,nz],[1,nx],[1,1])
+            call bndcpy(action,f%vz,bnd%vz_bot(:,it),[nz-1,nz+1],[1,nx],[1,1])
+            call bndcpy(action,f%vx,bnd%vx_bot(:,it),[nz-2,nz  ],[1,nx],[1,1])
             !left
             call bndcpy(action,f%vx,bnd%vx_left(:,it), [1,nz],[1,3],    [1,1])
             call bndcpy(action,f%vz,bnd%vz_left(:,it), [1,nz],[1,3],    [1,1])
             !right
-            call bndcpy(action,f%vx,bnd%vx_right(:,it),[1,nz],[nx-2,nx],[1,1])
-            call bndcpy(action,f%vz,bnd%vz_right(:,it),[1,nz],[nx-2,nx],[1,1])
+            call bndcpy(action,f%vx,bnd%vx_right(:,it),[1,nz],[nx-1,nx+1],[1,1])
+            call bndcpy(action,f%vz,bnd%vz_right(:,it),[1,nz],[nx-2,nx  ],[1,1])
         endif
         
     end subroutine
