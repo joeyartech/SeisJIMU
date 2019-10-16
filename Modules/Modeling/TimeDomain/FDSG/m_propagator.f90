@@ -202,7 +202,7 @@ use m_boundarystore
     
     subroutine propagator_adjoint(dout,gradient)
         real,dimension(nt),optional :: dout
-        real,dimension(cb%mz,cb%mx,cb%my,2),optional :: gradient
+        real,dimension(cb%mz,cb%mx,cb%my,3),optional :: gradient
         
         real,dimension(:,:),allocatable :: seismo
         
@@ -321,7 +321,7 @@ use m_boundarystore
                 call write_field(20,sfield)
                 call write_field(24,rfield)
                 write(26)gradient(:,:,:,1)
-                write(28)gradient(:,:,:,2)
+                write(28)gradient(:,:,:,3)
             endif
             endif
             call cpu_time(t13)
