@@ -716,11 +716,11 @@ use m_computebox, only: cb
         corr(:,cb%mx-1,:) = corr(:,cb%mx-2,:)
         corr(:,cb%mx  ,:) = corr(:,cb%mx-2,:)
         
-        !set unit of gkpa to be [m3], grho to be [m5/s2]
-        !such that after multiplied by (lda_max-lda_min) or (rho_max-rho_min) (will be done in m_parameterization.f90)
+        !the unit of glda,gmu should be [m3], grho should be [m5/s2]
+        !after multiplied by (lda_max-lda_min) or (rho_max-rho_min) (to be done in m_parameterization.f90)
         !the unit of parameter update is [Nm], same as Lagrangian
-        !and the unit of gradient scaling factor is [1/N/m] (in m_scaling.f90)
-        !therefore parameters become unitless
+        !then since the unit of gradient scaling factor is [1/N/m] (in m_scaling.f90)
+        !so the parameter update becomes unitless
         corr=corr*m%cell_volume*shot%src%dt
         
     end subroutine
