@@ -1,0 +1,262 @@
+\documentclass[9pt]{beamer}
+\include{config}
+
+\usepackage{amssymb}
+\usepackage{textcomp}
+
+\definecolor{usccardinal}{rgb}{0.6, 0.0, 0.0}
+\definecolor{bostonuniversityred}{rgb}{0.8, 0.0, 0.0}
+
+\newcommand{\dxdt}{\mathrm{d}x\mathrm{d}t}
+\newcommand{\diff}{\mathrm{d}}
+\newcommand{\iunit}{\mathrm{i}}
+\newcommand{\e}[1]{\mathrm{e}^{#1}}
+\newcommand{\expi}[1]{\mathrm{e}^{\mathrm{i}#1}}
+\newcommand{\C}{\mathbb{C}}
+\renewcommand{\L}{\mathcal{L}}
+\newcommand{\I}{\mathcal{I}}
+\newcommand{\partderi}[2]{\frac{\partial#1}{\partial#2}}
+
+\newcommand{\red}{\color{red}}
+\newcommand{\bur}{\color{bostonuniversityred}}
+\newcommand{\blue}{\color{blue}}
+\newcommand{\obs}{^\text{obs}}
+\renewcommand{\cal}{^\text{cal}}
+\newcommand{\comp}{^\text{comp}}
+\newcommand{\true}{^\text{true}}
+\newcommand{\bas}{_\text{bas}}
+\newcommand{\mon}{_\text{mon}}
+
+% \graphicspath{{Fig/}}
+
+%--------------------------------------------------------------------------------------
+% \titlegraphic{\includegraphics[scale=0.5]{Fig/logo.pdf}\;\;\;\includegraphics[scale=0.2]{Fig/logo-ISTerre.png}}
+\title[]{Fr\'echet derivatives under various parameterizations \\ using chain rule}
+\subtitle{for LEGO module m\_parameterization.f90}
+\author[joey]{joeyartech\\
+\scriptsize{joeywzhou1986@gmail.com}}
+\institute[]{Department of Geosciences, The University of Texas at Dallas}
+%\date[\today]{}
+%--------------------------------------------------------------------------------------
+
+
+\begin{document}
+%\small
+
+\maketitle \clearpage
+
+% \frame{
+% \frametitle{Outline}
+% \small{
+% \tableofcontents[section,subsectionstyle=hide/show/show] }}
+
+\begin{frame}\frametitle{Overview}
+  \framebox{WaveEq lm $\Rightarrow$ optim x,g}
+  
+  \begin{itemize}
+    \item WaveEq uses lm and produces gkpa, glda, gmu and grho under moduli-density parameterization.
+    \item m\_parameterization.f90 converts them to user-specified parameterization, which can be
+    \begin{itemize}
+      \item moduli-density (kpa, lda, mu, rho)
+      \item velocities-density (vp, vs, rho)
+      \item velocities-impedance (vp, vs, Ip)
+      \item slowness-density (sp, sps, rho)
+    \end{itemize}
+    \item Also we may consider ``passive parameters'' for hard constraints (e.g. Gardner) between these parameters.
+  \end{itemize}
+
+\end{frame}
+
+\section{velocities-density}
+
+\begin{frame}\frametitle{PARAMETERIZATION velocities-density}
+\framesubtitle{isotropic ACoustic}
+  
+  \begin{minipage}{0.4\linewidth}
+    \[\left\{ \begin{array}{l}
+      \kappa = \rho V_P^2 \\
+      \rho_0 = \rho 
+    \end{array} \right.\]
+    
+    \begin{eqnarray}
+      \nabla_{V_P} &=& \nabla_{\kappa} \partderi{\kappa}{V_P} + \nabla_{\rho_0} \partderi{\rho_0}{V_P} \nonumber\\
+                   &=& \nabla_{\kappa} 2\rho V_P \nonumber\\
+      \nabla_{\rho} &=& \nabla_{\kappa} \partderi{\kappa}{\rho} + \nabla_{\rho_0} \partderi{\rho_0}{\rho} \nonumber\\
+		    &=& \nabla_{\kappa} V_P^2 + \nabla_{\rho_0} \nonumber
+    \end{eqnarray}
+
+  \end{minipage} \vline
+  \begin{minipage}{0.4\linewidth}
+    \[\left\{ \begin{array}{l}
+      V_P  = \sqrt{\kappa/\rho_0} \\
+      \rho = \rho_0
+    \end{array} \right.\]
+    
+    \begin{eqnarray}
+      \nabla_{\kappa} &=& \nabla_{V_P} \partderi{V_P}{\kappa} + \nabla_{\rho} \partderi{\rho}{\kappa} \nonumber\\
+                      &=& \nabla_{V_P} 0.5(\kappa/\rho)^{0.5}/\rho \nonumber\\
+      \nabla_{\rho_0} &=& \nabla_{V_P} \partderi{V_P}{\rho_0} + \nabla_{\rho} \partderi{\rho}{\rho_0} \nonumber\\
+                      &=& \nabla_{V_P} (-0.5)(\kappa/\rho)^{0.5} \rho^{-2} + \nabla_{\rho} \nonumber
+    \end{eqnarray}
+  \end{minipage}
+
+\end{frame}
+
+% \begin{frame}\frametitle{PARAMETERIZATION velocities-density + PASSIVE gardner}
+% \framesubtitle{isotropic ACoustic}
+%   
+%   \begin{minipage}{0.4\linewidth}
+%     \[\left\{ \begin{array}{l}
+%       \kappa = \rho V_P^2 \\
+%       \rho_0 = \rho 
+%     \end{array} \right.\]
+%     
+%     \begin{eqnarray}
+%       \nabla_{V_P} &=& \nabla_{\kappa} \partderi{\kappa}{V_P} + \nabla_{\rho_0} \partderi{\rho_0}{V_P} \nonumber\\
+%                    &=& \nabla_{\kappa} 2\rho V_P \nonumber\\
+%       \nabla_{\rho} &=& \nabla_{\kappa} \partderi{\kappa}{\rho} + \nabla_{\rho_0} \partderi{\rho_0}{\rho} \nonumber\\
+% 		    &=& \nabla_{\kappa} V_P^2 + \nabla_{\rho_0} \nonumber
+%     \end{eqnarray}
+% 
+%   \end{minipage} \vline
+%   \begin{minipage}{0.4\linewidth}
+%     \[\left\{ \begin{array}{l}
+%       V_P  = \sqrt{\kappa/\rho_0} \\
+%       \rho = \rho_0
+%     \end{array} \right.\]
+%     
+%     \begin{eqnarray}
+%       \nabla_{\kappa} &=& \nabla_{V_P} \partderi{V_P}{\kappa} + \nabla_{\rho} \partderi{\rho}{\kappa} \nonumber\\
+%                       &=& \nabla_{V_P} 0.5(\kappa/\rho)^{0.5}/\rho \nonumber\\
+%       \nabla_{\rho_0} &=& \nabla_{V_P} \partderi{V_P}{\rho_0} + \nabla_{\rho} \partderi{\rho}{\rho_0} \nonumber\\
+%                       &=& \nabla_{V_P} (-0.5)(\kappa/\rho)^{0.5} \rho^{-2} + \nabla_{\rho} \nonumber
+%     \end{eqnarray}
+%   \end{minipage}
+% 
+% \end{frame}
+% 
+% \begin{frame}\frametitle{PARAMETERIZATION velocities-density}
+% \framesubtitle{P-SV}
+%   
+%   \begin{minipage}{0.4\linewidth}
+%     \[\left\{ \begin{array}{l}
+%       \lambda = \rho (V_P^2-2V_S^2) \\
+%       \mu    = \rho V_S^2 \\
+%       \rho_0 = \rho 
+%     \end{array} \right.\]
+%     
+%     \begin{eqnarray}
+%       \nabla_{V_P} &=& \nabla_{\kappa} \partderi{\kappa}{V_P} + \nabla_{\rho_0} \partderi{\rho_0}{V_P} \nonumber\\
+%                    &=& \nabla_{\kappa} 2\rho V_P \nonumber\\
+%       \nabla_{V_S} &=& \nabla_{\kappa} \partderi{\kappa}{V_P} + \nabla_{\rho_0} \partderi{\rho_0}{V_P} \nonumber\\
+%                    &=& \nabla_{\kappa} 2\rho V_P \nonumber\\
+%       \nabla_{\rho} &=& \nabla_{\kappa} \partderi{\kappa}{\rho} + \nabla_{\rho_0} \partderi{\rho_0}{\rho} \nonumber\\
+% 		    &=& \nabla_{\kappa} V_P^2 + \nabla_{\rho_0} \nonumber
+%     \end{eqnarray}
+% 
+%   \end{minipage} \vline
+%   \begin{minipage}{0.4\linewidth}
+%     \[\left\{ \begin{array}{l}
+%       V_P  = \sqrt{\frac{\lambda+2\mu}{\rho_0}} \\
+%       V_S  = \sqrt{\mu/\rho_0} \\
+%       \rho = \rho_0
+%     \end{array} \right.\]
+%     
+%     \begin{eqnarray}
+%       \nabla_{\kappa} &=& \nabla_{V_P} \partderi{V_P}{\kappa} + \nabla_{\rho} \partderi{\rho}{\kappa} \nonumber\\
+%                       &=& \nabla_{V_P} 0.5(\kappa/\rho)^{0.5}/\rho \nonumber\\
+%       \nabla_{\rho_0} &=& \nabla_{V_P} \partderi{V_P}{\rho_0} + \nabla_{\rho} \partderi{\rho}{\rho_0} \nonumber\\
+%                       &=& \nabla_{V_P} (-0.5)(\kappa/\rho)^{0.5} \rho^{-2} + \nabla_{\rho} \nonumber
+%     \end{eqnarray}
+%   \end{minipage}
+% 
+% \end{frame}
+
+\end{document}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%% GOOD THINGS %%%%%%%%%
+% %-------------------------------------------------------------------------------------
+% \frame{
+%  %\MyLogo
+% \frametitle{}
+% 
+% \vspace*{\fill} 
+% \begin{minipage}[c][8cm]{5cm}
+% \begin{itemize}
+% \item Source in red
+% \item Receiver in blue
+% \end{itemize}
+% \end{minipage}
+% 
+% \begin{block}{Algorithm}
+% %\footnotesize{
+% \begin{algorithmic}[1]
+% %%-----------------------------------------------
+% \FOR {$frequency = frequency\_1$ to $frequency\_n$}
+% \WHILE {(NOT $convergence$ AND $iter<niter_{max}$)}
+% \STATE Estimate source wavelet if required
+% \STATE Build gradient vector ${\mathcal{G}}_{\bf{m}}^{(k)}$
+% \STATE Build perturbation vector $\delta \bf{m}$
+% \STATE Update model ${\bf{m}}^{(k+1)} = {\bf{m}}^{(k)} + \alpha  \delta {\bf{m}}$
+% \ENDWHILE
+% \ENDFOR
+% %%-----------------------------------------------
+% \label{algo1}
+% \end{algorithmic}
+% %\end{algorithm}
+% %}
+% \end{block}
+% }
+%
+% \colorbox{yellow}{reflection data}
+%
+% % Fontsize
+%     \tiny
+%     \scriptsize
+%     \footnotesize
+%     \small
+%     \normalsize
+%     \large
+%     \Large
+%     \LARGE
+%     \huge
+%     \Huge 
+%
+% % Multiple equations 
+% \begin{eqnarray}
+% \delta C & = &  p \\
+%          & = &  p \rangle
+% \label{eq}
+% \end{eqnarray}
+%add multiple eq. indices
+%
+% \[ f(n) = \left\{
+%   \begin{array}{l l}
+%          n/2 & \quad \text{if $n$ is even}\\
+%     -(n+1)/2 & \quad \text{if $n$ is odd}
+%   \end{array} \right.\]
+%can't use {equation} because it's an array (can't add eq. index)
+%
+%\begin{equation}
+%  u(x) =
+%   \begin{cases}
+%    \exp{x} & \text{if } x \geq 0 \\
+%    1       & \text{if } x < 0
+%   \end{cases}
+%\end{equation}
+%can use {equation} because it's an equation (can add eq. index)
+%
+% % Split an equation into multiple lines
+%   \begin{equation}
+%   \begin{split}
+%     f(x) & =  1 \\
+% 	  & -  g(x)
+%   \end{split}
+%   \end{equation}
+% %-------------------------------------------------------------------------------------
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+

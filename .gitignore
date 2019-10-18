@@ -20,6 +20,19 @@ Validations/
 
 
 
+###############
+# Other files #
+###############
+*.aux
+*.log
+*.nav
+*.out
+*.snm
+*.backup
+*.toc
+
+
+
 # ############
 # # Packages #
 # ############
