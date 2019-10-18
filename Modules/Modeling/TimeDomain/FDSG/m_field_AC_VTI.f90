@@ -52,7 +52,8 @@ use m_computebox, only: cb
     !hicks interpolation
     logical :: if_hicks
     
-    !gradient info
+    !info
+    character(*),parameter :: waveeq_info='time-domain VTI 2D/3D (pseudo) acoustic'
     character(*),parameter :: gradient_info='kpa-rho'
     
     contains

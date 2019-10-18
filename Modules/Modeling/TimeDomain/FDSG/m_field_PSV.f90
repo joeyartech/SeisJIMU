@@ -48,7 +48,8 @@ use m_computebox, only: cb
     !hicks interpolation
     logical :: if_hicks
     
-    !gradient info
+    !info
+    character(*),parameter :: waveeq_info='time-domain isotropic P-SV (2D elastic)'
     character(*),parameter :: gradient_info='lda-mu-rho'
     
     contains
