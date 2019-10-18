@@ -11,7 +11,6 @@ use m_gradient, only: gradient
     !I/O models   -- velocities-density   -- vp vs rho
     !seismic      -- velocities-impedance -- vp vs ip
     !tomography   -- slowness-density     -- sp ss rho
-    !custom                               -- undefined (in future)
     !optimization -- can be any of above
 
     !Physical meaning of symbols uniformly used in this code:
@@ -28,17 +27,31 @@ use m_gradient, only: gradient
     !source/destination trilogy:
     !model m =FWD=> WaveEq lm =PARAMETERIZATION=> optim x,g =FWD=> model m
 
+    !active parameters will be converted to optim x via feature scaling
+    !(e.g. (par-par_min)/(par_max-par_min))
+    !
+    !passive parameters will NOT be converted to optim x, but will be updated
+    !according to user-specified empirical law (e.g. Gardner)
+    !(user has to modified the code where necessary to insert such a law
+    ! as symbolic computation is not straightforward in fortran..)
+    !
+    !both has influence on the conversion of gradient from WaveEq lm to optim x,g
+
 
     public
-    private :: active, read_active, check_par
+    private :: passive, read_passive
+    private ::  active, read_active, check_par
     
-    character(:),allocatable :: parameterization, active
-    
-    character(3),dimension(3) :: pars !max 3 letters for each par, max 3 parameters
-    real,dimension(3) :: pars_min
-    real,dimension(3) :: pars_max
-    
-    integer :: npar
+    character(:),allocatable :: parameterization, passive, active
+
+    character(3),dimension(3) :: pars !max 3 active parameters, max 3 letters for each
+    real,dimension(3) :: pars_min, pars_max
+    integer :: npar=0
+
+    real,dimension(3) :: hyper=0. !max 3 hyper-parameters for passive parameters
+
+    logical :: if_gardner=.false.
+
 
     contains
     
@@ -46,11 +59,13 @@ use m_gradient, only: gradient
                 
         parameterization=get_setup_char('PARAMETERIZATION',default='velocities-density')
 
+        !read in passive parameters which depends on active parameters
+        passive=trim(adjustl(get_setup_char('PASSIVE_PARAMETER')))
+        if(len(passive)>0) call read_passive
+
+        !read in active parameters and their allowed ranges
         active=get_setup_char('ACTIVE_PARAMETER',default='vp1500:3400')
-
         active=trim(adjustl(active)) !no head or tail spaces
-
-        !read in parameters and their allowed ranges
         call read_active
 
         !expect rational users..
@@ -60,6 +75,17 @@ use m_gradient, only: gradient
         ! if(if_par_rho.or.if_par_kpa.or.if_par_ip) then
         !     call model_reallocate('rho')
         ! endif
+
+    end subroutine
+
+    subroutine read_passive
+        !gardner law
+        !passive rho will be updated according to vp
+        if_gardner = index(passive,'gardner')>0
+        if(if_gardner) then
+            hyper(1)=310; hyper(2)=0.25 !http://www.subsurfwiki.org/wiki/Gardner%27s_equation
+            !modify if you want
+        endif
 
     end subroutine
     
@@ -79,9 +105,9 @@ use m_gradient, only: gradient
             if(k3==0) k3=len(active) !k3 can be 0 when looking at last parameter
 
             text=active(1:k3)
-            if(len(text)==1) exit !no more parameters to read
+            if(len(text)==1) exit loop !no more parameters to read
 
-            !ignore parameters depending on parameterization
+            !ignore parameters depending on parameterization and passive
             if(.not. check_par(text) ) then
                 !truncate active
                 active=trim(adjustl(active(k3:len(active))))
@@ -89,7 +115,7 @@ use m_gradient, only: gradient
                 cycle loop
             endif
 
-            !counter of valid parameters
+            !counter of valid active parameters
             npar=npar+1
 
             !read in parameter
@@ -121,7 +147,6 @@ use m_gradient, only: gradient
             write(*,*) 'Read parameters:',pars(1),' ',pars(2),' ',pars(3)
         endif
 
-
     end subroutine
 
     function check_par(text)
@@ -146,7 +171,7 @@ use m_gradient, only: gradient
             check_par = index(parameterization,'impedance')>0
             
         elseif(text(1:3)=='rho') then !density
-            check_par = index(parameterization,'density')>0
+            check_par = index(parameterization,'density')>0 .and. .not. if_gardner
             
         elseif(text(1:3)=='kpa') then !bulk modulus
             check_par = index(parameterization,'moduli')>0 .and. index(waveeq_info,'acoustic')>0
@@ -165,12 +190,10 @@ use m_gradient, only: gradient
         
     end function
     
-    subroutine parameterization_transform(dir,x,g)
+    subroutine parameterization_transform(dir,x)
         character(3) :: dir
         real,dimension(m%nz,m%nx,m%ny,npar) :: x
-        real,dimension(m%nz,m%nx,m%ny,npar),optional :: g
-                
-        !model
+        
         if(dir=='m2x') then
             do ipar=1,npar
                 select case (pars(ipar))
@@ -212,11 +235,13 @@ use m_gradient, only: gradient
             enddo
 
         endif
+
+    end subroutine
+
+    subroutine parameterization_transform_gradient(dir,g)
+        character(3) :: dir
+        real,dimension(m%nz,m%nx,m%ny,npar) :: g  !for units of gradient and g, see m_field*.f90
         
-        
-        !gradient
-        !!for units of gradient and g, see m_field*.f90
-        if(present(g)) then
         if(dir=='m2x') then
 
             select case (parameterization)
@@ -226,15 +251,20 @@ use m_gradient, only: gradient
                     select case (pars(ipar))
 
                     case ('kpa')
+                        g(:,:,:,ipar)=gradient(:,:,:,1)
 
                     case ('lda')
+                        g(:,:,:,ipar)=gradient(:,:,:,1)
 
                     case ('mu')
+                        g(:,:,:,ipar)=gradient(:,:,:,2)
 
-                    case ('rho') 
+                    case ('rho')
+                        
                         if(index(waveeq_info,'acoustic')>0) then
-                            ! g(:,:,:,1)=(gradient(:,:,:,1)*2.*m%vp*m%rho)
+                            g(:,:,:,ipar)=gradient(:,:,:,2)
                         else !elastic
+                            g(:,:,:,ipar)=gradient(:,:,:,3)
                         endif
 
                     end select
@@ -246,8 +276,15 @@ use m_gradient, only: gradient
 
                     case ('vp')
                         if(index(waveeq_info,'acoustic')>0) then
-                            g(:,:,:,ipar)=(gradient(:,:,:,1)*2.*m%vp*m%rho)
-                        else !elastic
+                            if(if_gardner) then
+                                g(:,:,:,ipar)=(gradient(:,:,:,1)*2.*m%vp*m%rho)
+                            else
+                            endif
+                        endif
+                        if(index(waveeq_info,'elastic')>0) then
+                            if(if_gardner) then
+                            else
+                            endif
                         endif
 
                     case ('vs')
@@ -309,7 +346,6 @@ use m_gradient, only: gradient
     !                 if(if_par_vp) g(:,:,:,1)=(gradient(:,:,:,1)*m%vp*m%rho - gradient(:,:,:,2)*m%rho/m%vp) *(par_vp_max-par_vp_min)
     !                 if(if_par_ip) g(:,:,:,2)=(gradient(:,:,:,1)*m%vp       + gradient(:,:,:,2)/m%vp      ) *(par_ip_max-par_ip_min)
     !         end select
-        endif
         endif
         
     end subroutine
