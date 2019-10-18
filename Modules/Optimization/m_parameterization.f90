@@ -5,25 +5,29 @@ use m_model
 use m_field, only:waveeq_info
 use m_gradient, only: gradient
 
-    !PARAMETERIZATION                              !allowed ACTIVE_PARAMETER
-    !WaveEquation:  moduli-density:                 kpa-rho or lda-mu-rho
-    !I/O models:    velocities-density:             vp-rho or vp-vs-rho
-    !Empirical:     velocities-density-empirical
-    !seismic:       velocities-impedances           vp-ip or vp-vs-ip
-    !tomography:    slowness-density                sp-rho
-    !optimization:  can be any of above
 
-    !optim x =FWD=> model m =FWD=> WaveEq lm =PARAMETERIZATION=> optim x,g
+    !SITUATION    -- PARAMETERIZATION     -- ALLOWED PARAMETERS
+    !WaveEquation -- moduli-density       -- kpa rho (acoustic) or lda mu rho (elastic)
+    !I/O models   -- velocities-density   -- vp vs rho
+    !seismic      -- velocities-impedance -- vp vs ip
+    !tomography   -- slowness-density     -- sp ss rho
+    !custom                               -- undefined (in future)
+    !optimization -- can be any of above
 
-    !Symbol meaning:
-    !vp    P-wave velocity
-    !vs    S-wave velocity
-    !sp    P-wave slowness
-    !ip    P-wave (acoustic) impedance
-    !rho   density
-    !kpa   bulk modulus
-    !lda   1st Lamé parameter
-    !mu    2nd Lamé parameter, shear modulus
+    !Physical meaning of symbols uniformly used in this code:
+    !vp                   -- P-wave velocity
+    !vs                   -- S-wave velocity
+    !sp =1/vp             -- P-wave slowness
+    !sps=vs/vp            -- inv Vp-Vs ratio
+    !ip =vp*rho           -- P-wave (acoustic) impedance
+    !rho                  -- density
+    !kpa=rho*vp^2         -- bulk modulus
+    !lda=rho*(vp^2-2vs^2) -- 1st Lamé parameter
+    !mu =rho*vs^2         -- 2nd Lamé parameter, shear modulus
+
+    !source/destination trilogy:
+    !model m =FWD=> WaveEq lm =PARAMETERIZATION=> optim x,g =FWD=> model m
+
 
     public
     private :: active, read_active, check_par
@@ -49,16 +53,13 @@ use m_gradient, only: gradient
         !read in parameters and their allowed ranges
         call read_active
 
-        ! !adjust parameters according to parameterization
-        ! call adjust_pars
-        
+        !expect rational users..
+        ! !resolve conflict of parameters e.g. vp & sp
+        !
         ! !reallocate model if initial model is not provided
         ! if(if_par_rho.or.if_par_kpa.or.if_par_ip) then
         !     call model_reallocate('rho')
         ! endif
-        ! 
-        ! npar=count([if_par_kpa,if_par_rho,if_par_vp,if_par_ip].eqv..true.)
-        ! if(mpiworld%is_master) write(*,*) 'Number of inversion parameters:', npar
 
     end subroutine
     
@@ -93,7 +94,7 @@ use m_gradient, only: gradient
 
             !read in parameter
             pars(npar)=text(1:2); k1=2
-            if (text(1:3)=='rho'.or.text(1:3)=='kpa'.or.text(1:3)=='lda') then
+            if (text(1:3)=='sps'.or.text(1:3)=='rho'.or.text(1:3)=='kpa'.or.text(1:3)=='lda') then
                 pars(npar)=text(1:3); k1=3
             endif
         
@@ -127,7 +128,7 @@ use m_gradient, only: gradient
         character(*) :: text
         logical :: check_par
         
-        check_par=.true.
+        check_par=.false.
         
         if    (text(1:2)=='vp' ) then !P-wave velocity
             check_par = index(parameterization,'velocities')>0
@@ -137,6 +138,9 @@ use m_gradient, only: gradient
             
         elseif(text(1:2)=='sp' ) then !P-wave slowness
             check_par = index(parameterization,'slowness')>0
+
+        elseif(text(1:3)=='sps') then !inv Vp-Vs ratio
+            check_par = index(parameterization,'slowness')>0  .and. index(waveeq_info,'elastic')>0
             
         elseif(text(1:2)=='ip' ) then !P-wave (acoustic) impedance
             check_par = index(parameterization,'impedance')>0
@@ -152,7 +156,7 @@ use m_gradient, only: gradient
             
         elseif(text(1:2)=='mu' ) then !2nd Lamé parameter, shear modulus
             check_par = index(parameterization,'moduli')>0 .and. index(waveeq_info,'elastic')>0
-            
+        
         endif
 
         if(.not. check_par) then !ce paramètre n'est plus actif
@@ -165,52 +169,140 @@ use m_gradient, only: gradient
         character(3) :: dir
         real,dimension(m%nz,m%nx,m%ny,npar) :: x
         real,dimension(m%nz,m%nx,m%ny,npar),optional :: g
-        
-        !! Issue:
-        !! what if I just want to invert for rho, ip ?
-        !!
-        
+                
         !model
         if(dir=='m2x') then
-            ! select case (parameterization)
-            !     case ('vp-rho')
-            !         if(if_par_vp)  x(:,:,:,1) = (m%vp -par_vp_min)  / (par_vp_max -par_vp_min)
-            !         if(if_par_rho) x(:,:,:,2) = (m%rho-par_rho_min) / (par_rho_max-par_rho_min)
-            !     case ('vp-ip')
-            !         if(if_par_vp)  x(:,:,:,1) = (m%vp -par_vp_min)  / (par_vp_max -par_vp_min)
-            !         if(if_par_ip)  x(:,:,:,2) = (m%vp*m%rho -par_ip_min)  / (par_ip_max -par_ip_min)
-            !     end select
             do ipar=1,npar
-                if(pars(ipar)=='vp' ) x(:,:,:,ipar)= (m%vp      -pars_min(ipar))  / (pars_max(ipar) -pars_min(ipar))
-                if(pars(ipar)=='rho') x(:,:,:,ipar)= (m%rho     -pars_min(ipar))  / (pars_max(ipar) -pars_min(ipar))
-                if(pars(ipar)=='ip' ) x(:,:,:,ipar)= (m%vp*m%rho-pars_min(ipar))  / (pars_max(ipar) -pars_min(ipar))
+                select case (pars(ipar))
+                case ('vp' ); x(:,:,:,ipar) = m%vp
+                case ('vs' ); x(:,:,:,ipar) = m%vs
+                case ('sp' ); x(:,:,:,ipar) = 1./m%vp
+                case ('sps'); x(:,:,:,ipar) = m%vs/m%vp
+                case ('ip' ); x(:,:,:,ipar) = m%vp*m%rho
+                case ('rho'); x(:,:,:,ipar) = m%rho
+                case ('kpa'); x(:,:,:,ipar) = m%rho* m%vp*m%vp
+                case ('lda'); x(:,:,:,ipar) = m%rho*(m%vp*m%vp-2.*m%vs*m%vs)
+                case ('mu' ); x(:,:,:,ipar) = m%rho*(             m%vs*m%vs)
+                end select
+
+                !normalize x to be unitless
+                x(:,:,:,ipar)=(x(:,:,:,ipar)-pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
             enddo
-        else 
-!             select case (parameterization)
-! !                 case ('kappa-rho')
-!                 case ('vp-rho')
-!                     if(if_par_vp)  m%vp = x(:,:,:,1)*(par_vp_max -par_vp_min )+par_vp_min
-!                     if(if_par_rho) m%rho= x(:,:,:,2)*(par_rho_max-par_rho_min)+par_rho_min
-! !                case ('vprho-gardner')
-!                 case ('vp-ip')
-!                     if(if_par_vp)  m%vp = x(:,:,:,1)*(par_vp_max -par_vp_min )+par_vp_min
-!                     if(if_par_ip)  m%rho=(x(:,:,:,2)*(par_ip_max -par_ip_min )+par_ip_min) /m%vp
-!             end select
+
+        else !x2m
+            !first run
             do ipar=1,npar
-                if(pars(ipar)=='vp' ) m%vp = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar)) + pars_min(ipar)
-                if(pars(ipar)=='rho') m%rho= x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar)) + pars_min(ipar)
-                if(pars(ipar)=='ip' ) m%rho=(x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar)) + pars_min(ipar)) /m%vp
+                select case (pars(ipar))
+                case ('vp' ); m%vp = (x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar))
+                case ('vs' ); m%vs = (x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar))
+                case ('sp' ); m%vp = 1. / (x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar))
+                case ('rho'); m%rho= (x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar))
+                end select
             enddo
+
+            !second run
+            do ipar=1,npar
+                select case (pars(ipar))
+                case ('sps'); m%vs = (x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)) * m%vp !m%vp should have been updated after first run
+                case ('ip' ); m%rho= (x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)) / m%vp
+                case ('kpa'); m%vp = sqrt( (x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)) /m%rho )
+                case ('lda'); m%vp = sqrt( (x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)) /m%rho +2*m%vs*m%vs )
+                case ('mu' ); m%vs = sqrt( (x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)) /m%rho )
+                end select
+            enddo
+
         endif
         
         
         !gradient
+        !!for units of gradient and g, see m_field*.f90
         if(present(g)) then
         if(dir=='m2x') then
+
+            select case (parameterization)
+
+            case ('moduli-density')
+                do ipar=1,npar
+                    select case (pars(ipar))
+
+                    case ('kpa')
+
+                    case ('lda')
+
+                    case ('mu')
+
+                    case ('rho') 
+                        if(index(waveeq_info,'acoustic')>0) then
+                            ! g(:,:,:,1)=(gradient(:,:,:,1)*2.*m%vp*m%rho)
+                        else !elastic
+                        endif
+
+                    end select
+                enddo
+
+            case ('velocities-density')
+                do ipar=1,npar
+                    select case (pars(ipar))
+
+                    case ('vp')
+                        if(index(waveeq_info,'acoustic')>0) then
+                            g(:,:,:,ipar)=(gradient(:,:,:,1)*2.*m%vp*m%rho)
+                        else !elastic
+                        endif
+
+                    case ('vs')
+
+                    case ('rho')
+
+                    end select
+                enddo
+
+            case ('velocities-impedance')
+                do ipar=1,npar
+                    select case (pars(ipar))
+
+                    case ('vp')
+                        if(index(waveeq_info,'acoustic')>0) then
+                            g(:,:,:,1)=(gradient(:,:,:,1)*2.*m%vp*m%rho)
+                        else !elastic
+                        endif
+
+                    case ('vs')
+
+                    case ('ip')
+
+                    end select
+                enddo
+
+            case ('slowness-density')
+                do ipar=1,npar
+                    select case (pars(ipar))
+
+                    case ('sp')
+                        if(index(waveeq_info,'acoustic')>0) then
+                            g(:,:,:,1)=(gradient(:,:,:,1)*2.*m%vp*m%rho)
+                        else !elastic
+                        endif
+
+                    case ('sps')
+
+                    case ('rho')
+
+                    end select
+                enddo
+
+            end select
+
+            !normaliz g to be unitless
+            do ipar=1,npar
+                g(:,:,:,ipar)=g(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))
+            enddo
+
+
     !         select case (parameterization)
-    ! !             case ('kappa-rho')
-    !             case ('vp-rho') !unit of g = [kg/m/s2]
-    !                 if(if_par_vp)  g(:,:,:,1)=(gradient(:,:,:,1)*2.*m%vp*m%rho)               *(par_vp_max-par_vp_min)
+    !             case ('velocities-density') !unit of g = [kg/m2/s2]
+                    
+    !                     g(:,:,:,1)=(gradient(:,:,:,1)*2.*m%vp*m%rho)               *(par_vp_max-par_vp_min)
     !                 if(if_par_rho) g(:,:,:,2)=(gradient(:,:,:,1)*m%vp*m%vp+gradient(:,:,:,2)) *(par_rho_max-par_rho_min)
     ! !             case ('vprho-gardner')
     !             case ('vp-ip')
