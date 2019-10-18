@@ -60,12 +60,11 @@ use m_gradient, only: gradient
         parameterization=get_setup_char('PARAMETERIZATION',default='velocities-density')
 
         !read in passive parameters which depends on active parameters
-        passive=trim(adjustl(get_setup_char('PASSIVE_PARAMETER')))
+        passive=get_setup_char('PASSIVE_PARAMETER'))
         if(len(passive)>0) call read_passive
 
         !read in active parameters and their allowed ranges
         active=get_setup_char('ACTIVE_PARAMETER',default='vp1500:3400')
-        active=trim(adjustl(active)) !no head or tail spaces
         call read_active
 
         !expect rational users..
@@ -260,7 +259,6 @@ use m_gradient, only: gradient
                         g(:,:,:,ipar)=gradient(:,:,:,2)
 
                     case ('rho')
-                        
                         if(index(waveeq_info,'acoustic')>0) then
                             g(:,:,:,ipar)=gradient(:,:,:,2)
                         else !elastic
@@ -275,14 +273,16 @@ use m_gradient, only: gradient
                     select case (pars(ipar))
 
                     case ('vp')
-                        if(index(waveeq_info,'acoustic')>0) then
-                            if(if_gardner) then
+                        if(len(passive)==0) then !no passive parameters
+                            if(index(waveeq_info,'acoustic')>0) then
                                 g(:,:,:,ipar)=(gradient(:,:,:,1)*2.*m%vp*m%rho)
-                            else
+                            else !elastic
                             endif
                         endif
-                        if(index(waveeq_info,'elastic')>0) then
-                            if(if_gardner) then
+
+                        if(if_gardner) then
+                            if(index(waveeq_info,'acoustic')>0) then
+                                g(:,:,:,ipar)=(gradient(:,:,:,1)*2.*m%vp*m%rho)
                             else
                             endif
                         endif
