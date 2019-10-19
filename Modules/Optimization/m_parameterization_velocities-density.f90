@@ -7,11 +7,11 @@ use m_gradient, only: gradient
 
 
     !PARAMETERIZATION     -- ALLOWED PARAMETERS
-    !velocities-density   -- vp vs rho
+    !velocities-impedance -- vp vs ip
 
     !acoustic:
-    !kpa = rho*vp^2
-    !rho0= rho
+    !kpa = rho*vp^2 = vp*ip
+    !rho0= rho      = ip/vp
     !gvp = gkpa*2rho*vp
     !grho= gkpa*vp^2 + grho0
 
@@ -26,13 +26,13 @@ use m_gradient, only: gradient
     !rho0= rho
     !gvp = glda*2rho*vp
     !gvs = (glda*-2 + gmu)*2rho*vs
-    !grho= glda*(vp^2-2vs^2) + gmu*vs^2 + grho0
+    !grho= glda*vp^2 + (-2glda+gmu)*vs^2 + grho0
 
     !P-SV + gardner:
     !lda = a*vp^(b+2) - 2a*vp^b*vs^2
     !mu  = a*vp^b*vs^2
     !rho0= a*vp^b
-    !gvp = (glda*((b+2)/b*vp-2vs^2) + gmu*vs^2 + grho0)*ab*vp^(b-1)
+    !gvp = (glda*(b+2)/b*vp + (-2glda + gmu)vs^2 + grho0)*ab*vp^(b-1)
     !gvs = (glda*-2 + gmu)*2a*vp^b*vs
 
 
@@ -231,8 +231,7 @@ use m_gradient, only: gradient
                     select case (pars(ipar))
                     case ('vp' ); g(:,:,:,ipar) = gradient(:,:,:,1)*2*m%rho*m%vp
                     case ('vs' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*(-2) + gradient(:,:,:,2))*2*m%rho*m%vs
-                    case ('rho'); g(:,:,:,ipar) = gradient(:,:,:,1)*(m%vp**2-2*m%vs**2) &
-                                                + gradient(:,:,:,2)*m%vs**2 + gradient(:,:,:,3)
+                    case ('rho'); g(:,:,:,ipar) = gradient(:,:,:,1)*m%vp**2 + (-2*gradient(:,:,:,1)+gradient(:,:,:,2))*m%vs**2 + gradient(:,:,:,3)
                     end select
                 enddo
             endif
@@ -241,7 +240,7 @@ use m_gradient, only: gradient
             if(if_elastic .and. if_gardner) then
                 do ipar=1,npar
                     select case (pars(ipar))
-                    case ('vp' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*((b+2)/b*m%vp-2*m%vs**2) + gradient(:,:,:,2)*m%vs**2 + gradient(:,:,:,3))*a*b*m%vp**(b-1)
+                    case ('vp' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*(b+2)/b*m%vp + (-2*gradient(:,:,:,1)+gradient(:,:,:,2))*m%vs**2 + gradient(:,:,:,3))*a*b*m%vp**(b-1)
                     case ('vs' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*(-2) + gradient(:,:,:,2))*2*a*m%vp**b*m%vs
                     end select
                 enddo

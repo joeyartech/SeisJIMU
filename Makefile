@@ -86,6 +86,7 @@ OBJ_FWD=$(OBJ0) $(modeling:.f90=.o)
 
 Norm=L2
 Param=velocities-density
+#Param=velocities-impedance
 Preco=zpower
 LineS=Wolfe
 #Optim=NLCG

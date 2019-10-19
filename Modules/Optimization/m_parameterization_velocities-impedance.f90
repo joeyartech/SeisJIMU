@@ -7,33 +7,21 @@ use m_gradient, only: gradient
 
 
     !PARAMETERIZATION     -- ALLOWED PARAMETERS
-    !velocities-density   -- vp vs rho
+    !velocities-impedance -- vp vs ip
 
     !acoustic:
-    !kpa = rho*vp^2
-    !rho0= rho
-    !gvp = gkpa*2rho*vp
-    !grho= gkpa*vp^2 + grho0
-
-    !acoustic + gardner:
-    !kpa = a*vp^(b+2)
-    !rho0= a*vp^b
-    !gvp = (gkpa*(b+2)/b*vp^2 + grho0)*ab*vp^(b-1)
+    !kpa = rho*vp^2 = vp*ip
+    !rho0= rho      = ip/vp
+    !gvp = (gkpa - grho0)*vp*rho
+    !gip = gkpa*vp + grho0/vp
 
     !P-SV:
-    !lda = rho(vp^2-2vs^2)
-    !mu  = rho*vs^2
-    !rho0= rho
-    !gvp = glda*2rho*vp
-    !gvs = (glda*-2 + gmu)*2rho*vs
-    !grho= glda*(vp^2-2vs^2) + gmu*vs^2 + grho0
-
-    !P-SV + gardner:
-    !lda = a*vp^(b+2) - 2a*vp^b*vs^2
-    !mu  = a*vp^b*vs^2
-    !rho0= a*vp^b
-    !gvp = (glda*((b+2)/b*vp-2vs^2) + gmu*vs^2 + grho0)*ab*vp^(b-1)
-    !gvs = (glda*-2 + gmu)*2a*vp^b*vs
+    !lda = rho(vp^2-2vs^2) = vp*ip - 2vs^2*ip/vp
+    !mu  = rho*vs^2        = vs^2*ip/vp
+    !rho0= rho             = ip/vp
+    !gvp = (glda*vp^2 + (2glda-gmu)vs^2 - grho0)*rho/vp
+    !gvs = (-2glda + gmu)*2vs*rho
+    !gip = (glda*vp^2 + (-2glda+gmu)*vs^2 +grho0) /vp
 
 
     public  parameterization, npar
@@ -47,10 +35,10 @@ use m_gradient, only: gradient
     integer :: npar=0
 
     !real,dimension(3) :: hyper=0. !max 3 hyper-parameters for empirical law
-    real :: a,b
+    !real :: a,b
 
     logical :: if_empirical=.false.
-    logical :: if_gardner=.false., if_castagna=.false.
+    !logical :: if_gardner=.false., if_castagna=.false.
 
     contains
     
@@ -69,15 +57,15 @@ use m_gradient, only: gradient
 
     subroutine read_empirical
         
-        !Gardner law rho=a*vp^b
-        !passive rho will be updated according to vp
-        !https://wiki.seg.org/wiki/Dictionary:Gardner%E2%80%99s_equation
-        !http://www.subsurfwiki.org/wiki/Gardner%27s_equation
-        !https://en.wikipedia.org/wiki/Gardner%27s_relation
-        if_gardner = index(empirical,'gardner')>0
-        if(if_gardner) then
-            a=310; b=0.25 !modify if you want
-        endif
+        ! !Gardner law rho=a*vp^b
+        ! !passive rho will be updated according to vp
+        ! !https://wiki.seg.org/wiki/Dictionary:Gardner%E2%80%99s_equation
+        ! !http://www.subsurfwiki.org/wiki/Gardner%27s_equation
+        ! !https://en.wikipedia.org/wiki/Gardner%27s_relation
+        ! if_gardner = index(empirical,'gardner')>0
+        ! if(if_gardner) then
+        !     a=310; b=0.25 !modify if you want
+        ! endif
 
         ! !Castagna mudrock line vp=a*vp+b
         ! !passive vs will be updated according to vp
@@ -120,10 +108,7 @@ use m_gradient, only: gradient
 
             !read in parameter
             pars(npar)=text(1:2); k1=2
-            if (text(1:3)=='rho') then
-                pars(npar)=text(1:3); k1=3
-            endif
-        
+
             !read in parameter range
             k2=index(text,':')
             read(text(k1+1:k2-1),*) pars_min(npar)
@@ -163,7 +148,7 @@ use m_gradient, only: gradient
 
         if(text(1:2)=='vs' ) check_par = index(waveeq_info,'elastic')>0
         
-        if(text(1:3)=='rho') check_par = .not. if_gardner
+        if(text(1:3)=='ip') check_par = .true.
 
         if(.not. check_par) then !ce paramètre n'est plus actif
             if(mpiworld%is_master) write(*,*) 'Parameter ',text(1:3),' will not be active in the inversion..'
@@ -184,7 +169,7 @@ use m_gradient, only: gradient
                 select case (pars(ipar))
                 case ('vp' ); x(:,:,:,ipar) = m%vp
                 case ('vs' ); x(:,:,:,ipar) = m%vs
-                case ('rho'); x(:,:,:,ipar) = m%rho
+                case ('ip' ); x(:,:,:,ipar) = m%vp*m%rho
                 end select
 
                 !normalize x to be unitless
@@ -192,12 +177,19 @@ use m_gradient, only: gradient
             enddo
 
         else !x2m
+            !first run
             do ipar=1,npar
                 select case (pars(ipar))
                 case ('vp' ); m%vp = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar)
                 case ('vs' ); m%vs = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar)
-                case ('rho'); m%rho= x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar)
                 end select
+            enddo
+
+            !second run
+            do ipar=1,npar
+                if(pars(ipar)=='ip') then
+                    m%rho= x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar) /m%vp  !m%vp should have been updated in the first run
+                endif
             enddo
 
         endif
@@ -214,38 +206,37 @@ use m_gradient, only: gradient
             if(if_acoustic .and. .not. if_empirical) then
                 do ipar=1,npar
                     select case (pars(ipar))
-                    case ('vp' ); g(:,:,:,ipar) = gradient(:,:,:,1)*2*m%rho*m%vp
-                    case ('rho'); g(:,:,:,ipar) = gradient(:,:,:,1)*m%vp**2 + gradient(:,:,:,2)
+                    case ('vp' ); g(:,:,:,ipar) =(gradient(:,:,:,1)-gradient(:,:,:,2))*m%rho*m%vp
+                    case ('ip' ); g(:,:,:,ipar) = gradient(:,:,:,1)*m%vp + gradient(:,:,:,2)/m%vp
                     end select
                 enddo
             endif
 
-            !acoustic + gardner
-            if(if_acoustic .and. if_gardner) then
-                g(:,:,:,1) =(gradient(:,:,:,1)*(b+2)/b*m%vp**2 + gradient(:,:,:,2))*a*b*m%vp**(b-1)
-            endif
+            ! !acoustic + gardner
+            ! if(if_acoustic .and. if_gardner) then
+            !     g(:,:,:,1) =(gradient(:,:,:,1)*(b+2)/b*m%vp**2 + gradient(:,:,:,2))*a*b*m%vp**(b-1)
+            ! endif
 
             !elastic
             if(if_elastic .and. .not. if_empirical) then
                 do ipar=1,npar
                     select case (pars(ipar))
-                    case ('vp' ); g(:,:,:,ipar) = gradient(:,:,:,1)*2*m%rho*m%vp
-                    case ('vs' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*(-2) + gradient(:,:,:,2))*2*m%rho*m%vs
-                    case ('rho'); g(:,:,:,ipar) = gradient(:,:,:,1)*(m%vp**2-2*m%vs**2) &
-                                                + gradient(:,:,:,2)*m%vs**2 + gradient(:,:,:,3)
+                    case ('vp' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*m%vp**2 + (2*gradient(:,:,:,1)-gradient(:,:,:,2))*m%vs**2 - gradient(:,:,:,3))*m%rho/m%vp
+                    case ('vs' ); g(:,:,:,ipar) =(-2*gradient(:,:,:,1) + gradient(:,:,:,2))*2*m%rho*m%vs
+                    case ('ip' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*m%vp**2 + (-2*gradient(:,:,:,1)+gradient(:,:,:,2))*m%vs**2 + gradient(:,:,:,3))/m%vp
                     end select
                 enddo
             endif
 
-            !elastic + gardner
-            if(if_elastic .and. if_gardner) then
-                do ipar=1,npar
-                    select case (pars(ipar))
-                    case ('vp' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*((b+2)/b*m%vp-2*m%vs**2) + gradient(:,:,:,2)*m%vs**2 + gradient(:,:,:,3))*a*b*m%vp**(b-1)
-                    case ('vs' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*(-2) + gradient(:,:,:,2))*2*a*m%vp**b*m%vs
-                    end select
-                enddo
-            endif
+            ! !elastic + gardner
+            ! if(if_elastic .and. if_gardner) then
+            !     do ipar=1,npar
+            !         select case (pars(ipar))
+            !         case ('vp' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*((b+2)/b*m%vp-2*m%vs**2) + gradient(:,:,:,2)*m%vs**2 + gradient(:,:,:,3))*a*b*m%vp**(b-1)
+            !         case ('vs' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*(-2) + gradient(:,:,:,2))*2*a*m%vp**b*m%vs
+            !         end select
+            !     enddo
+            ! endif
 
 
             !normaliz g to be unitless
