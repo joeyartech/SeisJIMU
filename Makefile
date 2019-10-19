@@ -85,6 +85,7 @@ OBJ_FWD=$(OBJ0) $(modeling:.f90=.o)
 #######
 
 Norm=L2
+Param=velocities-density
 Preco=zpower
 LineS=Wolfe
 #Optim=NLCG
@@ -95,7 +96,7 @@ $(DIR)Modules/Gradient/m_objectivefunc_$(Norm).f90 \
 $(DIR)Modules/Gradient/m_gradient.f90 \
 
 optimization = \
-$(DIR)Modules/Optimization/m_parameterization.f90 \
+$(DIR)Modules/Optimization/m_parameterization_$(Param).f90 \
 $(DIR)Modules/Optimization/m_preconditioner_$(Preco).f90 \
 $(DIR)Modules/Optimization/m_linesearcher_$(LineS).f90 \
 $(DIR)Modules/Optimization/m_optimizer_$(Optim).f90 \
@@ -110,8 +111,8 @@ fwd : $(OBJ_FWD) FWD/main.o $(DIR)mod exe
 	(cd exe; ln -sf fwd_$(WaveEq)_$(Solver) FWD)
 
 fwi : $(OBJ_FWI) FWI/main.o $(DIR)mod exe
-	mpif90 $(FLAGF90) $(OBJ_FWI) FWI/main.o $(MOD)  -o exe/fwi_$(WaveEq)_$(Solver)_$(Norm)_$(Preco)_$(LineS)_$(Optim)
-	(cd exe; ln -sf fwi_$(WaveEq)_$(Solver)_$(Norm)_$(Preco)_$(LineS)_$(Optim) FWI)
+	mpif90 $(FLAGF90) $(OBJ_FWI) FWI/main.o $(MOD)  -o exe/fwi_$(WaveEq)_$(Solver)_$(Norm)_$(Param)_$(Preco)_$(LineS)_$(Optim)
+	(cd exe; ln -sf fwi_$(WaveEq)_$(Solver)_$(Norm)_$(Param)_$(Preco)_$(LineS)_$(Optim) FWI)
 
 
 clean :
