@@ -10,7 +10,7 @@ use m_gradient, only: gradient
     !WaveEquation -- moduli-density       -- kpa rho (acoustic) or lda mu rho (elastic)
     !I/O models   -- velocities-density   -- vp vs rho
     !seismic      -- velocities-impedance -- vp vs ip
-    !tomography   -- slowness-density     -- sp ss rho
+    !tomography   -- slowness-density     -- sp sps rho
     !optimization -- can be any of above
 
     !Physical meaning of symbols uniformly used in this code:
