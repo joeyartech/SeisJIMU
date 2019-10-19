@@ -7,6 +7,7 @@
 \definecolor{usccardinal}{rgb}{0.6, 0.0, 0.0}
 \definecolor{bostonuniversityred}{rgb}{0.8, 0.0, 0.0}
 
+\newcommand{\half}{\frac{1}{2}}
 \newcommand{\dxdt}{\mathrm{d}x\mathrm{d}t}
 \newcommand{\diff}{\mathrm{d}}
 \newcommand{\iunit}{\mathrm{i}}
@@ -51,8 +52,11 @@
 % \tableofcontents[section,subsectionstyle=hide/show/show] }}
 
 \begin{frame}\frametitle{Overview}
-  \framebox{WaveEq lm $\Rightarrow$ optim x,g}
   
+  \begin{center}
+    \framebox{WaveEq lm $\Rightarrow$ optim x,g} 
+  \end{center}
+
   \begin{itemize}
     \item WaveEq uses lm and produces gkpa, glda, gmu and grho under moduli-density parameterization.
     \item m\_parameterization.f90 converts them to user-specified parameterization, which can be
@@ -72,7 +76,7 @@
 \begin{frame}\frametitle{PARAMETERIZATION velocities-density}
 \framesubtitle{isotropic ACoustic}
   
-  \begin{minipage}{0.4\linewidth}
+  \begin{minipage}{0.5\linewidth}
     \[\left\{ \begin{array}{l}
       \kappa = \rho V_P^2 \\
       \rho_0 = \rho 
@@ -86,91 +90,138 @@
     \end{eqnarray}
 
   \end{minipage} \vline
-  \begin{minipage}{0.4\linewidth}
+  \begin{minipage}{0.45\linewidth}
     \[\left\{ \begin{array}{l}
-      V_P  = \sqrt{\kappa/\rho_0} \\
+      V_P  = \sqrt{\frac{\kappa}{\rho_0}} \\
       \rho = \rho_0
     \end{array} \right.\]
     
     \begin{eqnarray}
       \nabla_{\kappa} &=& \nabla_{V_P} \partderi{V_P}{\kappa} + \nabla_{\rho} \partderi{\rho}{\kappa} \nonumber\\
-                      &=& \nabla_{V_P} 0.5(\kappa/\rho)^{0.5}/\rho \nonumber\\
+                      &=& \nabla_{V_P} \frac{1}{2\rho_0}\sqrt{\frac{\rho_0}{\kappa}} \nonumber\\
+                      &=& \nabla_{V_P} 0.5\rho_0^{-0.5}\kappa^{-0.5} \nonumber\\
       \nabla_{\rho_0} &=& \nabla_{V_P} \partderi{V_P}{\rho_0} + \nabla_{\rho} \partderi{\rho}{\rho_0} \nonumber\\
-                      &=& \nabla_{V_P} (-0.5)(\kappa/\rho)^{0.5} \rho^{-2} + \nabla_{\rho} \nonumber
+                      &=& \nabla_{V_P} \left(-\frac{\kappa}{2\rho_0^2}\sqrt{\frac{\rho_0}{\kappa}}\right) + \nabla_{\rho} \nonumber\\
+                      &=& \nabla_{V_P} \left(-0.5\rho_0^{-1.5}\kappa^{0.5}\right) + \nabla_{\rho} \nonumber
     \end{eqnarray}
   \end{minipage}
 
 \end{frame}
 
-% \begin{frame}\frametitle{PARAMETERIZATION velocities-density + PASSIVE gardner}
-% \framesubtitle{isotropic ACoustic}
-%   
-%   \begin{minipage}{0.4\linewidth}
-%     \[\left\{ \begin{array}{l}
-%       \kappa = \rho V_P^2 \\
-%       \rho_0 = \rho 
-%     \end{array} \right.\]
-%     
-%     \begin{eqnarray}
-%       \nabla_{V_P} &=& \nabla_{\kappa} \partderi{\kappa}{V_P} + \nabla_{\rho_0} \partderi{\rho_0}{V_P} \nonumber\\
-%                    &=& \nabla_{\kappa} 2\rho V_P \nonumber\\
-%       \nabla_{\rho} &=& \nabla_{\kappa} \partderi{\kappa}{\rho} + \nabla_{\rho_0} \partderi{\rho_0}{\rho} \nonumber\\
-% 		    &=& \nabla_{\kappa} V_P^2 + \nabla_{\rho_0} \nonumber
-%     \end{eqnarray}
-% 
-%   \end{minipage} \vline
-%   \begin{minipage}{0.4\linewidth}
-%     \[\left\{ \begin{array}{l}
-%       V_P  = \sqrt{\kappa/\rho_0} \\
-%       \rho = \rho_0
-%     \end{array} \right.\]
-%     
-%     \begin{eqnarray}
-%       \nabla_{\kappa} &=& \nabla_{V_P} \partderi{V_P}{\kappa} + \nabla_{\rho} \partderi{\rho}{\kappa} \nonumber\\
-%                       &=& \nabla_{V_P} 0.5(\kappa/\rho)^{0.5}/\rho \nonumber\\
-%       \nabla_{\rho_0} &=& \nabla_{V_P} \partderi{V_P}{\rho_0} + \nabla_{\rho} \partderi{\rho}{\rho_0} \nonumber\\
-%                       &=& \nabla_{V_P} (-0.5)(\kappa/\rho)^{0.5} \rho^{-2} + \nabla_{\rho} \nonumber
-%     \end{eqnarray}
-%   \end{minipage}
-% 
-% \end{frame}
-% 
-% \begin{frame}\frametitle{PARAMETERIZATION velocities-density}
-% \framesubtitle{P-SV}
-%   
-%   \begin{minipage}{0.4\linewidth}
-%     \[\left\{ \begin{array}{l}
-%       \lambda = \rho (V_P^2-2V_S^2) \\
-%       \mu    = \rho V_S^2 \\
-%       \rho_0 = \rho 
-%     \end{array} \right.\]
-%     
-%     \begin{eqnarray}
-%       \nabla_{V_P} &=& \nabla_{\kappa} \partderi{\kappa}{V_P} + \nabla_{\rho_0} \partderi{\rho_0}{V_P} \nonumber\\
-%                    &=& \nabla_{\kappa} 2\rho V_P \nonumber\\
-%       \nabla_{V_S} &=& \nabla_{\kappa} \partderi{\kappa}{V_P} + \nabla_{\rho_0} \partderi{\rho_0}{V_P} \nonumber\\
-%                    &=& \nabla_{\kappa} 2\rho V_P \nonumber\\
-%       \nabla_{\rho} &=& \nabla_{\kappa} \partderi{\kappa}{\rho} + \nabla_{\rho_0} \partderi{\rho_0}{\rho} \nonumber\\
-% 		    &=& \nabla_{\kappa} V_P^2 + \nabla_{\rho_0} \nonumber
-%     \end{eqnarray}
-% 
-%   \end{minipage} \vline
-%   \begin{minipage}{0.4\linewidth}
+\begin{frame}\frametitle{PARAMETERIZATION velocities-density + PASSIVE gardner}
+\framesubtitle{isotropic ACoustic}
+
+  \begin{center}
+    \framebox{$\rho = c_1 V_P ^{c_2}$}
+  \end{center}
+
+  \begin{minipage}{0.5\linewidth}
+    \[\left\{ \begin{array}{l}
+      \kappa = \rho V_P^2 = c_1 V_P^{c_2+2} \\
+      \rho_0 = \rho = c_1 V_P ^{c_2}
+    \end{array} \right.\]
+    
+    \begin{eqnarray}
+      \nabla_{V_P} &=& \nabla_{\kappa} \partderi{\kappa}{V_P} + \nabla_{\rho_0} \partderi{\rho_0}{V_P} \nonumber\\
+                   &=& \nabla_{\kappa} c_1(c_2+2) V_P^{c_2+1} \nonumber\\
+                   & &+\nabla_{\rho_0} c_1 c_2 V_P^{c_2-1} \nonumber\\
+                   &=& \left( \nabla_{\kappa} c_1(c_2+2) V_P + \nabla_{\rho_0} \frac{c_1 c_2}{V_P} \right) V_P^{c_2} \nonumber
+    \end{eqnarray}
+
+  \end{minipage} \vline
+  \begin{minipage}{0.45\linewidth}
+    \[ V_P = \left(\frac{\kappa}{c_1}\right)^{\frac{1}{c_2+2}} \]
+    
+    \begin{eqnarray}
+      \nabla_{\kappa} &=& \nabla_{V_P} \partderi{V_P}{\kappa} \nonumber\\
+                      &=& \nabla_{V_P} \frac{1}{c_1(c_2+2)} \left(\frac{\kappa}{c_1}\right)^{\frac{c_2+1}{c_2+2}} \nonumber
+    \end{eqnarray}
+  \end{minipage}
+
+\end{frame}
+
+\begin{frame}\frametitle{PARAMETERIZATION velocities-density}
+\framesubtitle{isotropic P-SV}
+  
+  \begin{minipage}{0.5\linewidth}
+    \[\left\{ \begin{array}{l}
+      \lambda = \rho (V_P^2-2V_S^2) \\
+      \mu    = \rho V_S^2 \\
+      \rho_0 = \rho 
+    \end{array} \right.\]
+    
+    \begin{eqnarray}
+      \nabla_{V_P} &=& \nabla_\lambda \partderi{\lambda}{V_P} + \nabla_\mu \partderi{\mu}{V_P} + \nabla_{\rho_0} \partderi{\rho_0}{V_P} \nonumber\\
+                   &=& \nabla_\lambda 2\rho V_P \nonumber\\
+      \nabla_{V_S} &=& \nabla_\lambda \partderi{\lambda}{V_S} + \nabla_\mu \partderi{\mu}{V_S} + \nabla_{\rho_0} \partderi{\rho_0}{V_S} \nonumber\\
+                   &=& \nabla_\lambda (-4\rho V_S) + \nabla_\mu 2\rho V_S \nonumber\\
+      \nabla_{\rho} &=& \nabla_\lambda \partderi{\lambda}{\rho} + \nabla_\mu \partderi{\mu}{\rho} + \nabla_{\rho_0} \partderi{\rho_0}{\rho} \nonumber\\
+		    &=& \nabla_\lambda (V_P^2-2V_S^2) + \nabla_\mu V_S^2 + \nabla_{\rho_0} \nonumber
+    \end{eqnarray}
+
+  \end{minipage} \vline
+  \begin{minipage}{0.45\linewidth}
+    \[\left\{ \begin{array}{l}
+      V_P  = \sqrt{\frac{\lambda+2\mu}{\rho_0}} \\
+      V_S  = \sqrt{\frac{\mu}{\rho_0}} \\
+      \rho = \rho_0
+    \end{array} \right.\]
+    
+    \begin{eqnarray}
+      \nabla_{\lambda}&=& \nabla_{V_P} \partderi{V_P}{\lambda} + \nabla_{V_S} \partderi{V_S}{\lambda} + \nabla_{\rho} \partderi{\rho}{\lambda} \nonumber\\
+                      &=& ... \nonumber\\
+      \nabla_{\mu}    &=& \nabla_{V_P} \partderi{V_P}{\mu}     + \nabla_{V_S} \partderi{V_S}{\mu}     + \nabla_{\rho} \partderi{\rho}{\mu} \nonumber\\
+		      &=& ... \nonumber\\
+      \nabla_{\rho_0} &=& \nabla_{V_P} \partderi{V_P}{\rho_0}  + \nabla_{V_S} \partderi{V_S}{\rho_0}  + \nabla_{\rho} \partderi{\rho}{\rho_0} \nonumber\\
+		      &=& ... \nonumber
+    \end{eqnarray}
+  \end{minipage}
+
+\end{frame}
+
+\begin{frame}\frametitle{PARAMETERIZATION velocities-density  + PASSIVE gardner}
+\framesubtitle{isotropic P-SV}
+
+  \begin{center}
+    \framebox{$\rho = c_1 V_P ^{c_2}$}
+  \end{center}
+  
+  \begin{minipage}{\linewidth}
+    \[\left\{ \begin{array}{l}
+      \lambda = \rho (V_P^2-2V_S^2) = c_1 V_P^{c_2+2} - 2c_1 V_P^{c_2} V_S^2 \\
+      \mu    = \rho V_S^2 = c_1 V_P ^{c_2}V_S^2 \\
+      \rho_0 = \rho = c_1 V_P ^{c_2}
+    \end{array} \right.\]
+    
+    \begin{eqnarray}
+      \nabla_{V_P} &=& \nabla_\lambda \partderi{\lambda}{V_P} + \nabla_\mu \partderi{\mu}{V_P} + \nabla_{\rho_0} \partderi{\rho_0}{V_P} \nonumber\\
+                   &=& \nabla_\lambda c_1(c_2+2)V_P^{c_2+1}  + \nabla_\lambda (-2)c_1c_2V_P^{c_2-1}V_S^2 \nonumber\\
+                   & &+\nabla_\mu     c_1c_2V_P^{c_2-1}V_S^2 + \nabla_{\rho_0} c_1c_2V_P^{c_2-1} \nonumber\\
+                   &=& \nabla_\lambda \left(c_1(c_2+2)V_P -2c_1c_2V_P^{-1}V_S^2\right)V_P^{c_2} + \left(\nabla_\mu V_S^2 + \nabla_{\rho_0} \right)c_1c_2V_P^{c_2-1} \nonumber\\
+      \nabla_{V_S} &=& \nabla_\lambda \partderi{\lambda}{V_S} + \nabla_\mu \partderi{\mu}{V_S} + \nabla_{\rho_0} \partderi{\rho_0}{V_S} \nonumber\\
+                   &=& \nabla_\lambda (-4c_1 V_P^{c_2}V_S) + \nabla_\mu 2c_1V_P^{c_2}V_S \nonumber\\
+                   &=& \left(\nabla_\lambda (-2) + \nabla_\mu \right)2c_1V_P^{c_2}V_S \nonumber
+    \end{eqnarray}
+
+  \end{minipage} %\vline
+%   \begin{minipage}{0.45\linewidth}
 %     \[\left\{ \begin{array}{l}
 %       V_P  = \sqrt{\frac{\lambda+2\mu}{\rho_0}} \\
-%       V_S  = \sqrt{\mu/\rho_0} \\
+%       V_S  = \sqrt{\frac{\mu}{\rho_0}} \\
 %       \rho = \rho_0
 %     \end{array} \right.\]
 %     
 %     \begin{eqnarray}
-%       \nabla_{\kappa} &=& \nabla_{V_P} \partderi{V_P}{\kappa} + \nabla_{\rho} \partderi{\rho}{\kappa} \nonumber\\
-%                       &=& \nabla_{V_P} 0.5(\kappa/\rho)^{0.5}/\rho \nonumber\\
-%       \nabla_{\rho_0} &=& \nabla_{V_P} \partderi{V_P}{\rho_0} + \nabla_{\rho} \partderi{\rho}{\rho_0} \nonumber\\
-%                       &=& \nabla_{V_P} (-0.5)(\kappa/\rho)^{0.5} \rho^{-2} + \nabla_{\rho} \nonumber
+%       \nabla_{\lambda}&=& \nabla_{V_P} \partderi{V_P}{\lambda} + \nabla_{V_S} \partderi{V_S}{\lambda} + \nabla_{\rho} \partderi{\rho}{\lambda} \nonumber\\
+%                       &=& ... \nonumber\\
+%       \nabla_{\mu}    &=& \nabla_{V_P} \partderi{V_P}{\mu}     + \nabla_{V_S} \partderi{V_S}{\mu}     + \nabla_{\rho} \partderi{\rho}{\mu} \nonumber\\
+% 		      &=& ... \nonumber\\
+%       \nabla_{\rho_0} &=& \nabla_{V_P} \partderi{V_P}{\rho_0}  + \nabla_{V_S} \partderi{V_S}{\rho_0}  + \nabla_{\rho} \partderi{\rho}{\rho_0} \nonumber\\
+% 		      &=& ... \nonumber
 %     \end{eqnarray}
 %   \end{minipage}
-% 
-% \end{frame}
+
+\end{frame}
 
 \end{document}
 
