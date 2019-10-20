@@ -6,40 +6,40 @@ use m_field, only:waveeq_info
 use m_gradient, only: gradient
 
 
-    !PARAMETERIZATION     -- ALLOWED PARAMETERS
-    !velocities-impedance -- vp vs ip
+    !PARAMETERIZATION   -- ALLOWED PARAMETERS
+    !slowness-impedance -- sp sps rho
 
     !acoustic:
-    !kpa = rho*vp^2 = vp*ip
-    !rho0= rho      = ip/vp
-    !gvp = gkpa*2rho*vp
+    !kpa = rho*vp^2 = rho*sp^-2
+    !rho0= rho
+    !gsp = gkpa*(-2)rho*vp^3
     !grho= gkpa*vp^2 + grho0
 
     !acoustic + gardner:
-    !kpa = a*vp^(b+2)
-    !rho0= a*vp^b
-    !gvp = (gkpa*(b+2)/b*vp^2 + grho0)*ab*vp^(b-1)
+    !kpa = a*vp^(b+2) = a*sp^(-b-2)
+    !rho0= a*vp^b     = a*sp^-b
+    !gsp = (gkpa*(b+2)/b + grho0*vp^-2)*(-ab)*vp^(b+3)
 
     !P-SV:
-    !lda = rho(vp^2-2vs^2)
-    !mu  = rho*vs^2
+    !lda = rho(vp^2-2vs^2) = rho*sp^-2*(1-2sps^2)
+    !mu  = rho*vs^2        = rho*(sps/sp)^2
     !rho0= rho
-    !gvp = glda*2rho*vp
-    !gvs = (glda*-2 + gmu)*2rho*vs
-    !grho= glda*vp^2 + (-2glda+gmu)*vs^2 + grho0
+    !gsp = (glda*vp^3 + (-2glda+gmu)vp*vs^2)*(-2)rho
+    !gsps= (-2glda + gmu)*2rho*vp*vs
+    !grho= glda*vp^2 + (-2glda+gmu)*vp*vs + grho0
 
     !P-SV + gardner:
-    !lda = a*vp^(b+2) - 2a*vp^b*vs^2
-    !mu  = a*vp^b*vs^2
-    !rho0= a*vp^b
-    !gvp = (glda*(b+2)/b*vp + (-2glda + gmu)vs^2 + grho0)*ab*vp^(b-1)
-    !gvs = (glda*-2 + gmu)*2a*vp^b*vs
+    !lda = a*vp^(b+2) - 2a*vp^b*vs^2 = a*sp^(-b-2)*(1-2sps^2)
+    !mu  = a*vp^b*vs^2               = a*sp^(-b-2)*sps^2
+    !rho0= a*vp^b                    = a*sp^-b
+    !gsp = (glda*vp^2 + (-2glda + gmu)vs^2 + grho0*b(b+2))*-a/(b+2)*vp^(b+1)
+    !gsps= (-2glda + gmu)*2a*vp^(b+1)*vs
 
 
     public  parameterization, npar
     private 
     
-    character(:),parameter :: parameterization='velocities-density'
+    character(:),parameter :: parameterization='slowness-density'
 
     character(:),allocatable :: empirical, parlist
     character(3),dimension(3) :: pars !max 3 active parameters, max 3 letters for each
@@ -62,7 +62,7 @@ use m_gradient, only: gradient
         if(if_empirical) call read_empirical
 
         !read in active parameters and their allowed ranges
-        parlist=get_setup_char('ACTIVE_PARAMETER',default='vp1500:3400')
+        parlist=get_setup_char('ACTIVE_PARAMETER',default='sp2.94e-4:6.67e-4')
         call read_parlist
 
     end subroutine
@@ -120,7 +120,7 @@ use m_gradient, only: gradient
 
             !read in parameter
             pars(npar)=text(1:2); k1=2
-            if (text(1:3)=='rho') then
+            if (text(1:3)=='sps' .or. text(1:3)=='rho') then
                 pars(npar)=text(1:3); k1=3
             endif
         
@@ -159,9 +159,9 @@ use m_gradient, only: gradient
         
         check_par=.false.
         
-        if(text(1:2)=='vp' ) check_par = .true.
+        if(text(1:2)=='sp' ) check_par = .true.
 
-        if(text(1:2)=='vs' ) check_par = index(waveeq_info,'elastic')>0
+        if(text(1:2)=='sps') check_par = index(waveeq_info,'elastic')>0
         
         if(text(1:3)=='rho') check_par = .not. if_gardner
 
@@ -182,8 +182,8 @@ use m_gradient, only: gradient
         if(dir=='m2x') then
             do ipar=1,npar
                 select case (pars(ipar))
-                case ('vp' ); x(:,:,:,ipar) = m%vp
-                case ('vs' ); x(:,:,:,ipar) = m%vs
+                case ('sp' ); x(:,:,:,ipar) = 1/m%vp
+                case ('sps'); x(:,:,:,ipar) = m%vs/m%vp
                 case ('rho'); x(:,:,:,ipar) = m%rho
                 end select
 
@@ -192,15 +192,23 @@ use m_gradient, only: gradient
             enddo
 
         else !x2m
+            !first run
             do ipar=1,npar
                 select case (pars(ipar))
-                case ('vp' ); m%vp = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar)
-                case ('vs' ); m%vs = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar)
-                case ('rho'); m%rho= x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar)
+                case ('sp' ); m%vp = 1./(x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar))
+                case ('rho'); m%rho=     x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)
                 end select
             enddo
 
+            !second run
+            do ipar=1,npar
+                if(pars(ipar)=='sps') then
+                    m%vs = (x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)) *m%vp  !m%vp should have been updated in the first run
+                endif
+            enddo
+
         endif
+
 
         !gradient
         !!for units of gradient and g, see m_field*.f90
@@ -214,7 +222,7 @@ use m_gradient, only: gradient
             if(if_acoustic .and. .not. if_empirical) then
                 do ipar=1,npar
                     select case (pars(ipar))
-                    case ('vp' ); g(:,:,:,ipar) = gradient(:,:,:,1)*2*m%rho*m%vp
+                    case ('sp' ); g(:,:,:,ipar) = gradient(:,:,:,1)*(-2)*m%rho*m%vp**3
                     case ('rho'); g(:,:,:,ipar) = gradient(:,:,:,1)*m%vp**2 + gradient(:,:,:,2)
                     end select
                 enddo
@@ -222,16 +230,16 @@ use m_gradient, only: gradient
 
             !acoustic + gardner
             if(if_acoustic .and. if_gardner) then
-                g(:,:,:,1) =(gradient(:,:,:,1)*(b+2)/b*m%vp**2 + gradient(:,:,:,2))*a*b*m%vp**(b-1)
+                g(:,:,:,1) =(gradient(:,:,:,1)*(b+2)/b + gradient(:,:,:,2)/m%vp**2)*(-a)*b*m%vp**(b+3)
             endif
 
             !elastic
             if(if_elastic .and. .not. if_empirical) then
                 do ipar=1,npar
                     select case (pars(ipar))
-                    case ('vp' ); g(:,:,:,ipar) = gradient(:,:,:,1)*2*m%rho*m%vp
-                    case ('vs' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*(-2) + gradient(:,:,:,2))*2*m%rho*m%vs
-                    case ('rho'); g(:,:,:,ipar) = gradient(:,:,:,1)*m%vp**2 + (-2*gradient(:,:,:,1)+gradient(:,:,:,2))*m%vs**2 + gradient(:,:,:,3)
+                    case ('sp' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*m%vp**3 + (-2*gradient(:,:,:,1)+gradient(:,:,:,2)*m%vp*m%vs**2))*(-2)*m%rho
+                    case ('sps'); g(:,:,:,ipar) =(-2*gradient(:,:,:,1) + gradient(:,:,:,2))*2*m%rho*m%vp*m%vs
+                    case ('rho'); g(:,:,:,ipar) = gradient(:,:,:,1)*m%vp**2 + (-2*gradient(:,:,:,1)+gradient(:,:,:,2))*m%vp*m%vs + gradient(:,:,:,3)
                     end select
                 enddo
             endif
@@ -240,8 +248,8 @@ use m_gradient, only: gradient
             if(if_elastic .and. if_gardner) then
                 do ipar=1,npar
                     select case (pars(ipar))
-                    case ('vp' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*(b+2)/b*m%vp + (-2*gradient(:,:,:,1)+gradient(:,:,:,2))*m%vs**2 + gradient(:,:,:,3))*a*b*m%vp**(b-1)
-                    case ('vs' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*(-2) + gradient(:,:,:,2))*2*a*m%vp**b*m%vs
+                    case ('sp' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*m%vp**2 + (-2*gradient(:,:,:,1)+gradient(:,:,:,2))*m%vs**2 + gradient(:,:,:,3)*b*(b+2))*(-a)/(b+2)*m%vp**(b+1)
+                    case ('sps'); g(:,:,:,ipar) =(-2*gradient(:,:,:,1) + gradient(:,:,:,2))*2*a*m%vp**(b+1)*m%vs
                     end select
                 enddo
             endif

@@ -27,7 +27,7 @@ use m_gradient, only: gradient
     public  parameterization, npar
     private 
     
-    character(:),parameter :: parameterization='velocities-density'
+    character(:),parameter :: parameterization='velocities-impedance'
 
     character(:),allocatable :: empirical, parlist
     character(3),dimension(3) :: pars !max 3 active parameters, max 3 letters for each
@@ -180,19 +180,20 @@ use m_gradient, only: gradient
             !first run
             do ipar=1,npar
                 select case (pars(ipar))
-                case ('vp' ); m%vp = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar)
-                case ('vs' ); m%vs = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar)
+                case ('vp' ); m%vp = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)
+                case ('vs' ); m%vs = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)
                 end select
             enddo
 
             !second run
             do ipar=1,npar
                 if(pars(ipar)=='ip') then
-                    m%rho= x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar) /m%vp  !m%vp should have been updated in the first run
+                    m%rho= (x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)) /m%vp  !m%vp should have been updated in the first run
                 endif
             enddo
 
         endif
+
 
         !gradient
         !!for units of gradient and g, see m_field*.f90
