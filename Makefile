@@ -87,6 +87,7 @@ OBJ_FWD=$(OBJ0) $(modeling:.f90=.o)
 Norm=L2
 Param=velocities-density
 #Param=velocities-impedance
+#Param=slowness-density
 Preco=zpower
 LineS=Wolfe
 #Optim=NLCG
@@ -95,9 +96,9 @@ Optim=LBFGS
 gradient = \
 $(DIR)Modules/Gradient/m_objectivefunc_$(Norm).f90 \
 $(DIR)Modules/Gradient/m_gradient.f90 \
+$(DIR)Modules/Gradient/m_parameterization_$(Param).f90 \
 
 optimization = \
-$(DIR)Modules/Optimization/m_parameterization_$(Param).f90 \
 $(DIR)Modules/Optimization/m_preconditioner_$(Preco).f90 \
 $(DIR)Modules/Optimization/m_linesearcher_$(LineS).f90 \
 $(DIR)Modules/Optimization/m_optimizer_$(Optim).f90 \
