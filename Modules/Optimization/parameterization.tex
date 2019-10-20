@@ -393,8 +393,10 @@
     \begin{eqnarray}
       \nabla_{S_P} &=& \nabla_{\kappa} \partderi{\kappa}{S_P} + \nabla_{\rho_0} \partderi{\rho_0}{S_P} \nonumber\\
                    &=& \nabla_{\kappa} (-2\rho S_P^{-3})  \nonumber\\
+                   &=& \nabla_{\kappa} (-2\rho V_P^3)  \nonumber\\
       \nabla_{\rho} &=& \nabla_{\kappa} \partderi{\kappa}{\rho} + \nabla_{\rho_0} \partderi{\rho_0}{\rho} \nonumber\\
-		    &=& \nabla_{\kappa} S_P^{-2} + \nabla_{\rho_0} \nonumber
+		    &=& \nabla_{\kappa} S_P^{-2} + \nabla_{\rho_0} \nonumber\\
+		    &=& \nabla_{\kappa} V_P^2 + \nabla_{\rho_0} \nonumber
     \end{eqnarray}
 
   \end{minipage} \vline
@@ -433,7 +435,8 @@
       \nabla_{S_P} &=& \nabla_{\kappa} \partderi{\kappa}{S_P} + \nabla_{\rho_0} \partderi{\rho_0}{S_P} \nonumber\\
                    &=& \nabla_{\kappa} a(-b-2) S_P^{-b-3} \nonumber\\
                    & &+\nabla_{\rho_0} (-ab) S_P^{-b-1} \nonumber\\
-                   &=&-\left( \nabla_{\kappa} a(b+2) + \nabla_{\rho_0} abS_P^2 \right) S_P^{-b-3} \nonumber
+                   &=& \left( \nabla_{\kappa} \frac{b+2}{b} + \nabla_{\rho_0} S_P^2 \right) (-ab)S_P^{-b-3} \nonumber\\
+                   &=& \left( \nabla_{\kappa} \frac{b+2}{b} + \nabla_{\rho_0} V_P^{-2} \right) (-ab)V_P^{b+3} \nonumber
     \end{eqnarray}
 
   \end{minipage} \vline
@@ -447,7 +450,6 @@
   \end{minipage}
 
 \end{frame}
-
 
 \begin{frame}\frametitle{PARAMETERIZATION slowness-density}
 \framesubtitle{isotropic P-SV}
@@ -466,12 +468,33 @@
     \nabla_{S_P} &=& \nabla_\lambda \partderi{\lambda}{S_P} + \nabla_\mu \partderi{\mu}{S_P} + \nabla_{\rho_0} \partderi{\rho_0}{S_P} \nonumber\\
 		 &=& \nabla_\lambda \rho(-2)S_P^{-3}(1-2S_{PS}^2) + \nabla_\mu \rho S_{PS}^2(-2)S_P^{-3} \nonumber\\
 		 &=& \left(\nabla_\lambda (1-2S_{PS}^2) + \nabla_\mu S_{PS}^2 \right)(-2)\rho S_P^{-3} \nonumber\\
+		 &=& \left(\nabla_\lambda + (-2\nabla_\lambda + \nabla_\mu) (V_S/V_P)^2 \right)(-2)\rho V_P^3 \nonumber\\
     \nabla_{S_{PS}} &=& \nabla_\lambda \partderi{\lambda}{S_{PS}} + \nabla_\mu \partderi{\mu}{S_{PS}} + \nabla_{\rho_0} \partderi{\rho_0}{S_{PS}} \nonumber\\
 		    &=& \nabla_\lambda \rho S_P^{-2}(-4)S_{PS} + \nabla_\mu 2\rho S_{PS}/S_P^2 \nonumber\\
-		    &=& \left(-\nabla_\lambda 2 + \nabla_\mu \right) 2\rho S_{PS} S_P^{-2} \nonumber\\
+		    &=& \left(-2\nabla_\lambda + \nabla_\mu \right) 2\rho S_{PS} S_P^{-2} \nonumber\\
+		    &=& \left(-2\nabla_\lambda + \nabla_\mu \right) 2\rho V_P V_S \nonumber
+  \end{eqnarray}
+
+\end{frame}
+
+\begin{frame}\frametitle{PARAMETERIZATION slowness-density}
+\framesubtitle{isotropic P-SV \textit{continued}}
+  
+  \begin{center}
+    \framebox{$S_{PS} = V_S/V_P = V_SS_P$}
+  \end{center}
+  
+  \[\left\{ \begin{array}{l}
+    \lambda = \rho (V_P^{2}-2V_S ^2) = \rho S_P^{-2} (1-2S_{PS}^2) \\
+    \mu    = \rho V_S^2 = \rho (S_{PS}/S_P)^2 \\
+    \rho_0 = \rho 
+  \end{array} \right.\]
+  
+  \begin{eqnarray}
     \nabla_{\rho} &=& \nabla_\lambda \partderi{\lambda}{\rho} + \nabla_\mu \partderi{\mu}{\rho} + \nabla_{\rho_0} \partderi{\rho_0}{\rho} \nonumber\\
 		  &=& \nabla_\lambda S_P^{-2} (1-2S_{PS}^2) + \nabla_\mu (S_{PS}/S_P)^2 + \nabla_{\rho_0} \nonumber\\
-		  &=& \left(\nabla_\lambda (1-2S_{PS}^2) + \nabla_\mu S_{PS} \right) S_P^{-2} + \nabla_{\rho_0} \nonumber
+		  &=& \left(\nabla_\lambda (1-2S_{PS}^2) + \nabla_\mu S_{PS} \right) S_P^{-2} + \nabla_{\rho_0} \nonumber\\
+		  &=& \nabla_\lambda V_P^2 + (-2\nabla_\lambda+\nabla_\mu) V_PV_S + \nabla_{\rho_0} \nonumber
   \end{eqnarray}
 
 \end{frame}
@@ -493,10 +516,12 @@
     \nabla_{S_P} &=& \nabla_\lambda \partderi{\lambda}{S_P} + \nabla_\mu \partderi{\mu}{S_P} + \nabla_{\rho_0} \partderi{\rho_0}{S_P} \nonumber\\
 		 &=& \nabla_\lambda a(-b-2)S_P^{-b-3}(1-2S_{PS}^2) \nonumber\\
 		 & &+\nabla_\mu a(-b-2) S_P^{-b-3}S_{PS}^2 + \nabla_{\rho_0} a(-b)S_P^{-b-1} \nonumber\\
-		 &=& \left(\nabla_\lambda (b+2)(1-2S_{PS}^2) + \nabla_\mu (b+2)S_{PS}^2 + \nabla_{\rho_0} bS_P^2 \right) (-a) S_P^{-b-3} \nonumber\\
+		 &=& \left(\nabla_\lambda (1-2S_{PS}^2) + \nabla_\mu S_{PS}^2 + \nabla_{\rho_0} b(b+2)S_P^2 \right) \frac{-a}{b+2} S_P^{-b-3} \nonumber\\
+		 &=& \left(\nabla_\lambda V_P^2 + (-2\nabla_\lambda + \nabla_\mu) V_S^2 + \nabla_{\rho_0} b(b+2) \right) \frac{-a}{b+2} V_P^{b+1} \nonumber\\
     \nabla_{S_{PS}} &=& \nabla_\lambda \partderi{\lambda}{S_{PS}} + \nabla_\mu \partderi{\mu}{S_{PS}} + \nabla_{\rho_0} \partderi{\rho_0}{S_{PS}} \nonumber\\
 		    &=& \nabla_\lambda a S_P^{-b-2} (-4)S_{PS} + \nabla_\mu a S_P^{-b-2} 2S_{PS} \nonumber\\
-		    &=& \left(-\nabla_\lambda 2 + \nabla_\mu \right) 2aS_P^{-b-2}S_{PS}\nonumber\\
+		    &=& \left(-2\nabla_\lambda + \nabla_\mu \right) 2aS_P^{-b-2}S_{PS} \nonumber\\
+		    &=& \left(-2\nabla_\lambda + \nabla_\mu \right) 2aV_P^{b+1}V_S \nonumber
   \end{eqnarray}
 
 \end{frame}
