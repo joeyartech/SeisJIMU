@@ -16,6 +16,9 @@ use m_laplacian_smoothing_sparse
     
     real fobjective !objective function value
     real,dimension(:,:,:,:),allocatable :: gradient
+
+! logical if_first_run
+! integer,dimension(:),allocatable :: itstart
     
     contains
     
@@ -31,9 +34,12 @@ use m_laplacian_smoothing_sparse
         
         if(present(if_gradient)) then
         if(if_gradient) then
-            call alloc(gradient,m%nz,m%nx,m%ny,2)
+            call alloc(gradient,m%nz,m%nx,m%ny,ncorr)
         endif
         endif
+
+
+! allocate(itstart(shot%nrcv))
         
         
         call hud('      START LOOP OVER SHOTS          ')
@@ -56,6 +62,26 @@ use m_laplacian_smoothing_sparse
             !intensive computation
             call propagator_forward(if_will_backpropagate=.true.)
             !*******************************
+
+!write synthetic data
+if(mpiworld%is_master) then
+open(12,file='synth_raw_'//shot%cindex,access='stream')
+write(12) dsyn
+close(12)
+endif
+
+! !if(if_first_run) then
+! loopx: do ix=1,shot%nrcv
+! loopt: do it=1,shot%src%nt
+!     if (dobs(it,ix) > 1e-8) then
+!         itstart(ix)=it
+!         exit loopt
+!     endif
+! enddo loopt
+! enddo loopx
+! !print*,itstart
+! !if_first_run=.false.
+! !endif
             
             !update shot%src%wavelet
             !while wavelet in m_propagator is un-touched
@@ -70,6 +96,16 @@ use m_laplacian_smoothing_sparse
                     close(12)
                 endif
             endif
+
+! !mitigate some noise due to matchfilter
+! do ix=1,shot%nrcv
+! dsyn(1:itstart(ix),ix)=0.
+! enddo
+
+!mitigate some noise due to matchfilter
+where(abs(dobs)<1e-6)
+    dsyn=0.
+endwhere
             
             !write synthetic data
             open(12,file='synth_data_'//shot%cindex,access='stream')
@@ -92,7 +128,7 @@ use m_laplacian_smoothing_sparse
                     call matchfilter_correlate_filter_residual(shot%src%nt,shot%nrcv,dres)
                 endif
                 
-                call alloc(cb%gradient,cb%mz,cb%mx,cb%my,2) !(:,:,:,1) is gkpa, (:,:,:,2) is grho0
+                call alloc(cb%gradient,cb%mz,cb%mx,cb%my,ncorr) !(:,:,:,1) is glda, (:,:,:,2) is gmu, (:,:,:,3) is grho0
                 !*******************************
                 !intensive computation
                 call propagator_adjoint(gradient=cb%gradient)
@@ -125,15 +161,15 @@ use m_laplacian_smoothing_sparse
         
             !collect global gradient
             call mpi_barrier(mpiworld%communicator, mpiworld%ierr)
-            call mpi_allreduce(MPI_IN_PLACE, gradient, m%n*2, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+            call mpi_allreduce(MPI_IN_PLACE, gradient, m%n*ncorr, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
 
             !smoothing
             if(get_setup_logical('IF_SMOOTHING',default=.true.)) then
                 call hud('Initialize Laplacian smoothing')
                 call init_laplacian_smoothing([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%src%fpeak)
-                do ipar=1,2
-                    call laplacian_smoothing_extend_mirror(gradient(:,:,:,ipar),m%itopo)
-                    call laplacian_smoothing_pseudo_nonstationary(gradient(:,:,:,ipar),m%vp)
+                do icorr=1,ncorr
+                    call laplacian_smoothing_extend_mirror(gradient(:,:,:,icorr),m%itopo)
+                    call laplacian_smoothing_pseudo_nonstationary(gradient(:,:,:,icorr),m%vp)
                 enddo
             endif
             

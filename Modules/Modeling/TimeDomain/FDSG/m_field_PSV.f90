@@ -51,6 +51,7 @@ use m_computebox, only: cb
     !info
     character(*),parameter :: waveeq_info='time-domain isotropic P-SV (2D elastic)'
     character(*),parameter :: gradient_info='lda-mu-rho'
+    integer,parameter :: ncorr=3
     
     contains
     
@@ -656,7 +657,7 @@ use m_computebox, only: cb
     subroutine field_correlation_moduli(it,sf,rf,sb,rb,corr)
         type(t_field) :: sf,rf
         integer,dimension(6) :: sb,rb
-        real,dimension(cb%mz,cb%mx,3) :: corr
+        real,dimension(cb%mz,cb%mx,ncorr) :: corr
         
         !nonzero only when sf touches rf
         ifz=max(sb(1),rb(1),2)
@@ -677,7 +678,7 @@ use m_computebox, only: cb
     subroutine field_correlation_density(it,sf,rf,sb,rb,corr)
         type(t_field) :: sf,rf
         integer,dimension(6) :: sb,rb
-        real,dimension(cb%mz,cb%mx,3) :: corr
+        real,dimension(cb%mz,cb%mx,ncorr) :: corr
         
         !nonzero only when sf touches rf
         ifz=max(sb(1),rb(1),2)
@@ -695,7 +696,7 @@ use m_computebox, only: cb
     end subroutine
     
     subroutine field_correlation_scaling(corr)
-        real,dimension(cb%mz,cb%mx,3) :: corr
+        real,dimension(cb%mz,cb%mx,ncorr) :: corr
         
         !corr_lda
         corr(:,:,1)=corr(:,:,1) / (-lm%two_ldapmu(1:cb%mz,1:cb%mx))

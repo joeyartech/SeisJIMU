@@ -49,6 +49,7 @@ use m_computebox, only: cb
     !info
     character(*),parameter :: waveeq_info='time-domain isotropic 2D/3D acoustic'
     character(*),parameter :: gradient_info='kpa-rho'
+    integer,parameter :: ncorr=2
     
     contains
     
@@ -599,7 +600,7 @@ use m_computebox, only: cb
     subroutine field_correlation_moduli(it,sf,rf,sb,rb,corr)
         type(t_field) :: sf,rf
         integer,dimension(6) :: sb,rb
-        real,dimension(cb%mz,cb%mx,cb%my,2) :: corr
+        real,dimension(cb%mz,cb%mx,cb%my,ncorr) :: corr
         
         !nonzero only when sf touches rf
         ifz=max(sb(1),rb(1),2)
@@ -624,7 +625,7 @@ use m_computebox, only: cb
     subroutine field_correlation_density(it,sf,rf,sb,rb,corr)
         type(t_field) :: sf,rf
         integer,dimension(6) :: sb,rb
-        real,dimension(cb%mz,cb%mx,cb%my,2) :: corr
+        real,dimension(cb%mz,cb%mx,cb%my,ncorr) :: corr
         
         !nonzero only when sf touches rf
         ifz=max(sb(1),rb(1),2)
@@ -647,7 +648,7 @@ use m_computebox, only: cb
     end subroutine
     
     subroutine field_correlation_scaling(corr)
-        real,dimension(cb%mz,cb%mx,cb%my,2) :: corr
+        real,dimension(cb%mz,cb%mx,cb%my,ncorr) :: corr
         
         corr(:,:,:,1)=corr(:,:,:,1) * (-lm%invkpa(1:cb%mz,1:cb%mx,1:cb%my))
 

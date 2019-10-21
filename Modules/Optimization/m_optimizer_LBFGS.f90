@@ -247,9 +247,10 @@ use m_linesearcher
                     write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, current%f, current%f/f0, norm2(current%g)/g0norm, alpha, isearch, imodeling
                     
                     call parameterization_transform('x2m',current%x)
-                    if(if_par_vp) write(18) m%vp
-                    if(if_par_rho) write(18) m%rho
-                    if(if_par_ip) write(18) m%vp*m%rho
+                    write(18) m%vp
+                    write(18) m%vs
+                    write(18) m%rho
+                    !write(18) m%vp*m%rho
                 case('maximum')
                     write(16,'(a)'      ) ' **********************************************************************'
                     write(16,'(a)'      ) '     STOP: MAXIMUM MODELING NUMBER REACHED                             '
@@ -266,16 +267,18 @@ use m_linesearcher
                     close(16)
                     
                     call parameterization_transform('x2m',perturb%x)
-                    if(if_par_vp) write(18) m%vp
-                    if(if_par_rho) write(18) m%rho
-                    if(if_par_ip) write(18) m%vp*m%rho
+                    write(18) m%vp
+                    write(18) m%vs
+                    write(18) m%rho
+                    !write(18) m%vp*m%rho
                     close(18)
                     
                     open(18,file='model_final',access='stream')
                     call parameterization_transform('x2m',current%x)
-                    if(if_par_vp) write(18) m%vp
-                    if(if_par_rho) write(18) m%rho
-                    if(if_par_ip) write(18) m%vp*m%rho
+                    write(18) m%vp
+                    write(18) m%vs
+                    write(18) m%rho
+                    !write(18) m%vp*m%rho
                     close(18)
                     
                     write(*,'(a,i0.4)') 'ximage < model_final n1=',m%nz
