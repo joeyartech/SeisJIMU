@@ -213,7 +213,11 @@ use m_preconditioner
         
         if(.not.if_computed_scale) then
         
-            scaling=1e3* 1e-2*m%n/ (sum(abs(fm%g(1:m%n)))) / (par_vp_max -par_vp_min)  !=1e3* |gp1|_L1 / |gvp|_L1 / (vpmax-vpmin)
+            !scaling=1e3* 1e-2*m%n/ (sum(abs(fm%g(1:m%n)))) / (par_vp_max -par_vp_min)  !=1e3* |gp1|_L1 / |gvp|_L1 / (vpmax-vpmin)
+
+            scaling=1e3* 1e-2*m%n/ (sum(abs(fm%g(1:m%n)))) / (pars_max(1)-pars_min(1))  !=1e3* |gpar1|_L1 / |gpar|_L1 / par1_range
+
+            if(mpiworld%is_master) write(*,*) 'Linesearch Scaling Factor:', scaling
 
             if_computed_scale=.true.
         endif

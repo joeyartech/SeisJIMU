@@ -35,8 +35,8 @@ use m_gradient, only: gradient
     !gvp = (glda*(b+2)/b*vp + (-2glda + gmu)vs^2 + grho0)*ab*vp^(b-1)
     !gvs = (glda*-2 + gmu)*2a*vp^b*vs
 
-    public  parameterization, npar, init_parameterization, parameterization_transform
-    private 
+    public
+    private empirical, parlist, a,b, if_empirical, if_gardner, if_castagna
     
     character(*),parameter :: parameterization='velocities-density'
     character(:),allocatable :: empirical, parlist
