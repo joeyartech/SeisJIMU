@@ -12,7 +12,7 @@ use m_arrayop
         real,dimension(:,:),allocatable :: topo
         integer,dimension(:,:),allocatable :: itopo
                 
-        real ref_vp,ref_vs,ref_rho,ref_kpa
+        real ref_vp,ref_vs,ref_rho
 
         real velmin, velmax
         
@@ -128,7 +128,6 @@ use m_arrayop
         m%ref_vp=m%vp(1,1,1)
         m%ref_vs=m%vs(1,1,1)
         m%ref_rho=m%rho(1,1,1)
-        m%ref_kpa=m%ref_vp*m%ref_vp*m%ref_rho
         
         !refresh isotropicness if user requires
         if(ask_setup('IF_ISOTROPIC')) then

@@ -173,7 +173,7 @@ endwhere
                 enddo
             endif
             
-            !mask footprint in gradient
+            !mask gradient
             do iy=1,m%ny
             do ix=1,m%nx
                 gradient(1:m%itopo(ix,iy)-1,ix,iy,:) =0.

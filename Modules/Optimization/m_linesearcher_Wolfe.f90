@@ -185,22 +185,22 @@ use m_preconditioner
         if (imodeling>=max_modeling) then
             call hud('Maximum modeling number reached. Finalize program now..')
             result='maximum'
-        endif
-        
+        endif       
     
     end subroutine
 
-
-
-    !x should be inside [0,1] when feature scaling is used
+    
+    
     subroutine linesearcher_project(x)
         real,dimension(n) :: x
-        where (x<0.)
-            x=threshold
-        end where
-        where (x>1.)
-            x=1.-threshold
-        end where
+
+        !x should be inside [0,1] due to scaling
+        where (x<0.) x=threshold
+        where (x>1.) x=1.-threshold
+
+        !x should be fixed in the mask area (e.g. water)
+        call parameterization_applymask(x)
+
     end subroutine
     
     

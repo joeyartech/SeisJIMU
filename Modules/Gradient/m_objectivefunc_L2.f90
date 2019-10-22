@@ -9,6 +9,10 @@ use m_weighting
 
     subroutine objectivefunc_data_norm_residual
         
+        real,save :: ref_modulus
+
+        ref_modulus=m%ref_vp**2*m%ref_rho
+
         call build_weighting(shot%rcv(1)%nt,shot%rcv(1)%dt,shot%nrcv,shot%rcv(:)%aoffset) !so far the weighting is for mono component data only
         
         dres = (dsyn-dobs)*weight
@@ -19,9 +23,9 @@ use m_weighting
         !this also help balance contributions from different component data
         do ir=1,shot%nrcv
             if(shot%rcv(ir)%icomp==1) then !for pressure data
-                dnorm = dnorm + sum(dres(:,ir)*dres(:,ir))*0.5/m%ref_kpa*m%cell_volume
+                dnorm = dnorm + sum(dres(:,ir)*dres(:,ir))*0.5/ref_modulus*m%cell_volume
             else !for velocities data
-                dnorm = dnorm + sum(dres(:,ir)*dres(:,ir))*0.5*m%ref_rho*m%cell_volume
+                dnorm = dnorm + sum(dres(:,ir)*dres(:,ir))*0.5*ref_modulus*m%cell_volume
             endif
         enddo
         
@@ -29,7 +33,7 @@ use m_weighting
         dres = - dres*weight
         do ir=1,shot%nrcv
             if(shot%rcv(ir)%icomp==1) then !for pressure data
-                dres(:,ir) = dres(:,ir) / m%ref_kpa/shot%rcv(1)%dt
+                dres(:,ir) = dres(:,ir) / ref_modulus/shot%rcv(1)%dt
             else !for velocities data
                 dres(:,ir) = dres(:,ir) * m%ref_rho/shot%rcv(1)%dt
             endif
