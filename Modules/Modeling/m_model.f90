@@ -144,8 +144,20 @@ use m_arrayop
             close(12)
             call hud('topo model is read.')
         endif
-        
+
         m%itopo=nint(m%topo/m%dz)+1
+
+        if(get_setup_logical('IF_TOPO_FROM_VS',default=.true.)) then
+            m%itopo = maxloc(m%vs, dim=1, mask=(m%vs<10), back=.true.)+1
+        endif
+        if(mpiworld%is_master) then
+            write(*,*) 'm%itopo minmax value:', minval(m%itopo), maxval(m%itopo)
+        endif
+        ! if(mpiworld%is_master) then
+        !     open(12,file='itopo_from_vs')
+        !     write(12,*) m%itopo
+        !     close(12)
+        ! endif
         
         !freesurface
         m%if_freesurface=get_setup_logical('IF_FREESURFACE',default=.true.)

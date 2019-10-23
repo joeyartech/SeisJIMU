@@ -142,7 +142,7 @@ use m_gradient, only: gradient
 
         if(mpiworld%is_master) then
             write(*,*) 'Number of inversion parameters:', npar
-            write(*,*) 'Read parameters:',pars(1),' ',pars(2),' ',pars(3)
+            write(*,*) 'Read parameters:',(pars(i),i=1,npar)
         endif
 
         if(npar==0) then
