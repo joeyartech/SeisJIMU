@@ -44,6 +44,9 @@ use m_gradient, only: gradient
     real,dimension(3) :: pars_min, pars_max
     integer :: npar=0
 
+    !if output model
+    logical :: if_write_vp=.false., if_write_vs=.false., if_write_rho=.false.
+
     !real,dimension(3) :: hyper=0. !max 3 hyper-parameters for empirical law
     real :: a,b
 
@@ -62,6 +65,14 @@ use m_gradient, only: gradient
         !read in active parameters and their allowed ranges
         parlist=get_setup_char('ACTIVE_PARAMETER',default='vp1500:3400')
         call read_parlist
+
+        do ipar=1,npar
+            select case (pars(ipar))
+            case ('vp' ); if_write_vp=.true.
+            case ('vs' ); if_write_vs=.true.
+            case ('rho'); if_write_rho=.true.
+            end select
+        enddo
 
     end subroutine
 
