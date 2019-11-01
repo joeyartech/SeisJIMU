@@ -185,9 +185,9 @@ use m_boundarystore
         
         if(mpiworld%is_master) then
             write(*,*) 'time add source velocities',tt1
-            write(*,*) 'time update velocities    ',tt2
+            write(*,*) 'time/nth update velocities',tt2/mpiworld%max_threads
             write(*,*) 'time add source stresses  ',tt3
-            write(*,*) 'time update stresses      ',tt4
+            write(*,*) 'time/nth update stresses  ',tt4/mpiworld%max_threads
             write(*,*) 'time extract&write fields ',tt5
             write(*,*) 'time save boundary        ',tt6
         endif
@@ -351,17 +351,17 @@ use m_boundarystore
         
         if(mpiworld%is_master) then
             write(*,*) 'time load boundary            ',tt1
-            write(*,*) 'time update stresses          ',tt2
+            write(*,*) 'time/nth update stresses      ',tt2/mpiworld%max_threads
             write(*,*) 'time rm source stresses       ',tt3
-            write(*,*) 'time update velocities        ',tt7
+            write(*,*) 'time/nth update velocities    ',tt7/mpiworld%max_threads
             write(*,*) 'time rm source velocities     ',tt8
             write(*,*) 'time -------------------------'
             write(*,*) 'time add adjsource stresses   ',tt4
-            write(*,*) 'time update adj stresses      ',tt5
+            write(*,*) 'time/nth update adj stresses  ',tt5/mpiworld%max_threads
             write(*,*) 'time add adjsource velocities ',tt9
-            write(*,*) 'time update adj velocities    ',tt10
+            write(*,*) 'time/nth update adj velocities',tt10/mpiworld%max_threads
             write(*,*) 'time extract&write fields     ',tt11
-            write(*,*) 'time correlation              ',tt6+tt12
+            write(*,*) 'time/nth correlation          ',(tt6+tt12)/mpiworld%max_threads
             write(*,*) 'time snapshot                 ',tt13
 
         endif

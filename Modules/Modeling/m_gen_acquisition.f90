@@ -48,8 +48,10 @@ use m_model, only:m
             call gen_acqui_spread
         elseif(acqui_type=='streamer') then
             call gen_acqui_streamer
+        elseif(acqui_type=='irregularOBN') then
+            call gen_acqui_irregularOBN
         else
-            call hud('Sorry, only Spread or Streamer acquisitions are implemented now')
+            call hud('Sorry, only spread, streamer, or irregular OBN acquisition geometries are implemented now')
             stop
         endif
         
@@ -167,6 +169,74 @@ use m_model, only:m
             
         enddo
         
+    end subroutine
+
+    subroutine gen_acqui_irregularOBN
+        character(80) :: text
+
+        !read sources
+        open(13,file=source_line,action='read')
+
+            !count number of sources
+            n=0
+            do
+                read (13,*,iostat=msg) z,x,y
+                if(msg/=0) exit
+                n=n+1
+            end do
+            if(mpiworld%is_master) write(*,*) 'Will read',n,'sources.'
+            if(allocated(acqui%src))deallocate(acqui%src)
+            allocate(acqui%src(n))
+            acqui%nsrc=n
+
+        !read source positions
+        rewind(13)
+            i=1
+            do
+                read (13,*,iostat=msg) z,x,y
+                if(msg/=0) exit
+                acqui%src(i)%z=z
+                acqui%src(i)%x=x
+                acqui%src(i)%y=y
+                i=i+1
+            end do
+
+        close(13)
+
+
+        !read receivers
+        open(15,file=receiver_line,action='read')
+
+            !count number of receivers
+            n=0
+            do
+                read (15,*,iostat=msg) z,x,y
+                if(msg/=0) exit
+                n=n+1
+            end do
+            if(mpiworld%is_master) write(*,*) 'Will read',n,'receivers.'
+            do i=1,acqui%nsrc
+                if(allocated(acqui%src(i)%rcv))deallocate(acqui%src(i)%rcv)
+                allocate(acqui%src(i)%rcv(n))
+            enddo
+            acqui%src(:)%nrcv=n
+
+        !read receiver positions
+        rewind(15)
+            i=1
+            do
+                read (15,*,iostat=msg) z,x,y
+                if(msg/=0) exit
+                do j=1,acqui%nsrc
+                    acqui%src(j)%rcv(i)%z=z
+                    acqui%src(j)%rcv(i)%x=x
+                    acqui%src(j)%rcv(i)%y=y
+                enddo
+                i=i+1
+            end do
+        
+        close(15)
+
     end subroutine
     
     subroutine check_acqui
