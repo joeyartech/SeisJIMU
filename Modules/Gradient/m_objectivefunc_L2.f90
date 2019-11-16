@@ -25,9 +25,23 @@ use m_weighting
             if(shot%rcv(ir)%icomp==1) then !for pressure data
                 dnorm = dnorm + sum(dres(:,ir)*dres(:,ir))*0.5/ref_modulus*m%cell_volume
             else !for velocities data
-                dnorm = dnorm + sum(dres(:,ir)*dres(:,ir))*0.5*ref_modulus*m%cell_volume
+                dnorm = dnorm + sum(dres(:,ir)*dres(:,ir))*0.5*m%ref_rho  *m%cell_volume
             endif
         enddo
+
+!write balanced residuals
+if(mpiworld%is_master) then
+open(12,file='residu_unit_'//shot%cindex,access='stream')
+do ir=1,shot%nrcv
+  if(shot%rcv(ir)%icomp==1) then !for pressure data
+    write(12) dres(:,ir)/sqrt(ref_modulus)
+  else !for velocities data
+    write(12) dres(:,ir)*sqrt(m%ref_rho)
+  endif
+enddo
+close(12)
+endif
+
         
         !compute adjoint source and set proper units
         dres = - dres*weight
@@ -35,9 +49,23 @@ use m_weighting
             if(shot%rcv(ir)%icomp==1) then !for pressure data
                 dres(:,ir) = dres(:,ir) / ref_modulus/shot%rcv(1)%dt
             else !for velocities data
-                dres(:,ir) = dres(:,ir) * m%ref_rho/shot%rcv(1)%dt
+                dres(:,ir) = dres(:,ir) * m%ref_rho  /shot%rcv(1)%dt
             endif
         enddo
+
+!write balanced adjoint source
+if(mpiworld%is_master) then
+open(12,file='adjsrc_unit_'//shot%cindex,access='stream')
+do ir=1,shot%nrcv
+  if(shot%rcv(ir)%icomp==1) then !for pressure data
+    write(12) dres(:,ir)/ref_modulus
+  else !for velocities data
+    write(12) dres(:,ir)*m%ref_rho
+  endif
+enddo
+close(12)
+endif
+
         
         !multi-valued objectivefunc ..
         
