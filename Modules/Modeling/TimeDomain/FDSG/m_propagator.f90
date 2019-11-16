@@ -129,8 +129,8 @@ use m_boundarystore
         if(if_snapshot) open(16,file='snapshot_sfield%vz',access='stream')
         
         do it=ift,ilt
-            if(mod(it,100)==0 .and. mpiworld%is_master) write(*,*) 'it----',it
-            if(mod(it,100)==0) call check_field(sfield,'sfield')
+            if(mod(it,500)==0 .and. mpiworld%is_master) write(*,*) 'it----',it
+            if(mod(it,500)==0) call check_field(sfield,'sfield')
             
             call cpu_time(t0)
             !do forward time stepping (step# conforms with backward & adjoint time stepping)
@@ -184,12 +184,12 @@ use m_boundarystore
         endif
         
         if(mpiworld%is_master) then
-            write(*,*) 'time add source velocities',tt1
-            write(*,*) 'time/nth update velocities',tt2/mpiworld%max_threads
-            write(*,*) 'time add source stresses  ',tt3
-            write(*,*) 'time/nth update stresses  ',tt4/mpiworld%max_threads
-            write(*,*) 'time extract&write fields ',tt5
-            write(*,*) 'time save boundary        ',tt6
+            write(*,*) 'time add source velocities',tt1/mpiworld%max_threads
+            write(*,*) 'time update velocities    ',tt2/mpiworld%max_threads
+            write(*,*) 'time add source stresses  ',tt3/mpiworld%max_threads
+            write(*,*) 'time update stresses      ',tt4/mpiworld%max_threads
+            write(*,*) 'time extract&write fields ',tt5/mpiworld%max_threads
+            write(*,*) 'time save boundary        ',tt6/mpiworld%max_threads
         endif
         
         !synthetic data
@@ -231,9 +231,9 @@ use m_boundarystore
         
         do it=ilt,ift,time_dir
             
-            if(mod(it,100)==0 .and. mpiworld%is_master) write(*,*) 'it----',it
-            if(mod(it,100)==0) call check_field(sfield,'sfield')
-            if(mod(it,100)==0) call check_field(rfield,'rfield')
+            if(mod(it,500)==0 .and. mpiworld%is_master) write(*,*) 'it----',it
+            if(mod(it,500)==0) call check_field(sfield,'sfield')
+            if(mod(it,500)==0) call check_field(rfield,'rfield')
             
 
             call cpu_time(t0)
@@ -350,19 +350,19 @@ use m_boundarystore
         
         
         if(mpiworld%is_master) then
-            write(*,*) 'time load boundary            ',tt1
-            write(*,*) 'time/nth update stresses      ',tt2/mpiworld%max_threads
-            write(*,*) 'time rm source stresses       ',tt3
-            write(*,*) 'time/nth update velocities    ',tt7/mpiworld%max_threads
-            write(*,*) 'time rm source velocities     ',tt8
+            write(*,*) 'time load boundary            ',tt1/mpiworld%max_threads
+            write(*,*) 'time update stresses          ',tt2/mpiworld%max_threads
+            write(*,*) 'time rm source stresses       ',tt3/mpiworld%max_threads
+            write(*,*) 'time update velocities        ',tt7/mpiworld%max_threads
+            write(*,*) 'time rm source velocities     ',tt8/mpiworld%max_threads
             write(*,*) 'time -------------------------'
-            write(*,*) 'time add adjsource stresses   ',tt4
-            write(*,*) 'time/nth update adj stresses  ',tt5/mpiworld%max_threads
-            write(*,*) 'time add adjsource velocities ',tt9
-            write(*,*) 'time/nth update adj velocities',tt10/mpiworld%max_threads
-            write(*,*) 'time extract&write fields     ',tt11
-            write(*,*) 'time/nth correlation          ',(tt6+tt12)/mpiworld%max_threads
-            write(*,*) 'time snapshot                 ',tt13
+            write(*,*) 'time add adjsource stresses   ',tt4/mpiworld%max_threads
+            write(*,*) 'time update adj stresses      ',tt5/mpiworld%max_threads
+            write(*,*) 'time add adjsource velocities ',tt9/mpiworld%max_threads
+            write(*,*) 'time update adj velocities    ',tt10/mpiworld%max_threads
+            write(*,*) 'time extract&write fields     ',tt11/mpiworld%max_threads
+            write(*,*) 'time correlation              ',(tt6+tt12)/mpiworld%max_threads
+            write(*,*) 'time snapshot                 ',tt13/mpiworld%max_threads
 
         endif
         

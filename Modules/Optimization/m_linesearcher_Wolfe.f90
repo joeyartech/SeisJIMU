@@ -39,7 +39,8 @@ use m_preconditioner
     !counter
     integer :: isearch=0 !number of linesearch performed
     integer :: imodeling=1 !number of modeling performed
-    integer,parameter :: max_search=20 !max number of linesearch allowed
+    !integer,parameter :: max_search=20 !max number of linesearch allowed
+integer,parameter :: max_search=12
     integer :: max_modeling  !max number of modeling allowed
     
     !projection

@@ -11,6 +11,7 @@ use m_arrayop
         real,dimension(:,:,:),allocatable :: vp,vs,rho,eps,del,eta
         real,dimension(:,:),allocatable :: topo
         integer,dimension(:,:),allocatable :: itopo
+real,dimension(:,:,:),allocatable :: vp_mask,vs_mask,rho_mask
                 
         real ref_vp,ref_vs,ref_rho
 
@@ -135,6 +136,10 @@ use m_arrayop
         endif
         
         !topography
+        if(get_setup_logical('IF_TOPO_FROM_VS',default=.true.)) then
+            m%itopo = maxloc(m%vs, dim=1, mask=(m%vs<10), back=.true.)+1
+        endif
+        
         call alloc(m%topo,m%nx,m%ny)
         call alloc(m%itopo,m%nx,m%ny)
         inquire(file=tmp4//'_topo', exist=alive)
@@ -147,9 +152,6 @@ use m_arrayop
 
         m%itopo=nint(m%topo/m%dz)+1
 
-        if(get_setup_logical('IF_TOPO_FROM_VS',default=.true.)) then
-            m%itopo = maxloc(m%vs, dim=1, mask=(m%vs<10), back=.true.)+1
-        endif
         if(mpiworld%is_master) then
             write(*,*) 'm%itopo minmax value:', minval(m%itopo), maxval(m%itopo)
         endif
@@ -158,6 +160,10 @@ use m_arrayop
         !     write(12,*) m%itopo
         !     close(12)
         ! endif
+
+call alloc( m%vp_mask,  maxval(m%itopo),m%nx,m%ny ); m%vp_mask(:,:,:)  = m%vp(1:maxval(m%itopo),:,:)
+call alloc( m%vs_mask,  maxval(m%itopo),m%nx,m%ny ); m%vs_mask(:,:,:)  = m%vs(1:maxval(m%itopo),:,:)
+call alloc( m%rho_mask, maxval(m%itopo),m%nx,m%ny ); m%rho_mask(:,:,:) = m%rho(1:maxval(m%itopo),:,:)
         
         !freesurface
         m%if_freesurface=get_setup_logical('IF_FREESURFACE',default=.true.)

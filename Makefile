@@ -4,7 +4,7 @@ OMP=openmp
 #OPTRPT=-qopt-report=5  -qopt-report-file=stderr -qopt-report-phase=vec
 
 #for Intel
-FLAGF90= -xHost -O3 -Ofast  -parallel -q$(OMP) -fno-alias -traceback -assume byterecl   $(OPTRPT)
+FLAGF90= -xHost -O3 -Ofast -ipo -parallel -q$(OMP) -fno-alias -traceback -assume byterecl   $(OPTRPT)
 # FLAGF90= -xCORE-AVX512 -O3 -Ofast -ipo -parallel -q$(OMP) -fno-alias -traceback -assume byterecl   $(OPTRPT)
 # FLAGF90= -g -debug -check all -check noarg_temp_created -W1 -WB -q$(OMP) -traceback -assume byterecl
 FLAGF77= $(FLAGF90)

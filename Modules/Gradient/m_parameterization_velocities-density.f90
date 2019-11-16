@@ -270,29 +270,59 @@ use m_gradient, only: gradient
     subroutine parameterization_applymask(x)
         real,dimension(m%nz,m%nx,m%ny,npar) :: x
 
-        !in water, vp=1500. vs=0. rho=1.
-        do ipar=1,npar
-            select case (pars(ipar))
-            case ('vp' )
-                do iy=1,m%ny
-                do ix=1,m%nx
-                    x(1:m%itopo(ix,iy)-1,ix,iy,ipar) = (1500. -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
-                enddo
-                enddo
-            case ('vs' )
-                do iy=1,m%ny
-                do ix=1,m%nx
-                    x(1:m%itopo(ix,iy)-1,ix,iy,ipar) = (0.  -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
-                enddo
-                enddo
-            case ('rho')
-                do iy=1,m%ny
-                do ix=1,m%nx
-                    x(1:m%itopo(ix,iy)-1,ix,iy,ipar) = (1.  -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
-                enddo
-                enddo
-            end select
+        ! !in water, vp=1500. vs=0. rho=1.
+        ! do ipar=1,npar
+        !     select case (pars(ipar))
+        !     case ('vp' )
+        !         do iy=1,m%ny
+        !         do ix=1,m%nx
+        !             x(1:m%itopo(ix,iy)-1,ix,iy,ipar) = (1500. -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+        !         enddo
+        !         enddo
+        !     case ('vs' )
+        !         do iy=1,m%ny
+        !         do ix=1,m%nx
+        !             x(1:m%itopo(ix,iy)-1,ix,iy,ipar) = (0.  -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+        !         enddo
+        !         enddo
+        !     case ('rho')
+        !         do iy=1,m%ny
+        !         do ix=1,m%nx
+        !             x(1:m%itopo(ix,iy)-1,ix,iy,ipar) = (1.  -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+        !         enddo
+        !         enddo
+        !     end select
+        ! enddo
+
+!arbitrary mask
+do ipar=1,npar
+    select case (pars(ipar))
+    case ('vp' )
+        do iy=1,m%ny
+        do ix=1,m%nx
+        do iz=1,m%itopo(ix,iy)-1
+            x(iz,ix,iy,ipar) = (m%vp_mask(iz,ix,iy) -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
         enddo
+        enddo
+        enddo
+    case ('vs' )
+        do iy=1,m%ny
+        do ix=1,m%nx
+        do iz=1,m%itopo(ix,iy)-1
+            x(iz,ix,iy,ipar) = (m%vs_mask(iz,ix,iy)  -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+        enddo
+        enddo
+        enddo
+    case ('rho')
+        do iy=1,m%ny
+        do ix=1,m%nx
+        do iz=1,m%itopo(ix,iy)-1
+            x(iz,ix,iy,ipar) = (m%rho_mask(iz,ix,iy) -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+        enddo
+        enddo
+        enddo
+    end select
+enddo
 
     end subroutine
 

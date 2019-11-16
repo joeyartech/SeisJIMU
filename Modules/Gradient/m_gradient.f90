@@ -102,10 +102,10 @@ endif
 ! dsyn(1:itstart(ix),ix)=0.
 ! enddo
 
-!mitigate some noise due to matchfilter
-where(abs(dobs)<1e-6)
-    dsyn=0.
-endwhere
+!!mitigate some noise due to matchfilter
+!where(abs(dobs)<1e-6)
+!    dsyn=0.
+!endwhere
             
             !write synthetic data
             open(12,file='synth_data_'//shot%cindex,access='stream')
