@@ -6,6 +6,8 @@ use m_model, only:m
 use m_shot, only:shot
 use m_computebox, only: cb
 
+use, intrinsic :: ieee_arithmetic
+
     private fdcoeff_o4,fdcoeff_o8,c1x,c1y,c1z,c2x,c2y,c2z,c3x,c3y,c3z,c4x,c4y,c4z
     private k_x,k_y,k_z,npower,rcoef,factor_hh,factor_zz, threshold
     public
@@ -175,15 +177,15 @@ use m_computebox, only: cb
         type(t_field) :: f
         character(*) :: name
         
-        if(mpiworld%is_master) write(*,*) name//' sample values:',minval(f%szz),maxval(f%szz)
-        !if(any(f%szz-1.==f%szz)) then !this is not a good numerical judgement..
-        !    write(*,*) 'ERROR: '//name//' values become +-Infinity on Shot# '//shot%cindex//' !!'
-        !    stop
-        !endif
-        if(any(isnan(f%szz))) then
-            write(*,*) 'ERROR: '//name//' values become NaN on Shot# '//shot%cindex//' !!'
+        if(any(.not. ieee_is_finite(f%vz))) then
+            write(*,*) 'ERROR: '//name//' values become Infinity on Shot# '//shot%cindex//' !!'
             stop
         endif
+        if(any(ieee_is_nan(f%vz))) then
+           write(*,*) 'ERROR: '//name//' values become NaN on Shot# '//shot%cindex//' !!'
+           stop
+        endif
+
     end subroutine
     
     subroutine field_cpml_reinitialize(f)

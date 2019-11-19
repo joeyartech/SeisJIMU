@@ -136,13 +136,14 @@ real,dimension(:,:,:),allocatable :: vp_mask,vs_mask,rho_mask
         endif
         
         !topography
-        if(get_setup_logical('IF_TOPO_FROM_VS',default=.true.)) then
-!            m%itopo = maxloc(m%vs, dim=1, mask=(m%vs<10), back=.true.)+1
-!m%itopo=82
-        endif
-        
         call alloc(m%topo,m%nx,m%ny)
         call alloc(m%itopo,m%nx,m%ny)
+
+        if(get_setup_logical('IF_TOPO_FROM_VS',default=.true.)) then
+            !m%itopo = maxloc(m%vs, dim=1, mask=(m%vs<10), back=.true.)+1 !back argument is not implemented in gfortran until version 9 ..
+            m%itopo = minloc(m%vs, dim=1, mask=(m%vs>=10.)); where(m%itopo==0) m%itopo=m%nz+1
+        endif
+        
         inquire(file=tmp4//'_topo', exist=alive)
         if(alive) then
             open(12,file=tmp4//'_topo',access='direct',recl=4*m%nx*m%ny,action='read',status='old')

@@ -261,6 +261,10 @@ use m_gradient, only: gradient
                 g(:,:,:,ipar)=g(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))
             enddo
 
+open(88,file='gvpvs',access='stream')
+write(88) g(:,:,:,1:2)
+close(88)
+
         endif
         endif
         

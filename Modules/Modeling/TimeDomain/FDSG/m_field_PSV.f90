@@ -6,6 +6,8 @@ use m_model, only:m
 use m_shot, only:shot
 use m_computebox, only: cb
 
+use, intrinsic :: ieee_arithmetic
+
     private fdcoeff_o4,fdcoeff_o8,c1x,c1z,c2x,c2z,c3x,c3z,c4x,c4z
     !private kappa,npower,rcoef
     public
@@ -136,6 +138,10 @@ use m_computebox, only: cb
            temp_mu(:,:)=cb%rho(:,:,1)*cb%vs(:,:,1)**2
 
         lm%lda=lm%ldap2mu-2.*temp_mu
+! if(mpiworld%is_master) then
+! write(*,*) 'lm%ldap2mu sanity:', minval(lm%ldap2mu),maxval(lm%ldap2mu)
+! write(*,*) 'lm%lda     sanity:', minval(lm%lda),maxval(lm%lda)
+! endif
 
         lm%two_ldapmu=2.*(lm%lda+temp_mu)
 
@@ -144,43 +150,45 @@ use m_computebox, only: cb
         endwhere
 
 
-        ! temp_mu=1./temp_mu
+        !interpolat mu by harmonic average
+        temp_mu=1./temp_mu
 
-        ! do ix=cb%ifx+1,cb%ilx
-        ! do iz=cb%ifz+1,cb%ilz
-        !         lm%mu(iz,ix)=4./( temp_mu(iz-1,ix-1) &
-        !                          +temp_mu(iz-1,ix  ) &
-        !                          +temp_mu(iz  ,ix-1) &
-        !                          +temp_mu(iz  ,ix  ))
-        ! end do
-        ! end do
+        do ix=cb%ifx+1,cb%ilx
+        do iz=cb%ifz+1,cb%ilz
+                lm%mu(iz,ix)=4./( temp_mu(iz-1,ix-1) &
+                                 +temp_mu(iz-1,ix  ) &
+                                 +temp_mu(iz  ,ix-1) &
+                                 +temp_mu(iz  ,ix  ))
+        end do
+        end do
 
-        ! where( isnan(lm%mu) .or. lm%mu==lm%mu+1. )
-        !     lm%mu=0.
-        ! endwhere
+        where( ieee_is_nan(lm%mu) .or. .not. ieee_is_finite(lm%mu) )
+            lm%mu=0.
+        endwhere
 
-do ix=cb%ifx+1,cb%ilx
-do iz=cb%ifz+1,cb%ilz
-        lm%mu(iz,ix)=( temp_mu(iz-1,ix-1) &
-                      +temp_mu(iz-1,ix  ) &
-                      +temp_mu(iz  ,ix-1) &
-                      +temp_mu(iz  ,ix  ))
-end do
-end do
-lm%mu=lm%mu*0.25
+        ! open(8,file='lm%mu',access='stream')
+        ! write(8) lm%mu
+        ! close(8)
+
+! !interpolat mu by arithmic average
+! do ix=cb%ifx+1,cb%ilx
+! do iz=cb%ifz+1,cb%ilz
+!         lm%mu(iz,ix)=( temp_mu(iz-1,ix-1) &
+!                       +temp_mu(iz-1,ix  ) &
+!                       +temp_mu(iz  ,ix-1) &
+!                       +temp_mu(iz  ,ix  ))
+! end do
+! end do
+! lm%mu=lm%mu*0.25
 
         lm%mu(cb%ifz,:)=lm%mu(cb%ifz+1,:)
         lm%mu(:,cb%ifx)=lm%mu(:,cb%ifx+1)
 
         !check mu values
         if(mpiworld%is_master) then
-            write(*,*) 'lm%mu sanity:', minval(lm%mu),maxval(lm%mu), any(isnan(lm%mu)), any(lm%mu==lm%mu+1.)
+            write(*,*) 'lm%mu sanity:', minval(lm%mu),maxval(lm%mu), any(ieee_is_nan(lm%mu)), any(.not. ieee_is_finite(lm%mu))
         endif
         
-! if(mpiworld%is_master) then
-! write(*,*) 'lm%ldap2mu sanity:', minval(lm%ldap2mu),maxval(lm%ldap2mu)
-! write(*,*) 'lm%lda     sanity:', minval(lm%lda),maxval(lm%lda)
-! endif
 
         do iz=cb%ifz+1,cb%ilz
             lm%buoz(iz,:)=0.5/cb%rho(iz,:,1)+0.5/cb%rho(iz-1,:,1)
@@ -223,11 +231,11 @@ lm%mu=lm%mu*0.25
         
         if(mpiworld%is_master) write(*,*) name//' sample values:',minval(f%vz),maxval(f%vz)
         
-        !if(any(f%p-1.==f%p)) then !this is not a good numerical judgement..
-        !    write(*,*) 'ERROR: '//name//' values become +-Infinity on Shot# '//shot%cindex//' !!'
-        !    stop
-        !endif
-        if(any(isnan(f%vz))) then
+        if(any(.not. ieee_is_finite(f%vz))) then
+            write(*,*) 'ERROR: '//name//' values become Infinity on Shot# '//shot%cindex//' !!'
+            stop
+        endif
+        if(any(ieee_is_nan(f%vz))) then
            write(*,*) 'ERROR: '//name//' values become NaN on Shot# '//shot%cindex//' !!'
            stop
         endif
@@ -969,7 +977,7 @@ lm%mu=lm%mu*0.25
 
                 corr_mu(j)=corr_mu(j) + ldap2mu(i)*rf_sxx(i)*sf_dvx_dx &
                                       + ldap2mu(i)*rf_szz(i)*sf_dvz_dz &
-                                      + two_ldapmu(i)*0.0625*rf_4_sxz*sf_4_dvzdx_p_dvxdz
+                                      + two_ldapmu(i)*0.0625*rf_4_sxz*sf_4_dvzdx_p_dvxdz   !0.0625=1/16
                 
             end do
             

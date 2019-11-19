@@ -50,12 +50,12 @@ use m_optimizer
 !     write(12,rec=1) precond_gradient
 !     close(12)
     
-    job=get_setup_char('JOB',default='optimization')
-    !if just estimate the wavelet or compute the gradient then this is it.
-    if(job/='optimization') then
-        call mpiworld_finalize
-        stop
-    endif
+    ! job=get_setup_char('JOB',default='optimization')
+    ! !if just estimate the wavelet or compute the gradient then this is it.
+    ! if(job/='optimization') then
+    !     call mpiworld_finalize
+    !     stop
+    ! endif
     
     
     !initialize parameterization
@@ -67,6 +67,13 @@ use m_optimizer
     open(12,file='initial%pg',action='write',access='direct',recl=4*m%n*npar)
     write(12,rec=1) current%pg
     close(12)
+
+job=get_setup_char('JOB',default='optimization')
+!if just estimate the wavelet or compute the gradient then this is it.
+if(job/='optimization') then
+    call mpiworld_finalize
+    stop
+endif
     
     call optimizer
     
