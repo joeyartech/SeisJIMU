@@ -137,7 +137,8 @@ real,dimension(:,:,:),allocatable :: vp_mask,vs_mask,rho_mask
         
         !topography
         if(get_setup_logical('IF_TOPO_FROM_VS',default=.true.)) then
-            m%itopo = maxloc(m%vs, dim=1, mask=(m%vs<10), back=.true.)+1
+!            m%itopo = maxloc(m%vs, dim=1, mask=(m%vs<10), back=.true.)+1
+!m%itopo=82
         endif
         
         call alloc(m%topo,m%nx,m%ny)

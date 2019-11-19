@@ -144,20 +144,30 @@ use m_computebox, only: cb
         endwhere
 
 
-        temp_mu=1./temp_mu
+        ! temp_mu=1./temp_mu
 
-        do ix=cb%ifx+1,cb%ilx
-        do iz=cb%ifz+1,cb%ilz
-                lm%mu(iz,ix)=4./( temp_mu(iz-1,ix-1) &
-                                 +temp_mu(iz-1,ix  ) &
-                                 +temp_mu(iz  ,ix-1) &
-                                 +temp_mu(iz  ,ix  ))
-        end do
-        end do
+        ! do ix=cb%ifx+1,cb%ilx
+        ! do iz=cb%ifz+1,cb%ilz
+        !         lm%mu(iz,ix)=4./( temp_mu(iz-1,ix-1) &
+        !                          +temp_mu(iz-1,ix  ) &
+        !                          +temp_mu(iz  ,ix-1) &
+        !                          +temp_mu(iz  ,ix  ))
+        ! end do
+        ! end do
 
-        where( isnan(lm%mu) .or. lm%mu==lm%mu+1. )
-            lm%mu=0.
-        endwhere
+        ! where( isnan(lm%mu) .or. lm%mu==lm%mu+1. )
+        !     lm%mu=0.
+        ! endwhere
+
+do ix=cb%ifx+1,cb%ilx
+do iz=cb%ifz+1,cb%ilz
+        lm%mu(iz,ix)=( temp_mu(iz-1,ix-1) &
+                      +temp_mu(iz-1,ix  ) &
+                      +temp_mu(iz  ,ix-1) &
+                      +temp_mu(iz  ,ix  ))
+end do
+end do
+lm%mu=lm%mu*0.25
 
         lm%mu(cb%ifz,:)=lm%mu(cb%ifz+1,:)
         lm%mu(:,cb%ifx)=lm%mu(:,cb%ifx+1)
