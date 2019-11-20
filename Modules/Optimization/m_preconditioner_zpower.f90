@@ -22,15 +22,26 @@ use m_parameterization, only: npar
         
         real :: old_norm
         
-        do i=1,npar
-            old_norm = norm2(g(:,:,:,i))
-            do iy=1,m%ny
-            do ix=1,m%nx
-                pg(:,ix,iy,i)=g(:,ix,iy,i)*precond
-            enddo
-            enddo
-            pg(:,:,:,i) = pg(:,:,:,i) * old_norm / norm2(pg(:,:,:,i))
-        enddo
+!        do i=1,npar
+!            old_norm = norm2(g(:,:,:,i))
+!            do iy=1,m%ny
+!            do ix=1,m%nx
+!                pg(:,ix,iy,i)=g(:,ix,iy,i)*precond
+!            enddo
+!            enddo
+!            pg(:,:,:,i) = pg(:,:,:,i) * old_norm / norm2(pg(:,:,:,i))
+!        enddo
+
+old_norm = norm2(g)
+do i=1,npar
+do iy=1,m%ny
+do ix=1,m%nx
+    pg(:,ix,iy,i)=g(:,ix,iy,i)*precond
+enddo
+enddo
+enddo
+pg = pg * old_norm / norm2(pg)
+
     end subroutine
 
 end
