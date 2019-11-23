@@ -7,7 +7,7 @@ use m_gradient, only: gradient
 
 
     !PARAMETERIZATION     -- ALLOWED PARAMETERS
-    !velocities-impedance -- vp vs ip
+    !velocities-density   -- vp vs ip
 
     !acoustic:
     !kpa = rho*vp^2 = vp*ip
@@ -261,9 +261,9 @@ use m_gradient, only: gradient
                 g(:,:,:,ipar)=g(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))
             enddo
 
-open(88,file='gvpvs',access='stream')
-write(88) g(:,:,:,1:2)
-close(88)
+!open(88,file='gvpvs',access='stream')
+!write(88) g
+!close(88)
 
         endif
         endif

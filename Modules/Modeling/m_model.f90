@@ -141,7 +141,17 @@ real,dimension(:,:,:),allocatable :: vp_mask,vs_mask,rho_mask
 
         if(get_setup_logical('IF_TOPO_FROM_VS',default=.true.)) then
             !m%itopo = maxloc(m%vs, dim=1, mask=(m%vs<10), back=.true.)+1 !back argument is not implemented in gfortran until version 9 ..
-            m%itopo = minloc(m%vs, dim=1, mask=(m%vs>=10.)); where(m%itopo==0) m%itopo=m%nz+1
+            !m%itopo = minloc(m%vs, dim=1, mask=(m%vs>=10.)); where(m%itopo==0) m%itopo=m%nz+1  !still not correct
+do i3=1,m%ny
+do i2=1,m%nx
+loop: do i1=1,m%nz
+  if(m%vs(i1,i2,i3)>=10) then
+    m%itopo(i2,i3) = i1
+    exit loop
+  endif
+enddo loop
+enddo;enddo
+            m%topo = (m%itopo-1)*m%dz
         endif
         
         inquire(file=tmp4//'_topo', exist=alive)
@@ -150,9 +160,8 @@ real,dimension(:,:,:),allocatable :: vp_mask,vs_mask,rho_mask
             read(12,rec=1) m%topo
             close(12)
             call hud('topo model is read.')
+            m%itopo=nint(m%topo/m%dz)+1
         endif
-
-        m%itopo=nint(m%topo/m%dz)+1
 
         if(mpiworld%is_master) then
             write(*,*) 'm%itopo minmax value:', minval(m%itopo), maxval(m%itopo)
