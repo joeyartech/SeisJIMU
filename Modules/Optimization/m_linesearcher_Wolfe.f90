@@ -116,6 +116,11 @@ integer,parameter :: max_search=12
 ! print*,'2nd cond',perturb%gdotd, second_condition
 ! print*,'alpha(3)',alphaL,alpha,alpha_R
 
+!occasionally optimizers on processors don't have same behavior
+!try to avoid this by broadcast controlling logicals.
+call mpi_bcast(first_condition,  1, mpi_logical, 0, mpiworld%communicator)
+call mpi_bcast(second_condition, 1, mpi_logical, 0, mpiworld%communicator)
+
             !1st condition OK, 2nd condition OK => use alpha
             if(first_condition .and. second_condition) then
                 call hud('Wolfe conditions are satisfied')
