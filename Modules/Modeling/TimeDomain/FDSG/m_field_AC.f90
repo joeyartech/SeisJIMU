@@ -92,7 +92,7 @@ use, intrinsic :: ieee_arithmetic
         
         if(cfl>1.) then
             write(*,*) 'ERROR: CFL > 1 on shot# '//shot%cindex//'!'
-            write(*,*) 'Shot# '//shot%cindex//' velmax, dt, dx:',cb%velmax,shot%src%dt,m%cell_inv_diagonal
+            write(*,*) 'Shot# '//shot%cindex//' velmax, dt, 1/dx:',cb%velmax,shot%src%dt,m%cell_inv_diagonal
             stop
         endif
         
