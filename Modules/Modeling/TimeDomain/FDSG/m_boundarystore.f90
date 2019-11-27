@@ -3,7 +3,7 @@ use m_arrayop
 use m_model, only: m
 use m_shot, only: shot
 use m_computebox, only: cb
-use m_field, only: t_field
+use m_field, only: t_field, waveeq_info
 
     private
     public init_boundarystore, boundarystore_transport
@@ -48,10 +48,11 @@ use m_field, only: t_field
         
     end subroutine
     
-    subroutine boundarystore_transport(action,it,f)
+    subroutine boundarystore_transport(action,it,f,o_if_shear)
         character(4) :: action
         integer :: it
         type(t_field) :: f
+        logical,optional :: o_if_shear
         
         nz=cb%mz
         nx=cb%mx
@@ -72,16 +73,23 @@ use m_field, only: t_field
         else
             !top
             call bndcpy(action,f%vz,bnd%vz_top(:,it),[1,3],    [1,nx],[1,1])
-            call bndcpy(action,f%vx,bnd%vx_top(:,it),[1,3],    [1,nx],[1,1])
             !bottom
             call bndcpy(action,f%vz,bnd%vz_bot(:,it),[nz-1,nz+1],[1,nx],[1,1])
-            call bndcpy(action,f%vx,bnd%vx_bot(:,it),[nz-2,nz  ],[1,nx],[1,1])
             !left
             call bndcpy(action,f%vx,bnd%vx_left(:,it), [1,nz],[1,3],    [1,1])
-            call bndcpy(action,f%vz,bnd%vz_left(:,it), [1,nz],[1,3],    [1,1])
             !right
             call bndcpy(action,f%vx,bnd%vx_right(:,it),[1,nz],[nx-1,nx+1],[1,1])
-            call bndcpy(action,f%vz,bnd%vz_right(:,it),[1,nz],[nx-2,nx  ],[1,1])
+
+            if(index(waveeq_info,'elastic')>0) then !shear part
+                !top
+                call bndcpy(action,f%vx,bnd%vx_top(:,it),[1,3],    [1,nx],[1,1])
+                !bottom
+                call bndcpy(action,f%vx,bnd%vx_bot(:,it),[nz-2,nz  ],[1,nx],[1,1])
+                !left
+                call bndcpy(action,f%vz,bnd%vz_left(:,it), [1,nz],[1,3],    [1,1])
+                !right
+                call bndcpy(action,f%vz,bnd%vz_right(:,it),[1,nz],[nx-2,nx  ],[1,1])
+            endif
         endif
         
     end subroutine

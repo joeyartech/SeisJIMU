@@ -11,7 +11,7 @@ use m_arrayop
         real,dimension(:,:,:),allocatable :: vp,vs,rho,eps,del,eta
         real,dimension(:,:),allocatable :: topo
         integer,dimension(:,:),allocatable :: itopo
-real,dimension(:,:,:),allocatable :: vp_mask,vs_mask,rho_mask
+        real,dimension(:,:,:),allocatable :: vp_mask,vs_mask,rho_mask
                 
         real ref_vp,ref_vs,ref_rho
 
@@ -142,15 +142,14 @@ real,dimension(:,:,:),allocatable :: vp_mask,vs_mask,rho_mask
         if(get_setup_logical('IF_TOPO_FROM_VS',default=.true.)) then
             !m%itopo = maxloc(m%vs, dim=1, mask=(m%vs<10), back=.true.)+1 !back argument is not implemented in gfortran until version 9 ..
             !m%itopo = minloc(m%vs, dim=1, mask=(m%vs>=10.)); where(m%itopo==0) m%itopo=m%nz+1  !still not correct
-do i3=1,m%ny
-do i2=1,m%nx
-loop: do i1=1,m%nz
-  if(m%vs(i1,i2,i3)>=10) then
-    m%itopo(i2,i3) = i1
-    exit loop
-  endif
-enddo loop
-enddo;enddo
+            do i3=1,m%ny; do i2=1,m%nx
+            loop: do i1=1,m%nz
+                if(m%vs(i1,i2,i3)>=10) then
+                    m%itopo(i2,i3) = i1
+                    exit loop
+                endif
+            enddo loop
+            enddo; enddo
             m%topo = (m%itopo-1)*m%dz
         endif
         
@@ -172,9 +171,9 @@ enddo;enddo
         !     close(12)
         ! endif
 
-call alloc( m%vp_mask,  maxval(m%itopo),m%nx,m%ny ); m%vp_mask(:,:,:)  = m%vp(1:maxval(m%itopo),:,:)
-call alloc( m%vs_mask,  maxval(m%itopo),m%nx,m%ny ); m%vs_mask(:,:,:)  = m%vs(1:maxval(m%itopo),:,:)
-call alloc( m%rho_mask, maxval(m%itopo),m%nx,m%ny ); m%rho_mask(:,:,:) = m%rho(1:maxval(m%itopo),:,:)
+        call alloc( m%vp_mask,  maxval(m%itopo),m%nx,m%ny ); m%vp_mask(:,:,:)  = m%vp(1:maxval(m%itopo),:,:)
+        call alloc( m%vs_mask,  maxval(m%itopo),m%nx,m%ny ); m%vs_mask(:,:,:)  = m%vs(1:maxval(m%itopo),:,:)
+        call alloc( m%rho_mask, maxval(m%itopo),m%nx,m%ny ); m%rho_mask(:,:,:) = m%rho(1:maxval(m%itopo),:,:)
         
         !freesurface
         m%if_freesurface=get_setup_logical('IF_FREESURFACE',default=.true.)

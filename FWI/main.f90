@@ -27,24 +27,10 @@ use m_optimizer
     call gradient_modeling(if_gradient=.true.)
     
 
-    if(index(waveeq_info,'acoustic')>0) then
-        open(12,file='gradient_kpa',action='write',access='direct',recl=4*m%n)
-        write(12,rec=1) gradient(:,:,:,1)
-        close(12)
-        open(12,file='gradient_mu' ,action='write',access='direct',recl=4*m%n)
-        write(12,rec=1) gradient(:,:,:,2)
-        close(12)
-    else !elastic
-        open(12,file='gradient_lda',action='write',access='direct',recl=4*m%n)
-        write(12,rec=1) gradient(:,:,:,1)
-        close(12)
-        open(12,file='gradient_mu' ,action='write',access='direct',recl=4*m%n)
-        write(12,rec=1) gradient(:,:,:,2)
-        close(12)
-        open(12,file='gradient_rho',action='write',access='direct',recl=4*m%n)
-        write(12,rec=1) gradient(:,:,:,3)
-        close(12)
-    endif
+    open(12,file='gradient',action='write',access='stream')
+    write(12,rec=1) gradient
+    close(12)
+        
     
 !     open(12,file='precond_gradient',action='write',access='direct',recl=4*m%n*2)
 !     write(12,rec=1) precond_gradient
@@ -68,12 +54,12 @@ use m_optimizer
     write(12,rec=1) current%pg
     close(12)
 
-job=get_setup_char('JOB',default='optimization')
-!if just estimate the wavelet or compute the gradient then this is it.
-if(job/='optimization') then
-    call mpiworld_finalize
-    stop
-endif
+    job=get_setup_char('JOB',default='optimization')
+    !if just estimate the wavelet or compute the gradient then this is it.
+    if(job/='optimization') then
+        call mpiworld_finalize
+        stop
+    endif
     
     call optimizer
     

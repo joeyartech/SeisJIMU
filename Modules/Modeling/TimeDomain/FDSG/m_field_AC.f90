@@ -81,22 +81,18 @@ use, intrinsic :: ieee_arithmetic
     
     subroutine check_discretization
         !grid dispersion condition
-        if (5.*m%dmax > cb%velmin/shot%src%fpeak/2.) then  !FDTDo4 rule
+        if (5.*m%cell_diagonal > cb%velmin/shot%src%fpeak/2.) then  !FDTDo4 rule
             write(*,*) 'WARNING: Shot# '//shot%cindex//' can have grid dispersion!'
-            write(*,*) 'Shot# '//shot%cindex//' 5*dx, velmin, fpeak:',5.*m%dmax, cb%velmin,shot%src%fpeak
+            write(*,*) 'Shot# '//shot%cindex//' 5*dx, velmin, fpeak:',5.*m%cell_diagonal, cb%velmin,shot%src%fpeak
         endif
         
         !CFL condition
-        if (m%is_cubic) then
-            cfl = cb%velmax*shot%src%dt/m%dmin * (sqrt(3.)*(sum(abs(fdcoeff_o4))))! ~0.494
-        else
-            cfl = cb%velmax*shot%src%dt/m%dmin * (sqrt(2.)*(sum(abs(fdcoeff_o4))))! ~0.606
-        end if
+        cfl = cb%velmax*shot%src%dt*m%cell_inv_diagonal*sum(abs(fdcoeff_o4))! ~0.494 (3D); ~0.606 (2D)
         if(mpiworld%is_master) write(*,*) 'CFL value:',CFL
         
         if(cfl>1.) then
             write(*,*) 'ERROR: CFL > 1 on shot# '//shot%cindex//'!'
-            write(*,*) 'Shot# '//shot%cindex//' velmax, dt, dx:',cb%velmax,shot%src%dt,m%dmin
+            write(*,*) 'Shot# '//shot%cindex//' velmax, dt, dx:',cb%velmax,shot%src%dt,m%cell_inv_diagonal
             stop
         endif
         
@@ -675,7 +671,7 @@ use, intrinsic :: ieee_arithmetic
         !the unit of parameter update is [Nm], same as Lagrangian
         !and the unit of gradient scaling factor is [1/N/m] (in m_scaling.f90)
         !therefore parameters become unitless
-        corr=corr*m%cell_size*shot%src%dt
+        corr=corr*m%cell_volume*shot%src%dt
         
     end subroutine
     

@@ -298,35 +298,29 @@ use m_gradient, only: gradient
         !     end select
         ! enddo
 
-!arbitrary mask
-do ipar=1,npar
-    select case (pars(ipar))
-    case ('vp' )
-        do iy=1,m%ny
-        do ix=1,m%nx
-        do iz=1,m%itopo(ix,iy)-1
-            x(iz,ix,iy,ipar) = (m%vp_mask(iz,ix,iy) -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+        !arbitrary mask
+        do ipar=1,npar
+            select case (pars(ipar))
+            case ('vp' )
+                do iy=1,m%ny; do ix=1,m%nx
+                do iz=1,m%itopo(ix,iy)-1
+                    x(iz,ix,iy,ipar) = (m%vp_mask(iz,ix,iy) -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+                enddo
+                enddo; enddo
+            case ('vs' )
+                do iy=1,m%ny; do ix=1,m%nx
+                do iz=1,m%itopo(ix,iy)-1
+                    x(iz,ix,iy,ipar) = (m%vs_mask(iz,ix,iy)  -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+                enddo
+                enddo; enddo
+            case ('rho')
+                do iy=1,m%ny; do ix=1,m%nx
+                do iz=1,m%itopo(ix,iy)-1
+                    x(iz,ix,iy,ipar) = (m%rho_mask(iz,ix,iy) -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+                enddo
+                enddo; enddo
+            end select
         enddo
-        enddo
-        enddo
-    case ('vs' )
-        do iy=1,m%ny
-        do ix=1,m%nx
-        do iz=1,m%itopo(ix,iy)-1
-            x(iz,ix,iy,ipar) = (m%vs_mask(iz,ix,iy)  -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
-        enddo
-        enddo
-        enddo
-    case ('rho')
-        do iy=1,m%ny
-        do ix=1,m%nx
-        do iz=1,m%itopo(ix,iy)-1
-            x(iz,ix,iy,ipar) = (m%rho_mask(iz,ix,iy) -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
-        enddo
-        enddo
-        enddo
-    end select
-enddo
 
     end subroutine
 

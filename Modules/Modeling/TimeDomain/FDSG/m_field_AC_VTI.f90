@@ -90,22 +90,18 @@ use, intrinsic :: ieee_arithmetic
     
     subroutine check_discretization
         !grid dispersion condition
-        if (5.*m%dmax > cb%velmin/shot%src%fpeak/2.) then  !FDTDo4 rule
+        if (5.*m%cell_diagonal > cb%velmin/shot%src%fpeak/2.) then  !FDTDo4 rule
             write(*,*) 'WARNING: Shot# '//shot%cindex//' can have grid dispersion!'
-            write(*,*) 'Shot# '//shot%cindex//' 5*dx, velmin, fpeak:',5.*m%dmax, cb%velmin,shot%src%fpeak
+            write(*,*) 'Shot# '//shot%cindex//' 5*dx, velmin, fpeak:',5.*m%cell_diagonal, cb%velmin,shot%src%fpeak
         endif
         
         !CFL condition
-        if (m%is_cubic) then
-            cfl = cb%velmax*shot%src%dt/m%dmin * (sqrt(3.)*(sum(abs(fdcoeff_o4))))! ~0.494
-        else
-            cfl = cb%velmax*shot%src%dt/m%dmin * (sqrt(2.)*(sum(abs(fdcoeff_o4))))! ~0.606
-        end if
+        cfl = cb%velmax*shot%src%dt*m%cell_inv_diagonal*sum(abs(fdcoeff_o4))! ~0.494 (3D); ~0.606 (2D)
         if(mpiworld%is_master) write(*,*) 'CFL value:',CFL
         
         if(cfl>1.) then
             write(*,*) 'ERROR: CFL > 1 on shot# '//shot%cindex//'!'
-            write(*,*) 'Shot# '//shot%cindex//' velmax, dt, dx:',cb%velmax,shot%src%dt,m%dmin
+            write(*,*) 'Shot# '//shot%cindex//' velmax, dt, 1/dx:',cb%velmax,shot%src%dt,m%cell_inv_diagonal
             stop
         endif
         
@@ -644,7 +640,7 @@ use, intrinsic :: ieee_arithmetic
     !s^it+0.5, v^it, adjv^it
     !use (v[i+1]+v[i])/2 to approximate v[i+0.5], so is adjv
     
-    subroutine field_correlation_gkpa(it,sf,rf,sb,rb,corr)
+    subroutine field_correlation_moduli(it,sf,rf,sb,rb,corr)
         type(t_field) :: sf,rf
         integer,dimension(6) :: sb,rb
         real,dimension(*) :: corr
@@ -658,20 +654,20 @@ use, intrinsic :: ieee_arithmetic
         ily=min(sb(6),rb(6),cb%my-2)
         
         if(m%is_cubic) then
-            call corr3d_flat_gkpa(sf%vx, sf%vy, sf%vz,   &
-                                  rf%shh,rf%szz,         &
-                                  corr,                  &
-                                  ifz,ilz,ifx,ilx,ify,ily)
+            call corr3d_flat_moduli(sf%vx, sf%vy, sf%vz,   &
+                                    rf%shh,rf%szz,         &
+                                    corr,                  &
+                                    ifz,ilz,ifx,ilx,ify,ily)
         else
-            call corr2d_flat_gkpa(sf%vx, sf%vz,  &
-                                  rf%shh,rf%szz, &
-                                  corr,          &
-                                  ifz,ilz,ifx,ilx)
+            call corr2d_flat_moduli(sf%vx, sf%vz,  &
+                                    rf%shh,rf%szz, &
+                                    corr,          &
+                                    ifz,ilz,ifx,ilx)
         endif
 
     end subroutine
     
-    subroutine field_correlation_grho(it,sf,rf,sb,rb,corr)
+    subroutine field_correlation_density(it,sf,rf,sb,rb,corr)
         type(t_field) :: sf,rf
         integer,dimension(6) :: sb,rb
         real,dimension(*) :: corr
@@ -685,15 +681,15 @@ use, intrinsic :: ieee_arithmetic
         ily=min(sb(6),rb(6),cb%my-2)
         
         if(m%is_cubic) then
-            call corr3d_flat_grho(sf%shh,sf%szz,         &
-                                  rf%vx, rf%vy, rf%vz,   &
-                                  corr,                  &
-                                  ifz,ilz,ifx,ilx,ify,ily)
+            call corr3d_flat_density(sf%shh,sf%szz,         &
+                                     rf%vx, rf%vy, rf%vz,   &
+                                     corr,                  &
+                                     ifz,ilz,ifx,ilx,ify,ily)
         else
-            call corr2d_flat_grho(sf%shh,sf%szz, &
-                                  rf%vx, rf%vz,  &
-                                  corr,          &
-                                  ifz,ilz,ifx,ilx)
+            call corr2d_flat_density(sf%shh,sf%szz, &
+                                     rf%vx, rf%vz,  &
+                                     corr,          &
+                                     ifz,ilz,ifx,ilx)
         endif
         
     end subroutine
@@ -710,7 +706,7 @@ use, intrinsic :: ieee_arithmetic
         !the unit of parameter update is [Nm], same as Lagrangian
         !and the unit of gradient scaling factor is [1/N/m] (in m_scaling.f90)
         !therefore parameters become unitless
-        grad=grad*m%cell_size*shot%src%dt
+        grad=grad*m%cell_volume*shot%src%dt
         
     end subroutine
     
@@ -969,10 +965,10 @@ use, intrinsic :: ieee_arithmetic
         
     end subroutine
     
-    subroutine corr3d_flat_gkpa(sf_vx, sf_vy, sf_vz,   &
-                             	rf_shh,rf_szz,         &
-                             	corr,                  &
-                            	ifz,ilz,ifx,ilx,ify,ily)
+    subroutine corr3d_flat_moduli(sf_vx, sf_vy, sf_vz,   &
+                             	  rf_shh,rf_szz,         &
+                             	  corr,                  &
+                            	  ifz,ilz,ifx,ilx,ify,ily)
         real,dimension(*) :: sf_vx, sf_vy, sf_vz
         real,dimension(*) :: rf_shh,rf_szz
         real,dimension(*) :: corr
@@ -1031,10 +1027,10 @@ use, intrinsic :: ieee_arithmetic
         
     end subroutine
     
-    subroutine corr2d_flat_gkpa(sf_vx, sf_vz,  &
-                             	rf_shh,rf_szz, &
-                             	corr,          &
-                              	ifz,ilz,ifx,ilx)
+    subroutine corr2d_flat_moduli(sf_vx, sf_vz,  &
+                             	  rf_shh,rf_szz, &
+                             	  corr,          &
+                              	  ifz,ilz,ifx,ilx)
         real,dimension(*) :: sf_vx, sf_vz
         real,dimension(*) :: rf_shh,rf_szz
         real,dimension(*) :: corr
@@ -1084,10 +1080,10 @@ use, intrinsic :: ieee_arithmetic
         
     end subroutine
     
-    subroutine corr3d_flat_grho(sf_shh,sf_szz,         &
-                              	rf_vx, rf_vy, rf_vz,   &
-                              	corr,                  &
-                              	ifz,ilz,ifx,ilx,ify,ily)
+    subroutine corr3d_flat_density(sf_shh,sf_szz,         &
+                              	   rf_vx, rf_vy, rf_vz,   &
+                              	   corr,                  &
+                              	   ifz,ilz,ifx,ilx,ify,ily)
         real,dimension(*) :: sf_shh,sf_szz
         real,dimension(*) :: rf_vx, rf_vy, rf_vz
         real,dimension(*) :: corr
@@ -1155,10 +1151,10 @@ use, intrinsic :: ieee_arithmetic
         
     end subroutine
     
-    subroutine corr2d_flat_grho(sf_shh,sf_szz, &
-                              	rf_vx, rf_vz,  &
-                              	corr,          &
-                              	ifz,ilz,ifx,ilx)
+    subroutine corr2d_flat_density(sf_shh,sf_szz, &
+                              	   rf_vx, rf_vz,  &
+                              	   corr,          &
+                              	   ifz,ilz,ifx,ilx)
         real,dimension(*) :: sf_shh,sf_szz
         real,dimension(*) :: rf_vx, rf_vz
         real,dimension(*) :: corr
