@@ -77,8 +77,6 @@ use mpi
         character(10)  :: time
         character(10)  :: zone
         
-        call mpi_barrier(mpiworld%communicator,mpiworld%ierr)
-
         !time info
         if(mpiworld%is_master) then
             call date_and_time(time=time,date=date,zone=zone)
