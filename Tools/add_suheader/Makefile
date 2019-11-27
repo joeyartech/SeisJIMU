@@ -60,7 +60,7 @@ OBJ=$(system:.f90=.o) $(externf77:.f=.o) $(externf90:.f90=.o) $(signal:.f90=.o) 
 
 
 add_suheader : $(OBJ) main.o $(DIR)mod
-	mpif90 $(MOD) $(FLAGF90) $(OBJ) main.o   -o ADD_SUHEADER
+	mpif90 $(MOD) $(FLAGF90) $(OBJ) main.o   -o $(DIR)/exe/ADD_SUHEADER
 
 clean :
 	-rm $(OBJ)
