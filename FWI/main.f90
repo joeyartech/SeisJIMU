@@ -28,7 +28,7 @@ use m_optimizer
     
 
     open(12,file='gradient',action='write',access='stream')
-    write(12,rec=1) gradient
+    write(12) gradient
     close(12)
         
     
