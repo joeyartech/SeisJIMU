@@ -139,6 +139,7 @@ use m_arrayop
         call alloc(m%topo,m%nx,m%ny)
         call alloc(m%itopo,m%nx,m%ny)
 
+        if(size(m%vs)>1) then
         if(get_setup_logical('IF_TOPO_FROM_VS',default=.true.)) then
             !m%itopo = maxloc(m%vs, dim=1, mask=(m%vs<10), back=.true.)+1 !back argument is not implemented in gfortran until version 9 ..
             !m%itopo = minloc(m%vs, dim=1, mask=(m%vs>=10.)); where(m%itopo==0) m%itopo=m%nz+1  !still not correct
@@ -151,6 +152,7 @@ use m_arrayop
             enddo loop
             enddo; enddo
             m%topo = (m%itopo-1)*m%dz
+        endif
         endif
         
         inquire(file=tmp4//'_topo', exist=alive)

@@ -86,6 +86,7 @@ use m_gradient, only: gradient
         if_gardner = index(empirical,'gardner')>0
         if(if_gardner) then
             a=310; b=0.25 !modify if you want
+            if(m%ref_rho<1000.) a=0.31
         endif
 
         ! !Castagna mudrock line vp=a*vp+b
@@ -186,6 +187,9 @@ use m_gradient, only: gradient
         real,dimension(m%nz,m%nx,m%ny,npar),optional :: g
 
         logical :: if_acoustic, if_elastic
+
+        if_acoustic = index(waveeq_info,'acoustic')>0
+        if_elastic  = index(waveeq_info,'elastic')>0
         
         !model
         if(dir=='m2x') then
@@ -209,15 +213,21 @@ use m_gradient, only: gradient
                 end select
             enddo
 
+            ! + gardner
+            if(if_gardner) then
+                do iy=1,m%ny; do ix=1,m%nx
+                do iz=m%itopo(ix,iy),m%nz
+                    m%rho(iz,ix,iy) = a*m%vp(iz,ix,iy)**b
+                enddo
+                enddo; enddo
+            endif
+
         endif
 
         !gradient
         !!for units of gradient and g, see m_field*.f90
         if(present(g)) then
         if(dir=='m2x') then
-
-            if_acoustic = index(waveeq_info,'acoustic')>0
-            if_elastic  = index(waveeq_info,'elastic')>0
 
             !acoustic
             if(if_acoustic .and. .not. if_empirical) then

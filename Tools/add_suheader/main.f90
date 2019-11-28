@@ -155,8 +155,8 @@ use m_shot
         
         sudata(:)%hdr%offset = sudata(:)%hdr%gx - sudata(:)%hdr%sx
         
-        sudata(:)%hdr%scalco = -scalco
-        sudata(:)%hdr%scalel = -scalel
+        sudata(:)%hdr%scalco = scalco
+        sudata(:)%hdr%scalel = scalel
         
 !         sudata(:)%hdr%offset = sqrt( (shot%src%x-shot%rcv(:)%x)**2 &
 !                                     +(shot%src%y-shot%rcv(:)%y)**2 )

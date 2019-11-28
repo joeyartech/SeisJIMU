@@ -256,12 +256,12 @@ use m_hicks
         endif
         
         !scaling coordinates
-        if(sudata(1)%hdr%scalel > 0) then
+        if(sudata(1)%hdr%scalco > 0) then
             shot%src%x    = shot%src%x    * sudata(1)%hdr%scalco
             shot%src%y    = shot%src%y    * sudata(1)%hdr%scalco
             shot%rcv(:)%x = shot%rcv(:)%x * sudata(1)%hdr%scalco
             shot%rcv(:)%y = shot%rcv(:)%y * sudata(1)%hdr%scalco
-        elseif(sudata(1)%hdr%scalel < 0) then
+        elseif(sudata(1)%hdr%scalco < 0) then
             shot%src%x    = shot%src%x    / (-sudata(1)%hdr%scalco)
             shot%src%y    = shot%src%y    / (-sudata(1)%hdr%scalco)
             shot%rcv(:)%x = shot%rcv(:)%x / (-sudata(1)%hdr%scalco)
