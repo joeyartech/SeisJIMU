@@ -101,6 +101,7 @@ use m_shot
         !write su data
         if(allocated(sudata)) deallocate(sudata)
         allocate(sudata(ntr))
+        call init_suheader(sudata,ntr)
         
         sudata(:)%hdr%tracl = [(itr,itr=1,ntr)]
         sudata(:)%hdr%fldr = shot%index

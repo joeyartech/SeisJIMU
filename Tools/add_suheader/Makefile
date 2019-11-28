@@ -1,14 +1,14 @@
-# #for Intel
-# FLAGF90= -xHost -O3 -Ofast -ipo -parallel -qopenmp -traceback -assume byterecl
-# #FLAGF90= -g -debug -W1 -WB -traceback -assume byterecl
-# FLAGF77= $(FLAGF90)
-# MOD= -module $(DIR)mod
-#for GNU
-FLAGF77= -Ofast -fopenmp -fbacktrace #-flto
-FLAGF90= -Ofast -fopenmp -ffree-line-length-none -fbacktrace #-flto
-# FLAGF77= -g -Wall -fcheck=all                         -fopenmp -fbacktrace
-# FLAGF90= -g -Wall -fcheck=all -ffree-line-length-none -fopenmp -fbacktrace
-MOD=-J $(DIR)mod
+#for Intel
+FLAGF90= -xHost -O3 -Ofast -ipo -parallel -qopenmp -traceback -assume byterecl
+#FLAGF90= -g -debug -W1 -WB -traceback -assume byterecl
+FLAGF77= $(FLAGF90)
+MOD= -module $(DIR)mod
+# #for GNU
+# FLAGF77= -Ofast -fopenmp -fbacktrace #-flto
+# FLAGF90= -Ofast -fopenmp -ffree-line-length-none -fbacktrace #-flto
+# # FLAGF77= -g -Wall -fcheck=all                         -fopenmp -fbacktrace
+# # FLAGF90= -g -Wall -fcheck=all -ffree-line-length-none -fopenmp -fbacktrace
+# MOD=-J $(DIR)mod
 
 
 DIR=../../
@@ -60,7 +60,7 @@ OBJ=$(system:.f90=.o) $(externf77:.f=.o) $(externf90:.f90=.o) $(signal:.f90=.o) 
 
 
 add_suheader : $(OBJ) main.o $(DIR)mod
-	mpif90 $(MOD) $(FLAGF90) $(OBJ) main.o   -o $(DIR)/exe/ADD_SUHEADER
+	mpif90 $(MOD) $(FLAGF90) $(OBJ) main.o   -o $(DIR)exe/ADD_SUHEADER
 
 clean :
 	-rm $(OBJ)

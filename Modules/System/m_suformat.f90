@@ -2,7 +2,7 @@ module m_suformat
 use m_sysio
 
     private
-    public :: t_suformat, read_sudata
+    public :: t_suformat, init_suheader, read_sudata
 
 !A Fortran version of su format (defined in /SeisUnix/include/segy.h)
 !
@@ -48,13 +48,12 @@ use m_sysio
         sequence
         !BYTE# 1-4
         integer(4) tracl   !! Trace sequence number within line
-!                             --numbers continue to increase if the
+!                             ---numbers continue to increase if the
 !                             same line continues across multiple
 !                             SEG Y files. !!
         !BYTE# 5-8
         integer(4) tracr   !! Trace sequence number within SEG Y file
-!                          ---each file starts with trace sequence
-!                             one !!
+!                             ---each file starts with trace sequence one !!
         !BYTE# 9-12
         integer(4) fldr    !! Original field record number !!
         !BYTE# 13-16
@@ -67,7 +66,7 @@ use m_sysio
         integer(4) cdp     !! Ensemble number (i.e. CDP, CMP, CRP,...) !!
         !BYTE# 25-28
         integer(4) cdpt    !! trace number within the ensemble
-!                             ---each ensemble starts with trace number one. !!
+!                           ---each ensemble starts with trace number one. !!
         !BYTE# 29-30
         integer(2) trid    !! trace identification code:
 !                              -1 = Other
@@ -139,12 +138,10 @@ use m_sysio
 !                             202 = Seismic data packed to 2 BYTE# (by supack2) !!
         !BYTE# 31-32
         integer(2) nvs     !! Number of vertically summed traces yielding
-!                             this trace. (1 is one trace, 
-!                             2 is two summed traces, etc.) !!
+!                             this trace. (1 is one trace, 2 is two summed traces, etc.) !!
         !BYTE# 33-34
         integer(2) nhs     !! Number of horizontally summed traces yielding
-!                             this trace. (1 is one trace
-!                             2 is two summed traces, etc.) !!
+!                             this trace. (1 is one trace, 2 is two summed traces, etc.) !!
         !BYTE# 35-36
         integer(2) duse    !! Data use:
 !                             1 = Production
@@ -183,13 +180,13 @@ use m_sysio
 !                             If positive, scalar is used as a multiplier,
 !                             if negative, scalar is used as a divisor. !!
         !BYTE# 73-76
-        integer(4)  sx     !! Source coordinate - X !!
+        integer(4) sx      !! Source coordinate - X !!
         !BYTE# 77-80
-        integer(4)  sy     !! Source coordinate - Y !!
+        integer(4) sy      !! Source coordinate - Y !!
         !BYTE# 81-84
-        integer(4)  gx     !! Group coordinate - X !!
+        integer(4) gx      !! Group coordinate - X !!
         !BYTE# 85-88
-        integer(4)  gy     !! Group coordinate - Y !!
+        integer(4) gy      !! Group coordinate - Y !!
         !BYTE# 89-90
         integer(2) counit  !! Coordinate units: (for previous 4 entries and
 !                             for the 7 entries before scalel)
@@ -347,11 +344,11 @@ use m_sysio
 !                             range !!
 !
         !BYTE# 205-206
-        integer(2)  mark   !! mark selected traces !!
+        integer(2) mark    !! mark selected traces !!
 
 !       !! SLTSU local assignments !! 
         !BYTE# 207-208
-        integer(2)  mutb   !! mute time at bottom (start time)
+        integer(2) mutb    !! mute time at bottom (start time)
 !                             bottom mute ends at last sample   !!
         !BYTE# 209-212
         real(4) dz         !! depth sampling interval in (m or ft)
@@ -359,9 +356,9 @@ use m_sysio
         !BYTE# 213-216
         real(4) fz         !! depth of first sample in (m or ft)  !!
         !BYTE# 217-218
-        integer(2)  n2     !! number of traces per cdp or per shot !!
+        integer(2) n2      !! number of traces per cdp or per shot !!
         !BYTE# 219-220
-        integer(2)  shortpad  !! alignment padding !!
+        integer(2) shortpad  !! alignment padding !!
         !BYTE# 221-224
         integer(4) ntr     !! number of traces !!
 
@@ -381,6 +378,99 @@ use m_sysio
     end type
     
     contains
+    
+    subroutine init_suheader(sudata,ntr)
+        type(t_suformat),dimension(ntr) :: sudata
+        sudata(:)%hdr%tracl=0
+        sudata(:)%hdr%tracr=0
+        sudata(:)%hdr%fldr=0
+        sudata(:)%hdr%tracf=0
+        sudata(:)%hdr%ep=0
+        sudata(:)%hdr%cdp=0
+        sudata(:)%hdr%cdpt=0
+        sudata(:)%hdr%trid=0
+        sudata(:)%hdr%nvs=0
+        sudata(:)%hdr%nhs=0
+        sudata(:)%hdr%duse=0
+        sudata(:)%hdr%offset=0
+        sudata(:)%hdr%gelev=0
+        sudata(:)%hdr%selev=0
+        sudata(:)%hdr%sdepth=0
+        sudata(:)%hdr%gdel=0
+        sudata(:)%hdr%sdel=0
+        sudata(:)%hdr%swdep=0
+        sudata(:)%hdr%gwdep=0
+        sudata(:)%hdr%scalel=0
+        sudata(:)%hdr%scalco=0
+        sudata(:)%hdr%sx=0
+        sudata(:)%hdr%sy=0
+        sudata(:)%hdr%gx=0
+        sudata(:)%hdr%gy=0
+        sudata(:)%hdr%counit=0
+        sudata(:)%hdr%wevel=0
+        sudata(:)%hdr%swevel=0
+        sudata(:)%hdr%sut=0
+        sudata(:)%hdr%gut=0
+        sudata(:)%hdr%sstat=0
+        sudata(:)%hdr%gstat=0
+        sudata(:)%hdr%tstat=0
+        sudata(:)%hdr%laga=0
+        sudata(:)%hdr%lagb=0
+        sudata(:)%hdr%delrt=0
+        sudata(:)%hdr%muts=0
+        sudata(:)%hdr%mute=0
+        sudata(:)%hdr%ns=0
+        sudata(:)%hdr%dt=0
+        sudata(:)%hdr%gain=0
+        sudata(:)%hdr%igc=0
+        sudata(:)%hdr%igi=0
+        sudata(:)%hdr%corr=0
+        sudata(:)%hdr%sfs=0
+        sudata(:)%hdr%sfe=0
+        sudata(:)%hdr%slen=0
+        sudata(:)%hdr%styp=0
+        sudata(:)%hdr%stas=0
+        sudata(:)%hdr%stae=0
+        sudata(:)%hdr%tatyp=0
+        sudata(:)%hdr%afilf=0
+        sudata(:)%hdr%afils=0
+        sudata(:)%hdr%nofilf=0
+        sudata(:)%hdr%nofils=0
+        sudata(:)%hdr%lcf=0
+        sudata(:)%hdr%hcf=0
+        sudata(:)%hdr%lcs=0
+        sudata(:)%hdr%hcs=0
+        sudata(:)%hdr%year=0
+        sudata(:)%hdr%day=0
+        sudata(:)%hdr%hour=0
+        sudata(:)%hdr%minute=0
+        sudata(:)%hdr%sec=0
+        sudata(:)%hdr%timbas=0
+        sudata(:)%hdr%trwf=0
+        sudata(:)%hdr%grnors=0
+        sudata(:)%hdr%grnofr=0
+        sudata(:)%hdr%grnlof=0
+        sudata(:)%hdr%gaps=0
+        sudata(:)%hdr%otrav=0
+        
+        sudata(:)%hdr%d1=0.
+        sudata(:)%hdr%f1=0.
+        sudata(:)%hdr%d2=0.
+        sudata(:)%hdr%f2=0.
+        sudata(:)%hdr%ungpow=0.
+        sudata(:)%hdr%unscale=0.
+        sudata(:)%hdr%mark=0
+        
+        sudata(:)%hdr%mutb=0
+        sudata(:)%hdr%dz=0.
+        sudata(:)%hdr%fz=0.
+        sudata(:)%hdr%n2=0
+        sudata(:)%hdr%shortpad=0
+        sudata(:)%hdr%ntr=0
+        
+        sudata(:)%hdr%unass(8)=0.
+        
+    end subroutine
     
     subroutine read_sudata(cshot,sudata)
         character(4) :: cshot
