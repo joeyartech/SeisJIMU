@@ -220,6 +220,7 @@ use m_shot
         real,parameter :: Rcoef=0.001
         real,parameter :: kappa_max=7.  !increase this number if absorbing is not satisfactory at grazing incident angle
                                         !(make in/outside PML reflection more separate..)
+                                        !decrease this number if grid dispersion is not satisfactory
 
         real,dimension(:),allocatable   :: alpha_x,alpha_x_half
         real,dimension(:),allocatable   :: alpha_y,alpha_y_half

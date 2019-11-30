@@ -759,14 +759,13 @@ use, intrinsic :: ieee_arithmetic
                 dszz_dz= c1z*(szz(iz_ix_iy)-szz(izm1_ix_iy)) +c2z*(szz(izp1_ix_iy)-szz(izm2_ix_iy))
                 
                 !cpml
-                cpml_dshh_dx(iz_ix_iy)= cb%a_x(ix)*dshh_dx + cb%b_x(ix)*cpml_dshh_dx(iz_ix_iy)
-                dshh_dx=dshh_dx*k_x + cpml_dshh_dx(iz_ix_iy)
+                cpml_dshh_dx(iz_ix_iy)= cb%b_x_half(ix)*cpml_dshh_dx(iz_ix_iy) + cb%a_x_half(ix)*dshh_dx
+                cpml_dshh_dy(iz_ix_iy)= cb%b_y_half(iy)*cpml_dshh_dy(iz_ix_iy) + cb%a_y_half(iy)*dshh_dy
+                cpml_dszz_dz(iz_ix_iy)= cb%b_z_half(iz)*cpml_dszz_dz(iz_ix_iy) + cb%a_z_half(iz)*dszz_dz
                 
-                cpml_dshh_dy(iz_ix_iy)= cb%a_y(iy)*dshh_dy + cb%b_y(iy)*cpml_dshh_dy(iz_ix_iy)
-                dshh_dy=dshh_dy*k_y + cpml_dshh_dy(iz_ix_iy)
-                
-                cpml_dszz_dz(iz_ix_iy)= cb%a_z(iz)*dszz_dz + cb%b_z(iz)*cpml_dszz_dz(iz_ix_iy)
-                dszz_dz=dszz_dz*k_z + cpml_dszz_dz(iz_ix_iy)
+                dshh_dx=dshh_dx*cb%kappa_x_half(ix) + cpml_dshh_dx(iz_ix_iy)
+                dshh_dy=dshh_dy*cb%kappa_y_half(iy) + cpml_dshh_dy(iz_ix_iy)
+                dszz_dz=dszz_dz*cb%kappa_z_half(iz) + cpml_dszz_dz(iz_ix_iy)
                 
                 !velocity
                 vx(iz_ix_iy)=vx(iz_ix_iy) + dt*buox(iz_ix_iy)*dshh_dx
@@ -821,11 +820,11 @@ use, intrinsic :: ieee_arithmetic
                 dszz_dz= c1z*(szz(iz_ix)-szz(izm1_ix)) +c2z*(szz(izp1_ix)-szz(izm2_ix))
                 
                 !cpml
-                cpml_dshh_dx(iz_ix)= cb%a_x(ix)*dshh_dx + cb%b_x(ix)*cpml_dshh_dx(iz_ix)
-                dshh_dx=dshh_dx*k_x + cpml_dshh_dx(iz_ix)
-                
-                cpml_dszz_dz(iz_ix)= cb%a_z(iz)*dszz_dz + cb%b_z(iz)*cpml_dszz_dz(iz_ix)
-                dszz_dz=dszz_dz*k_z + cpml_dszz_dz(iz_ix)
+                cpml_dshh_dx(iz_ix)= cb%b_x_half(ix)*cpml_dshh_dx(iz_ix) + cb%a_x_half(ix)*dshh_dx
+                cpml_dszz_dz(iz_ix)= cb%b_z_half(iz)*cpml_dszz_dz(iz_ix) + cb%a_z_half(iz)*dszz_dz
+
+                dshh_dx=dshh_dx*cb%kappa_x_half(ix) + cpml_dshh_dx(iz_ix)
+                dszz_dz=dszz_dz*cb%kappa_z_half(iz) + cpml_dszz_dz(iz_ix)
                 
                 !velocity
                 vx(iz_ix)=vx(iz_ix) + dt*buox(iz_ix)*dshh_dx
@@ -887,13 +886,12 @@ use, intrinsic :: ieee_arithmetic
                 
                 !cpml
                 cpml_dvx_dx(iz_ix_iy)=cb%b_x(ix)*cpml_dvx_dx(iz_ix_iy)+cb%a_x(ix)*dvx_dx
-                dvx_dx=dvx_dx*k_x + cpml_dvx_dx(iz_ix_iy)
-                
                 cpml_dvy_dy(iz_ix_iy)=cb%b_y(iy)*cpml_dvy_dy(iz_ix_iy)+cb%a_y(iy)*dvy_dy
-                dvy_dy=dvy_dy*k_y + cpml_dvy_dy(iz_ix_iy)
-                
                 cpml_dvz_dz(iz_ix_iy)=cb%b_z(iz)*cpml_dvz_dz(iz_ix_iy)+cb%a_z(iz)*dvz_dz
-                dvz_dz=dvz_dz*k_z + cpml_dvz_dz(iz_ix_iy)
+                
+                dvx_dx=dvx_dx*cb%kappa_x(ix) + cpml_dvx_dx(iz_ix_iy)
+                dvy_dy=dvy_dy*cb%kappa_y(iy) + cpml_dvy_dy(iz_ix_iy)
+                dvz_dz=dvz_dz*cb%kappa_z(iz) + cpml_dvz_dz(iz_ix_iy)
                 
                 !pressure
                 shh(iz_ix_iy) = shh(iz_ix_iy) + dt * (kpa_1p2eps(iz_ix_iy)     *(dvx_dx+dvy_dy) + kpa_sqrt1p2del(iz_ix_iy) *dvz_dz)
@@ -948,10 +946,10 @@ use, intrinsic :: ieee_arithmetic
                 
                 !cpml
                 cpml_dvx_dx(iz_ix)=cb%b_x(ix)*cpml_dvx_dx(iz_ix)+cb%a_x(ix)*dvx_dx
-                dvx_dx=dvx_dx*k_x + cpml_dvx_dx(iz_ix)
-                
                 cpml_dvz_dz(iz_ix)=cb%b_z(iz)*cpml_dvz_dz(iz_ix)+cb%a_z(iz)*dvz_dz
-                dvz_dz=dvz_dz*k_z + cpml_dvz_dz(iz_ix)
+
+                dvx_dx=dvx_dx*cb%kappa_x(ix) + cpml_dvx_dx(iz_ix)
+                dvz_dz=dvz_dz*cb%kappa_z(iz) + cpml_dvz_dz(iz_ix)
                 
                 !pressure
                 shh(iz_ix) = shh(iz_ix) + dt * (kpa_1p2eps(iz_ix)     *dvx_dx + kpa_sqrt1p2del(iz_ix) *dvz_dz)

@@ -12,7 +12,7 @@ OMP=openmp
 
 #for GNU
 FLAGF77= -Ofast -f$(OMP)                         -fbacktrace  #-flto
-FLAGF90= -Ofast -f$(OMP) -ffree-line-length-none -fbacktrace
+FLAGF90= -Ofast -f$(OMP) -ffree-line-length-none -fbacktrace  -fno-unsafe-math-optimizations -frounding-math -fsignaling-nans
 # FLAGF77= -g -Wall -f$(OMP) -fcheck=all                         -fbacktrace
 # FLAGF90= -g -Wall -f$(OMP) -fcheck=all -ffree-line-length-none -fbacktrace
 MOD=-J $(DIR)mod

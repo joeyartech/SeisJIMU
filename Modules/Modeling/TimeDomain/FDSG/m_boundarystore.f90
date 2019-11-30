@@ -48,11 +48,10 @@ use m_field, only: t_field, waveeq_info
         
     end subroutine
     
-    subroutine boundarystore_transport(action,it,f,o_if_shear)
+    subroutine boundarystore_transport(action,it,f)
         character(4) :: action
         integer :: it
         type(t_field) :: f
-        logical,optional :: o_if_shear
         
         nz=cb%mz
         nx=cb%mx
