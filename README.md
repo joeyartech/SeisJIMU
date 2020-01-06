@@ -1,9 +1,9 @@
 # LEGO
-A module based modeling, migration and inversion code  
+A module based seismic modeling and inversion code  
 
 
 ~Version 1.1  
-Author: Wei Zhou	wei.zhou@utdallas.edu  
+Author: joeyartech joeywzhou1986@gmail.com
 Language: Fortran 95 & 2003  
 Libaries: OpenMP 3, MPI 2  
 Compilers: gfortran (version>=5), ifort  
