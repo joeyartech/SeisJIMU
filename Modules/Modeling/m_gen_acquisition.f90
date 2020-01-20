@@ -256,7 +256,8 @@ use m_model, only:m
         !should be read from setup (SOURCE_AREA, RECEIVER_AREA)
         !other points are interpolated from P1-4 and nil, nxl
 
-        real :: frx, lrx, fry, lry, frz, lrz
+        real :: fsx,fsy,fsz, frx,fry,frz
+        real :: lsx,lsy,lsz, lrx,lry,lrz
         
         read(source_line,*)    sz1,sx1,sy1, sz2,sx2,sy2, sz3,sx3,sy3, sz4,sx4,sy4, nsil, nsxl
         read(receiver_line,*)  rz1,rx1,ry1, rz2,rx2,ry2, rz3,rx3,ry3, rz4,rx4,ry4, nril, nrxl
@@ -288,11 +289,11 @@ use m_model, only:m
 
         do iil=1,nsil
 
-            sx = ( fsx*(nsil-iil) + lsx*(iil-1) )/(nsil-1)
-            sy = ( fsy*(nsil-iil) + lsy*(iil-1) )/(nsil-1)
-            sz = ( fsz*(nsil-iil) + lsz*(iil-1) )/(nsil-1)
+            sx  = ( fsx*(nsil-iil) + lsx*(iil-1) )/(nsil-1)
+            sy  = ( fsy*(nsil-iil) + lsy*(iil-1) )/(nsil-1)
+            sz  = ( fsz*(nsil-iil) + lsz*(iil-1) )/(nsil-1)
 
-            i  = iil + (ixl-1)*nsil
+            i   = iil + (ixl-1)*nsil
 
             acqui%src(i)%x=sx
             acqui%src(i)%y=sy
@@ -317,11 +318,11 @@ use m_model, only:m
 
             do jil=1,nril
 
-                rx = ( frx*(nril-jil) + lrx*(jil-1) )/(nril-1)
-                ry = ( fry*(nril-jil) + lry*(jil-1) )/(nril-1)
-                rz = ( frz*(nril-jil) + lrz*(jil-1) )/(nril-1)
+                rx  = ( frx*(nril-jil) + lrx*(jil-1) )/(nril-1)
+                ry  = ( fry*(nril-jil) + lry*(jil-1) )/(nril-1)
+                rz  = ( frz*(nril-jil) + lrz*(jil-1) )/(nril-1)
 
-                j  = jil + (jxl-1)*nril
+                j   = jil + (jxl-1)*nril
 
                 acqui%src(i)%rcv(j)%x=rx
                 acqui%src(i)%rcv(j)%y=ry
@@ -336,7 +337,15 @@ use m_model, only:m
         enddo
 
         enddo
-        
+
+print*,acqui%src(:)%x
+pause
+print*,acqui%src(:)%y
+pause
+print*,acqui%src(:)%z
+pause
+
+
     end subroutine
     
     subroutine check_acqui
