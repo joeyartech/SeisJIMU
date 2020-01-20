@@ -173,8 +173,8 @@ use m_message
         character(*),optional :: word2
         character(*), optional :: default
         
-        character(80) :: text
-        character(80) :: tmp,tmp2,tmp3
+        character(160) :: text
+        character(160) :: tmp,tmp2,tmp3
         
         logical :: found
         
@@ -188,7 +188,6 @@ use m_message
             if (text=='') cycle !blank line
             
             read (text,*) tmp
-            
             if(present(word2)) then
                 if(word2==trim(adjustl(tmp))) then
                     read(text,*) tmp2, tmp3
