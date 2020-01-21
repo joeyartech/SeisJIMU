@@ -72,9 +72,6 @@ use, intrinsic :: ieee_arithmetic
         c1x=fdcoeff_o4(1)/m%dx; c1z=fdcoeff_o4(1)/m%dz
         c2x=fdcoeff_o4(2)/m%dx; c2z=fdcoeff_o4(2)/m%dz
         
-        !hicks point interpolation
-        if_hicks=get_setup_logical('IF_HICKS',default=.true.)
-        
     end subroutine
     
     subroutine check_model  !not required
@@ -223,6 +220,9 @@ use, intrinsic :: ieee_arithmetic
         call alloc(f%cpml_dsxz_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(f%cpml_dsxz_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         
+        !hicks point interpolation
+        if_hicks=get_setup_logical('IF_HICKS',default=.true.)
+
     end subroutine
     
     subroutine check_field(f,name)

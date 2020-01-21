@@ -338,14 +338,6 @@ use m_model, only:m
 
         enddo
 
-print*,acqui%src(:)%x
-pause
-print*,acqui%src(:)%y
-pause
-print*,acqui%src(:)%z
-pause
-
-
     end subroutine
     
     subroutine check_acqui
