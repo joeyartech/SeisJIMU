@@ -99,8 +99,8 @@ use m_field
         write(*,'(a)') ""
         write(*,'(a)') "FILE_DATA               'obs'              #Prefix of input obs data name"
         write(*,'(a)') "                                           #LEGO will look for SU data file named as obs????.su,"
-        write(*,'(a)') "                                           #where ???? represents 4 digit numbers, start from 0001"
-        write(*,'(a)') "                                           #Provide SHOTNO item if only invert a subset of data (see below)"
+        write(*,'(a)') "                                           #where ???? represents 4 digits"
+        write(*,'(a)') "                                           #Provide SHOTNO if only invert a subset of data (see below)"
         write(*,'(a)') ""
         write(*,'(a)') "---------------------------"
         write(*,'(a)') "Optional items in setup.in:"
@@ -118,12 +118,10 @@ use m_field
         write(*,'(a)') "IF_TOPO_FROM_VS         F                   #If T, decide topography from model_vs when model_vs exists and model_topo doesn't exist"
         write(*,'(a)') "IF_FREESURFACE          T                   #Free surface condition (T) or absorbing surface condition (F)"
         write(*,'(a)') ""
-
-        write(*,'(a)') "SHOTNO                  1:max_number    #Which shots to be inverted, specified by the index (start from 0001)."
-        write(*,'(a)') "                                        #If not given, LEGO will invert all available obs data."
-        write(*,'(a)') "                                        #This item allows inverting only a subset of available obs data."
-        
-
+        write(*,'(a)') "SHOTNO                  'fshot:dshot:lshot' #Will invert only shots with index from fshot to lshot, with increments dshot"
+        write(*,'(a)') "                                            #If not given, LEGO will look for all data with sequential index (start from 0001)"
+        write(*,'(a)') "                                            #the prefix of the filename has been defined in FILE_DATA"
+        write(*,'(a)') ""
         write(*,'(a)') "FILE_WAVELET            'fricker'           #If not given, LEGO will use the wavelet generated from WAVELET_TYPE"
         write(*,'(a)') "WAVELET_TYPE            'sinexp'            #Damped sine function: sin(2pi*fpeak*t)*exp(-3.33*fpeak*t)"
         write(*,'(a)') "                                            #s.t. the wavelet has ~2 peaks before dying out, followed by lowpass filtering."
@@ -186,9 +184,9 @@ use m_field
         write(*,'(a)') "Notes:"
         write(*,'(a)') "---------------------------"
         write(*,'(a)') ""
-        write(*,'(a)') "Acquisition geometry, source & receiver positions, time step (nt) and time interval (dt) are read directly from observed input data,"
-        write(*,'(a)') "which have to be in SU format (other formats or read method can be developed)."
-        write(*,'(a)') "You can use SU program suaddhead, or add_suheader in Tools, to add SU header to binary data."
+        write(*,'(a)') "Acquisition geometry, source & receiver positions, time step (nt) and time interval (dt) are read directly from obs input data,"
+        write(*,'(a)') "which have to be in SU format (other formats or read method can be developed in future)."
+        write(*,'(a)') "You can use SU program suaddhead, or add_suheader in ./Tools, to convert data into SU format"
         write(*,'(a)') ""
 
     endif

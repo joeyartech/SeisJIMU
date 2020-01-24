@@ -3,7 +3,7 @@ use m_message
 use m_arrayop
 
     private
-    public build_shotlist, shotlist
+    public build_shotlist, shotlist, nshot_per_processor
 
     integer,dimension(:),allocatable :: shotlist   
 
@@ -99,7 +99,7 @@ use m_arrayop
         k=1 !shotlist's index
         j=0 !modulo shot#/processor#
         !loop over shots
-        do i=fshot,dshot,lshot !shot#
+        do i=fshot,lshot,dshot !shot#
             if (j==mpiworld%nproc) then
                 j=j-mpiworld%nproc
                 k=k+1
@@ -124,8 +124,8 @@ use m_arrayop
                 write(*,*) 'WARNING: Therefore you should STOP right now!'
             endif
         endif
-            
         
+
         !no need to come back
         if_first_in=.false.
         
