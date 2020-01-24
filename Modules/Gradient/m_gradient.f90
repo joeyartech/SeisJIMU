@@ -25,10 +25,13 @@ use m_laplacian_smoothing_sparse
     subroutine gradient_modeling(if_gradient)
         logical,optional :: if_gradient
         
-        nshots=get_setup_int('NSHOTS',default=1)
-        
+        !nshots=get_setup_int('NSHOTS',default=1)
+        !
+        !!assign shots to processors
+        !call build_shotlist(nshots)
+
         !assign shots to processors
-        call build_shotlist(nshots)
+        call build_shotlist
         
         fobjective=0.
         
