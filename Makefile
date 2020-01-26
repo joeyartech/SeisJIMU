@@ -50,9 +50,11 @@ $(DIR)Modules/External/F90/singleton.f90
 signal = \
 $(DIR)Modules/SignalProcessing/m_hicks.f90 \
 $(DIR)Modules/SignalProcessing/m_weighting.f90 \
+$(DIR)Modules/SignalProcessing/m_weighter_polygon.f90 \
+$(DIR)Modules/SignalProcessing/m_weighter_table.f90 \
 $(DIR)Modules/SignalProcessing/m_butterworth.f90 \
 $(DIR)Modules/SignalProcessing/m_matchfilter.f90 \
-$(DIR)Modules/SignalProcessing/m_laplacian_smoothing_sparse.f90
+$(DIR)Modules/SignalProcessing/m_smoother_laplacian_sparse.f90
 
 OBJ0=$(system:.f90=.o) $(externf77:.f=.o) $(externf90:.f90=.o) $(signal:.f90=.o)
 

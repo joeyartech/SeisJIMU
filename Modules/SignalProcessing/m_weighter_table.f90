@@ -1,147 +1,161 @@
-module m_weighting
+module m_weighter_table
 use m_sysio
 use m_arrayop
 
-    real,dimension(:,:),allocatable :: weight
+use, intrinsic :: ieee_arithmetic
 
     contains
     
-    subroutine build_weighting(nt,dt,nx,aoffset)
-        integer nt,nx
-        real    dt,aoffset(nx)
+    subroutine build_weight_table(nt,dt,ntr,aoffset,weight)
+        integer nt,ntr
+        real    dt,aoffset(ntr)
+        real    weight(nt,ntr)
         
         character(:),allocatable :: file_weight
-        character(80) :: file_weight_table
-        logical :: alive
-        real,dimension(:),allocatable :: xgain,tgain
-        real,dimension(:,:),allocatable :: table
-        real :: local_dist
-        
-        call alloc(weight,nt,nx)
-        
-        weight=1.
-        gain_old=0
-        
-        file_weight=get_setup_file('FILE_WEIGHT')
-        
+        character(80) :: text
+        character(1)  :: delim
+        integer,parameter :: max_gain_length=20 !maximum number of points per line
+        real,dimension(max_gain_length) :: xgain, tgain, gain
+        real,dimension(:,:),allocatable :: table, tmp_table
+
+
+        file_weight=get_setup_file('FILE_WEIGHT_TABLE')       
         if(file_weight=='') then
-            call hud('FILE_WEIGHT does NOT exist. Use weight=1.')
+            call hud('FILE_WEIGHT_TABLE does NOT exist; weight unchanged.')
             return
         endif
-        
-        open(11,file=file_weight)
-        
-        read(11,*) i_fgain
-print*,i_fgain
-        
-        !compute gain now
-        do while(i_fgain>0) 
-            !manage the front gain info
-            read(11,*)ngain, gain, taper
-            allocate(xgain(ngain),tgain(ngain))
-            read(11,*)xgain
-            read(11,*)tgain
-            read(11,*)gain, taper
-print*,ngain,gain,taper
-print*,xgain
-print*,tgain
-            
-            !check the increase of distance in the gain function
-            do i=1,ngain-1
+
+
+        open(10,file=file_weight,action='read')
+
+        xgain=ieee_value(1.0,ieee_quiet_nan)
+
+        !loop to read xgain vector as string
+        do
+            read(10,"(a)",iostat=msg) text
+            text=trim(adjustl(text))
+            if(index(text,"#")) text=text(1:index(text,"#")-1) !remove comments after #
+            if(index(text,"!")) text=text(1:index(text,"!")-1) !remove comments after !
+
+            if (msg < 0) then !end of file
+                call hud('ERROR: FILE_WEIGHT_TABLE is missing xgain points.')
+                call hud('Code stop now!')
+                stop
+            endif
+            if (msg > 0) stop 'Check FILE_WEIGHT_TABLE.  Something is wrong..'
+            if (text=='') cycle !blank line
+            if (msg == 0) exit
+        enddo
+
+        !convert string to real numbers
+        read(text,*,iostat=msg) xgain
+        mx=count(.not. ieee_is_nan(xgain)) !number of input (non-nan) xgain
+
+        !xgain should be increasing
+        do i=1,mx-1
             if(xgain(i+1)<xgain(i)) then
-                call hud('Please make sure xgain in FILE_WEIGHT is monotically increase')
+                call hud('ERROR: xgain from FILE_WEIGHT_TABLE is NOT increasing!')
+                call hud('Code stop now!')
                 stop
             end if
-            end do
+        end do
 
-            ntaper=nint(taper/dt)
-            
-            !now apply the gain function in the table
-            do ix=1,nx
-                !find the xgain interval
-                idist=ngain
-                do i=1,ngain
-                    if(aoffset(ix)<xgain(i))then
-                        idist=i-1
-                        exit
-                    end if
-                end do
-                if(idist>ngain) then
-                    call hud('Some problem for xgain in FILE_WEIGHT')
-                    stop
-                elseif(idist==ngain) then
-                    time_gain=tgain(ngain)
+        allocate(tmp_table(max_gain_length,mx))
+        
+        gain=ieee_value(1.0,ieee_quiet_nan)
+        tmp_table=ieee_value(1.0,ieee_quiet_nan)
+        
+        !loop to read tgain and gain vector as string
+        k=1
+        do           
+            read(10,"(a)",iostat=msg) text
+            text=trim(adjustl(text))
+            if(index(text,"#")) text=text(1:index(text,"#")-1) !remove comments after #
+            if(index(text,"!")) text=text(1:index(text,"!")-1) !remove comments after !
+
+            if (msg < 0) exit !end of file
+            if (msg > 0) stop 'Check FILE_WEIGHT_TABLE.  Something is wrong..'
+            if (text=='') cycle !blank line
+            if (text=='end' .or. text=='END') exit
+
+            !convert string to real numbers
+            read(text,*,iostat=msg) tgain(k), delim , gain
+
+            if (k>1) then; if(tgain(k)<tgain(k-1)) then
+                call hud('Please make sure tgain in FILE_WEIGHT_TABLE is increasing!')
+                call hud('Code stop now!')
+                stop
+            endif; endif
+            if ( count(.not. ieee_is_nan(gain)) /= mx ) then
+                call hud('ERROR: FILE_WEIGHT_TABLE has gain vector length < xgain vector length.')
+                call hud('Code stop now!')
+                stop
+            endif
+
+            tmp_table(k,:) = gain
+            k=k+1
+        enddo
+
+        !reshape table without nan elements
+        mt=count(.not. ieee_is_nan(tmp_table(:,1)))  !number of input (non-nan) tgain
+        allocate(table(mt,mx))
+        table=tmp_table(1:mt,1:mx)
+        deallocate(tmp_table)
+
+
+        !map table to weight with interpolation
+        do itr=1,ntr
+
+            !find the two xgain's closest to aoffset
+            if(aoffset(itr)<=xgain(1)) then
+                jx1=1
+                jx2=1
+                dx1=0.
+                dx2=1.
+            elseif(aoffset(itr)>=xgain(mx)) then
+                jx1=mx
+                jx2=mx
+                dx1=1.
+                dx2=0.
+            else
+                jx1=maxloc(xgain(1:mx), dim=1, mask=xgain(1:mx)<aoffset(itr))
+                jx2=jx1+1
+                dx1=(aoffset(itr)-xgain(jx1)) / (xgain(jx2)-xgain(jx1))  !reduced distance from aoffset to xgain(jx1)
+                dx2=(xgain(jx2)-aoffset(itr)) / (xgain(jx2)-xgain(jx1))  !reduced distance from aoffset to xgain(jx2)
+            endif
+
+
+            do it=1,nt
+                t=(it-1)*dt
+
+                !find the two tgain's closest to aoffset
+                if(t<=tgain(1)) then
+                    jt1=1
+                    jt2=1
+                    dt1=0.
+                    dt2=1.
+                elseif(t>=tgain(mt)) then
+                    jt1=mt
+                    jt2=mt
+                    dt1=1.
+                    dt2=0.
                 else
-                    local_dist = ( aoffset(ix)-xgain(idist) ) / ( xgain(idist+1)-xgain(idist) )
-                    time_gain  = tgain(idist)*(1-local_dist) + tgain(idist+1)*local_dist
-                end if
+                    jt1=maxloc(tgain(1:mt), dim=1, mask=tgain(1:mt)<t)
+                    jt2=jt1+1
+                    dt1=(t-tgain(jt1)) / (tgain(jt2)-tgain(jt1))
+                    dt2=(tgain(jt2)-t) / (tgain(jt2)-tgain(jt1))
+                endif
 
-                itime_gain=nint(time_gain/dt)+1  !assume all receivers have same dt ...
-                itime_gain_start=itime_gain-ntaper  !1 <= itime_gain_start <= itime_gain <= nt
-                ntaper_true=itime_gain-itime_gain_start
-
-                !apply linear taper from itime_gain_start to itime_gain
-                k=1
-                do it=itime_gain_start+1,itime_gain
-                    if(it<1.or.it>nt) cycle  !assume all receivers have same nt ...
-                    weight(it,ix) = (gain-gain_old)*k/ntaper_true + gain_old
-                    k=k+1
-                end do
                 
-                !apply gain from itime_sepa+1 to nt
-                do it= itime_gain+1, nt
-                    if(it<1.or.it>nt) cycle 
-                    weight(it,ix)=gain
-                end do
-                
-            end do
+                weight(it,itr) = weight(it,itr) * ( &
+                      ( table(jt1,jx1)*dt2 + table(jt2,jx1)*dt1 ) *dx2  &
+                    + ( table(jt1,jx2)*dt2 + table(jt2,jx2)*dt1 ) *dx1  )
 
-            deallocate(xgain,tgain)
-            
-            gain_old=gain
-            i_fgain=i_fgain-1
+            enddo
 
         enddo
-        
 
-        read(11,*)file_weight_table
-        inquire(file=file_weight_table, exist=alive)
-        
-        if (alive) then
-            read(11,*)ns,ds,noff,doff
-            allocate(table(ns,noff))
-            open(13,file=file_weight_table,access='direct',recl=4*ns*noff)
-            read(13,rec=1)table
-            close(13)
-
-            !compute weight now
-            do ix=1,nx
-                idist = int(aoffset(ix)/doff)+1
-                red_dist=aoffset(ix)/doff-idist+1 !reduced coordinate between 0 and 1
-                do it=1,nt
-                    !compute time
-                    time=(it-1)*dt
-                    itime = int(time/ds)+1
-                    red_time=time/ds-itime+1 !reduced coordinate between 0 and 1
-                    !linear interpolation +extrapolation of the last value if the table is not big enough
-                    temp1 = table( min(itime  ,ns) , min(idist  ,noff) ) * (1.-red_dist) &
-                          + table( min(itime  ,ns) , min(idist+1,noff) ) * red_dist
-                    temp2 = table( min(itime+1,ns) , min(idist  ,noff) ) * (1.-red_dist) &
-                          + table( min(itime+1,ns) , min(idist+1,noff) ) * red_dist
-                    weight(it,ix)=weight(it,ix)* (temp1*(1.-red_time)+temp2*(red_time))
-                end do
-            end do
-            deallocate(table)
-
-        end if
-        
-        close(13)
-        
-        close(11)
-
-open(33,file='weight',access='stream')
-write(33)weight
-close(33)
+        deallocate(table)
 
     end subroutine
 
