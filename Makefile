@@ -3,19 +3,19 @@ OMP=openmp
 
 #OPTRPT=-qopt-report=5  -qopt-report-file=stderr -qopt-report-phase=vec
 
-# #for Intel
-# FLAGF90= -xHost -O3 -Ofast -ipo -parallel -q$(OMP) -fno-alias -traceback -assume byterecl   $(OPTRPT)
-# # FLAGF90= -xCORE-AVX512 -O3 -Ofast -ipo -parallel -q$(OMP) -fno-alias -traceback -assume byterecl   $(OPTRPT)
-# # FLAGF90= -g -debug -check all -check noarg_temp_created -W1 -WB -q$(OMP) -traceback -assume byterecl
-# FLAGF77= $(FLAGF90)
-# MOD= -module $(DIR)mod
+#for Intel
+FLAGF90= -xHost -O3 -Ofast -ipo -parallel -q$(OMP) -fno-alias -traceback -assume byterecl   $(OPTRPT)
+# FLAGF90= -xCORE-AVX512 -O3 -Ofast -ipo -parallel -q$(OMP) -fno-alias -traceback -assume byterecl   $(OPTRPT)
+# FLAGF90= -g -debug -check all -check noarg_temp_created -W1 -WB -q$(OMP) -traceback -assume byterecl
+FLAGF77= $(FLAGF90)
+MOD= -module $(DIR)mod
 
-#for GNU
-FLAGF77= -Ofast -f$(OMP)                         -fbacktrace  #-flto
-FLAGF90= -Ofast -f$(OMP) -ffree-line-length-none -fbacktrace  -fno-unsafe-math-optimizations -frounding-math -fsignaling-nans
-# FLAGF77= -g -Wall -f$(OMP) -fcheck=all                         -fbacktrace
-# FLAGF90= -g -Wall -f$(OMP) -fcheck=all -ffree-line-length-none -fbacktrace
-MOD=-J $(DIR)mod
+# #for GNU
+# FLAGF77= -Ofast -f$(OMP)                         -fbacktrace  #-flto
+# FLAGF90= -Ofast -f$(OMP) -ffree-line-length-none -fbacktrace  -fno-unsafe-math-optimizations -frounding-math -fsignaling-nans
+# # FLAGF77= -g -Wall -f$(OMP) -fcheck=all                         -fbacktrace
+# # FLAGF90= -g -Wall -f$(OMP) -fcheck=all -ffree-line-length-none -fbacktrace
+# MOD=-J $(DIR)mod
 
 
 
@@ -49,7 +49,6 @@ $(DIR)Modules/External/F90/singleton.f90
 
 signal = \
 $(DIR)Modules/SignalProcessing/m_hicks.f90 \
-$(DIR)Modules/SignalProcessing/m_weighting.f90 \
 $(DIR)Modules/SignalProcessing/m_weighter_polygon.f90 \
 $(DIR)Modules/SignalProcessing/m_weighter_table.f90 \
 $(DIR)Modules/SignalProcessing/m_butterworth.f90 \
