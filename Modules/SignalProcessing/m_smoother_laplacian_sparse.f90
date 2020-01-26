@@ -1,4 +1,4 @@
-module m_laplacian_smoothing_sparse
+module m_smoother_laplacian_sparse
 use m_sysio
 
     private pi,nz,nx,ny,iaddmirror,dz,dx,dy,freq,frac_z,frac_x,frac_y,is_cubic,preserve
@@ -16,7 +16,7 @@ use m_sysio
     contains
     
     
-    subroutine smooth_1D_stationary(n, h, vector, b)
+    subroutine smoother_1D_stationary(n, h, vector, b)
         integer n  !vector length
         real    h  !sampling rate
         real,dimension(n) :: vector !array to be smoothed
@@ -52,7 +52,7 @@ use m_sysio
         
     end subroutine
     
-    subroutine smooth_1D_nonstationary(n, h, vector, frac_lambda)
+    subroutine smoother_1D_nonstationary(n, h, vector, frac_lambda)
         integer n  !vector length
         real    h  !sampling rate
         real,dimension(n) :: vector, frac_lambda  !array to be smoothed and fraction of wavelength
@@ -95,7 +95,7 @@ use m_sysio
     end subroutine
     
     
-    subroutine init_laplacian_smoothing(n,d,frequency,o_addmirror,o_frac,o_preserve)
+    subroutine init_smoother_laplacian(n,d,frequency,o_addmirror,o_frac,o_preserve)
         integer,dimension(3) :: n
         real,dimension(3) :: d
         
@@ -140,7 +140,7 @@ use m_sysio
         
     end subroutine
     
-    subroutine laplacian_smoothing_extend_mirror(gradient,itopo)
+    subroutine smoother_laplacian_extend_mirror(gradient,itopo)
     !to avoid leakage into the mask zone after smoothing
     !this subroutine mirrors the gradient wrt midway between points itopo+iaddmirror-1 & itopo+iaddmirror-1 in depth
     !then another subroutine cleans the mask zone later
@@ -159,7 +159,7 @@ use m_sysio
     !Use convolutions of 1D Laplacian functions on x,y,z axes to roughly approx the 3D Laplacian function
     !Note that high-dimensional Laplacian function can't be decomposed as convolutions of 1D Laplacian functions, unlike Gaussian functions..
     !True 2D Laplacian function has a circular shape whereas this approx function has a diamond shape.   
-    subroutine laplacian_smoothing_pseudo_stationary(gradient,b)
+    subroutine smoother_laplacian_pseudo_stationary(gradient,b)
         real,dimension(nz,nx,ny) :: gradient
         real,dimension(3) :: b
         
@@ -173,7 +173,7 @@ use m_sysio
         do iy=1,ny
         do ix=1,nx
             vector=gradient(:,ix,iy)
-            call smooth_1D_stationary(nz,dz,vector,b(1))
+            call smoother_1D_stationary(nz,dz,vector,b(1))
             gradient(:,ix,iy)=vector
         enddo
         enddo
@@ -184,7 +184,7 @@ use m_sysio
         do iy=1,ny
         do iz=1,nz
             vector=gradient(iz,:,iy)
-            call smooth_1D_stationary(nx,dx,vector,b(2))
+            call smoother_1D_stationary(nx,dx,vector,b(2))
             gradient(iz,:,iy)=vector
         enddo
         enddo
@@ -196,7 +196,7 @@ use m_sysio
             do ix=1,nx
             do iz=1,nz
                 vector=gradient(iz,ix,:)
-                call smooth_1D_stationary(ny,dy,vector,b(3))
+                call smoother_1D_stationary(ny,dy,vector,b(3))
                 gradient(iz,ix,:)=vector
             enddo
             enddo
@@ -205,7 +205,7 @@ use m_sysio
         
     end subroutine
     
-    subroutine laplacian_smoothing_pseudo_nonstationary(gradient,velocity)
+    subroutine smoother_laplacian_pseudo_nonstationary(gradient,velocity)
         real,dimension(nz,nx,ny) :: gradient,velocity
         
         real,dimension(:),allocatable :: vector,frac_lambda
@@ -227,7 +227,7 @@ use m_sysio
         do ix=1,nx
             vector=gradient(:,ix,iy)
             frac_lambda=velocity(:,ix,iy)/freq*frac_z
-            call smooth_1D_nonstationary(nz,dz,vector,frac_lambda)
+            call smoother_1D_nonstationary(nz,dz,vector,frac_lambda)
             gradient(:,ix,iy)=vector
         enddo
         enddo
@@ -239,7 +239,7 @@ use m_sysio
         do iz=1,nz
             vector=gradient(iz,:,iy)
             frac_lambda=velocity(iz,:,iy)/freq*frac_x
-            call smooth_1D_nonstationary(nx,dx,vector,frac_lambda)
+            call smoother_1D_nonstationary(nx,dx,vector,frac_lambda)
             gradient(iz,:,iy)=vector
         enddo
         enddo
@@ -252,7 +252,7 @@ use m_sysio
             do iz=1,nz
                 vector=gradient(iz,ix,:)
                 frac_lambda=velocity(iz,ix,:)/freq*frac_y
-                call smooth_1D_nonstationary(ny,dy,vector,frac_lambda)
+                call smoother_1D_nonstationary(ny,dy,vector,frac_lambda)
                 gradient(iz,ix,:)=vector
             enddo
             enddo
@@ -267,7 +267,7 @@ use m_sysio
             do ix=1,nx
                 vector=table_one(:,ix,iy)
                 frac_lambda=velocity(:,ix,iy)/freq*frac_z
-                call smooth_1D_nonstationary(nz,dz,vector,frac_lambda)
+                call smoother_1D_nonstationary(nz,dz,vector,frac_lambda)
                 table_one(:,ix,iy)=vector
             enddo
             enddo
@@ -279,7 +279,7 @@ use m_sysio
             do iz=1,nz
                 vector=table_one(iz,:,iy)
                 frac_lambda=velocity(iz,:,iy)/freq*frac_x
-                call smooth_1D_nonstationary(nx,dx,vector,frac_lambda)
+                call smoother_1D_nonstationary(nx,dx,vector,frac_lambda)
                 table_one(iz,:,iy)=vector
             enddo
             enddo
@@ -292,7 +292,7 @@ use m_sysio
                 do iz=1,nz
                     vector=table_one(iz,ix,:)
                     frac_lambda=velocity(iz,ix,:)/freq*frac_y
-                    call smooth_1D_nonstationary(ny,dy,vector,frac_lambda)
+                    call smoother_1D_nonstationary(ny,dy,vector,frac_lambda)
                     table_one(iz,ix,:)=vector
                 enddo
                 enddo
