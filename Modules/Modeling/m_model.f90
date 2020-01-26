@@ -141,7 +141,7 @@ use m_arrayop
 
         if(size(m%vs)>1) then
         if(get_setup_logical('IF_TOPO_FROM_VS',default=.true.)) then
-            !m%itopo = maxloc(m%vs, dim=1, mask=(m%vs<10), back=.true.)+1 !back argument is not implemented in gfortran until version 9 ..
+            !m%itopo = maxloc(m%vs, dim=1, mask=(m%vs<10), back=.true.)+1 !the "back" argument isn't implemented in gfortran until version 9 ..
             !m%itopo = minloc(m%vs, dim=1, mask=(m%vs>=10.)); where(m%itopo==0) m%itopo=m%nz+1  !still not correct
             do i3=1,m%ny; do i2=1,m%nx
             loop: do i1=1,m%nz

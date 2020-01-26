@@ -21,7 +21,8 @@ use m_shot
     call init_setup(istat)
     
     if(istat==0) then !print manual
-        !call fwd_print_manual
+        call print_manual
+        call mpiworld_finalize
         stop
     endif
     
@@ -184,3 +185,57 @@ use m_shot
     call mpiworld_finalize
     
 end
+
+
+subroutine print_manual
+use m_mpienv
+use m_field
+
+    if(mpiworld%is_master) then
+        write(*,'(a)') ""
+        write(*,'(a)') "----------------------------"
+        write(*,'(a)') "To launch the program, do:"
+        write(*,'(a)') "----------------------------"
+        write(*,'(a)') ""
+        write(*,'(a)') "bash $ mpirun -np $np ADD_SUHEADER setup.in"
+        write(*,'(a)') ""
+        write(*,'(a)') "----------------------------"
+        write(*,'(a)') "Mandatory items in setup.in:"
+        write(*,'(a)') "----------------------------"
+        write(*,'(a)') ""
+        write(*,'(a)') "TIME_STEP               500                #Total number of time step (nt)"
+        write(*,'(a)') "TIME_INTERVAL           0.006              #Time step interval (dt)"
+        write(*,'(a)') ""
+        write(*,'(a)') "SOURCE_COMPONENT        1"
+        write(*,'(a)') "RECEIVER_COMPONENT      1"
+        write(*,'(a)') "                        #source & receiver component: 1=Isotropic Pressure, 2=Particle velocity in x (vx), 3=in y (vy), 4=in z (vz)"
+        write(*,'(a)') "                        #Multi-component data will be considered and developed in future."
+        write(*,'(a)') ""
+        write(*,'(a)') "SCALE_ELEVATION         1"
+        write(*,'(a)') "SCALE_COORDINATE        1"       
+        write(*,'(a)') ""
+        write(*,'(a)') "NSHOTS                  1                  #Number of shots to add header"
+        write(*,'(a)') ""
+        write(*,'(a)') "FILE_DATA               'synth_data_'      #Prefix of input data filename, which has the form synth_data_????"
+        write(*,'(a)') "                                           #where ???? represents 4 digits starting from 0001"
+        write(*,'(a)') ""
+        write(*,'(a)') "SOURCE_LINE             'sline.txt'"
+        write(*,'(a)') "RECEIVER_LINE           'rline.txt'"
+        write(*,'(a)') "                        #Source & receiver positions:"
+        write(*,'(a)') "                        #ACQUI_TYPE=='irregularOBN': Needing file name in SOURCE_LINE, which contains a Nx3 matrix (columns separated by white spaces),"
+        write(*,'(a)') "                        #                  where N=total number of sources, and 3 columns specify (z,x,y) coordinate of sources"
+        write(*,'(a)') "                        #                  Same for RECEIVER_LINE"
+        write(*,'(a)') "#Other acqui types or source & receiver lines will be considered and developed in future."
+        write(*,'(a)') ""
+        write(*,'(a)') "---------------------------"
+        write(*,'(a)') "Optional items in setup.in:"
+        write(*,'(a)') "---------------------------"      
+        write(*,'(a)') ""
+        write(*,'(a)') "---------------------------"
+        write(*,'(a)') "Notes:"
+        write(*,'(a)') "---------------------------"
+        write(*,'(a)') ""
+
+    endif
+
+end subroutine
