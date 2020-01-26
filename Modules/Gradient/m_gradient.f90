@@ -31,7 +31,7 @@ use m_smoother_laplacian_sparse
         !call build_shotlist(nshots)
 
         !assign shots to processors
-        call build_shotlist
+        if(.not. allocated(shotlist)) call build_shotlist
         
         fobjective=0.
         
