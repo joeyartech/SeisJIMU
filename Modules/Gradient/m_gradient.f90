@@ -7,7 +7,7 @@ use m_propagator
 use m_field
 use m_objectivefunc
 use m_matchfilter
-use m_laplacian_smoothing_sparse
+use m_smoother_laplacian_sparse
 
     
     public
@@ -169,10 +169,10 @@ endif
             !smoothing
             if(get_setup_logical('IF_SMOOTHING',default=.true.)) then
                 call hud('Initialize Laplacian smoothing')
-                call init_laplacian_smoothing([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%src%fpeak)
+                call init_smoother_laplacian([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%src%fpeak)
                 do icorr=1,ncorr
-                    call laplacian_smoothing_extend_mirror(gradient(:,:,:,icorr),m%itopo)
-                    call laplacian_smoothing_pseudo_nonstationary(gradient(:,:,:,icorr),m%vp)
+                    call smoother_laplacian_extend_mirror(gradient(:,:,:,icorr),m%itopo)
+                    call smoother_laplacian_pseudo_nonstationary(gradient(:,:,:,icorr),m%vp)
                 enddo
             endif
             

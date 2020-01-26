@@ -1,9 +1,12 @@
 module m_objectivefunc
 use m_shot
 use m_matchfilter
-use m_weighting
+use m_weighter_polygon
+use m_weighter_table
 
     real dnorm, mnorm !norm of data and model residuals
+
+    real,dimension(:,:),allocatable :: weight
 
     contains
 
@@ -13,8 +16,19 @@ use m_weighting
 
         ref_modulus=m%ref_vp**2*m%ref_rho
 
-        call build_weighting(shot%rcv(1)%nt,shot%rcv(1)%dt,shot%nrcv,shot%rcv(:)%aoffset) !so far the weighting is for mono component data only
-        
+        if(.not. allocated(weight)) then
+            call alloc(weight,shot%rcv(1)%nt,shot%nrcv,initialize=.false.)
+            weight=1
+            call build_weight_polygon(shot%rcv(1)%nt,shot%rcv(1)%dt,shot%nrcv,shot%rcv(:)%aoffset,weight) !so far the weighting is for mono component data only
+open(33,file='weight_polygon',access='stream')
+write(33) weight
+close(33)
+            call build_weight_table(shot%rcv(1)%nt,shot%rcv(1)%dt,shot%nrcv,shot%rcv(:)%aoffset,weight) !so far the weighting is for mono component data only
+open(33,file='weight_table',access='stream')
+write(33) weight
+close(33)
+        endif
+
         dres = (dsyn-dobs)*weight
         
         dnorm= 0.
