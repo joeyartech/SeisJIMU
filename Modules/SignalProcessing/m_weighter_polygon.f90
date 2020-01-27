@@ -5,8 +5,6 @@ module m_weighter_polygon
 use m_sysio
 use m_arrayop
 
-use, intrinsic :: ieee_arithmetic
-
     contains
     
     subroutine build_weight_polygon(nt,dt,ntr,aoffset,weight)
@@ -33,8 +31,8 @@ use, intrinsic :: ieee_arithmetic
 
         loopfile: do
             !initialize
-            xgain=ieee_value(1.0,ieee_quiet_nan)
-            tgain=ieee_value(1.0,ieee_quiet_nan)
+            xgain=-99999.
+            tgain=-99999.
 
             !read xgain vector as string
             loopxline: do
@@ -60,7 +58,7 @@ use, intrinsic :: ieee_arithmetic
 
             !convert string to real numbers
             read(text,*,iostat=msg) xgain
-            mx=count(.not. ieee_is_nan(xgain)) !number of input (non-nan) xgain
+            mx=count(xgain>=0.) !number of input xgain
 
             !xgain should be increasing
             do i=1,mx-1
@@ -94,7 +92,7 @@ use, intrinsic :: ieee_arithmetic
             !convert string to real numbers
             read(text,*,iostat=msg) tgain(1:mx)
 
-            if (any(ieee_is_nan(tgain(1:mx)))) then
+            if (any(tgain(1:mx)<0.)) then
                 call hud('ERROR: FILE_WEIGHT_POLYGON has unequal tgain & xgain pairs.')
                 call hud('Code stop now!')
                 stop
@@ -124,13 +122,6 @@ use, intrinsic :: ieee_arithmetic
             !convert string to real numbers
             read(text,*,iostat=msg) gain, taper
             ntaper=nint(taper/dt)
-
-print*,xgain
-print*,tgain
-print*,.not. ieee_is_nan(xgain)
-print*,.not. isnan(xgain)
-print*,mx
-print*,gain,taper
 
             !loop of offset
             do itr=1,ntr

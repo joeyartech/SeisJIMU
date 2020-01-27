@@ -2,8 +2,6 @@ module m_weighter_table
 use m_sysio
 use m_arrayop
 
-use, intrinsic :: ieee_arithmetic
-
     contains
     
     subroutine build_weight_table(nt,dt,ntr,aoffset,weight)
@@ -28,7 +26,7 @@ use, intrinsic :: ieee_arithmetic
 
         open(10,file=file_weight,action='read')
 
-        xgain=ieee_value(1.0,ieee_quiet_nan)
+        xgain=-99999.
 
         !loop to read xgain vector as string
         loopxline: do
@@ -52,7 +50,7 @@ use, intrinsic :: ieee_arithmetic
 
         !convert string to real numbers
         read(text,*,iostat=msg) xgain
-        mx=count(.not. ieee_is_nan(xgain)) !number of input (non-nan) xgain
+        mx=count(xgain>=0.) !number of input xgain
 
         !xgain should be increasing
         do i=1,mx-1
@@ -64,14 +62,18 @@ use, intrinsic :: ieee_arithmetic
         end do
 
         allocate(tmp_table(max_gain_length,mx))
-        
-        tgain=ieee_value(1.0,ieee_quiet_nan)
-        gain=ieee_value(1.0,ieee_quiet_nan)
-        tmp_table=ieee_value(1.0,ieee_quiet_nan)
-        
+
+        !initialize
+        tgain=-99999.
+        tmp_table=-99999.
+
         !loop to read tgain and gain vector as string
         k=1
         loopfile: do
+            
+            !initialize
+            gain=-99999.
+
             looptline: do           
                 read(10,"(a)",iostat=msg) text
                 text=trim(adjustl(text))
@@ -101,30 +103,24 @@ use, intrinsic :: ieee_arithmetic
                 call hud('Code stop now!')
                 stop
             endif; endif
-            if ( count(.not. ieee_is_nan(gain)) /= mx ) then
+            if ( count(gain>=0.) < mx ) then
                 call hud('ERROR: FILE_WEIGHT_TABLE has gain vector length < xgain vector length.')
                 call hud('Code stop now!')
                 stop
             endif
 
-            tmp_table(k,:) = gain
+            tmp_table(k,:) = gain(1:mx)
             k=k+1
 
         enddo loopfile
 
         close(10)
 
-print*,xgain
-print*,tgain
-
-        !reshape table without nan elements
-        mt=count(.not. ieee_is_nan(tmp_table(:,1)))  !number of input (non-nan) tgain
+        !reshape table without -99999 elements
+        mt=count(tmp_table(:,1)>=0.)  !number of input tgain
         allocate(table(mt,mx))
         table=tmp_table(1:mt,1:mx)
         deallocate(tmp_table)
-
-print*,mx,mt
-print*,table
 
         !map table to weight with interpolation
         do itr=1,ntr
