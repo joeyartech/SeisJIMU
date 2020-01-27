@@ -173,9 +173,11 @@ use m_arrayop
         !     close(12)
         ! endif
 
-                         call alloc( m%vp_mask,  maxval(m%itopo),m%nx,m%ny ); m%vp_mask(:,:,:)  = m%vp(1:maxval(m%itopo),:,:)
-        if(size(m%vs)>1) call alloc( m%vs_mask,  maxval(m%itopo),m%nx,m%ny ); m%vs_mask(:,:,:)  = m%vs(1:maxval(m%itopo),:,:)
-                         call alloc( m%rho_mask, maxval(m%itopo),m%nx,m%ny ); m%rho_mask(:,:,:) = m%rho(1:maxval(m%itopo),:,:)
+            call alloc( m%vp_mask,  maxval(m%itopo),m%nx,m%ny ); m%vp_mask(:,:,:)  = m%vp(1:maxval(m%itopo),:,:)
+        if(size(m%vs)>1) then
+            call alloc( m%vs_mask,  maxval(m%itopo),m%nx,m%ny ); m%vs_mask(:,:,:)  = m%vs(1:maxval(m%itopo),:,:)
+        endif
+            call alloc( m%rho_mask, maxval(m%itopo),m%nx,m%ny ); m%rho_mask(:,:,:) = m%rho(1:maxval(m%itopo),:,:)
         
         !freesurface
         m%if_freesurface=get_setup_logical('IF_FREESURFACE',default=.true.)
