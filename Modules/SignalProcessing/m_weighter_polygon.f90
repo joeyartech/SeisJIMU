@@ -31,26 +31,32 @@ use, intrinsic :: ieee_arithmetic
 
         gain_old=1.
 
-        do
+        loopfile: do
             !initialize
             xgain=ieee_value(1.0,ieee_quiet_nan)
             tgain=ieee_value(1.0,ieee_quiet_nan)
 
             !read xgain vector as string
-            read(10,"(a)",iostat=msg) text
-            text=trim(adjustl(text))
-            if(index(text,"#")) text=text(1:index(text,"#")-1) !remove comments after #
-            if(index(text,"!")) text=text(1:index(text,"!")-1) !remove comments after !
-print*,text
+            loopxline: do
+                read(10,"(a)",iostat=msg) text
+                text=trim(adjustl(text))
+                i=index(text,"#"); if(i>0) text=text(1:i-1) !remove comments after #
+                i=index(text,"!"); if(i>0) text=text(1:i-1) !remove comments after !
 
-            if (msg < 0) then
-                call hud('ERROR: FILE_WEIGHT_POLYGON is missing tgain points.')
-                call hud('Code stop now!')
-                stop
-            endif
-            if (msg > 0) stop 'Check FILE_WEIGHT_POLYGON.  Something is wrong..'
-            if (text=='') cycle !blank line
-            if (text=='end' .or. text=='END') exit
+                if (msg < 0) then !end of file
+                    call hud('ERROR: FILE_WEIGHT_POLYGON is missing xgain points.')
+                    call hud('Code stop now!')
+                    stop
+                endif
+                if (msg > 0) stop 'Check FILE_WEIGHT_POLYGON.  Something is wrong..'
+                if (text=='') then !blank line
+                    cycle
+                else
+                    exit loopxline
+                endif
+            enddo loopxline
+
+            if (text=='end' .or. text=='END') exit loopfile !end of file
 
             !convert string to real numbers
             read(text,*,iostat=msg) xgain
@@ -66,20 +72,28 @@ print*,text
             end do
 
             !read tgain vector as string
-            read(10,"(a)",iostat=msg) text
-            text=trim(adjustl(text))
-            if(index(text,"#")) text=text(1:index(text,"#")-1) !remove comments after #
-            if(index(text,"!")) text=text(1:index(text,"!")-1) !remove comments after !
-print*,text
+            looptline: do
+                read(10,"(a)",iostat=msg) text
+                text=trim(adjustl(text))
+                i=index(text,"#"); if(i>0) text=text(1:i-1) !remove comments after #
+                i=index(text,"!"); if(i>0) text=text(1:i-1) !remove comments after !
 
-            if (msg < 0) exit !end of file
-            if (msg > 0) stop 'Check FILE_WEIGHT_POLYGON.  Something is wrong..'
-            if (text=='') cycle !blank line
+                if (msg < 0) then !end of file
+                    call hud('ERROR: FILE_WEIGHT_POLYGON is missing tgain points.')
+                    call hud('Code stop now!')
+                    stop
+                endif
+                if (msg > 0) stop 'Check FILE_WEIGHT_POLYGON.  Something is wrong..'
+                if (text=='') then !blank line
+                    cycle
+                else 
+                    exit looptline
+                endif
+            enddo looptline
 
             !convert string to real numbers
             read(text,*,iostat=msg) tgain(1:mx)
-print*,xgain
-print*,tgain
+
             if (any(ieee_is_nan(tgain(1:mx)))) then
                 call hud('ERROR: FILE_WEIGHT_POLYGON has unequal tgain & xgain pairs.')
                 call hud('Code stop now!')
@@ -88,10 +102,35 @@ print*,tgain
 
 
             !read in gain value and taper
-            read(10,*) gain, taper
+            loopgline: do
+                read(10,"(a)",iostat=msg) text
+                text=trim(adjustl(text))
+                i=index(text,"#"); if(i>0) text=text(1:i-1) !remove comments after #
+                i=index(text,"!"); if(i>0) text=text(1:i-1) !remove comments after !
 
+                if (msg < 0) then !end of file
+                    call hud('ERROR: FILE_WEIGHT_POLYGON is missing tgain points.')
+                    call hud('Code stop now!')
+                    stop
+                endif
+                if (msg > 0) stop 'Check FILE_WEIGHT_POLYGON.  Something is wrong..'
+                if (text=='') then !blank line
+                    cycle
+                else 
+                    exit loopgline
+                endif
+            enddo loopgline
+
+            !convert string to real numbers
+            read(text,*,iostat=msg) gain, taper
             ntaper=nint(taper/dt)
 
+print*,xgain
+print*,tgain
+print*,.not. ieee_is_nan(xgain)
+print*,.not. isnan(xgain)
+print*,mx
+print*,gain,taper
 
             !loop of offset
             do itr=1,ntr
@@ -113,14 +152,12 @@ print*,tgain
                     dx1=(aoffset(itr)-xgain(jx1)) / (xgain(jx2)-xgain(jx1))  !reduced distance from aoffset to xgain(jx1)
                     dx2=(xgain(jx2)-aoffset(itr)) / (xgain(jx2)-xgain(jx1))  !reduced distance from aoffset to xgain(jx2)
                 endif
-print*,xgain(jx1),aoffset(itr),xgain(jx2),dx1,dx2
-    
+                
                 !interp time by the two tgain & xgain pairs
                 time = tgain(jx1)*dx2 + tgain(jx2)*dx1
 
                 itime = nint(time/dt)+1  !assume all receivers have same dt ...
                 itime_start = itime-ntaper  !1 <= itime_start <= itime <= nt
-
 
                 !apply linear taper from itime_start+1 to itime
                 do it=min(max(itime_start+1,1),nt) , &
@@ -139,7 +176,7 @@ print*,xgain(jx1),aoffset(itr),xgain(jx2),dx1,dx2
             
             gain_old=gain
 
-        end do
+        end do loopfile
 
         close(10)
 

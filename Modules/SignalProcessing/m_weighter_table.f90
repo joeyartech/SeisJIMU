@@ -31,11 +31,11 @@ use, intrinsic :: ieee_arithmetic
         xgain=ieee_value(1.0,ieee_quiet_nan)
 
         !loop to read xgain vector as string
-        do
+        loopxline: do
             read(10,"(a)",iostat=msg) text
             text=trim(adjustl(text))
-            if(index(text,"#")) text=text(1:index(text,"#")-1) !remove comments after #
-            if(index(text,"!")) text=text(1:index(text,"!")-1) !remove comments after !
+            i=index(text,"#"); if(i>0) text=text(1:i-1) !remove comments after #
+            i=index(text,"!"); if(i>0) text=text(1:i-1) !remove comments after !
 
             if (msg < 0) then !end of file
                 call hud('ERROR: FILE_WEIGHT_TABLE is missing xgain points.')
@@ -43,9 +43,12 @@ use, intrinsic :: ieee_arithmetic
                 stop
             endif
             if (msg > 0) stop 'Check FILE_WEIGHT_TABLE.  Something is wrong..'
-            if (text=='') cycle !blank line
-            if (msg == 0) exit
-        enddo
+            if (text=='') then !blank line
+                cycle
+            else
+                exit loopxline
+            endif
+        enddo loopxline
 
         !convert string to real numbers
         read(text,*,iostat=msg) xgain
@@ -62,21 +65,33 @@ use, intrinsic :: ieee_arithmetic
 
         allocate(tmp_table(max_gain_length,mx))
         
+        tgain=ieee_value(1.0,ieee_quiet_nan)
         gain=ieee_value(1.0,ieee_quiet_nan)
         tmp_table=ieee_value(1.0,ieee_quiet_nan)
         
         !loop to read tgain and gain vector as string
         k=1
-        do           
-            read(10,"(a)",iostat=msg) text
-            text=trim(adjustl(text))
-            if(index(text,"#")) text=text(1:index(text,"#")-1) !remove comments after #
-            if(index(text,"!")) text=text(1:index(text,"!")-1) !remove comments after !
+        loopfile: do
+            looptline: do           
+                read(10,"(a)",iostat=msg) text
+                text=trim(adjustl(text))
+                i=index(text,"#"); if(i>0) text=text(1:i-1) !remove comments after #
+                i=index(text,"!"); if(i>0) text=text(1:i-1) !remove comments after !
 
-            if (msg < 0) exit !end of file
-            if (msg > 0) stop 'Check FILE_WEIGHT_TABLE.  Something is wrong..'
-            if (text=='') cycle !blank line
-            if (text=='end' .or. text=='END') exit
+                if (msg < 0) then !end of file
+                    call hud('ERROR: FILE_WEIGHT_TABLE is missing tgain points.')
+                    call hud('Code stop now!')
+                    stop
+                endif
+                if (msg > 0) stop 'Check FILE_WEIGHT_TABLE.  Something is wrong..'
+                if (text=='') then !blank line
+                    cycle
+                else
+                    exit looptline
+                endif
+            enddo looptline
+
+            if (text=='end' .or. text=='END') exit loopfile
 
             !convert string to real numbers
             read(text,*,iostat=msg) tgain(k), delim , gain
@@ -94,7 +109,13 @@ use, intrinsic :: ieee_arithmetic
 
             tmp_table(k,:) = gain
             k=k+1
-        enddo
+
+        enddo loopfile
+
+        close(10)
+
+print*,xgain
+print*,tgain
 
         !reshape table without nan elements
         mt=count(.not. ieee_is_nan(tmp_table(:,1)))  !number of input (non-nan) tgain
@@ -102,6 +123,8 @@ use, intrinsic :: ieee_arithmetic
         table=tmp_table(1:mt,1:mx)
         deallocate(tmp_table)
 
+print*,mx,mt
+print*,table
 
         !map table to weight with interpolation
         do itr=1,ntr

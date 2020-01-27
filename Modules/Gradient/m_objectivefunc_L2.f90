@@ -17,14 +17,10 @@ use m_weighter_table
         ref_modulus=m%ref_vp**2*m%ref_rho
 
         if(.not. allocated(weight)) then
-            call alloc(weight,shot%rcv(1)%nt,shot%nrcv,initialize=.false.)
-            weight=1
+            call alloc(weight,shot%rcv(1)%nt,shot%nrcv,initialize=.false.);  weight=1
             call build_weight_polygon(shot%rcv(1)%nt,shot%rcv(1)%dt,shot%nrcv,shot%rcv(:)%aoffset,weight) !so far the weighting is for mono component data only
-open(33,file='weight_polygon',access='stream')
-write(33) weight
-close(33)
             call build_weight_table(shot%rcv(1)%nt,shot%rcv(1)%dt,shot%nrcv,shot%rcv(:)%aoffset,weight) !so far the weighting is for mono component data only
-open(33,file='weight_table',access='stream')
+open(33,file='weight',access='stream')
 write(33) weight
 close(33)
         endif
