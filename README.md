@@ -18,7 +18,7 @@ licensed under GNU GENERAL PUBLIC LICENSE Version 3 (see LICENSE).
 - Makefile
 - Fortran compiler (e.g. ifort, gfortran (version>=5))
 - OpenMP and MPI
-- [Seismic Unix](https://github.com/JohnWStockwellJr/SeisUnix) for data IO and plotting
+<!-- - [Seismic Unix](https://github.com/JohnWStockwellJr/SeisUnix) for data IO and plotting -->
 
 ## Compilation
 1. Edit Makefile  
