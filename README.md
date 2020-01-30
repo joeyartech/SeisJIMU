@@ -50,8 +50,8 @@ licensed under GNU GENERAL PUBLIC LICENSE Version 3 (see LICENSE).
     - For FWI (full waveform inversion):
 ``` $ make fwi ```
 
-    c. The executable binary can be found in ./exe. The name of the executable is a concentration of fwd or fwi and selected modules, e.g., fwi_AC_FDSG_L2_velocities-density_zpower_Wolfe_LBFGS
-This allows existence of multiple executables compiled with different modules.
+    c. The executable binary can be found in ./exe. The name of the executable is a concentration of fwd or fwi and selected modules, e.g., fwi_AC_FDSG_L2_velocities-density_zpower_Wolfe_LBFGS  
+This allows existence of multiple executables compiled with different modules.  
 The newest compiled executable has a nickname simply as FWD or FWI.
 
 3. Cleaning
