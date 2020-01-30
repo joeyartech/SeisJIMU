@@ -86,3 +86,7 @@ License
 GNU GENERAL PUBLIC LICENSE Version 3 (GPLv3.0)
 See LICENSE
 
+
+References
+----
+- Wei Zhou and David Lumley, (2020), Central-difference time-lapse 4D seismic full waveform inversion, Geophysics (submitted).
