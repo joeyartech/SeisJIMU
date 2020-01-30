@@ -21,9 +21,8 @@ licensed under GNU GENERAL PUBLIC LICENSE Version 3 (see LICENSE).
 - [Seismic Unix](https://github.com/JohnWStockwellJr/SeisUnix) for data IO and plotting
 
 ## Compilation
-1. Edit Makefile
-    a. Choose compiler and associated compilation flags. By default we use ifort (Intel Fortran compiler). FLAGF90 and FLAGF77 are default flags to compile Fortran90 (and later) and Fortran77 (and earlier) codes, respectively.
-
+1. Edit Makefile  
+    a. Choose compiler and associated compilation flags. By default we use ifort (Intel Fortran compiler). FLAGF90 and FLAGF77 are default flags to compile Fortran90 (and later) and Fortran77 (and earlier) codes, respectively.  
     b. Choose modules:
     - WaveEq: which wave equation (PDE) to be solved for forward and adjoint modeling
         - AC:     2D/3D ACoustic isotropic; 
@@ -42,9 +41,9 @@ licensed under GNU GENERAL PUBLIC LICENSE Version 3 (see LICENSE).
         - LBFGS:  limited memory BFGS quasi-Newton method
         - NLCG:   nonlinear Conjugate Gradient
 
-2. Compilation
+2. Compilation  
     a. create directory:
-``` $ make dir ```
+``` $ make dir ```  
     b. compile:
     - For FWD (forward modeling):
 ``` $ make fwd ```
