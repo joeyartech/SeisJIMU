@@ -1,3 +1,11 @@
+!==========!
+! Preamble !
+!==========!
+!LEGO is licensed under the GNU GENERAL PUBLIC LICENSE Version 3 (GPLv3.0), See LICENSE
+!
+!If you publish results using this code, please acknowledge and reference our paper: 
+!- Wei Zhou and David Lumley, (2020), Central-difference time-lapse 4D seismic full waveform inversion, Geophysics (submitted).
+
 program main
 use m_model
 use m_computebox
