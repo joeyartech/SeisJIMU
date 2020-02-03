@@ -11,21 +11,41 @@ use m_weighter_table
     contains
 
     subroutine objectivefunc_data_norm_residual
-        
+
+real,dimension(:,:),allocatable :: dsyn2, dobs2
+
         real,save :: ref_modulus
 
         ref_modulus=m%ref_vp**2*m%ref_rho
 
+        !Unlike python, fortran doesn't automatically recycle RAM,
+        !so the array weight still exists when re-enter this subroutine
         if(.not. allocated(weight)) then
             call alloc(weight,shot%rcv(1)%nt,shot%nrcv,initialize=.false.);  weight=1
             call build_weight_polygon(shot%rcv(1)%nt,shot%rcv(1)%dt,shot%nrcv,shot%rcv(:)%aoffset,weight) !so far the weighting is for mono component data only
             call build_weight_table(shot%rcv(1)%nt,shot%rcv(1)%dt,shot%nrcv,shot%rcv(:)%aoffset,weight) !so far the weighting is for mono component data only
-open(33,file='weight',access='stream')
+open(33,file='weight_'//shot%cindex,access='stream')
 write(33) weight
 close(33)
         endif
 
-        dres = (dsyn-dobs)*weight
+
+if(.not. allocated(dobs2)) then
+allocate(dobs2(shot%nrcv, shot%rcv(1)%nt))
+open(34,file=get_setup_file('FILE_DATA2_OBS')//shot%cindex,access='direct',recl=4*shot%nrcv*shot%rcv(1)%nt)
+read(34,rec=1) dobs2
+close(34)
+endif
+
+if(.not. allocated(dsyn2)) then
+allocate(dsyn2(shot%nrcv, shot%rcv(1)%nt))
+open(35,file=get_setup_file('FILE_DATA2_SYN')//shot%cindex,access='direct',recl=4*shot%nrcv*shot%rcv(1)%nt)
+read(35,rec=1) dsyn2
+close(35)
+endif
+
+        !dres = (dsyn-dobs)*weight
+dres = ( (dsyn-dsyn2) - (dobs-dobs2) )*weight
         
         dnorm= 0.
         
