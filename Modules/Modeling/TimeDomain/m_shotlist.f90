@@ -1,4 +1,5 @@
 module m_shotlist
+use m_mpienv
 use m_message
 use m_arrayop
 
@@ -15,10 +16,11 @@ use m_arrayop
         integer,optional :: o_nshots
 
         integer :: fshot, dshot, lshot
-        character(4) :: cindex
+        character(4) :: cindex, cnshot_per_processor
         integer :: file_size
         logical :: alive
-        character(:),allocatable :: cshotno, data_file, text       
+        character(:),allocatable :: cshotno, data_file, text
+        character(180)::string
 
         fshot=1; dshot=1; lshot=1
 
@@ -114,7 +116,13 @@ use m_arrayop
         
         !message
         write(*,'(a,i2,a)') ' Proc# '//mpiworld%cproc//' has ',nshot_per_processor,' assigned shots.'
-    
+        call hud('See file "shotlist" for details.')
+
+        !write shotlist to disk
+        write(cnshot_per_processor,'(i4)') nshot_per_processor
+        write(string, *)  shotlist
+        call mpiworld_file_write('shotlist', 'Proc# '//mpiworld%cproc//' has '//cnshot_per_processor//' assigned shots:'//trim(string))
+
         !if nshot_per_processor is not same for each processor,
         !update_wavelet='stack' mode will be stuck due to collective communication in m_matchfilter.f90
         if(mpiworld%is_master) then

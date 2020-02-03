@@ -70,7 +70,51 @@ use mpi
         call mpi_barrier(mpiworld%communicator,mpiworld%ierr)
         
     end subroutine
-    
+
+    subroutine mpiworld_file_write(filename,string)
+        character(*) :: filename, string      
+
+        character(10)  :: date
+        character(10)  :: time
+        character(10)  :: zone
+
+        integer file_handler
+        integer(kind=mpi_offset_kind) disp, offset
+        character(:),allocatable :: str
+
+        !time info
+        call date_and_time(time=time,date=date,zone=zone)
+        str =   '========================'//achar(10)// &
+                ' MPI File IO Time Stamp '//achar(10)// &
+                '========================'//achar(10)// &
+                'System date: '//date(5:6)//'/'//date(7:8)//'/'//date(1:4)//achar(10)// &
+                'System time: '//time(1:2)//':'//time(3:4)//':'//time(5:6)//achar(10)// &
+                'System timezone: '//zone(1:3)//':'//zone(4:5)//achar(10)// &
+                '                        '//achar(10)
+        !https://software.intel.com/en-us/forums/intel-fortran-compiler/topic/494946
+        !char function: CHAR(10) is linefeed LF. CHAR(13) is carriage return CR. If you are a little paranoid, ACHAR(10) is better - this is a little more robust to the default character kind not being ascii.
+        !The NEW_LINE standard intrinsic is even more robust. There's also the C_NEW_LINE and C_CARRIAGE_RETURN constants from the ISO_C_BINDING module for kind C_CHAR characters.
+        
+        if(mpiworld%is_master) then
+            open(10,file=filename)
+            write(10,'(a)') str
+            close(10)
+        endif
+        
+        call mpi_barrier(mpiworld%communicator,mpiworld%ierr)
+        
+        ishift=len(str)
+        
+        !mpi write only + append
+        str=string//achar(10)
+        disp=ishift+len(str)*mpiworld%iproc
+        
+        call mpi_file_open(mpiworld%communicator, filename, mpi_mode_append+mpi_mode_wronly, mpi_info_null, file_handler, mpiworld%ierr)
+        call mpi_file_set_view(file_handler, disp, mpi_char, mpi_char, 'native', mpi_info_null, mpiworld%ierr)
+        call mpi_file_write(file_handler, str, len(str), mpi_char, mpi_status_ignore, mpiworld%ierr)        
+        call mpi_file_close(file_handler, mpiworld%ierr)
+
+    end subroutine
     
     subroutine mpiworld_finalize
         character(10)  :: date
