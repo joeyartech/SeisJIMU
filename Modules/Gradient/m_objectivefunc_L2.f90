@@ -12,7 +12,7 @@ use m_weighter_table
 
     subroutine objectivefunc_data_norm_residual
 
-real,dimension(:,:),allocatable :: dsyn2, dobs2
+real,dimension(:,:),allocatable :: dsyn2, dobs2, tmp_dobs2
 
         real,save :: ref_modulus
 
@@ -31,21 +31,38 @@ close(33)
 
 
 if(.not. allocated(dobs2)) then
-allocate(dobs2(shot%nrcv, shot%rcv(1)%nt))
-open(34,file=get_setup_file('FILE_DATA2_OBS')//shot%cindex,access='direct',recl=4*shot%nrcv*shot%rcv(1)%nt)
-read(34,rec=1) dobs2
+allocate(    dobs2(shot%rcv(1)%nt,    shot%nrcv))
+allocate(tmp_dobs2(shot%rcv(1)%nt+60, shot%nrcv))
+open(34,file=get_setup_char('FILE_DATA2_OBS')//shot%cindex//'.su',access='direct',recl=4*(shot%rcv(1)%nt+60)*shot%nrcv)
+read(34,rec=1) tmp_dobs2
 close(34)
+dobs2=tmp_dobs2(61:shot%rcv(1)%nt+60,:)
+deallocate(tmp_dobs2)
 endif
 
 if(.not. allocated(dsyn2)) then
-allocate(dsyn2(shot%nrcv, shot%rcv(1)%nt))
-open(35,file=get_setup_file('FILE_DATA2_SYN')//shot%cindex,access='direct',recl=4*shot%nrcv*shot%rcv(1)%nt)
+allocate(    dsyn2(shot%rcv(1)%nt,     shot%nrcv))
+open(35,file=get_setup_char('FILE_DATA2_SYN')//shot%cindex,access='direct',recl=4* shot%rcv(1)%nt    *shot%nrcv)
 read(35,rec=1) dsyn2
 close(35)
 endif
 
         !dres = (dsyn-dobs)*weight
 dres = ( (dsyn-dsyn2) - (dobs-dobs2) )*weight
+
+!if(mpiworld%is_master) then
+!open(12,file='dsyns',access='stream')
+!write(12) dsyn
+!write(12) dsyn2
+!write(12) dsyn-dsyn2
+!close(12)
+!open(12,file='dobss',access='stream')
+!write(12) dobs
+!write(12) dobs2
+!write(12) dobs-dobs2
+!close(12)
+!endif
+
         
         dnorm= 0.
         
