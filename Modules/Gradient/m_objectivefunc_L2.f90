@@ -8,18 +8,16 @@ use m_weighter_table
 
     real,dimension(:,:),allocatable :: weight
 
+real,dimension(:,:),allocatable :: dsyn2, dobs2, tmp_dobs2
+
     contains
 
     subroutine objectivefunc_data_norm_residual
-
-real,dimension(:,:),allocatable :: dsyn2, dobs2, tmp_dobs2
 
         real,save :: ref_modulus
 
         ref_modulus=m%ref_vp**2*m%ref_rho
 
-        !Unlike python, fortran doesn't automatically recycle RAM,
-        !so the array weight still exists when re-enter this subroutine
         if(.not. allocated(weight)) then
             call alloc(weight,shot%rcv(1)%nt,shot%nrcv,initialize=.false.);  weight=1
             call build_weight_polygon(shot%rcv(1)%nt,shot%rcv(1)%dt,shot%nrcv,shot%rcv(:)%aoffset,weight) !so far the weighting is for mono component data only
