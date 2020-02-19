@@ -20,7 +20,7 @@ use m_arrayop
         integer :: file_size
         logical :: alive
         character(:),allocatable :: cshotno, data_file, text
-        character(180)::string
+        character(240)::string
 
         fshot=1; dshot=1; lshot=1
 

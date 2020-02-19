@@ -38,9 +38,9 @@ use m_boundarystore
         nt=ilt-ift+1
         dt=shot%src%dt
         
-        !scaling source wavelet
+        !scaling source wavelet to be dt, dx independent
         call alloc(wavelet,nt)
-        wavelet = shot%src%wavelet !*dt/m%cell_size
+        wavelet = shot%src%wavelet*dt/m%cell_volume
         
         !field
         call init_field_localmodel
