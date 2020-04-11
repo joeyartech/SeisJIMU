@@ -261,7 +261,7 @@ use, intrinsic :: ieee_arithmetic
     
     !========= forward propagation =================
     !WE: du_dt = MDu
-    !u=[vx vy vz sxx szz sxz]^T, p=(2sxx+szz)/3
+    !u=[vx vz sxx szz sxz]^T, p=(2sxx+szz)/3
     !  [b                     ]    [      dx 0  dz]
     !  |  b                   |    |      0  dz dx|
     !M=|   lda+2mu   lda      |, D=|dx 0          |
