@@ -16,19 +16,12 @@ use m_smoother_laplacian_sparse
     
     real fobjective !objective function value
     real,dimension(:,:,:,:),allocatable :: gradient
-
-! logical if_first_run
-! integer,dimension(:),allocatable :: itstart
     
     contains
     
     subroutine gradient_modeling(if_gradient)
         logical,optional :: if_gradient
         
-        !nshots=get_setup_int('NSHOTS',default=1)
-        !
-        !!assign shots to processors
-        !call build_shotlist(nshots)
 
         !assign shots to processors
         if(.not. allocated(shotlist)) call build_shotlist
@@ -40,10 +33,7 @@ use m_smoother_laplacian_sparse
             call alloc(gradient,m%nz,m%nx,m%ny,ncorr)
         endif
         endif
-
-
-! allocate(itstart(shot%nrcv))
-        
+       
         
         call hud('      START LOOP OVER SHOTS          ')
         
@@ -72,19 +62,6 @@ open(12,file='synth_raw_'//shot%cindex,access='stream')
 write(12) dsyn
 close(12)
 endif
-
-! !if(if_first_run) then
-! loopx: do ix=1,shot%nrcv
-! loopt: do it=1,shot%src%nt
-!     if (dobs(it,ix) > 1e-8) then
-!         itstart(ix)=it
-!         exit loopt
-!     endif
-! enddo loopt
-! enddo loopx
-! !print*,itstart
-! !if_first_run=.false.
-! !endif
             
             !update shot%src%wavelet
             !while wavelet in m_propagator is un-touched
@@ -95,15 +72,10 @@ endif
                 !write wavelet updates for QC
                 if(mpiworld%is_master) then
                     open(12,file='wavelet_update',access='stream',position='append')
-                    write(12) shot%src%wavelet
+                    write(12) shot%src%wavelet /shot%src%dt*m%cell_volume !scale to be dt, dx independent, see m_shot.f90 ..
                     close(12)
                 endif
             endif
-
-! !mitigate some noise due to matchfilter
-! do ix=1,shot%nrcv
-! dsyn(1:itstart(ix),ix)=0.
-! enddo
 
 !!mitigate some noise due to matchfilter
 !where(abs(dobs)<1e-6)

@@ -44,8 +44,8 @@ use m_arrayop
                     if(file_size==0) alive=.false.
                 enddo
 
-                lshot=i !upto continuous indexing
-                nshots=i
+                lshot=i-1 !upto continuous indexing
+                nshots=i-1
                 
                 if(mpiworld%is_master) then
                     write(*,*) 'Found', lshot, 'sequential shots.'

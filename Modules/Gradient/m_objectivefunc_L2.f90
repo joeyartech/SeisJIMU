@@ -20,9 +20,9 @@ use m_weighter_table
             call alloc(weight,shot%rcv(1)%nt,shot%nrcv,initialize=.false.);  weight=1
             call build_weight_polygon(shot%rcv(1)%nt,shot%rcv(1)%dt,shot%nrcv,shot%rcv(:)%aoffset,weight) !so far the weighting is for mono component data only
             call build_weight_table(shot%rcv(1)%nt,shot%rcv(1)%dt,shot%nrcv,shot%rcv(:)%aoffset,weight) !so far the weighting is for mono component data only
-open(33,file='weight',access='stream')
-write(33) weight
-close(33)
+! open(33,file='weight',access='stream')
+! write(33) weight
+! close(33)
         endif
 
         dres = (dsyn-dobs)*weight
@@ -39,18 +39,18 @@ close(33)
             endif
         enddo
 
-!write balanced residuals
-if(mpiworld%is_master) then
-open(12,file='residu_unit_'//shot%cindex,access='stream')
-do ir=1,shot%nrcv
-  if(shot%rcv(ir)%icomp==1) then !for pressure data
-    write(12) dres(:,ir)/sqrt(ref_modulus)
-  else !for velocities data
-    write(12) dres(:,ir)*sqrt(m%ref_rho)
-  endif
-enddo
-close(12)
-endif
+! !write balanced residuals
+! if(mpiworld%is_master) then
+! open(12,file='residu_unit_'//shot%cindex,access='stream')
+! do ir=1,shot%nrcv
+!   if(shot%rcv(ir)%icomp==1) then !for pressure data
+!     write(12) dres(:,ir)/sqrt(ref_modulus)
+!   else !for velocities data
+!     write(12) dres(:,ir)*sqrt(m%ref_rho)
+!   endif
+! enddo
+! close(12)
+! endif
 
         
         !compute adjoint source and set proper units
@@ -63,18 +63,18 @@ endif
             endif
         enddo
 
-!write balanced adjoint source
-if(mpiworld%is_master) then
-open(12,file='adjsrc_unit_'//shot%cindex,access='stream')
-do ir=1,shot%nrcv
-  if(shot%rcv(ir)%icomp==1) then !for pressure data
-    write(12) dres(:,ir)/ref_modulus
-  else !for velocities data
-    write(12) dres(:,ir)*m%ref_rho
-  endif
-enddo
-close(12)
-endif
+! !write balanced adjoint source
+! if(mpiworld%is_master) then
+! open(12,file='adjsrc_unit_'//shot%cindex,access='stream')
+! do ir=1,shot%nrcv
+!   if(shot%rcv(ir)%icomp==1) then !for pressure data
+!     write(12) dres(:,ir)/ref_modulus
+!   else !for velocities data
+!     write(12) dres(:,ir)*m%ref_rho
+!   endif
+! enddo
+! close(12)
+! endif
 
         
         !multi-valued objectivefunc ..

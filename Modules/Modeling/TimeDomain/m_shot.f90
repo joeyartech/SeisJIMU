@@ -52,7 +52,7 @@ use m_hicks
     
     subroutine init_shot(k,from)
         integer k
-        character(*) :: from
+        character(*) :: from, scale_wavelet
         
         logical :: if_staggered_grid
         
@@ -91,6 +91,20 @@ use m_hicks
             read(11,rec=1) shot%src%wavelet
             close(11)
         endif
+
+        scale_wavelet=get_setup_char('SCALE_WAVELET',default='none')
+
+        if(scale_wavelet/='no') then
+            if(scale_wavelet=='by dtdx') then
+                !scale wavelet to be dt, dx independent
+                shot%src%wavelet = shot%src%wavelet* shot%src%dt/m%cell_volume
+            else
+                !user defined scaler
+                read(scale_wavelet,*) scaler
+                shot%src%wavelet = shot%src%wavelet* scaler
+            endif
+        endif
+
         
         !hicks coeff for source point
         hicks%x=shot%src%x; hicks%dx=m%dx

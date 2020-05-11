@@ -38,16 +38,10 @@ use m_boundarystore
         nt=ilt-ift+1
         dt=shot%src%dt
         
-!        !scaling source wavelet to be dt, dx independent
-!        call alloc(wavelet,nt)
-!        wavelet = shot%src%wavelet*dt/m%cell_volume
 
-!source wavelet
-!in theory should be scaled s.t. wavelet is dt, dx independent
-!but this would add another procedure inside source estimation & gradient scaling
-!to study in near future...
-call alloc(wavelet,nt)
-wavelet = shot%src%wavelet
+        call alloc(wavelet,nt)
+        wavelet = shot%src%wavelet
+        
         
         !field
         call init_field_localmodel

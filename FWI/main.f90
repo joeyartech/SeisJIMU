@@ -17,7 +17,7 @@ use m_optimizer
     call init_mpiworld
 
     call hud('========================================')
-    call hud('     WELCOME TO LEGO MODELING CODE      ')
+    call hud('     WELCOME TO LEGO FWI CODE           ')
     call hud('========================================')
     
     call init_setup(istat)
@@ -137,6 +137,10 @@ use m_field
         write(*,'(a)') "                                            #x(t) = -(pi*fpeak*(t-t0))^2, w(t) = (1+2*x)*exp(x)"
         write(*,'(a)') "                                            #t0 = 1/fpeak by default"
         write(*,'(a)') "RICKER_DELAYTIME        '1/PEAK_FREQUENCY'  #Change t0 in Ricker wavelet"
+        write(*,'(a)') "SCALE_WAVELET           'no'                #If scale source wavelet when read in"
+        write(*,'(a)') "                                            #='no'       no scale"
+        write(*,'(a)') "                                            #='by dxdt'  multiply by dt/dx/dy/dz s.t. the amplitude is independent on discretization"
+        write(*,'(a)') "                                            #=number     user-given scaler on wavelet"
         write(*,'(a)') "UPDATE_WAVELET          'per shot'          #If update source wavelet after each forward modeling (using matching filter)"
         write(*,'(a)') "                                            #='per shot' update each shot's wavelet independently"
         write(*,'(a)') "                                            #='stack'    stack each shot's wavelet and use the same stacked wavelet for all shots"
