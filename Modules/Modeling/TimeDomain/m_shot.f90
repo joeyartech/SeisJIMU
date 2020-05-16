@@ -52,10 +52,12 @@ use m_hicks
     
     subroutine init_shot(k,from)
         integer k
-        character(*) :: from, scale_wavelet
+        character(*) :: from
         
         logical :: if_staggered_grid
         
+        character(:),allocatable :: scale_wavelet
+
         shot%index=shotlist(k)
         write(shot%cindex,'(i0.4)') shot%index
         
@@ -92,7 +94,7 @@ use m_hicks
             close(11)
         endif
 
-        scale_wavelet=get_setup_char('SCALE_WAVELET',default='none')
+        scale_wavelet=get_setup_char('SCALE_WAVELET',default='no')
 
         if(scale_wavelet/='no') then
             if(scale_wavelet=='by dtdx') then
