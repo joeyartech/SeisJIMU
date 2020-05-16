@@ -53,7 +53,7 @@ use m_hicks
     subroutine init_shot(k,from)
         integer k
         character(*) :: from
-        
+
         logical :: if_staggered_grid
         
         character(:),allocatable :: scale_wavelet
@@ -96,8 +96,8 @@ use m_hicks
 
         scale_wavelet=get_setup_char('SCALE_WAVELET',default='no')
 
-        if(scale_wavelet/='no') then
-            if(scale_wavelet=='by dtdx') then
+        if(trim(adjustl(scale_wavelet))/='no') then
+            if(trim(adjustl(scale_wavelet))=='by dtdx') then
                 !scale wavelet to be dt, dx independent
                 shot%src%wavelet = shot%src%wavelet* shot%src%dt/m%cell_volume
             else
