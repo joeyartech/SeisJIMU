@@ -43,10 +43,8 @@ use m_shot
     if(scalco<-31072) scalco=-31072
     
     
-    nshots=get_setup_int('NSHOTS',default=1)
-    
     !assign shots to processors
-    call build_shotlist(nshots)
+    if(.not. allocated(shotlist)) call build_shotlist
     
     call hud('      START LOOP OVER SHOTS          ')
     
