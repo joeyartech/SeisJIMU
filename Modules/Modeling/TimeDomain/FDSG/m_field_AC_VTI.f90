@@ -57,6 +57,7 @@ use, intrinsic :: ieee_arithmetic
     !info
     character(*),parameter :: waveeq_info='time-domain VTI 2D/3D (pseudo) acoustic'
     character(*),parameter :: gradient_info='kpa-rho'
+    integer,parameter :: ncorr=2
     
     contains
     
