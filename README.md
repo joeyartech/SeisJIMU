@@ -1,22 +1,29 @@
-﻿# LEGO
+# SeisJIMU
 
-LEGO is a module based seismic modeling and inversion (FWI) code,
+
+	███████ ███████ ██ ███████      ██ ██ ███    ███ ██    ██ 
+	██      ██      ██ ██           ██ ██ ████  ████ ██    ██ 
+	███████ █████   ██ ███████      ██ ██ ██ ████ ██ ██    ██ 
+	     ██ ██      ██      ██ ██   ██ ██ ██  ██  ██ ██    ██ 
+	███████ ███████ ██ ███████  █████  ██ ██      ██  ██████
+	                                          
+SeisJIMU is a module based seismic modeling and inversion (FWI) code,
 licensed under GNU GENERAL PUBLIC LICENSE Version 3 (see LICENSE).
 
-~Version 1.1
- - Author: joeyartech
-   joeyartech@gmail.com
-   wei.zhou@utdallas.edu
- - Language: Fortran 95 & 2003
- - Libraries: OpenMP 3, MPI 2
- - Compilers: gfortran (version>=5), ifort
+~Version 1.1.1.1
+ - Authors: 
+	 - Joeyartech  (joeyartech@gmail.com)
+	 - David Lumley (david.lumley@utdallas.edu)
+ - Language: Fortran
+ - Libraries: OpenMP, MPI
+ - Compilers: gfortran (Ver>=5), ifort
 <!---  - Tested on CPU: Intel(R) Xeon(R) Gold 6140 CPU @ 2.30GHz --->
 
 # Quick start
 ## Prerequisite
 - Linux OS
 - Makefile
-- Fortran compiler (e.g. ifort, gfortran (version>=5))
+- Fortran compiler (e.g. ifort, gfortran (Ver>=5))
 - OpenMP and MPI
 <!-- - [Seismic Unix](https://github.com/JohnWStockwellJr/SeisUnix) for data IO and plotting -->
 
@@ -50,7 +57,7 @@ licensed under GNU GENERAL PUBLIC LICENSE Version 3 (see LICENSE).
     - For FWI (full waveform inversion):
 ``` $ make fwi ```
 
-    c. The executable binary can be found in ./exe. The name of the executable is a concentration of fwd or fwi and selected modules, e.g., fwi_AC_FDSG_L2_velocities-density_zpower_Wolfe_LBFGS  
+    c. The executable binary can be found in ./exe. The name of the executable is a concentration of fwd or fwi and selected modules, e.g., `fwi_AC_FDSG_L2_velocities-density_zpower_Wolfe_LBFGS`  
 This allows existence of multiple executables compiled with different modules.  
 The newest compiled executable has a nickname simply as FWD or FWI.
 
@@ -90,4 +97,4 @@ See LICENSE
 References
 ----
 If you publish results using this code, please acknowledge and reference our paper:
-- Wei Zhou and David Lumley, (2020), Central-difference time-lapse 4D seismic full waveform inversion, Geophysics (submitted).
+- Wei Zhou and David Lumley, (2020), Central-difference time-lapse 4D seismic full waveform inversion, _Geophysics_ (_submitted_).
