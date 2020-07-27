@@ -2,7 +2,7 @@ module m_suformat
 use m_sysio
 
     private
-    public :: t_suformat, init_suheader, read_sudata
+    public :: t_suformat, init_suheader, read_sudata, write_sudata
 
 !A Fortran version of su format (defined in /SeisUnix/include/segy.h)
 !
@@ -18,10 +18,10 @@ use m_sysio
 !    and we will need integer(kind=4) type to save the true value (integer(kind=2) type does not have more mem space).
 !    Fortrunately, ns and dt is usually <= 32767 in practice so we are not concerned with this issue.
 !
-!Note 3: Most of the keywords are not needed in lego..
+!Note 3: Most of the keywords are not needed in SeisJIMU..
 !
 ! !! Copyright (c) Colorado School of Mines, 2011.!!
-! !! All rights reserved.                       !!
+! !! All rights reserved.                         !!
 ! 
 ! !! segy.h - include file for SEGY traces
 !  *
@@ -472,8 +472,8 @@ use m_sysio
         
     end subroutine
     
-    subroutine read_sudata(cshot,sudata)
-        character(4) :: cshot
+    subroutine read_sudata(sshot,sudata)
+        character(4) :: sshot
         type(t_suformat),dimension(:),allocatable :: sudata
 
         character(:),allocatable :: tmp,data_file
@@ -482,32 +482,26 @@ use m_sysio
         integer file_size
         integer(2) :: ns
         
-        tmp=get_setup_char('FILE_DATA')
+        tmp=setup_get_char('FILE_DATA')
         
-        data_file=tmp//cshot//'.su'
+        data_file=tmp//sshot//'.su'
                 
         inquire(file=data_file, size=file_size, exist=alive) !file_size in bytes
-        file_size=file_size/4 !file_size in sizeof(float)
+        file_size=file_size/4 !file_size in sizeof(float), single precision
         
-        if(.not.alive) then
-            if(mpiworld%is_master) write(*,*) 'ERROR: data file '//data_file//'does NOT exist!'
-            stop
-        endif
+        if(.not.alive) call error('data file '//data_file//' does NOT exist!')
             
         open(11,file=data_file,action='read',access='stream')
         read(11,pos=115) ns  !get number of samples from 1st trace
-        !if(ns<0) ns=ns+32768*2  !ns keyword is unsigned short in C
+        if(ns<0) ns=ns+32768*2  !ns keyword is unsigned short in C
         close(11)
                 
         ntr=file_size/(ns+60)
-        if(mpiworld%is_master) write(*,*) 'Shot# '//cshot//' will read',ntr,' traces, each trace has',ns,'samples.'
+        if(mpiworld%is_master) write(*,*) 'Shot# '//sshot//' will read',ntr,' traces, each trace has',ns,'samples.'
         
-        if(ntr*(ns+60)/=file_size) then
-            if(mpiworld%is_master) write(*,*) 'ERROR: ntr*(ns+60) /= file_size. Possibly ns is not same for all traces..'
-            stop
-        endif
+        if(ntr*(ns+60)/=file_size) call error('ntr*(ns+60) /= file_size. Possibly ns is not same for all traces..')
         
-        if(allocated(sudata))deallocate(sudata)
+        if(allocated(sudata)) deallocate(sudata)
         allocate(sudata(ntr))
         do itr=1,ntr
             allocate(sudata(itr)%trace(ns))
@@ -524,28 +518,27 @@ use m_sysio
     end subroutine
     
     
-!     subroutine write_sudata(cshot,nt,ntr,gather)
-!         integer cshot,ntr
-!         real,dimension(nt,ntr) :: gather
-!         
-!         type(t_suformat),dimension(ntr),allocatable :: sudata
-!         
-!         character(4) :: cshot
-!         character,dimension(:),allocatable :: data_file
-!         
-!         data_file=tmp//cshot//'.su'
-!         
-!         open(12,file=data_file,action='write',access='direct',recl=4*(nt+60))
-!         do itr=1,ntr
-!             sudata(itr)=gather(itr)
-!             sudata%ns=nt
-!             write(11,rec=itr) sudata(itr)
-!         enddo
-!         
-!         call hud('Data write success.')
-!         
-!         close(12)
-!         
-!     end subroutine
+    ! subroutine write_sudata(sshot,nt,ntr,gather)
+    !     character(4) :: sshot
+    !     real,dimension(nt,ntr) :: gather
+        
+    !     type(t_suformat),dimension(ntr) :: sudata
+        
+    !     character,dimension(:),allocatable :: data_file
+        
+    !     data_file='synth_data_'//sshot//'.su'
+        
+    !     open(12,file=data_file,action='write',access='direct',recl=4*(nt+60))
+    !     do itr=1,ntr
+    !         sudata(itr)=gather(itr)
+    !         sudata%ns=nt
+    !         write(11,rec=itr) sudata(itr)
+    !     enddo
+        
+    !     call hud('Data write success.')
+        
+    !     close(12)
+        
+    ! end subroutine
 
 end

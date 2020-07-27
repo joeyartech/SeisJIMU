@@ -120,7 +120,7 @@ use m_sysio
         if(present(o_addmirror)) then
             iaddmirror=nint(o_addmirror/dz)+1
         else
-            iaddmirror=nint( get_setup_real('SMOOTHING_ADDMIRROR',default=dz) /dz ) +1
+            iaddmirror=nint( setup_get_real('SMOOTHING_ADDMIRROR',default=dz) /dz ) +1
         endif
         
         if(present(o_frac)) then
@@ -128,14 +128,14 @@ use m_sysio
             frac_x=o_frac(2)
             frac_y=o_frac(3)
         else
-            tmp=get_setup_char('SMOOTH_GRADIENT_WAVELENGTH_FRACTION',default='1 1 1')
+            tmp=setup_get_char('SMOOTH_GRADIENT_WAVELENGTH_FRACTION',default='1 1 1')
             read(tmp,*)frac_z,frac_x,frac_y
         endif
         
         if(present(o_preserve)) then
             preserve=o_preserve
         else
-            preserve=get_setup_char('SMOOTH_GRADIENT_PRESERVE_MAGNITUDE',default='nopreserve')
+            preserve=setup_get_char('SMOOTH_GRADIENT_PRESERVE_MAGNITUDE',default='nopreserve')
         endif
         
     end subroutine

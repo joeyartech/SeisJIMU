@@ -3,12 +3,17 @@ OMP=openmp
 
 #OPTRPT=-qopt-report=5  -qopt-report-file=stderr -qopt-report-phase=vec
 
+#GIT_COMMIT:=$(shell git rev-parse HEAD)
+GIT_COMMIT:=$(shell git rev-parse --short HEAD)
+GIT_BRANCH:=$(shell git rev-parse --abbrev-ref HEAD)
+
 #for Intel
 FLAGF90= -xHost -O3 -Ofast -ipo -parallel -q$(OMP) -fno-alias -traceback -assume byterecl   $(OPTRPT)
 # FLAGF90= -xCORE-AVX512 -O3 -Ofast -ipo -parallel -q$(OMP) -fno-alias -traceback -assume byterecl   $(OPTRPT)
 # FLAGF90= -g -debug -check all -check noarg_temp_created -W1 -WB -q$(OMP) -traceback -assume byterecl
 FLAGF77= $(FLAGF90)
 MOD= -module $(DIR)mod
+FPP=-fpp -DINTEL -D"commit='$(GIT_COMMIT)'" -D"branch='$(GIT_BRANCH)'"
 
 # #for GNU
 # FLAGF77= -Ofast -f$(OMP)                         -fbacktrace  #-flto
@@ -16,7 +21,7 @@ MOD= -module $(DIR)mod
 # # FLAGF77= -g -Wall -f$(OMP) -fcheck=all                         -fbacktrace
 # # FLAGF90= -g -Wall -f$(OMP) -fcheck=all -ffree-line-length-none -fbacktrace
 # MOD=-J $(DIR)mod
-
+# FPP=-cpp -DGNU -D"commit='$(GIT_COMMIT)'" -D"branch='$(GIT_BRANCH)'"
 
 
 DIR=./
@@ -27,15 +32,17 @@ dir :
 
 .SUFFIX : %.f %.f90 %.o
 
+
 %.o : %.f90
-	mpif90 $(FLAGF90) $(MOD) -c $^ -o $@
+	mpif90 $(FPP) $(FLAGF90) $(MOD) -c $^ -o $@
 
 %.o : %.f
-	mpif77 $(FLAGF77)        -c $^ -o $@
+	mpif77        $(FLAGF77)        -c $^ -o $@
 
 
 
 system = \
+$(DIR)Modules/System/m_default.F90 \
 $(DIR)Modules/System/m_mpienv.f90 \
 $(DIR)Modules/System/m_message.f90 \
 $(DIR)Modules/System/m_sysio.f90 \

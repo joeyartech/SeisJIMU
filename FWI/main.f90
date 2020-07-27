@@ -1,7 +1,7 @@
 !==========!
 ! Preamble !
 !==========!
-!LEGO is licensed under the GNU GENERAL PUBLIC LICENSE Version 3 (GPLv3.0), See LICENSE
+!SeisJIMU is licensed under the GNU GENERAL PUBLIC LICENSE Version 3 (GPLv3.0), See LICENSE
 !
 !If you publish results using this code, please acknowledge and reference our paper: 
 !- Wei Zhou and David Lumley, (2020), Central-difference time-lapse 4D seismic full waveform inversion, Geophysics (submitted).
@@ -17,7 +17,7 @@ use m_optimizer
     call init_mpiworld
 
     call hud('========================================')
-    call hud('     WELCOME TO LEGO FWI CODE           ')
+    call hud('     WELCOME TO SeisJIMU FWI            ')
     call hud('========================================')
     
     call init_setup(istat)
@@ -106,7 +106,7 @@ use m_field
         write(*,'(a)') "PEAK_FREQUENCY          7                  #Peak frequency of source wavelet"
         write(*,'(a)') ""
         write(*,'(a)') "FILE_DATA               'obs'              #Prefix of input obs data name"
-        write(*,'(a)') "                                           #LEGO will look for SU data file named as obs????.su,"
+        write(*,'(a)') "                                           #SeisJIMU will look for SU data file named as obs????.su,"
         write(*,'(a)') "                                           #where ???? represents 4 digits"
         write(*,'(a)') "                                           #Provide SHOTNO if only invert a subset of data (see below)"
         write(*,'(a)') ""
@@ -127,10 +127,10 @@ use m_field
         write(*,'(a)') "IF_FREESURFACE          T                   #Free surface condition (T) or absorbing surface condition (F)"
         write(*,'(a)') ""
         write(*,'(a)') "SHOTNO                  'fshot:dshot:lshot' #Will invert only shots with index from fshot to lshot, with increments dshot"
-        write(*,'(a)') "                                            #If not given, LEGO will look for all data with sequential index (start from 0001)"
+        write(*,'(a)') "                                            #If not given, SeisJIMU will look for all data with sequential index (start from 0001)"
         write(*,'(a)') "                                            #the prefix of the filename has been defined in FILE_DATA"
         write(*,'(a)') ""
-        write(*,'(a)') "FILE_WAVELET            'fricker'           #If not given, LEGO will use the wavelet generated from WAVELET_TYPE"
+        write(*,'(a)') "FILE_WAVELET            'fricker'           #If not given, SeisJIMU will use the wavelet generated from WAVELET_TYPE"
         write(*,'(a)') "WAVELET_TYPE            'sinexp'            #Damped sine function: sin(2pi*fpeak*t)*exp(-3.33*fpeak*t)"
         write(*,'(a)') "                                            #s.t. the wavelet has ~2 peaks before dying out, followed by lowpass filtering."
         write(*,'(a)') "                                            #If not given, use Ricker wavelet:"

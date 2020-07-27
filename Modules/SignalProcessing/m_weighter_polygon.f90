@@ -18,7 +18,7 @@ use m_arrayop
         real,dimension(max_gain_length) :: xgain,tgain
         
 
-        file_weight=get_setup_file('FILE_WEIGHT_POLYGON')
+        file_weight=setup_get_file('FILE_WEIGHT_POLYGON')
         if(file_weight=='') then
             call hud('FILE_WEIGHT_POLYGON does NOT exist; weight unchanged.')
             return

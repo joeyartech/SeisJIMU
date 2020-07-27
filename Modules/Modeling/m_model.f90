@@ -11,7 +11,7 @@ use m_arrayop
         real,dimension(:,:,:),allocatable :: vp,vs,rho,eps,del,eta
         real,dimension(:,:),allocatable :: topo
         integer,dimension(:,:),allocatable :: itopo
-        real,dimension(:,:,:),allocatable :: vp_mask,vs_mask,rho_mask
+        real,dimension(:,:,:),allocatable :: mask_vp,mask_vs,mask_rho
                 
         real ref_vp,ref_vs,ref_rho
 
@@ -24,19 +24,29 @@ use m_arrayop
     type(t_model) :: m
 
     contains
+
+    subroutine model_estim_RAM
+        character(:),allocatable :: tmp
+
+        ! tmp=setup_get_char('MODEL_SIZE','NZXY')
+        ! read(tmp1,*) m%nz, m%nx, m%ny
+        ! m%n=m%nx*m%ny*m%nz
+
+    end subroutine
+
     
-    subroutine init_model
+    subroutine model_read
         character(:),allocatable :: tmp1,tmp2,tmp3,tmp4
         logical alive
         
-        tmp1=get_setup_char('MODEL_DIMENSION')
+        tmp1=setup_get_char('MODEL_SIZE','NZXY')
         read(tmp1,*) m%nz, m%nx, m%ny
         m%n=m%nx*m%ny*m%nz
         
-        tmp2=get_setup_char('MODEL_SPACING')
+        tmp2=setup_get_char('MODEL_SPACING','DZXY')
         read(tmp2,*) m%dz, m%dx, m%dy
         
-        tmp3=get_setup_char('MODEL_ORIGIN')
+        tmp3=setup_get_char('MODEL_ORIGIN','OZXY')
         read(tmp3,*) m%oz, m%ox, m%oy
         
         if(m%ny==1) then
@@ -62,25 +72,22 @@ use m_arrayop
         n=4*m%nx*m%ny*m%nz
         
         !read models
-        tmp4=get_setup_char('FILE_MODELS')
+        tmp4=setup_get_char('FILE_MODELS')
         
         !vp
-        inquire(file=tmp4//'_vp', exist=alive)
-        if(.not.alive) then
-            call hud('ERROR: Unable to find vp model!')
-            stop
-        endif
+        inquire(file=tmp4//'%vp', exist=alive)
+        if(.not.alive) call error('Unable to find vp model!')
         call alloc(m%vp,m%nz,m%nx,m%ny)
-        open(12,file=tmp4//'_vp',access='direct',recl=n,action='read',status='old')
+        open(12,file=tmp4//'%vp',access='direct',recl=n,action='read',status='old')
         read(12,rec=1) m%vp 
         close(12)
         call hud('vp model is read.')
         
         !vs
-        inquire(file=tmp4//'_vs', exist=alive)
+        inquire(file=tmp4//'%vs', exist=alive)
         if(alive) then
             call alloc(m%vs,m%nz,m%nx,m%ny)
-            open(12,file=tmp4//'_vs',access='direct',recl=n,action='read',status='old')
+            open(12,file=tmp4//'%vs',access='direct',recl=n,action='read',status='old')
             read(12,rec=1) m%vs
             close(12)
             call hud('vs model is read.')
@@ -89,10 +96,10 @@ use m_arrayop
         endif
         
         !rho
-        inquire(file=tmp4//'_rho', exist=alive)
+        inquire(file=tmp4//'%rho', exist=alive)
         if(alive) then
             call alloc(m%rho,m%nz,m%nx,m%ny)
-            open(12,file=tmp4//'_rho',access='direct',recl=n,action='read',status='old')
+            open(12,file=tmp4//'%rho',access='direct',recl=n,action='read',status='old')
             read(12,rec=1) m%rho
             close(12)
             call hud('rho model is read.')
@@ -101,11 +108,11 @@ use m_arrayop
         endif
         
         !epsilon
-        inquire(file=tmp4//'_eps', exist=alive)
+        inquire(file=tmp4//'%eps', exist=alive)
         if(alive) then
             m%is_isotropic=.false.
             call alloc(m%eps,m%nz,m%nx,m%ny)
-            open(12,file=tmp4//'_eps',access='direct',recl=n,action='read',status='old')
+            open(12,file=tmp4//'%eps',access='direct',recl=n,action='read',status='old')
             read(12,rec=1) m%eps
             close(12)
             call hud('eps model is read.')
@@ -114,11 +121,11 @@ use m_arrayop
         endif
         
         !delta
-        inquire(file=tmp4//'_del', exist=alive)
+        inquire(file=tmp4//'%del', exist=alive)
         if(alive) then
             m%is_isotropic=.false.
             call alloc(m%del,m%nz,m%nx,m%ny)
-            open(12,file=tmp4//'_del',access='direct',recl=n,action='read',status='old')
+            open(12,file=tmp4//'%del',access='direct',recl=n,action='read',status='old')
             read(12,rec=1) m%del
             close(12)
             call hud('del model is read.')
@@ -131,8 +138,8 @@ use m_arrayop
         m%ref_rho=m%rho(1,1,1)
         
         !refresh isotropicness if user requires
-        if(ask_setup('IF_ISOTROPIC')) then
-            m%is_isotropic=get_setup_logical('IF_ISOTROPIC')
+        if(setup_ask('IF_ISOTROPIC')) then
+            m%is_isotropic=setup_get_logical('IF_ISOTROPIC')
         endif
         
         !topography
@@ -140,7 +147,7 @@ use m_arrayop
         call alloc(m%itopo,m%nx,m%ny,initialize=.false.); m%itopo=1
 
         if(size(m%vs)>1) then
-        if(get_setup_logical('IF_TOPO_FROM_VS',default=.true.)) then
+        if(setup_get_logical('IF_TOPO_FROM_VS',default=.true.)) then
             !m%itopo = maxloc(m%vs, dim=1, mask=(m%vs<10), back=.true.)+1 !the "back" argument isn't implemented in gfortran until version 9 ..
             !m%itopo = minloc(m%vs, dim=1, mask=(m%vs>=10.)); where(m%itopo==0) m%itopo=m%nz+1  !still not correct
             do i3=1,m%ny; do i2=1,m%nx
@@ -180,11 +187,12 @@ use m_arrayop
             call alloc( m%rho_mask, maxval(m%itopo),m%nx,m%ny ); m%rho_mask(:,:,:) = m%rho(1:maxval(m%itopo),:,:)
         
         !freesurface
-        m%if_freesurface=get_setup_logical('IF_FREESURFACE',default=.true.)
+        m%if_freesurface=setup_get_logical('IF_FREESURFACE',default=.true.)
         
     end subroutine
     
-    subroutine model_reallocate(cmodel)
+    subroutine model_realloc(m,cmodel)
+        class(t_model), intent(in) :: m
         character(*) :: cmodel
         
         select case (cmodel)

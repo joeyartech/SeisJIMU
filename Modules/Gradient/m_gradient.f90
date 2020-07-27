@@ -65,7 +65,7 @@ endif
             
             !update shot%src%wavelet
             !while wavelet in m_propagator is un-touched
-            update_wavelet=get_setup_char('UPDATE_WAVELET',default='per shot')
+            update_wavelet=setup_get_char('UPDATE_WAVELET',default='per shot')
             if(update_wavelet/='no') then
                 call gradient_matchfilter_data
                 
@@ -139,7 +139,7 @@ endif
             call mpi_allreduce(MPI_IN_PLACE, gradient, m%n*ncorr, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
 
             !smoothing
-            if(get_setup_logical('IF_SMOOTHING',default=.true.)) then
+            if(setup_get_logical('IF_SMOOTHING',default=.true.)) then
                 call hud('Initialize Laplacian smoothing')
                 call init_smoother_laplacian([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%src%fpeak)
                 do icorr=1,ncorr

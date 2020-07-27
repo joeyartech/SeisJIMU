@@ -55,9 +55,9 @@ use m_linesearcher
         n=nproblem
         
         !read setup
-        min_update=get_setup_real('MIN_UPDATE',default=1e-8)
-        max_iterate=get_setup_int('MAX_ITERATE',default=30)
-        max_modeling=get_setup_int('MAX_MODELING',default=60)
+        min_update=setup_get_real('MIN_UPDATE',default=1e-8)
+        max_iterate=setup_get_int('MAX_ITERATE',default=30)
+        max_modeling=setup_get_int('MAX_MODELING',default=60)
         
         !initialize current point
         call alloc(current%x, n,initialize=.false.) !quiry point
@@ -74,7 +74,7 @@ use m_linesearcher
         f0=current%f
         
         !reinitialize alpha in each iterate
-        if_reinitialize_alpha=get_setup_logical('IF_REINITIALIZE_ALPHA',default=.true.)
+        if_reinitialize_alpha=setup_get_logical('IF_REINITIALIZE_ALPHA',default=.true.)
         
         !initialize preconditioner and apply
         call init_preconditioner
@@ -86,7 +86,7 @@ use m_linesearcher
         current%gdotd=sum(current%g*current%d)
         
         !vector pairs history
-        l=get_setup_int('NPAIRS',default=5); if(l<1) l=1
+        l=setup_get_int('NPAIRS',default=5); if(l<1) l=1
         call alloc(sk,n,l)
         call alloc(yk,n,l)
         sk(:,1)=current%x(:)

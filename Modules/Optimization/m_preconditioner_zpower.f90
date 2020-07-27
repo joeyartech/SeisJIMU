@@ -10,7 +10,7 @@ use m_parameterization, only: npar
     contains
     
     subroutine init_preconditioner
-        zpower=get_setup_real('ZPOWER',default=1.)
+        zpower=setup_get_real('ZPOWER',default=1.)
         
         call alloc(precond,m%n*2)
         precond=[(((iz-1)*m%dz)**zpower,iz=1,m%nz)]

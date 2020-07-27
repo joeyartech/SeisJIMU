@@ -7,11 +7,15 @@ use m_shot, only:shot
 use m_computebox, only: cb
 
 use, intrinsic :: ieee_arithmetic
-
-    private fdcoeff_o4,fdcoeff_o8,c1x,c1y,c1z,c2x,c2y,c2z,c3x,c3y,c3z,c4x,c4y,c4z
-    private k_x,k_y,k_z,npower,rcoef
-    public
     
+    !info
+    character(*),parameter :: s_waveeq1='Time-domain isotropic 2D/3D ACoustic system'
+    character(*),parameter :: s_waveeq2='1st-order Velocity-Stress formulation'
+    character(*),parameter :: s_solver1='Staggered-grid Finite-difference method'
+    character(*),parameter :: s_solver2='Cartesian O(x4,t2) stencil'
+    character(*),parameter :: s_gradient='kpa-rho'
+    integer,parameter :: ncorr=2
+
     !FD coeff
     real,dimension(2),parameter :: fdcoeff_o4 = [1.125,      -1./24.]
     real,dimension(4),parameter :: fdcoeff_o8 = [1225./1024, -245./3072., 49./5120., -5./7168]
@@ -20,18 +24,14 @@ use, intrinsic :: ieee_arithmetic
     real :: c2x, c2y, c2z
     real :: c3x, c3y, c3z
     real :: c4x, c4y, c4z
-    
-    !CPML
-    real,parameter :: k_x = 1.
-    real,parameter :: k_y = 1.
-    real,parameter :: k_z = 1.
-    real,parameter :: npower=2.
-    real,parameter :: rcoef=0.001
-    
+
     !local models in computebox
     type t_localmodel
         sequence
         real,dimension(:,:,:),allocatable ::  buox, buoy, buoz, kpa, invkpa
+
+        contains
+        procedure :: init => localmodel_init
     end type
     
     type(t_localmodel) :: lm
@@ -39,48 +39,79 @@ use, intrinsic :: ieee_arithmetic
     !fields
     type t_field
         sequence
-        !flat arrays
+        !physical components
         real,dimension(:,:,:),allocatable :: vx,vy,vz,p
-        real,dimension(:,:,:),allocatable :: cpml_dvx_dx,cpml_dvy_dy,cpml_dvz_dz !for cpml
+
+        !cpml components
+        real,dimension(:,:,:),allocatable :: cpml_dvx_dx,cpml_dvy_dy,cpml_dvz_dz
         real,dimension(:,:,:),allocatable :: cpml_dp_dz, cpml_dp_dx, cpml_dp_dy
+
+        !!non-zero zone
+        !integer,dimension(:,:),allocatable :: bloom
+
+        contains
+        procedure :: init  => field_init
+        procedure :: check => field_check
+        procedure :: cpml_reinit => field_cpml_reinit
+        procedure :: write => field_write
+
+        procedure :: inject_velocities => field_inject_velocities
+        procedure :: update_velocities => field_update_velocities
+        procedure :: inject_stresses   => field_inject_stresses
+        procedure :: extract           => field_extract
+
+        procedure :: inject_stresses_adjoint   => field_inject_stresses_adjoint
+        procedure :: update_stresses_adjoint   => field_update_stresses_adjoint
+        procedure :: inject_velocities_adjoint => field_inject_velocities_adjoint
+        procedure :: update_velocities_adjoint => field_update_velocities_adjoint
+        procedure :: extract_adjoint           => field_extract_adjoint
+
+        procedure :: correlate_moduli  => field_correlate_moduli
+        procedure :: correlate_density => field_correlate_density
+        procedure, nopass :: correlate_scaling => field_correlate_scaling
+
     end type
     
     !hicks interpolation
     logical :: if_hicks
-    
-    !info
-    character(*),parameter :: waveeq_info='time-domain isotropic 2D/3D acoustic'
-    character(*),parameter :: gradient_info='kpa-rho'
-    integer,parameter :: ncorr=2
-    
+
     contains
     
-    !========= use before propagation =================
+    !========= module procedures =================
+
     subroutine field_print_info
         !modeling method
-        call hud('WaveEq : Time-domain isotropic 2D/3D ACoustic system')
-        call hud('1st-order Velocity-Stress formulation')
-        call hud('Staggered-grid Finite-difference method')
-        call hud('Cartesian O(x4,t2) stencil')
-        
+        call hud('Invoked field module info : '//s_return// &
+            'WaveEq: '//s_waveeq1//s_return// &
+                         s_waveeq2//s_return// &
+                         s_solver1//s_return// &
+                         s_solver2//s_return// &
+            'Xcorr: '//s_gradient)
+
         !stencil constant
         if(mpiworld%is_master) then
             write(*,*) 'Coeff:',fdcoeff_o4
         endif
         c1x=fdcoeff_o4(1)/m%dx; c1y=fdcoeff_o4(1)/m%dy; c1z=fdcoeff_o4(1)/m%dz
         c2x=fdcoeff_o4(2)/m%dx; c2y=fdcoeff_o4(2)/m%dy; c2z=fdcoeff_o4(2)/m%dz
+
+        !notify m_shot
+        if_staggered_grid=.true.
                 
     end subroutine
+
+    subroutine field_estim_RAM
+    end subroutine
     
-    subroutine check_model  !not required
+    subroutine field_check_model  !not required
         
     end
     
-    subroutine check_discretization
+    subroutine field_check_discretization
         !grid dispersion condition
         if (5.*m%cell_diagonal > cb%velmin/shot%src%fpeak/2.) then  !FDTDo4 rule
-            write(*,*) 'WARNING: Shot# '//shot%cindex//' can have grid dispersion!'
-            write(*,*) 'Shot# '//shot%cindex//' 5*dx, velmin, fpeak:',5.*m%cell_diagonal, cb%velmin,shot%src%fpeak
+            call warn('WARNING: Shot# '//shot%cindex//' can have grid dispersion!')
+            if(mpiworld%is_master) write(*,*) 'Shot# '//shot%cindex//' 5*dx, velmin, fpeak:',5.*m%cell_diagonal, cb%velmin,shot%src%fpeak
         endif
         
         !CFL condition
@@ -88,16 +119,17 @@ use, intrinsic :: ieee_arithmetic
         if(mpiworld%is_master) write(*,*) 'CFL value:',CFL
         
         if(cfl>1.) then
-            write(*,*) 'ERROR: CFL > 1 on shot# '//shot%cindex//'!'
-            write(*,*) 'Shot# '//shot%cindex//' velmax, dt, 1/dx:',cb%velmax,shot%src%dt,m%cell_inv_diagonal
+            if(mpiworld%is_master) write(*,*) 'Shot# '//shot%cindex//' velmax, dt, 1/dx:',cb%velmax,shot%src%dt,m%cell_inv_diagonal
+            call error('CFL > 1 on shot# '//shot%cindex//'!')
             stop
         endif
         
     end subroutine
     
-    !========= use inside propagation =================
-    
-    subroutine init_field_localmodel
+    !========= localmodel procedures =================
+
+    subroutine localmodel_init(lm)
+        class(t_localmodel), intent(in) :: lm
     
         call alloc(lm%buox,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily],initialize=.false.)
         call alloc(lm%buoy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily],initialize=.false.)
@@ -106,7 +138,7 @@ use, intrinsic :: ieee_arithmetic
         call alloc(lm%invkpa,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily],initialize=.false.)
         
         lm%kpa(:,:,:)=cb%vp(:,:,:)*cb%vp(:,:,:)*cb%rho(:,:,:)
-        lm%invkpa(:,:,:)=1./lm%kpa(:,:,:)
+        lm%invkpa(:,:,:)=1./self%kpa(:,:,:)
 
         lm%buoz(cb%ifz,:,:)=1./cb%rho(cb%ifz,:,:)
         lm%buox(:,cb%ifx,:)=1./cb%rho(:,cb%ifx,:)
@@ -125,9 +157,11 @@ use, intrinsic :: ieee_arithmetic
         enddo
         
     end subroutine
+
+    !========= field procedures =================
     
-    subroutine init_field(f)
-        type(t_field) :: f
+    subroutine field_init(f)
+        class(t_field), intent(in) :: f
         
         call alloc(f%vx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%vy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -141,30 +175,25 @@ use, intrinsic :: ieee_arithmetic
         call alloc(f%cpml_dp_dy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%cpml_dp_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
-        !hicks point interpolation
-        if_hicks=get_setup_logical('IF_HICKS',default=.true.)
-        
     end subroutine
     
-    subroutine check_field(f,name)
-        type(t_field) :: f
+    subroutine field_check(f,name)
+        class(t_field), intent(in) :: f
         character(*) :: name
         
         if(mpiworld%is_master) write(*,*) name//' sample values:',minval(f%p),maxval(f%p)
         
         if(any(.not. ieee_is_finite(f%vz))) then
-            write(*,*) 'ERROR: '//name//' values become Infinity on Shot# '//shot%cindex//' !!'
-            stop
+            error(name//' values become Infinity on Shot# '//shot%cindex//' !!')
         endif
         if(any(ieee_is_nan(f%vz))) then
-           write(*,*) 'ERROR: '//name//' values become NaN on Shot# '//shot%cindex//' !!'
-           stop
+            error(name//' values become NaN on Shot# '//shot%cindex//' !!')
         endif
         
     end subroutine
     
-    subroutine field_cpml_reinitialize(f)
-        type(t_field) :: f
+    subroutine field_cpml_reinit(f)
+        class(t_field), intent(in) :: f
         f%cpml_dvx_dx=0.
         f%cpml_dvy_dy=0.
         f%cpml_dvz_dz=0.
@@ -173,8 +202,8 @@ use, intrinsic :: ieee_arithmetic
         f%cpml_dp_dz=0.
     end subroutine
     
-    subroutine write_field(iunit,f)
-        type(t_field) :: f
+    subroutine field_write(f,iunit)
+        class(t_field), intent(in) :: f
         write(iunit) f%vz
     end subroutine
     
@@ -194,10 +223,10 @@ use, intrinsic :: ieee_arithmetic
     ! vz(iz,ix,iy):=  vy[iz-0.5,ix,iy]^it,it+1,...
     
     !add RHS to v^it
-    subroutine put_velocities(time_dir,it,w,f)
+    subroutine field_inject_velocities(f,time_dir,it,w)
+        class(t_field), intent(in) :: f
         integer :: time_dir,it
         real :: w
-        type(t_field) :: f
         
         ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
         ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
@@ -236,9 +265,9 @@ use, intrinsic :: ieee_arithmetic
     end subroutine
     
     !v^it -> v^it+1 by FD of s^it+0.5
-    subroutine update_velocities(time_dir,it,f,bl)
+    subroutine field_update_velocities(f,time_dir,it,bl)
+        class(t_field), intent(in) :: f
         integer :: time_dir, it
-        type(t_field) :: f
         integer,dimension(6) :: bl
         
         ifz=bl(1)+2
@@ -284,10 +313,10 @@ use, intrinsic :: ieee_arithmetic
     end subroutine
     
     !add RHS to s^it+0.5
-    subroutine put_stresses(time_dir,it,w,f)
+    subroutine field_inject_stresses(f,time_dir,it,w)
+        class(t_field), intent(in) :: f
         integer :: time_dir
         real :: w
-        type(t_field) :: f
         
         ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
         ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
@@ -312,9 +341,9 @@ use, intrinsic :: ieee_arithmetic
     end subroutine
     
     !s^it+0.5 -> s^it+1.5 by FD of v^it+1
-    subroutine update_stresses(time_dir,it,f,bl)
+    subroutine update_stresses(f,time_dir,it,bl)
+        class(t_field), intent(in) :: f
         integer :: time_dir, it
-        type(t_field) :: f
         integer,dimension(6) :: bl
         
         ifz=bl(1)+1
@@ -364,8 +393,8 @@ use, intrinsic :: ieee_arithmetic
     end subroutine
     
     !get v^it+1 or s^it+1.5
-    subroutine get_field(f,seismo)
-        type(t_field) :: f
+    subroutine field_extract(f,seismo)
+        class(t_field), intent(in) :: f
         real,dimension(*) :: seismo
         
         do ircv=1,shot%nrcv
@@ -440,10 +469,10 @@ use, intrinsic :: ieee_arithmetic
     
     
     !add RHS to s^it+1.5
-    subroutine put_stresses_adjoint(time_dir,it,adjsource,f)
+    subroutine field_inject_stresses_adjoint(f,time_dir,it,adjsource)
+        class(t_field), intent(in) :: f
         integer :: time_dir
         real,dimension(*) :: adjsource
-        type(t_field) :: f
         
         do ircv=1,shot%nrcv
             ifz=shot%rcv(ircv)%ifz; iz=shot%rcv(ircv)%iz; ilz=shot%rcv(ircv)%ilz
@@ -474,21 +503,21 @@ use, intrinsic :: ieee_arithmetic
     end subroutine
     
     !s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
-    subroutine update_stresses_adjoint(time_dir,it,f,bl)
+    subroutine field_update_stresses_adjoint(f,time_dir,it,bl)
+        class(t_field), intent(in) :: f
         integer :: time_dir, it
-        type(t_field) :: f
         integer,dimension(6) :: bl
         
         !same code with -dt
-        call update_stresses(time_dir,it,f,bl)
+        call f%update_stresses(time_dir,it,bl)
         
     end subroutine
     
     !add RHS to v^it+1
-    subroutine put_velocities_adjoint(time_dir,it,adjsource,f)
+    subroutine field_inject_velocities_adjoint(f,time_dir,it,adjsource)
+        class(t_field), intent(in) :: f
         integer :: time_dir
         real,dimension(*) :: adjsource
-        type(t_field) :: f
         
         do ircv=1,shot%nrcv
             ifz=shot%rcv(ircv)%ifz; iz=shot%rcv(ircv)%iz; ilz=shot%rcv(ircv)%ilz
@@ -531,19 +560,19 @@ use, intrinsic :: ieee_arithmetic
     end subroutine
     
     !v^it+1 -> v^it by FD^T of s^it+0.5
-    subroutine update_velocities_adjoint(time_dir,it,f,bl)
+    subroutine field_update_velocities_adjoint(f,time_dir,it,bl)
+        class(t_field), intent(in) :: f
         integer :: time_dir, it
-        type(t_field) :: f
         integer,dimension(6) :: bl
         
         !same code with -dt
-        call update_velocities(time_dir,it,f,bl)
+        call f%update_velocities(time_dir,it,bl)
         
     end subroutine
     
     !get v^it or s^it+0.5
-    subroutine get_field_adjoint(f,w)
-        type(t_field) :: f
+    subroutine field_extract_adjoint(f,w)
+        class(t_field), intent(in) :: f
         real w
         
         ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
@@ -595,8 +624,8 @@ use, intrinsic :: ieee_arithmetic
     !p^it+0.5, v^it, adjv^it
     !use (v[i+1]+v[i])/2 to approximate v[i+0.5], so is adjv
     
-    subroutine field_correlation_moduli(it,sf,rf,sb,rb,corr)
-        type(t_field) :: sf,rf
+    subroutine field_correlate_moduli(sf,rf,it,sb,rb,corr)
+        class(t_field), intent(in) :: sf, rf
         integer,dimension(6) :: sb,rb
         real,dimension(cb%mz,cb%mx,cb%my,ncorr) :: corr
         
@@ -620,8 +649,8 @@ use, intrinsic :: ieee_arithmetic
         
     end subroutine
     
-    subroutine field_correlation_density(it,sf,rf,sb,rb,corr)
-        type(t_field) :: sf,rf
+    subroutine field_correlate_density(sf,rf,it,sb,rb,corr)
+        class(t_field), intent(in) :: sf,rf
         integer,dimension(6) :: sb,rb
         real,dimension(cb%mz,cb%mx,cb%my,ncorr) :: corr
         
@@ -645,7 +674,7 @@ use, intrinsic :: ieee_arithmetic
         
     end subroutine
     
-    subroutine field_correlation_scaling(corr)
+    subroutine field_correlate_scaling(corr)
         real,dimension(cb%mz,cb%mx,cb%my,ncorr) :: corr
         
         corr(:,:,:,1)=corr(:,:,:,1) * (-lm%invkpa(1:cb%mz,1:cb%mx,1:cb%my))
@@ -675,6 +704,8 @@ use, intrinsic :: ieee_arithmetic
         
     end subroutine
     
+    !========= Private procedures =========
+
     !========= Finite-Difference on flattened arrays ==================
     
     subroutine fd3d_flat_velocities(vx,vy,vz,p,                       &

@@ -17,7 +17,7 @@ use m_arrayop
         real,dimension(:,:),allocatable :: table, tmp_table
 
 
-        file_weight=get_setup_file('FILE_WEIGHT_TABLE')       
+        file_weight=setup_get_file('FILE_WEIGHT_TABLE')       
         if(file_weight=='') then
             call hud('FILE_WEIGHT_TABLE does NOT exist; weight unchanged.')
             return

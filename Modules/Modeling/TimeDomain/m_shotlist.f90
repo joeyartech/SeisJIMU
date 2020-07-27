@@ -4,7 +4,7 @@ use m_message
 use m_arrayop
 
     private
-    public build_shotlist, shotlist, nshot_per_processor
+    public shotlist_build, shotlist, nshot_per_processor
 
     integer,dimension(:),allocatable :: shotlist   
 
@@ -12,11 +12,10 @@ use m_arrayop
         
     contains
     
-    subroutine build_shotlist(o_nshots)
+    subroutine shotlist_build(o_nshots)
         integer,optional :: o_nshots
 
         integer :: fshot, dshot, lshot
-        character(4) :: cindex, cnshot_per_processor
         integer :: file_size
         logical :: alive
         character(:),allocatable :: cshotno, data_file, text
@@ -29,18 +28,17 @@ use m_arrayop
             lshot =o_nshots
 
         else !use other info
-            cshotno=get_setup_char('SHOTNO')
+            cshotno=setup_get_char('SHOT_INDEX','ISHOT')
 
             if(cshotno=='') then !if SHOTNO not given, check dist
-                call hud('SHOTNO is not given. Now count how many data file exists in the directory..')
-                data_file=get_setup_char('FILE_DATA')
+                call hud('SHOT_INDEX is not given. Now count how many data file exists in the directory..')
+                data_file=setup_get_char('FILE_DATA')
 
                 i=0
                 alive=.true.
                 do while (alive)
                     i=i+1
-                    write(cindex,'(i0.4)') i
-                    inquire(file=data_file//cindex//'.su', size=file_size, exist=alive)
+                    inquire(file=data_file//num2str(i,'(i0.4)')//'.su', size=file_size, exist=alive)
                     if(file_size==0) alive=.false.
                 enddo
 
@@ -119,9 +117,8 @@ use m_arrayop
         call hud('See file "shotlist" for details.')
 
         !write shotlist to disk
-        write(cnshot_per_processor,'(i4)') nshot_per_processor
         write(string, *)  shotlist
-        call mpiworld_file_write('shotlist', 'Proc# '//mpiworld%cproc//' has '//cnshot_per_processor//' assigned shots:'//trim(string))
+        call mpiworld_file_write('shotlist', 'Proc# '//mpiworld%cproc//' has '//int2str(nshot_per_processor,'(i4)')//' assigned shots:'//trim(string))
 
         !if nshot_per_processor is not same for each processor,
         !update_wavelet='stack' mode will be stuck due to collective communication in m_matchfilter.f90

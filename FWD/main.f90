@@ -1,10 +1,4 @@
-!==========!
-! Preamble !
-!==========!
-!LEGO is licensed under the GNU GENERAL PUBLIC LICENSE Version 3 (GPLv3.0), See LICENSE
-!
-!If you publish results using this code, please acknowledge and reference our paper: 
-!- Wei Zhou and David Lumley, (2020), Central-difference time-lapse 4D seismic full waveform inversion, Geophysics (submitted).
+!SeisJIMU is licensed under the GNU GENERAL PUBLIC LICENSE Version 3 (GPLv3.0), See LICENSE
 
 program main
 use m_model
@@ -15,46 +9,53 @@ use m_shot
 use m_propagator
 use m_field
 
-    call init_mpiworld
+    call mpiworld_init
 
-    call hud('========================================')
-    call hud('     WELCOME TO LEGO MODELING CODE      ')
-    call hud('========================================')
+    call hud('======================================'//s_return// &&
+             '     WELCOME TO SeisJIMU MODELING     '//s_return// &&
+             '======================================')
     
-    call init_setup(istat)
+    call setup_init(istat)
     
     if(istat==0) then !print manual
         call fwd_print_manual
         call mpiworld_finalize
         stop
     endif
-    
-    
+
+    !estimate required memory
+    call model_estim_RAM
+    call computebox_estim_RAM
+    call field_estim_RAM
+
     !read initial model
-    call init_model
+    call model_read
+
+    !print FD scheme and field info
     call field_print_info
-    
+
     !generate acquisition and source wavelet
-    call gen_acquisition
+    call acquisition_init
     
     !assign shots to processors
     call build_shotlist(acqui%nsrc)
-    
+
     call hud('      START LOOP OVER SHOTS          ')
 
     do i=1,nshot_per_processor
         
-        call init_shot(i,'setup')
+        call shot_init(i,'setup')
         
         call hud('Modeling shot# '//shot%cindex)
         
-        call build_computebox
+        !build computebox and its cpml
+        call computebox_build
         
-        call check_model
-        call check_discretization !CFL condition, dispersion etc.
+        call field_check_model
+        call field_check_discretization !CFL condition, dispersion etc.
     
         !propagator and wavefield
-        call init_propagator
+        call propagator_init
         
         !*******************************
         !intensive computation
@@ -69,7 +70,7 @@ use m_field
     
     call hud('        END LOOP OVER SHOTS        ')
     
-    call mpiworld_finalize
+    call mpiworld%finalize
     
 end
 
@@ -169,7 +170,7 @@ use m_field
         write(*,'(a)') "IF_TOPO_FROM_VS         F                   #If T, decide topography from model_vs when model_vs exists and model_topo doesn't exist"
         write(*,'(a)') "IF_FREESURFACE          T                   #Free surface condition (T) or absorbing surface condition (F)"
         write(*,'(a)') ""
-        write(*,'(a)') "FILE_WAVELET            'fricker_dt6000'    #If not given, LEGO will use wavelet as specified in WAVELET_TYPE"
+        write(*,'(a)') "FILE_WAVELET            'fricker_dt6000'    #If not given, SeisJIMU will use wavelet as specified in WAVELET_TYPE"
         write(*,'(a)') "WAVELET_TYPE            'sinexp'            #Damped sine function: sin(2pi*fpeak*t)*exp(-3.33*fpeak*t)"
         write(*,'(a)') "                                            #s.t. the wavelet has ~2 peaks before dying out, followed by lowpass filtering."
         write(*,'(a)') "                                            #If not given, use Ricker wavelet:"

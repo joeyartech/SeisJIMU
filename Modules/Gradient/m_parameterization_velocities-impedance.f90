@@ -45,12 +45,12 @@ use m_gradient, only: gradient
     subroutine init_parameterization
         
         !read in empirical law
-        empirical=get_setup_char('EMPIRICAL_LAW')
+        empirical=setup_get_char('EMPIRICAL_LAW')
         if_empirical = len(empirical)>0
         if(if_empirical) call read_empirical
 
         !read in active parameters and their allowed ranges
-        parlist=get_setup_char('ACTIVE_PARAMETER',default='vp1500:3400')
+        parlist=setup_get_char('ACTIVE_PARAMETER',default='vp1500:3400')
         call read_parlist
 
     end subroutine

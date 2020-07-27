@@ -1,3 +1,15 @@
+!Hicks interpolation
+!To interpolate source & receiver off-grid positions
+!
+!Hicks, 2002, Arbitrary source and receiver positioning in finite‐difference schemes using Kaiser windowed sinc function, _Geophysics_
+!https://doi.org/10.1190/1.1451454
+!
+!Author comment:
+!We made interactive illustration of this paper's theory (e.g. Fig 9) for the free surface case:
+! - hicks_freesurf_symmetric.ggb
+! - hicks_freesurf_antisymmetric.ggb
+!with the free GeoGebra tool.
+!
 module m_hicks
 use m_arrayop
 
@@ -40,8 +52,8 @@ use m_arrayop
     type t_hicks
         !intent(in)
         real :: x,y,z  !source point location
-        real :: dx,dy,dz
-        logical :: is_cubic,if_freesurface
+        real :: dx=1.,dy=1.,dz=1.
+        logical :: is_cubic=.true.,if_freesurface=.true.
         !intent(out)
         !range of interpolation points
         integer :: ifx,ify,ifz
@@ -49,14 +61,35 @@ use m_arrayop
         integer :: ilx,ily,ilz
     end type
     
-    type(t_hicks) :: hicks
+    type(t_hicks) :: h
     
     contains
 
-    subroutine build_hicks(h,fold_type,interp_coeff)
-        type(t_hicks) :: h
-        character(*) :: fold_type
-        real,dimension(:,:,:),allocatable :: interp_coeff
+    !========= module procedures =========
+
+    subroutine hicks_init(o_dxyz,o_is_cubic,o_if_freesurface)
+        real,dimension(3),optional :: o_dxyz
+        logical :: o_is_cubic, o_if_freesurface
+
+        if(present(o_dxyz)) then
+            h%dx=o_dxyz(1)
+            h%dy=o_dxyz(2)
+            h%dz=o_dxyz(3)
+        endif
+        if(present(o_is_cubic))       h%is_cubic=o_is_cubic
+        if(present(o_if_freesurface)) h%if_freesurface=o_if_freesurface
+    end subroutine
+
+    subroutine hicks_init_position(xyz)
+        real,dimension(3) :: xyz
+        h%x=xyz(1)
+        h%y=xyz(2)
+        h%z=xyz(3)
+    end subroutine
+
+    subroutine hicks_build_coeff(fold_type,interp_coeff)
+        character(*),intent(in) :: fold_type
+        real,dimension(:,:,:),allocatable,intent(out) :: interp_coeff
         
         real,dimension(-r:r) :: x_interp_coeff,y_interp_coeff,z_interp_coeff
         
@@ -71,14 +104,6 @@ use m_arrayop
         !z axis
         call build_1d_hicks(h%z,h%dz,h%ifz,h%iz,h%ilz,z_interp_coeff)
         
-        !index starts from 1 outside scope of build_1d_hicks
-        h%ifx=h%ifx+1; h%ix=h%ix+1; h%ilx=h%ilx+1
-        h%ify=h%ify+1; h%iy=h%iy+1; h%ily=h%ily+1
-        if(.not.h%is_cubic) then
-            h%ify=1; h%iy=1; h%ily=1
-        endif
-        h%ifz=h%ifz+1; h%iz=h%iz+1; h%ilz=h%ilz+1
-        
         !For free surface condition,
         !fold z_interp_coeff wrt inquiry point, which is
         !* freesurface point (at q(1)) in pressure case, or
@@ -87,7 +112,7 @@ use m_arrayop
             n=1-h%ifz   !compute the number of layers above the inquiry point
             iquiry=-r+n !compute the projected index of the inquiry point
             
-            if(fold_type=='antisym') then
+            if(fold_type=='antisymm') then
                 !antisymmetric folding (pressure case): subtract points at and below inquiry point by points at and above inquiry point
                 !this includes the inquiry point such that coeff=0. at the inquiry point
                 z_interp_coeff(iquiry:iquiry+n) = z_interp_coeff(iquiry:iquiry+n) - z_interp_coeff(iquiry:-r:-1)
@@ -126,8 +151,19 @@ use m_arrayop
         endif
         
     end subroutine
-    
-    
+
+    subroutine hicks_get_position(ifxyz,ixyz,ilxyz)
+        real,dimension(3),intent(out) :: ifxyz, ixyz, ilxyz
+
+        !index starts from 1 outside scope of build_1d_hicks
+        ifxyz(1)=h%ifx+1; ixyz(1)=h%ix+1; ilxyz(1)=h%ilx+1
+        if(.not.h%is_cubic) then
+            ifxyz(2)=1; ixyz(2)=1; ilxyz(2)=1
+        endif
+        ifxyz(3)=h%ifz+1; ixyz(3)=h%iz+1; ilxyz(3)=h%ilz+1
+
+    !========= private procedures =========
+
     subroutine build_1d_hicks(x,dx,ifx,ix,ilx,x_interp_coeff)
         real,dimension(-r:r) :: x_interp_coeff, xx
         
@@ -204,12 +240,10 @@ use m_arrayop
     elemental real function sinc(x)
         real,intent(in) :: x
         
-        real,parameter :: pi=3.141593
-        
 !         if (abs(x) < epsilon) then
 !             sinc = 1.
 !         else
-            sinc = sin(pi*x) / (pi*x)
+            sinc = sin(r_pi*x) / (r_pi*x)
 !         end if
     end function
 

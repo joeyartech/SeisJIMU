@@ -27,17 +27,19 @@ use m_boundarystore
     
     contains
         
-    subroutine init_propagator(if_will_do_rfield)
+    subroutine propagator_init(if_will_do_rfield)
         logical,optional :: if_will_do_rfield
         
         integer,parameter :: initial_half_bloomwidth=5 !half bloom width at ift, should involve hicks points
+        
+        !notify m_field
+        if_hicks=setup_get_logical('IF_HICKS',default=.true.)
         
         !time window
         ift=1
         ilt=shot%src%nt
         nt=ilt-ift+1
-        dt=shot%src%dt
-        
+        dt=shot%src%dt       
 
         call alloc(wavelet,nt)
         wavelet = shot%src%wavelet
@@ -109,9 +111,9 @@ use m_boundarystore
         call init_boundarystore
         
         !snapshot
-        if_snapshot=get_setup_logical('IF_SNAPSHOT',default=.false.)
+        if_snapshot=setup_get_logical('IF_SNAPSHOT',default=.false.)
         if_snapshot=if_snapshot.and.mpiworld%is_master
-        if(if_snapshot) it_delta_snapshot=get_setup_int('SNAPSHOT_DELTA_IT',default=50)
+        if(if_snapshot) it_delta_snapshot=setup_get_int('SNAPSHOT_DELTA_IT',default=50)
         
     end subroutine
     
@@ -136,32 +138,32 @@ use m_boundarystore
             call cpu_time(t0)
             !do forward time stepping (step# conforms with backward & adjoint time stepping)
             !step 1: add forces to v^it
-            call put_velocities(time_dir,it,wavelet(it),sfield)
+            call sfield%inject_velocities(time_dir,it,wavelet(it))
             call cpu_time(t1)
             tt1=tt1+t1-t0
             
             !step 2: from v^it to v^it+1 by differences of s^it+0.5
-            call update_velocities(time_dir,it,sfield,sbloom(:,it))
+            call sfield%update_velocities(time_dir,it,sbloom(:,it))
             call cpu_time(t2)
             tt2=tt2+t2-t1
             
             !step 3: add pressure to s^it+0.5
-            call put_stresses(time_dir,it,wavelet(it),sfield)
+            call sfield%inject_stresses(time_dir,it,wavelet(it))
             call cpu_time(t3)
             tt3=tt3+t3-t2
             
             !step 4: from s^it+0.5 to s^it+1.5 by differences of v^it+1
-            call update_stresses(time_dir,it,sfield,sbloom(:,it))
+            call sfield%update_stresses(time_dir,it,sbloom(:,it))
             call cpu_time(t4)
             tt4=tt4+t4-t3
             
             !step 5: sample v^it+1 or s^it+1.5 at receivers
-            call get_field(sfield,seismo(:,it))
+            call sfield%extract_field(seismo(:,it))
             
             !snapshot
             if(if_snapshot) then
             if(mod(it-1,it_delta_snapshot)==0 .or. it==ilt) then
-                call write_field(16,sfield)
+                call sfield%write(16)
             endif
             endif
             
@@ -210,7 +212,7 @@ use m_boundarystore
         integer,parameter :: time_dir=-1 !time direction
         
         !reinitialize memory for incident wavefield reconstruction
-        call field_cpml_reinitialize(sfield)
+        call sfield%cpml_reinitialize
 
         call alloc(seismo,shot%nrcv,nt,initialize=.false.)
         seismo=transpose(dres) !to save mem space, seismo could be just time slices..
@@ -248,31 +250,31 @@ use m_boundarystore
             tt1=tt1+t1-t0
             
             !backward step 4: s^it+1.5 -> s^it+0.5 by FD of v^it+1
-            call update_stresses(time_dir,it,sfield,sbloom(:,it))
+            call sfield%update_stresses(time_dir,it,sbloom(:,it))
             call cpu_time(t2)
             tt2=tt2+t2-t1
 
             !backward step 3: rm pressure from s^it+0.5
-            call put_stresses(time_dir,it,wavelet(it),sfield)
+            call sfield%inject_stresses(time_dir,it,wavelet(it))
             call cpu_time(t3)
             tt3=tt3+t3-t2
 
             !--------------------------------------------------------!
 
             !adjoint step 5: fill s^it+1.5 at receivers
-            call put_stresses_adjoint(time_dir,it,seismo(:,it),rfield)
+            call rfield%inject_stresses_adjoint(time_dir,it,seismo(:,it))
             call cpu_time(t4)
             tt4=tt4+t4-t3
 
             !adjoint step 4: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
-            call update_stresses_adjoint(time_dir,it,rfield,rbloom(:,it))
+            call rfield%update_stresses_adjoint(time_dir,it,rbloom(:,it))
             call cpu_time(t5)
             tt5=tt5+t5-t4
 
             !gkpa: sfield%s_dt^it+0.5 \dot rfield%s^it+0.5
             !use sfield%v^it+1 to compute sfield%s_dt^it+0.5, as backward step 4
             if(present(gradient)) then
-                call field_correlation_moduli(it,sfield,rfield,sbloom(:,it),rbloom(:,it),gradient)
+                call sfield%correlate_moduli(rfield,it,sbloom(:,it),rbloom(:,it),gradient)
             endif
             call cpu_time(t6)
             tt6=tt6+t6-t5
@@ -280,36 +282,36 @@ use m_boundarystore
             !========================================================!
 
             !backward step 2: v^it+1 -> v^it by FD of s^it+0.5
-            call update_velocities(time_dir,it,sfield,sbloom(:,it))
+            call sfield%update_velocities(time_dir,it,sbloom(:,it))
             call cpu_time(t7)
             tt7=tt7+t7-t6
 
             !backward step 1: rm forces from v^it
-            call put_velocities(time_dir,it,wavelet(it),sfield)
+            call sfield%inject_velocities(time_dir,it,wavelet(it))
             call cpu_time(t8)
             tt8=tt8+t8-t7
 
             !--------------------------------------------------------!
 
             !adjoint step 5: fill v^it+1 at receivers
-            call put_velocities_adjoint(time_dir,it,seismo(:,it),rfield)
+            call rfield%inject_velocities_adjoint(time_dir,it,seismo(:,it))
             call cpu_time(t9)
             tt9=tt9+t9-t8
 
             !adjoint step 2: v^it+1 -> v^it by FD^T of s^it+0.5
-            call update_velocities_adjoint(time_dir,it,rfield,rbloom(:,it))
+            call rfield%update_velocities_adjoint(time_dir,it,rbloom(:,it))
             call cpu_time(t10)
             tt10=tt10+t10-t9
             
             !adjoint step 1: sample v^it or s^it+0.5 at source position
-            if(present(dout)) call get_field_adjoint(rfield,dout(it))
+            if(present(dout)) call rfield%extract_adjoint(dout(it))
             call cpu_time(t11)
             tt11=tt11+t11-t10
 
             !grho: sfield%v_dt^it \dot rfield%v^it
             !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
             if(present(gradient)) then
-                call field_correlation_density(it,sfield,rfield,sbloom(:,it),rbloom(:,it),gradient)
+                call sfield%correlate_density(rfield,it,sbloom(:,it),rbloom(:,it),gradient)
             endif
             call cpu_time(t12)
             tt12=tt12+t12-t11
@@ -333,7 +335,7 @@ use m_boundarystore
         
         !scale gradient
         if(present(gradient)) then
-            call field_correlation_scaling(gradient)
+            call sfield%correlate_scaling(gradient)
         endif
         
         if(if_snapshot) then
