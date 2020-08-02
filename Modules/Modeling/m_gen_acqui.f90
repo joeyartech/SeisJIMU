@@ -1,203 +1,195 @@
-module m_gen_acqui
+module m_gen_acquisition
 use m_sysio
 use m_arrayop
 use m_model, only:m
 
-    !abbreviation:
-    ! s,src : source
-    ! r,rcv : receiver
-    ! o : origin
-    ! d : increment, spacing
-    ! n : number of
-    ! z : depth
-    ! x : inline
-    ! y : crossline
-    ! pos : position
-    ! comp : component
-
-    character(:),allocatable :: acqui_type
-    real :: osz, osx, osy !origin of src position
-    real :: orz, orx, ory !origin of rcv position
-    real :: dsz, dsx, dsy !src position sampling
-    real :: drz, drx, dry !rcv position sampling
-    integer :: 
-    type(t_string),dimension(:),allocatable :: scomp, rcomp
-    integer :: nscomp, nrcomp !number of source & receiver components
-    integer :: nshot !number of shotgathers
-    integer :: ntr_pershot !number of traces per shotgather
-
+    private t_receiver, t_source, acqui_type, source_line, receiver_line
+    
+    type t_receiver
+        real    :: x,y,z
+        !integer :: icomp        !component: 1=P, 2=vx, 3=vy, 4=vz
+        !integer :: nt
+    end type
+    
+    type t_source
+        real    :: x,y,z
+        !integer :: icomp        !component: 1=P, 2=vx, 3=vy, 4=vz
+        !integer :: nt
+        !real,dimension(:),allocatable :: wavelet
+        
+        integer :: nrcv
+        type(t_receiver),dimension(:),allocatable :: rcv  !should be in size of nrcv
+    end type
+    
+    type t_acquisition
+        !character(*) :: type
+        integer :: nsrc
+        type(t_source),dimension(:),allocatable :: src  !should be in size of nsrc
+        
+        integer :: iscomp      !source component: 1=P, 2=vx, 3=vy, 4=vz
+        integer :: ircomp      !receiver component: 1=P, 2=vx, 3=vy, 4=vz
+        
+        integer :: nt
+        real :: dt
+    end type
+    
+    type(t_acquisition) :: acqui
+    
+    character(:),allocatable :: acqui_type, source_line, receiver_line
+    
     contains
     
-    subroutine gen_acqui_init
-        character(:),allocatable :: tmp
-
-        acqui_type=setup_get_char('ACQUI_TYPE',default='spread')
-
-        tmp=setup_get_char('SOURCE_ORIGIN','OSRC');   read(tmp,*) osz, osx, osy
-        tmp=setup_get_char('RECEIVER_ORIGIN','ORCV'); read(tmp,*) orz, orx, ory
-
-        tmp=setup_get_char('SOURCE_SPACING','DSRC');  read(tmp,*) dsz, dsx, dsy
-        tmp=setup_get_char('RECEIVER_SPACING','DRCV');read(tmp,*) drz, drx, dry
+    subroutine gen_acquisition
+        acqui_type=get_setup_char('ACQUI_TYPE')
+        source_line=get_setup_char('SOURCE_LINE','SOURCE_AREA')
+        receiver_line=get_setup_char('RECEIVER_LINE','RECEIVER_AREA')
         
-        ns=setup_get_int('NUMBER_SOURCE','NSRC')
-        nr=setup_get_int('NUMBER_RECEIVER','NRCV')
-
-        if(.not.m%is_cubic) then
-            osy=0; ory=0
-            dsy=0; dry=0
-            nsy=1; nry=1
+        if(acqui_type=='spread') then
+            call gen_acqui_spread
+        elseif(acqui_type=='streamer') then
+            call gen_acqui_streamer
+        elseif(acqui_type=='irregularOBN') then
+            call gen_acqui_irregularOBN
+        elseif(acqui_type=='spread3D') then
+            call gen_acqui_spread3D
+        else
+            call hud('Sorry, only spread, streamer, or irregular OBN acquisition geometries are implemented now')
+            stop
         endif
-
-        scomp=partition(setup_get_char('SOURCE_COMPONENT',  'SRC_COMP',default='P'))
-        rcomp=partition(setup_get_char('RECEIVER_COMPONENT','RCV_COMP',default='P'))
-        nscomp=size(scomp)
-        nrcomp=size(rcomp)
-
-        nshot=ns*nscomp
-        ntr_pershot=nr*nrcomp
         
-        ! if(acqui_type=='spread') then
-        !     call gen_acqui_spread
-        ! elseif(acqui_type=='streamer') then
-        !     call gen_acqui_streamer
-        ! elseif(acqui_type=='irregularOBN') then
-        !     call gen_acqui_irregularOBN
-        ! elseif(acqui_type=='spread3D') then
-        !     call gen_acqui_spread3D
-        ! else
-        !     call hud('Sorry, only spread, streamer, or irregular OBN acquisition geometries are implemented now')
-        !     stop
-        ! endif
+        call check_acqui
         
-        call gen_acqui_check
+        acqui%iscomp=get_setup_int('SOURCE_COMPONENT')
+        acqui%ircomp=get_setup_int('RECEIVER_COMPONENT')
+        
+        acqui%nt=get_setup_int('TIME_STEP')
+        acqui%dt=get_setup_real('TIME_INTERVAL')
         
     end subroutine
     
-    subroutine gen_acqui_shotgather(ishot,scomp,rcomp,szxy,rzxy)
-        integer,intent(in) :: ishot
-        real,dimension(3)  :: szxy
-        real,dimension(3,ntr_pershot) :: rzxy
-        character(4)       :: scomp
-        character(4),dimension(ntr_pershot) :: rcomp
-
-        floor(ishot/ns)
-
-        A - FLOOR (A / P) * P
-
-    end subroutine
-
     subroutine gen_acqui_spread
+        real :: fsx,fsy,fsz, lsx,lsy,lsz, dsx,dsy,dsz
+        real :: frx,fry,frz, lrx,lry,lrz, drx,dry,drz
+        integer :: ns, nr
         
-        acqui%nsrc=ns*nscomp
+        read(source_line,*)   fsz,fsx,fsy, lsz,lsx,lsy, ns
+        read(receiver_line,*) frz,frx,fry, lrz,lrx,lry, nr
+        
+        if(.not.m%is_cubic) then
+            fsy=0; lsy=0;
+            fry=0; lry=0;
+        endif
+        
+        dsx=(lsx-fsx)/(ns-1)
+        dsy=(lsy-fsy)/(ns-1)
+        dsz=(lsz-fsz)/(ns-1)
+        drx=(lrx-frx)/(nr-1)
+        dry=(lry-fry)/(nr-1)
+        drz=(lrz-frz)/(nr-1)
+        
+        acqui%nsrc=ns
         if(allocated(acqui%src))deallocate(acqui%src)
-        allocate(acqui%src(acqui%nsrc))
+        allocate(acqui%src(ns))
         
-        do k=1,nscomp
-
-            sx=fsx; sy=fsy; sz=fsz
-            do i=1,ns
-                ii=i+(k-1)*ns
-                acqui%src(ii)%x=sx;  sx=sx+dsx
-                acqui%src(ii)%y=sy;  sy=sy+dsy
-                acqui%src(ii)%z=sz;  sz=sz+dsz
-                acqui%src(ii)%comp=src_comp(k)
+        sx=fsx; sy=fsy; sz=fsz
+        do i=1,ns
+            acqui%src(i)%x=sx
+            acqui%src(i)%y=sy
+            acqui%src(i)%z=sz
+            sx=sx+dsx
+            sy=sy+dsy
+            sz=sz+dsz
+            
+            !acqui%src(i)%icomp=iscomp
+            
+            acqui%src(i)%nrcv=nr
+            if(allocated(acqui%src(i)%rcv))deallocate(acqui%src(i)%rcv)
+            allocate(acqui%src(i)%rcv(nr))
+            
+            rx=frx; ry=fry; rz=frz;
+            do j=1,nr
+                acqui%src(i)%rcv(j)%x=rx
+                acqui%src(i)%rcv(j)%y=ry
+                acqui%src(i)%rcv(j)%z=rz
+                rx=rx+drx
+                ry=ry+dry
+                rz=rz+drz
                 
-                acqui%src(ii)%nrcv=nr*nrcomp
-                if(allocated(acqui%src(ii)%rcv))deallocate(acqui%src(ii)%rcv)
-                allocate(acqui%src(ii)%rcv(acqui%src(ii)%nrcv))
-                
-                do l=1,nrcomp
-
-                    rx=frx; ry=fry; rz=frz
-                    do j=1,nr
-                        jj=j+(l-1)*nr
-                        acqui%src(ii)%rcv(jj)%x=rx;  rx=rx+drx
-                        acqui%src(ii)%rcv(jj)%y=ry;  ry=ry+dry
-                        acqui%src(ii)%rcv(jj)%z=rz;  rz=rz+drz
-                        acqui%src(ii)%rcv(jj)%comp=rcv_comp(l)
-                    enddo
-
-                enddo
-
+                !acqui%src(i)%rcv(j)%icomp=ircomp
             enddo
-
         enddo
         
     end subroutine
     
     subroutine gen_acqui_streamer
-        real :: fsx,fsy,fsz,       lsx,lsy,lsz,       dsx,dsy,dsz
-        real :: foffx,foffy,foffz, loffx,loffy,loffz, doffx,doffy,doffz
+        real :: fsx,fsy,fsz, lsx,lsy,lsz, dsx,dsy,dsz
+        real :: foffx,foffy,fz, loffx,loffy,lz, doffx,doffy,dz
         integer :: ns, noff
         
-        read(src_pos,*) fsz,  fsx,  fsy,   lsz,  lsx,  lsy,   ns
-        read(rcv_pos,*) foffz,foffx,foffy, loffz,loffx,loffy, noff
+        read(source_line,*)   fsz,fsx,fsy, lsz,lsx,lsy, ns
+        read(receiver_line,*) fz,foffx,foffy, lz,loffx,loffy, noff
         
         if(.not.m%is_cubic) then
             fsy=0; lsy=0;
             foffy=0; loffy=0;
         endif
         
-        dsx=(lsx-fsx)/(ns-1);  doffx=(loffx-foffx)/(noff-1)
-        dsy=(lsy-fsy)/(ns-1);  doffy=(loffy-foffy)/(noff-1)
-        dsz=(lsz-fsz)/(ns-1);  doffz=(loffz-foffz)/(noff-1)
+        dsx=(lsx-fsx)/(ns-1)
+        dsy=(lsy-fsy)/(ns-1)
+        dsz=(lsz-fsz)/(ns-1)
+        doffx=(loffx-foffx)/(noff-1)
+        doffy=(loffy-foffy)/(noff-1)
+        dz=(lz-fz)/(noff-1)
         
-        acqui%nsrc=ns*nscomp
+        acqui%nsrc=ns
         if(allocated(acqui%src))deallocate(acqui%src)
-        allocate(acqui%src(acqui%nsrc))
+        allocate(acqui%src(ns))
         
-        do k=1,nscomp
-
-            sx=fsx; sy=fsy; sz=fsz
-            do i=1,ns
-                ii=i+(k-1)*ns
-                acqui%src(ii)%x=sx;  sx=sx+dsx
-                acqui%src(ii)%y=sy;  sy=sy+dsy
-                acqui%src(ii)%z=sz;  sz=sz+dsz
-                acqui%src(ii)%comp=src_comp(k)
-                
-                acqui%src(ii)%nrcv=noff*nrcomp
-                if(allocated(acqui%src(ii)%rcv))deallocate(acqui%src(ii)%rcv)
-                allocate(acqui%src(ii)%rcv(acqui%src(ii)%nrcv))
-                
-                do l=1,nrcomp
-
-                    rx=sx+foffx; ry=sy+foffy; rz=sz+foffz
-                    do j=1,noff
-                        jj=j+(l-1)*nr
-                        acqui%src(ii)%rcv(jj)%x=rx;  rx=rx+drx
-                        acqui%src(ii)%rcv(jj)%y=ry;  ry=ry+dry
-                        acqui%src(ii)%rcv(jj)%z=rz;  rz=rz+drz
-                        acqui%src(ii)%rcv(jj)%comp=rcv_comp(l)
-                    enddo
-
-                enddo
-
+        sx=fsx; sy=fsy; sz=fsz
+        do i=1,ns
+            acqui%src(i)%x=sx
+            acqui%src(i)%y=sy
+            acqui%src(i)%z=sz
+            
+            acqui%src(i)%nrcv=noff
+            if(allocated(acqui%src(i)%rcv))deallocate(acqui%src(i)%rcv)
+            allocate(acqui%src(i)%rcv(noff))
+            
+            rx=sx+foffx; ry=sy+foffy; rz=fz;  !NOTE no need foffz for rz !
+            do j=1,noff
+                acqui%src(i)%rcv(j)%x=rx
+                acqui%src(i)%rcv(j)%y=ry
+                acqui%src(i)%rcv(j)%z=rz
+                rx=rx+doffx
+                ry=ry+doffy
+                rz=rz+dz
             enddo
-
+            
+            sx=sx+dsx
+            sy=sy+dsy
+            sz=sz+dsz
+            
         enddo
         
     end subroutine
 
     subroutine gen_acqui_irregularOBN
-        integer :: ns, nr
         character(80) :: text
 
         !read sources
-        open(13,file=src_pos,action='read')
+        open(13,file=source_line,action='read')
 
             !count number of sources
-            ns=0
+            n=0
             do
                 read (13,*,iostat=msg) z,x,y
                 if(msg/=0) exit
-                ns=ns+1
-            enddo
-            if(mpiworld%is_master) write(*,*) 'Will read',ns,'source positions.'
-            
-            acqui%nsrc=ns*nscomp
+                n=n+1
+            end do
+            if(mpiworld%is_master) write(*,*) 'Will read',n,'sources.'
             if(allocated(acqui%src))deallocate(acqui%src)
-            allocate(acqui%src(acqui%nsrc))
+            allocate(acqui%src(n))
+            acqui%nsrc=n
 
         !read source positions
         rewind(13)
@@ -208,100 +200,67 @@ use m_model, only:m
                 acqui%src(i)%z=z
                 acqui%src(i)%x=x
                 acqui%src(i)%y=y
-                acqui%src(i)%comp=src_comp(1)
                 i=i+1
-            enddo
-
-        !duplicate source positions for other components
-            do k=2,nscomp
-                do i=1,ns
-                    ii=i+(k-1)*ns
-                    acqui%src(ii)%x=acqui%src(i)%x
-                    acqui%src(ii)%y=acqui%src(i)%y
-                    acqui%src(ii)%z=acqui%src(i)%z
-                    acqui%src(ii)%comp=src_comp(k)
-                enddo
-            enddo
+            end do
 
         close(13)
 
 
         !read receivers
-        open(15,file=rcv_pos,action='read')
+        open(15,file=receiver_line,action='read')
 
             !count number of receivers
-            nr=0
+            n=0
             do
                 read (15,*,iostat=msg) z,x,y
                 if(msg/=0) exit
-                nr=nr+1
+                n=n+1
             end do
-            if(mpiworld%is_master) write(*,*) 'Will read',nr,'receiver positions.'
-
-            acqui%src(:)%nrcv=nr*nrcomp
+            if(mpiworld%is_master) write(*,*) 'Will read',n,'receivers.'
             do i=1,acqui%nsrc
                 if(allocated(acqui%src(i)%rcv))deallocate(acqui%src(i)%rcv)
-                allocate(acqui%src(i)%rcv(acqui%src(i)%nrcv))
+                allocate(acqui%src(i)%rcv(n))
             enddo
+            acqui%src(:)%nrcv=n
 
         !read receiver positions
         rewind(15)
-            j=1
+            i=1
             do
                 read (15,*,iostat=msg) z,x,y
                 if(msg/=0) exit
-                    acqui%src(1)%rcv(j)%z=z
-                    acqui%src(1)%rcv(j)%x=x
-                    acqui%src(1)%rcv(j)%y=y
-                    acqui%src(1)%rcv(j)%comp=rcv_comp(1)
-                    j=j+1
+                do j=1,acqui%nsrc
+                    acqui%src(j)%rcv(i)%z=z
+                    acqui%src(j)%rcv(i)%x=x
+                    acqui%src(j)%rcv(i)%y=y
+                enddo
+                i=i+1
             end do
-
-        !duplicate receiver positions for other components
-            do l=2,nrcomp
-                do j=1,nr
-                    jj=j+(l-1)*nr
-                    acqui%src(1)%rcv(jj)%z=acqui%src(1)%rcv(j)%z
-                    acqui%src(1)%rcv(jj)%x=acqui%src(1)%rcv(j)%x
-                    acqui%src(1)%rcv(jj)%y=acqui%src(1)%rcv(j)%y
-                    acqui%src(1)%rcv(jj)%comp=rcv_comp(l)
-                enddo
-            enddo
-
-            do k=2,nscomp
-                do i=1,ns
-                    ii=i+(k-1)*ns
-                    acqui%src(ii)%rcv(:)%z=acqui%src(i)%rcv(:)%z
-                    acqui%src(ii)%rcv(:)%x=acqui%src(i)%rcv(:)%x
-                    acqui%src(ii)%rcv(:)%y=acqui%src(i)%rcv(:)%y
-                    acqui%src(ii)%rcv(:)%comp=rcv_comp(l)
-                enddo
-            enddo
-
+        
         close(15)
 
     end subroutine
 
-    subroutine gen_acqui_3Dspread
+    subroutine gen_acqui_spread3D
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !  Quadrilateral Geometry  !
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !
-        !  IL direction ->
+        !  IL directio ->
         ! XL  P1---------------P2
         ! dir -------------------
         ! |   -------------------
         ! v   P3---------------P4
         !
         !4 anchor points, P1-4, and number of points in IL and XL directions
-        !should be read from setup (SOURCE_POSITION, RECEIVER_POSITION)
+        !should be read from setup (SOURCE_AREA, RECEIVER_AREA)
         !other points are interpolated from P1-4 and nil, nxl
 
         real :: fsx,fsy,fsz, frx,fry,frz
         real :: lsx,lsy,lsz, lrx,lry,lrz
         
-        read(src_pos,*)  sz1,sx1,sy1, sz2,sx2,sy2, sz3,sx3,sy3, sz4,sx4,sy4, nsil, nsxl
-        read(rcv_pos,*)  rz1,rx1,ry1, rz2,rx2,ry2, rz3,rx3,ry3, rz4,rx4,ry4, nril, nrxl
+        read(source_line,*)    sz1,sx1,sy1, sz2,sx2,sy2, sz3,sx3,sy3, sz4,sx4,sy4, nsil, nsxl
+        read(receiver_line,*)  rz1,rx1,ry1, rz2,rx2,ry2, rz3,rx3,ry3, rz4,rx4,ry4, nril, nrxl
         
         if(.not.m%is_cubic) then
             sx3=sx1; sy3=sy1; sz3=sz1;
@@ -314,9 +273,9 @@ use m_model, only:m
         ns=nsil*nsxl
         nr=nril*nrxl
 
-        acqui%nsrc=ns*nscomp
+        acqui%nsrc=ns
         if(allocated(acqui%src))deallocate(acqui%src)
-        allocate(acqui%src(acqui%nsrc))
+        allocate(acqui%src(ns))
 
         do ixl=1,nsxl
 
@@ -339,12 +298,13 @@ use m_model, only:m
             acqui%src(i)%x=sx
             acqui%src(i)%y=sy
             acqui%src(i)%z=sz
-            acqui%src(i)%comp=src_comp(1)
             
+            !acqui%src(i)%icomp=iscomp
 
-            acqui%src(i)%nrcv=nr*nrcomp
+        
+            acqui%src(i)%nrcv=nr
             if(allocated(acqui%src(i)%rcv))deallocate(acqui%src(i)%rcv)
-            allocate(acqui%src(i)%rcv(acqui%src(i)%nrcv))
+            allocate(acqui%src(i)%rcv(nr))
             
             do jxl=1,nrxl
 
@@ -367,56 +327,44 @@ use m_model, only:m
                 acqui%src(i)%rcv(j)%x=rx
                 acqui%src(i)%rcv(j)%y=ry
                 acqui%src(i)%rcv(j)%z=rz
-                acqui%src(i)%rcv(j)%z=rcv_comp(1)
                 
+                !acqui%src(i)%rcv(j)%icomp=ircomp
+
             enddo
 
             enddo
 
         enddo
 
-        enddo
-
-        !duplicate positions for other components
-        do l=2,nrcomp
-            do j=1,nr
-                jj=j+(l-1)*nr
-                acqui%src(1)%rcv(jj)%z=acqui%src(1)%rcv(j)%z
-                acqui%src(1)%rcv(jj)%x=acqui%src(1)%rcv(j)%x
-                acqui%src(1)%rcv(jj)%y=acqui%src(1)%rcv(j)%y
-            enddo
-        enddo
-
-        do k=2,nscomp
-            do i=1,ns
-                ii=i+(k-1)*ns
-                acqui%src(ii)%rcv(:)%z=acqui%src(i)%rcv(:)%z
-                acqui%src(ii)%rcv(:)%x=acqui%src(i)%rcv(:)%x
-                acqui%src(ii)%rcv(:)%y=acqui%src(i)%rcv(:)%y
-            enddo
         enddo
 
     end subroutine
     
     subroutine check_acqui
         !source position
-        if(any(acqui%src(:)%x<0.)) 
-            call error('some source x position is outside LEFT bound of the model','Check SOURCE_POSITION in setup file.')
+        if(any(acqui%src(:)%x<0.)) then
+            call hud('ERROR: some source x position is outside left bound of the model')
+            stop
         endif
         if(any(acqui%src(:)%x>(m%nx-1)*m%dx)) then
-            call error('some source x position is outside RIGHT bound of the model','Check SOURCE_POSITION in setup file.'
+            call hud('ERROR: some source x position is outside right bound of the model')
+            stop
         endif
         if(any(acqui%src(:)%y<0.)) then
-            call error('some source y position is outside front bound of the model','Check SOURCE_POSITION in setup file.'
+            call hud('ERROR: some source y position is outside front bound of the model')
+            stop
         endif
         if(any(acqui%src(:)%y>(m%ny-1)*m%dy)) then
-            call error('some source y position is outside rear bound of the model','Check SOURCE_POSITION in setup file.'
+            call hud('ERROR: some source y position is outside rear bound of the model')
+            stop
         endif
         if(any(acqui%src(:)%z<0.)) then
-            call error('some source z position is outside top bound of the model','Check SOURCE_POSITION in setup file.'
+            call hud('ERROR: some source z position is outside top bound of the model')
+            stop
         endif
         if(any(acqui%src(:)%z>(m%nz-1)*m%dz)) then
-            call error('some source z position is outside bottom bound of the model','Check SOURCE_POSITION in setup file.'
+            call hud('ERROR: some source z position is outside bottom bound of the model')
+            stop
         endif
         
         !receiver position
