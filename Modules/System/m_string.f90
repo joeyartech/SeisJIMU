@@ -7,7 +7,10 @@
 !https://github.com/szaghi/StringiFor
 
 module m_string
-use m_default, only : i_str_len
+use m_const, only : i_str_len
+
+    public
+    private :: A2a
 
     integer,parameter :: A2a = ichar('a') - ichar('A')
     
@@ -71,7 +74,7 @@ use m_default, only : i_str_len
         character(*),optional :: o_format
         character(:),allocatable :: str
         
-        character(80) :: tmp
+        character(i_str_len) :: tmp
         
         if(present(o_format)) then
             write(tmp,o_format) int
@@ -88,7 +91,7 @@ use m_default, only : i_str_len
         character(*),optional :: o_format
         character(:),allocatable :: str
         
-        character(80) :: tmp
+        character(i_str_len) :: tmp
         
         if(present(o_format)) then
             write(tmp,o_format) real
@@ -207,17 +210,19 @@ use m_default, only : i_str_len
         
     end function
     
-    function partition(string,o_seperator) result(arr)
+    function partition(string,o_separator) result(arr)
         character(*) :: string
-        character(1),optional :: o_seperator !separator must be 1 character
+        character(1),optional :: o_separator !separator must be 1 character
         type(t_string),dimension(:),allocatable :: arr
 
         character(:),allocatable :: tmp,str
-        character(1) :: sep=' '
+        character(1) :: sep
 
         character(:),allocatable :: text
         
-        if(present(o_seperator)) sep = o_seperator
+        sep=' '
+
+        if(present(o_separator)) sep = o_separator
         
         !regularize input string
         str = remove_repetition(sep//string//sep , sep)

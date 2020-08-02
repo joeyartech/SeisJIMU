@@ -30,7 +30,7 @@ character(*), parameter :: reset = achar(27)//'[0m' ! Terminates an ANSI code.
         
         if(present(iproc)) then
             if(mpiworld%iproc==iproc) then
-                write(*,*) msg
+                write(*,*) 'Proc# '//mpiworld%sproc//' : '//msg
             endif
         else
             if(mpiworld%is_master) then
@@ -40,8 +40,15 @@ character(*), parameter :: reset = achar(27)//'[0m' ! Terminates an ANSI code.
         
     end subroutine
 
-    subroutine warn(msg)
+    subroutine warn(msg,iproc)
         character(*) :: msg
+        integer,optional :: iproc
+
+        if(present(iproc)) then
+            if(mpiworld%iproc==iproc) then
+                write(*,'(a,x,a)') 'Proc# '//mpiworld%sproc//' : '//bg_black//yellow//bold//'WARNING:'//reset, msg
+            endif
+        else
             if(mpiworld%is_master) then
                 write(*,'(a,x,a)') bg_black//yellow//bold//'WARNING:'//reset, msg
             endif
@@ -49,15 +56,26 @@ character(*), parameter :: reset = achar(27)//'[0m' ! Terminates an ANSI code.
         
     end subroutine
 
-    subroutine error(msg,solution)
+    subroutine error(msg,solution,iproc)
         character(*) :: msg
         character(*),optional :: solution
-        
-        if(mpiworld%is_master) then
-            write(*,'(a,x,a)') bg_black//red//bold_blink//'ERROR:'//reset, msg
-            if(present(solution) then
-                write(*,'(a)') 'Possible solutions:'
-                write(*,'(a)') solution
+        integer,optional :: iproc
+
+        if(present(iproc)) then
+            if(mpiworld%iproc==iproc) then
+                write(*,'(a,x,a)') 'Proc# '//mpiworld%sproc//' : '//bg_black//red//bold_blink//'ERROR:'//reset, msg
+                if(present(solution)) then
+                    write(*,'(a)') 'Possible solutions:'
+                    write(*,'(a)') solution
+                endif
+            endif
+        else
+            if(mpiworld%is_master) then
+                write(*,'(a,x,a)') bg_black//red//bold_blink//'ERROR:'//reset, msg
+                if(present(solution)) then
+                    write(*,'(a)') 'Possible solutions:'
+                    write(*,'(a)') solution
+                endif
             endif
         endif
         
@@ -67,6 +85,7 @@ character(*), parameter :: reset = achar(27)//'[0m' ! Terminates an ANSI code.
     end subroutine
 
     subroutine fatal(msg)
+        character(*) :: msg
         call error(msg)
     end subroutine
 

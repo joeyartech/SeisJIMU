@@ -1,4 +1,5 @@
 module m_setup
+use m_const
 use m_message
 
     character(:),allocatable :: file_setup

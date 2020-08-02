@@ -25,6 +25,13 @@ use m_smoother_laplacian_sparse
 
         !assign shots to processors
         if(.not. allocated(shotlist)) call build_shotlist
+
+!if nshot_per_processor is not same for each processor,
+!update_wavelet='stack' mode will be stuck due to collective communication in m_matchfilter.f90
+if(nshot_per_processor * mpiworld%nproc /= nshots) then
+    fatal('Unequal shot numbers on processors. If you are using UPDATE_WAVELET=''stack'', the code will be stuck due to collective communication in m_matchfilter')
+endif
+
         
         fobjective=0.
         

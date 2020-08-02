@@ -1,7 +1,7 @@
 module m_mpienv
 use omp_lib
 use mpi
-use m_default
+use m_global
 
     type t_mpienv
         integer iproc, nproc, communicator
@@ -28,7 +28,7 @@ use m_default
     
     subroutine mpiworld_init
         
-        call mpiworld%init(mpiworld,MPI_COMM_WORLD,MPI_THREAD_SINGLE)
+        call mpiworld%init(MPI_COMM_WORLD,MPI_THREAD_SINGLE)
         
         if(mpiworld%is_master) then
             write(*,*) 'MPIWorld info:'
@@ -45,7 +45,7 @@ use m_default
             write(*,*)  '========================'//s_return// &
                         '    System Time Stamp   '//s_return// &
                         '========================'//s_return
-            write(*,*)  time_stamp
+            write(*,*)  time_stamp()
         endif
 
         call mpi_barrier(mpiworld%communicator,mpiworld%ierr)
@@ -59,7 +59,7 @@ use m_default
             write(*,*)  '========================'//s_return// &
                         '    System Time Stamp   '//s_return// &
                         '========================'//s_return
-            write(*,*)  time_stamp
+            write(*,*)  time_stamp()
         endif
         
         call mpi_barrier(mpiworld%communicator,mpiworld%ierr)
@@ -71,7 +71,7 @@ use m_default
     !========= mpienv procedures =========
 
     subroutine mpienv_init(self,communicator,thread_level)
-        class(t_mpienv), intent(in) :: self
+        class(t_mpienv) :: self
         integer communicator, thread_level
         
         self%communicator=communicator
@@ -89,7 +89,8 @@ use m_default
 
     end subroutine
 
-    subroutine mpienv_file_write(filename,string)
+    subroutine mpienv_file_write(self,filename,string)
+        class(t_mpienv) :: self
         character(*) :: filename, string
 
         integer file_handler
@@ -99,7 +100,7 @@ use m_default
         !time stamp
         str='========================'//s_return// &
             ' MPI File IO Time Stamp '//s_return// &
-            '========================'//s_return//time_stamp
+            '========================'//s_return//time_stamp()
         
         if(mpiworld%is_master) then
             open(10,file=filename)

@@ -14,11 +14,12 @@ use m_optimizer
 
     character(:),allocatable :: job
     
-    call init_mpiworld
 
-    call hud('========================================')
-    call hud('     WELCOME TO SeisJIMU FWI            ')
-    call hud('========================================')
+    call mpiworld_init
+
+    call hud('======================================'//s_return// &&
+             '       WELCOME TO SeisJIMU FWI        '//s_return// &&
+             '======================================')
     
     call init_setup(istat)
     

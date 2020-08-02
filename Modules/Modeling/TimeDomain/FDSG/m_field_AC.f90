@@ -77,7 +77,7 @@ use, intrinsic :: ieee_arithmetic
 
     contains
     
-    !========= module procedures =================
+    !========= public procedures =================
 
     subroutine field_print_info
         !modeling method

@@ -4,7 +4,8 @@ use m_arrayop
 use m_model
 use m_shot
 
-    
+
+!geometry of model & computebox
 !                                      ifx<---- nx --->ilx
 !                                    ifz+~~~~~~~~~~~~~~~+
 !       iox     iox+mx-1              ^ l   1      mx   l
@@ -19,8 +20,18 @@ use m_shot
 !       * source point
 !                                        Computebox: C+D
 
+    !CPML parameter
+    real,parameter :: k_x = 1.
+    real,parameter :: k_y = 1.
+    real,parameter :: k_z = 1.
+    real,parameter :: npower = 2.
+    real,parameter :: Rcoeff = 0.001  
+    real,parameter :: kappa_max=7.!increase this number if absorbing is not satisfactory at grazing incident angle
+                                    !(make in/outside PML reflection more separate..)
+                                    !decrease this number if grid dispersion is not satisfactory
+
     type t_computebox
-        integer :: nboundarylayer
+        integer :: ncpml
         
         !C's index in Model
         integer :: iox,ioy,ioz
@@ -56,10 +67,8 @@ use m_shot
         character(:),allocatable :: tmp
         real :: aperture(4)=0.
         
-        nboundarylayer=setup_get_int('NBOUNDARYLAYER')
-        
-        cb%nboundarylayer=nboundarylayer+2  !for FDTDo4 and hicks interpolation of radius=2
-        !cb%nboundarylayer=setup%nboundarylayer+4  !for FDTDo8
+        cb%ncpml=setup_get_int('CPML_SIZE','NCPML')+2  !for FDTDo4 and hicks interpolation of radius=2
+        !cb%ncpml=setup_get_int('CPML_SIZE','NCPML')+4  !for FDTDo8
         
         !shot aperture, default is whole model
         tmp=setup_get_char('APERTURE',default='-99999 99999 -99999 99999')
@@ -84,12 +93,12 @@ use m_shot
         cb%my=min(m%ny,nint(y/m%dy)+1) +1 -cb%ioy
         
         !C+D's index
-        cb%ifx = 1     - cb%nboundarylayer
-        cb%ilx = cb%mx + cb%nboundarylayer
-        cb%ify = 1     - cb%nboundarylayer
-        cb%ily = cb%my + cb%nboundarylayer
-        cb%ifz = 1     - cb%nboundarylayer
-        cb%ilz = cb%mz + cb%nboundarylayer
+        cb%ifx = 1     - cb%ncpml
+        cb%ilx = cb%mx + cb%ncpml
+        cb%ify = 1     - cb%ncpml
+        cb%ily = cb%my + cb%ncpml
+        cb%ifz = 1     - cb%ncpml
+        cb%ilz = cb%mz + cb%ncpml
         
         !take care of y
         if(.not.m%is_cubic) then
@@ -224,13 +233,13 @@ use m_shot
                 
         alpha_max = r_pi*shot%src%fpeak
 
-        thickness_pml_x = cb%nboundarylayer * m%dx
-        thickness_pml_y = cb%nboundarylayer * m%dy
-        thickness_pml_z = cb%nboundarylayer * m%dz
+        thickness_pml_x = cb%ncpml * m%dx
+        thickness_pml_y = cb%ncpml * m%dy
+        thickness_pml_z = cb%ncpml * m%dz
         
-        d0_x = -(r_npower+1)/(2.*thickness_pml_x) * cb%velmax * log(r_Rcoef)
-        d0_y = -(r_npower+1)/(2.*thickness_pml_y) * cb%velmax * log(r_Rcoef) 
-        d0_z = -(r_npower+1)/(2.*thickness_pml_z) * cb%velmax * log(r_Rcoef)
+        d0_x = -(npower+1)/(2.*thickness_pml_x) * cb%velmax * log(Rcoeff)
+        d0_y = -(npower+1)/(2.*thickness_pml_y) * cb%velmax * log(Rcoeff) 
+        d0_z = -(npower+1)/(2.*thickness_pml_z) * cb%velmax * log(Rcoeff)
 
         call alloc(alpha_x,[cb%ifx,cb%ilx]); call alloc(alpha_x_half,[cb%ifx,cb%ilx])
         call alloc(alpha_y,[cb%ify,cb%ily]); call alloc(alpha_y_half,[cb%ify,cb%ily])
@@ -263,8 +272,8 @@ use m_shot
             abscissa_in_pml = -(i-1)*m%dx
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_x
-                d_x(i)          = d0_x * abscissa_normalized**r_npower
-                cb%kappa_x(i)   = 1. + (r_kappa_max-1.)*abscissa_normalized**r_npower
+                d_x(i)          = d0_x * abscissa_normalized**npower
+                cb%kappa_x(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_x(i)      = alpha_max * (1. - abscissa_normalized)
             endif
 
@@ -272,8 +281,8 @@ use m_shot
             abscissa_in_pml = -(i-1)*m%dx + m%dx/2.
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_x
-                d_x_half(i)     = d0_x * abscissa_normalized**r_npower
-                cb%kappa_x_half(i) = 1. + (r_kappa_max-1.)*abscissa_normalized**r_npower
+                d_x_half(i)     = d0_x * abscissa_normalized**npower
+                cb%kappa_x_half(i) = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_x_half(i) = alpha_max * (1. - abscissa_normalized)
             endif
 
@@ -281,8 +290,8 @@ use m_shot
             abscissa_in_pml = (i-cb%mx)*m%dx
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_x
-                d_x(i)          = d0_x * abscissa_normalized**r_npower
-                cb%kappa_x(i)   = 1. + (r_kappa_max-1.)*abscissa_normalized**r_npower
+                d_x(i)          = d0_x * abscissa_normalized**npower
+                cb%kappa_x(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_x(i)      = alpha_max * (1.- abscissa_normalized)
             endif
 
@@ -290,8 +299,8 @@ use m_shot
             abscissa_in_pml = (i-cb%mx)*m%dx - m%dx/2
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_x
-                d_x_half(i)     = d0_x * abscissa_normalized**r_npower
-                cb%kappa_x_half(i) = 1. + (r_kappa_max-1.)*abscissa_normalized**r_npower
+                d_x_half(i)     = d0_x * abscissa_normalized**npower
+                cb%kappa_x_half(i) = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_x_half(i) = alpha_max * (1.- abscissa_normalized)
             endif
 
@@ -318,8 +327,8 @@ use m_shot
             abscissa_in_pml = -(i-1)*m%dy
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_y
-                d_y(i)          = d0_y * abscissa_normalized**r_npower
-                cb%kappa_y(i)   = 1. + (r_kappa_max-1.)*abscissa_normalized**r_npower
+                d_y(i)          = d0_y * abscissa_normalized**npower
+                cb%kappa_y(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_y(i)      = alpha_max * (1. - abscissa_normalized)
             endif
 
@@ -327,8 +336,8 @@ use m_shot
             abscissa_in_pml = -(i-1)*m%dy + m%dy/2.
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_y
-                d_y_half(i)     = d0_y * abscissa_normalized**r_npower
-                cb%kappa_y_half(i)   = 1. + (r_kappa_max-1.)*abscissa_normalized**r_npower
+                d_y_half(i)     = d0_y * abscissa_normalized**npower
+                cb%kappa_y_half(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_y_half(i) = alpha_max * (1. - abscissa_normalized)
             endif
 
@@ -336,8 +345,8 @@ use m_shot
             abscissa_in_pml = (i-cb%my)*m%dy
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_y
-                d_y(i)          = d0_y * abscissa_normalized**r_npower
-                cb%kappa_y(i)   = 1. + (r_kappa_max-1.)*abscissa_normalized**r_npower
+                d_y(i)          = d0_y * abscissa_normalized**npower
+                cb%kappa_y(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_y(i)      = alpha_max * (1.- abscissa_normalized)
             endif
 
@@ -345,8 +354,8 @@ use m_shot
             abscissa_in_pml = (i-cb%my)*m%dy - m%dy/2
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_y
-                d_y_half(i)     = d0_y * abscissa_normalized**r_npower
-                cb%kappa_y_half(i)   = 1. + (r_kappa_max-1.)*abscissa_normalized**r_npower
+                d_y_half(i)     = d0_y * abscissa_normalized**npower
+                cb%kappa_y_half(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_y_half(i) = alpha_max * (1.- abscissa_normalized)
             endif
 
@@ -372,8 +381,8 @@ use m_shot
             abscissa_in_pml = -(i-1)*m%dz
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_z
-                d_z(i)          = d0_z * abscissa_normalized**r_npower
-                cb%kappa_z(i)   = 1. + (r_kappa_max-1.)*abscissa_normalized**r_npower
+                d_z(i)          = d0_z * abscissa_normalized**npower
+                cb%kappa_z(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_z(i)      = alpha_max * (1. - abscissa_normalized)
             endif
 
@@ -381,8 +390,8 @@ use m_shot
             abscissa_in_pml = -(i-1)*m%dz + m%dz/2.
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_z
-                d_z_half(i)     = d0_z * abscissa_normalized**r_npower
-                cb%kappa_z_half(i)   = 1. + (r_kappa_max-1.)*abscissa_normalized**r_npower
+                d_z_half(i)     = d0_z * abscissa_normalized**npower
+                cb%kappa_z_half(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_z_half(i) = alpha_max * (1. - abscissa_normalized)
             endif
 
@@ -390,8 +399,8 @@ use m_shot
             abscissa_in_pml = (i-cb%mz)*m%dz
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_z
-                d_z(i)          = d0_z * abscissa_normalized**r_npower
-                cb%kappa_z(i)   = 1. + (r_kappa_max-1.)*abscissa_normalized**r_npower
+                d_z(i)          = d0_z * abscissa_normalized**npower
+                cb%kappa_z(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_z(i)      = alpha_max * (1.- abscissa_normalized)
             endif
 
@@ -399,8 +408,8 @@ use m_shot
             abscissa_in_pml = (i-cb%mz)*m%dz - m%dz/2
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_z
-                d_z_half(i)     = d0_z * abscissa_normalized**r_npower
-                cb%kappa_z_half(i)   = 1. + (r_kappa_max-1.)*abscissa_normalized**r_npower
+                d_z_half(i)     = d0_z * abscissa_normalized**npower
+                cb%kappa_z_half(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_z_half(i) = alpha_max * (1.- abscissa_normalized)
             endif
 

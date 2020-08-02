@@ -1,5 +1,5 @@
 module m_arrayop
-use m_sysio
+use m_setup
 
     integer,parameter :: max_array_size=2147483647  !=huge(integer(kind=4))
 

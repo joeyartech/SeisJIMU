@@ -1,6 +1,6 @@
 module m_model
 use m_mpienv
-use m_sysio
+use m_setup
 use m_arrayop
 
     type t_model
@@ -162,9 +162,9 @@ use m_arrayop
         endif
         endif
         
-        inquire(file=tmp4//'_topo', exist=alive)
+        inquire(file=tmp4//'%topo', exist=alive)
         if(alive) then
-            open(12,file=tmp4//'_topo',access='direct',recl=4*m%nx*m%ny,action='read',status='old')
+            open(12,file=tmp4//'%topo',access='direct',recl=4*m%nx*m%ny,action='read',status='old')
             read(12,rec=1) m%topo
             close(12)
             call hud('topo model is read.')
@@ -180,19 +180,18 @@ use m_arrayop
         !     close(12)
         ! endif
 
-            call alloc( m%vp_mask,  maxval(m%itopo),m%nx,m%ny ); m%vp_mask(:,:,:)  = m%vp(1:maxval(m%itopo),:,:)
+            call alloc( m%mask_vp,  maxval(m%itopo),m%nx,m%ny ); m%mask_vp(:,:,:)  = m%vp(1:maxval(m%itopo),:,:)
         if(size(m%vs)>1) then
-            call alloc( m%vs_mask,  maxval(m%itopo),m%nx,m%ny ); m%vs_mask(:,:,:)  = m%vs(1:maxval(m%itopo),:,:)
+            call alloc( m%mask_vs,  maxval(m%itopo),m%nx,m%ny ); m%mask_vs(:,:,:)  = m%vs(1:maxval(m%itopo),:,:)
         endif
-            call alloc( m%rho_mask, maxval(m%itopo),m%nx,m%ny ); m%rho_mask(:,:,:) = m%rho(1:maxval(m%itopo),:,:)
+            call alloc( m%mask_rho, maxval(m%itopo),m%nx,m%ny ); m%mask_rho(:,:,:) = m%rho(1:maxval(m%itopo),:,:)
         
         !freesurface
         m%if_freesurface=setup_get_logical('IF_FREESURFACE',default=.true.)
         
     end subroutine
     
-    subroutine model_realloc(m,cmodel)
-        class(t_model), intent(in) :: m
+    subroutine model_realloc(cmodel)
         character(*) :: cmodel
         
         select case (cmodel)

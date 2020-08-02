@@ -1,4 +1,5 @@
 module m_butterworth
+use m_global, only:r_pi
 
     contains
 
@@ -91,15 +92,16 @@ module m_butterworth
 !  !!
 ! !!*************** end self doc **********************************!!
 
-    subroutine butterworth(nt,dt,trace,&
+    subroutine butterworth(ntr,nt,dt,trace,&
         o_zerophase,o_locut,o_hicut,&
         o_fstoplo,o_fpasslo,o_fpasshi,o_fstophi,&
         o_astoplo,o_apasslo,o_apasshi,o_astophi,&
         o_npoleslo,o_npoleshi,&
         o_f3dblo,  o_f3dbhi)
 
+        integer ntr !number of traces
         integer nt  !number of time samples
-        real,dimension(nt) :: trace
+        real,dimension(ntr,nt) :: trace
         real dt     !sample spacing
         
         logical,optional :: o_zerophase !flag for zero phase filtering
@@ -262,38 +264,42 @@ module m_butterworth
 
         !low-cut (high pass) filter
         if (locut) then
-            call bfhighpass(npoleslo,f3dblo,nt,trace)
-            if (zerophase) then
-                do i=1,nt/2 !reverse trace in place
-                    tmp = trace(i)
-                    trace(i) = trace(nt-i)
-                    trace(nt-i) = tmp
-                enddo
-                call  bfhighpass(npoleslo,f3dblo,nt,trace)
-                do i=0,nt/2-1 !flip trace back
-                    tmp = trace(i)
-                    trace(i) = trace(nt-i)
-                    trace(nt-i) = tmp
-                enddo
-            endif
+            do itr=1,ntr
+                call bfhighpass(npoleslo,f3dblo,nt,trace(itr,:))
+                if (zerophase) then
+                    do i=1,nt/2 !reverse trace in place
+                        tmp = trace(itr,i)
+                        trace(itr,i) = trace(itr,nt-i)
+                        trace(itr,nt-i) = tmp
+                    enddo
+                    call  bfhighpass(npoleslo,f3dblo,nt,trace(itr,:))
+                    do i=0,nt/2-1 !flip trace back
+                        tmp = trace(itr,i)
+                        trace(itr,i) = trace(itr,nt-i)
+                        trace(itr,nt-i) = tmp
+                    enddo
+                endif
+            enddo
         endif
 
         !high-cut (low pass) filter
         if (hicut) then
-            call bflowpass(npoleshi,f3dbhi,nt,trace)
-            if (zerophase) then
-                do i=1,nt/2 !reverse trace
-                    tmp = trace(i)
-                    trace(i) = trace(nt-i)
-                    trace(nt-i) = tmp
-                enddo
-                call bflowpass(npoleshi,f3dbhi,nt,trace)
-                do i=1,nt/2 !flip trace back
-                    tmp = trace(i)
-                    trace(i) = trace(nt-i)
-                    trace(nt-i) = tmp
-                enddo
-            endif
+            do itr=1,ntr
+                call bflowpass(npoleshi,f3dbhi,nt,trace(itr,:))
+                if (zerophase) then
+                    do i=1,nt/2 !reverse trace
+                        tmp = trace(itr,i)
+                        trace(itr,i) = trace(itr,nt-i)
+                        trace(itr,nt-i) = tmp
+                    enddo
+                    call bflowpass(npoleshi,f3dbhi,nt,trace(itr,:))
+                    do i=1,nt/2 !flip trace back
+                        tmp = trace(itr,i)
+                        trace(itr,i) = trace(itr,nt-i)
+                        trace(itr,nt-i) = tmp
+                    enddo
+                endif
+            enddo
         endif
 
     end subroutine
@@ -402,31 +408,30 @@ module m_butterworth
 ! Author:  Dave Hale, Colorado School of Mines, 06/02/89
 ! ****************************************************************************!!
     subroutine bfdesign (fpass, apass, fstop, astop, npoles, f3db)
+    
+        !warp frequencies according to bilinear transform
+        wpass = 2.0*tan(r_pi*fpass)
+        wstop = 2.0*tan(r_pi*fstop)
 
-            PI=3.1415927
-            
-            !warp frequencies according to bilinear transform
-            wpass = 2.0*tan(PI*fpass)
-            wstop = 2.0*tan(PI*fstop)
+        !if lowpass filter, then
+        if (fstop>fpass) then
+                fnpoles = log((1.0/(apass*apass)-1.0)/(1.0/(astop*astop)-1.0)) &
+                        / log(wpass*wpass/wstop/wstop)
+                w3db = wpass/((1.0/(apass*apass)-1.0)**(0.5/fnpoles))
 
-            !if lowpass filter, then
-            if (fstop>fpass) then
-                    fnpoles = log((1.0/(apass*apass)-1.0)/(1.0/(astop*astop)-1.0)) &
-                            / log(wpass*wpass/wstop/wstop)
-                    w3db = wpass/((1.0/(apass*apass)-1.0)**(0.5/fnpoles))
+        !else, if highpass filter, then
+        else
+                fnpoles = log((1.0/(apass*apass)-1.0)/(1.0/(astop*astop)-1.0)) &
+                        / log(wstop*wstop/wpass/wpass)
+                w3db = wpass*((1.0/(apass*apass)-1.0)**(0.5/fnpoles))
+        endif
 
-            !else, if highpass filter, then
-            else
-                    fnpoles = log((1.0/(apass*apass)-1.0)/(1.0/(astop*astop)-1.0)) &
-                            / log(wstop*wstop/wpass/wpass)
-                    w3db = wpass*((1.0/(apass*apass)-1.0)**(0.5/fnpoles))
-            endif
+        !determine integer number of poles
+        npoles = 1+int(fnpoles)
 
-            !determine integer number of poles
-            npoles = 1+int(fnpoles)
-
-            !determine (unwarped) -3 db frequency
-            f3db = atan(0.5*w3db)/PI
+        !determine (unwarped) -3 db frequency
+        f3db = atan(0.5*w3db)/r_pi
+        
     end subroutine
 
 ! void
@@ -446,48 +451,46 @@ module m_butterworth
 ! Author:  Dave Hale, Colorado School of Mines, 06/02/89
 ! ****************************************************************************!!
     subroutine bfhighpass (npoles, f3db, n, trace)
-            real,dimension(n) :: trace,tmp
-
-            PI=3.1415927
-
-            tmp=trace
+        real,dimension(n) :: trace,tmp
+        
+        tmp=trace
+        
+        r = 2.0*tan(r_pi*abs(f3db))
+        if (mod(npoles,2)/=0) then
+            scale = r+2.0
+            a = 2.0/scale
+            b1 = (r-2.0)/scale
+            pj = 0.0
+            qjm1 = 0.0
             
-            r = 2.0*tan(PI*abs(f3db))
-            if (mod(npoles,2)/=0) then
-                    scale = r+2.0
-                    a = 2.0/scale
-                    b1 = (r-2.0)/scale
-                    pj = 0.0
-                    qjm1 = 0.0
-                    
-                    do j=1,n
-                            pjm1 = pj
-                            pj = tmp(j)
-                            trace(j) = a*(pj-pjm1)-b1*qjm1
-                            qjm1 = trace(j)
-                    enddo
-            endif
-
-            do jpair=0,npoles/2-1
-                    theta = PI*(2.*jpair+1.)/(2.*npoles)
-                    scale = 4.0+4.0*r*sin(theta)+r*r
-                    a = 4.0/scale
-                    b1 = (2.0*r*r-8.0)/scale
-                    b2 = (4.0-4.0*r*sin(theta)+r*r)/scale
-                    
-                    pjm1 = 0.
-                    pj = 0.
-                    qjm2 = 0.
-                    qjm1 = 0.
-                    do j=1,n
-                            pjm2 = pjm1
-                            pjm1 = pj
-                            pj = trace(j)
-                            trace(j) = a*(pj-2.*pjm1+pjm2)-b1*qjm1-b2*qjm2
-                            qjm2 = qjm1
-                            qjm1 = trace(j)
-                    enddo
+            do j=1,n
+                    pjm1 = pj
+                    pj = tmp(j)
+                    trace(j) = a*(pj-pjm1)-b1*qjm1
+                    qjm1 = trace(j)
             enddo
+        endif
+
+        do jpair=0,npoles/2-1
+            theta = r_pi*(2.*jpair+1.)/(2.*npoles)
+            scale = 4.0+4.0*r*sin(theta)+r*r
+            a = 4.0/scale
+            b1 = (2.0*r*r-8.0)/scale
+            b2 = (4.0-4.0*r*sin(theta)+r*r)/scale
+            
+            pjm1 = 0.
+            pj = 0.
+            qjm2 = 0.
+            qjm1 = 0.
+            do j=1,n
+                pjm2 = pjm1
+                pjm1 = pj
+                pj = trace(j)
+                trace(j) = a*(pj-2.*pjm1+pjm2)-b1*qjm1-b2*qjm2
+                qjm2 = qjm1
+                qjm1 = trace(j)
+            enddo
+        enddo
         
     end subroutine
 
@@ -508,50 +511,49 @@ module m_butterworth
 ! Author:  Dave Hale, Colorado School of Mines, 06/02/89
 ! ****************************************************************************!!
     subroutine bflowpass (npoles, f3db, n, trace)
-            real,dimension(n) :: trace,tmp
+        real,dimension(n) :: trace,tmp
+        
+        tmp=trace
+        
+        r = 2.0*tan(r_pi*abs(f3db))
+        if (mod(npoles,2)/=0) then
+            scale = r+2.0
+            a = r/scale
+            b1 = (r-2.0)/scale
+            pj = 0.0
+            qjm1 = 0.0
             
-            PI=3.1415927
-            
-            tmp=trace
-            
-            r = 2.0*tan(PI*abs(f3db))
-            if (mod(npoles,2)/=0) then
-                    scale = r+2.0
-                    a = r/scale
-                    b1 = (r-2.0)/scale
-                    pj = 0.0
-                    qjm1 = 0.0
-                    
-                    do j=1,n
-                            pjm1 = pj
-                            pj = tmp(j)
-                            trace(j) = a*(pj+pjm1)-b1*qjm1
-                            qjm1 = trace(j)
-                    enddo
+            do j=1,n
+                pjm1 = pj
+                pj = tmp(j)
+                trace(j) = a*(pj+pjm1)-b1*qjm1
+                qjm1 = trace(j)
+            enddo
         endif
         
         do jpair=0,npoles/2-1
-            theta = PI*(2.*jpair+1.)/(2.*npoles)
+            theta = r_pi*(2.*jpair+1.)/(2.*npoles)
             scale = 4.+4.*r*sin(theta)+r*r
             a = r*r/scale
             b1 = (2.*r*r-8.)/scale
             b2 = (4.-4.*r*sin(theta)+r*r)/scale
-                    pjm1 = 0.
-                    pj = 0.
-                    qjm2 = 0.
-                    qjm1 = 0.
-                    do j=1,n
-                            pjm2 = pjm1
-                            pjm1 = pj
-                            pj = trace(j)
-                            trace(j) = a*(pj+2.*pjm1+pjm2)-b1*qjm1-b2*qjm2
-                            qjm2 = qjm1
-                            qjm1 = trace(j)
-                    enddo
-                    
+            
+            pjm1 = 0.
+            pj = 0.
+            qjm2 = 0.
+            qjm1 = 0.
+            
+            do j=1,n
+                pjm2 = pjm1
+                pjm1 = pj
+                pj = trace(j)
+                trace(j) = a*(pj+2.*pjm1+pjm2)-b1*qjm1-b2*qjm2
+                qjm2 = qjm1
+                qjm1 = trace(j)
+            enddo
+            
         enddo
         
     end subroutine
-
 
 end

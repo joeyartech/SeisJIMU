@@ -1,14 +1,22 @@
 module m_shot
-use m_sysio
 use m_shotlist
-use m_gen_acquisition, only: acqui
+use m_gen_acqui
 use m_suformat
-use m_model, only: m
 use m_hicks
 use m_butterworth
 
-    private t_receiver, t_source, t_shot, file_wavelet
+    private t_source, t_receiver, t_shot, file_wavelet
     
+    type t_source
+        real    :: x,y,z
+        integer :: ix,iy,iz
+        integer :: ifz,ilz,ifx,ilx,ify,ily
+        character(4) :: comp
+        real,dimension(:,:,:),allocatable :: interp_coeff
+        integer :: nt
+        real :: dt, fpeak
+    end type
+
     type t_receiver
         real    :: x,y,z, aoffset
         integer :: ix,iy,iz
@@ -19,55 +27,41 @@ use m_butterworth
         real :: dt
     end type
     
-    type t_source
-        real    :: x,y,z
-        integer :: ix,iy,iz
-        integer :: ifz,ilz,ifx,ilx,ify,ily
-        character(4) :: comp
-        real,dimension(:,:,:),allocatable :: interp_coeff
-        real,dimension(:),allocatable :: wavelet
-        integer :: nt
-        real :: dt, fpeak
-        
-    end type
-    
     type t_shot
         integer :: index
         character(4) :: sindex
         type(t_source) :: src
-        integer :: nrcv
-        type(t_receiver),dimension(:),allocatable :: rcv  !should be in size of nrcv
+        type(t_receiver),dimension(:),allocatable :: rcv
+        integer :: nrcv   !=size(rcv)
 
-        sequence
+        real,dimension(:),allocatable :: wavelet
+        character(:),allocatable :: file_wavelet
+
         real,dimension(:,:),allocatable :: dobs !observed seismogram
         real,dimension(:,:),allocatable :: dsyn !synthetic seismogram
         real,dimension(:,:),allocatable :: dres !residual seismogram
         !real,dimension(:,:),allocatable :: dadj !adjoint seismogram
         
-        character(:),allocatable :: file_wavelet
-
     end type
     
     type(t_shot) :: shot
 
-    if_staggered_grid=.false.
+    logical :: if_staggered_grid=.false.
     
     contains
     
-    subroutine shot_init(k,from)
-        integer k
+    subroutine shot_init(ishot,from)
+        integer ishot
         character(*) :: from
         
         character(:),allocatable :: scale_wavelet
 
-        shot%index=shotlist(k)
-        shot%sindex=str2num(shot%index,'(i0.4)')
+        shot%index=shotlist(ishot)
+        shot%sindex=num2str(shot%index,'(i0.4)')
         
         !read geometry, nt and dt
-        if(from=='acquisition') then
-            call from_acquisition
-            nt=setup_get_int('TIME_STEP','NT')
-            dt=setup_get_real('TIME_INTERVAL','DT')
+        if(from=='gen_acqui') then
+            call from_gen_acqui
         elseif(from=='data') then
             call from_data
         endif
@@ -78,7 +72,7 @@ use m_butterworth
         shot%src%fpeak=setup_get_real('PEAK_FREQUENCY','FPEAK')
         
         !read wavelet
-        file_wavelet=setup_get_file('FILE_WAVELET')
+        shot%file_wavelet=setup_get_file('FILE_WAVELET')
         if(file_wavelet=='') then
             if(setup_get_char('WAVELET_TYPE',default='sinexp')=='sinexp') then
                 call hud('Use filtered sinexp wavelet')
@@ -232,33 +226,31 @@ use m_butterworth
 
     !======= private procedures =======
 
-    subroutine from_acquisition
+    subroutine from_gen_acqui
+        character(4),dimension(gen_acqui_ntr)   :: rc !rcv comp
+        real,dimension(gen_acqui_ntr)           :: rz,rx,ry !rcv pos
+
+
+        call gen_acqui_shotgather(shot%index, &&
+                                shot%src%comp,shot%src%z,shot%src%x,shot%src%y, &&
+                                rc,rz,rx,ry, &&
+                                shot%nt, shot%dt)
         
-        !source side
-        shot%src%x=acqui%src(shot%index)%x
-        shot%src%y=acqui%src(shot%index)%y
-        shot%src%z=acqui%src(shot%index)%z
-        shot%src%comp=acqui%scomp
-        shot%src%nt=acqui%nt
-        shot%src%dt=acqui%dt
-        
-        !receiver side
-        shot%nrcv=acqui%src(shot%index)%nrcv
+        shot%nrcv=gen_acqui_ntr
         if(allocated(shot%rcv))deallocate(shot%rcv)
-        allocate(shot%rcv(shot%nrcv))
-        do ir=1,shot%nrcv
-            shot%rcv(ir)%x=acqui%src(shot%index)%rcv(ir)%x
-            shot%rcv(ir)%y=acqui%src(shot%index)%rcv(ir)%y
-            shot%rcv(ir)%z=acqui%src(shot%index)%rcv(ir)%z
-!            shot%rcv(ir)%aoffset=sqrt( (shot%src%x-shot%rcv(ir)%x)**2 &
-!                                      +(shot%src%y-shot%rcv(ir)%y)**2 &
-!                                      +(shot%src%z-shot%rcv(ir)%z)**2 )
-            shot%rcv(ir)%aoffset=sqrt( (shot%src%x-shot%rcv(ir)%x)**2 &
+        allocate(shot%rcv(gen_acqui_ntr))
+        
+        do i=1,shot%nrcv
+            shot%rcv(i)%comp=rc(i)
+            shot%rcv(i)%z=acqui%src(shot%index)%rcv(ir)%z
+            shot%rcv(i)%x=acqui%src(shot%index)%rcv(ir)%x
+            shot%rcv(i)%y=acqui%src(shot%index)%rcv(ir)%y
+            shot%rcv(i)%aoffset=sqrt( (shot%src%x-shot%rcv(ir)%x)**2 &
                                       +(shot%src%y-shot%rcv(ir)%y)**2 )
-            shot%rcv(ir)%icomp=acqui%ircomp
-            shot%rcv(ir)%nt=acqui%nt
-            shot%rcv(ir)%dt=acqui%dt
         enddo
+
+        shot%rcv(:)%nt=shot%nt
+        shot%rcv(:)%dt=shot%dt
         
     end subroutine
     
@@ -363,7 +355,7 @@ use m_butterworth
         enddo
         
         !butterworth filtering to mitigate spectrum high-end tail
-        call butterworth(shot%src%nt, shot%src%dt, shot%src_wavelet,&
+        call butterworth(1,shot%src%nt, shot%src%dt, shot%src_wavelet,&
         o_zerophase=.false.,o_locut=.false.,&
         o_fpasshi=fpeak,o_fstophi=2.*fpeak,&
                         o_astophi=0.1)

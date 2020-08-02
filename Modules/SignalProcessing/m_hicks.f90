@@ -13,8 +13,8 @@
 module m_hicks
 use m_arrayop
 
-    private b_monopole,err_monopole,b_dipole,err_dipole
-    private r,b,epsilon
+    private 
+    public :: hicks_init, hicks_init_position, hicks_build_coeff, hicks_get_position
     
     !Optimum Kaiser windowing parameter b for monopole point source
     !half window width r=1~10, kmax=pi/2 or 2pi/3
@@ -48,43 +48,42 @@ use m_arrayop
     !threshold for small number
     real,parameter :: epsilon=1e-3
     
-    !variable carrier
-    type t_hicks
-        !intent(in)
-        real :: x,y,z  !source point location
-        real :: dx=1.,dy=1.,dz=1.
-        logical :: is_cubic=.true.,if_freesurface=.true.
-        !intent(out)
-        !range of interpolation points
-        integer :: ifx,ify,ifz
-        integer :: ix,iy,iz
-        integer :: ilx,ily,ilz
-    end type
-    
-    type(t_hicks) :: h
-    
+    !intent(in)
+    real :: x,y,z  !source point location
+    real :: dx,dy,dz
+    logical :: is_cubic,if_freesurface
+    !intent(out)
+    !range of interpolation points
+    integer :: ifx,ify,ifz
+    integer :: ix,iy,iz
+    integer :: ilx,ily,ilz
+
     contains
 
-    !========= module procedures =========
+    !========= public procedures =========
 
     subroutine hicks_init(o_dxyz,o_is_cubic,o_if_freesurface)
         real,dimension(3),optional :: o_dxyz
-        logical :: o_is_cubic, o_if_freesurface
+        logical,optional :: o_is_cubic, o_if_freesurface
+
+        dx=1.; dy=1.; dz=1.
+        is_cubic=.true.
+        if_freesurface=.true.
 
         if(present(o_dxyz)) then
-            h%dx=o_dxyz(1)
-            h%dy=o_dxyz(2)
-            h%dz=o_dxyz(3)
+            dx=o_dxyz(1)
+            dy=o_dxyz(2)
+            dz=o_dxyz(3)
         endif
-        if(present(o_is_cubic))       h%is_cubic=o_is_cubic
-        if(present(o_if_freesurface)) h%if_freesurface=o_if_freesurface
+        if(present(o_is_cubic))       is_cubic=o_is_cubic
+        if(present(o_if_freesurface)) if_freesurface=o_if_freesurface
     end subroutine
 
     subroutine hicks_init_position(xyz)
         real,dimension(3) :: xyz
-        h%x=xyz(1)
-        h%y=xyz(2)
-        h%z=xyz(3)
+        x=xyz(1)
+        y=xyz(2)
+        z=xyz(3)
     end subroutine
 
     subroutine hicks_build_coeff(fold_type,interp_coeff)
@@ -98,18 +97,18 @@ use m_arrayop
         z_interp_coeff=0.
         
         !x axis
-        call build_1d_hicks(h%x,h%dx,h%ifx,h%ix,h%ilx,x_interp_coeff)
+        call build_1d_hicks(x,dx,ifx,ix,ilx,x_interp_coeff)
         !y axis
-        call build_1d_hicks(h%y,h%dy,h%ify,h%iy,h%ily,y_interp_coeff)
+        call build_1d_hicks(y,dy,ify,iy,ily,y_interp_coeff)
         !z axis
-        call build_1d_hicks(h%z,h%dz,h%ifz,h%iz,h%ilz,z_interp_coeff)
+        call build_1d_hicks(z,dz,ifz,iz,ilz,z_interp_coeff)
         
         !For free surface condition,
         !fold z_interp_coeff wrt inquiry point, which is
         !* freesurface point (at q(1)) in pressure case, or
         !* grid point that has global index=1 in velocity case (as freesurface is midway between vz(1) and vz(2))
-        if(h%if_freesurface .and. h%ifz<1) then
-            n=1-h%ifz   !compute the number of layers above the inquiry point
+        if(if_freesurface .and. ifz<1) then
+            n=1-ifz   !compute the number of layers above the inquiry point
             iquiry=-r+n !compute the projected index of the inquiry point
             
             if(fold_type=='antisymm') then
@@ -132,7 +131,7 @@ use m_arrayop
         endif
         
         !tensor product to generate 3D tensor
-        if(h%is_cubic) then
+        if(is_cubic) then
             call alloc(interp_coeff,[-r,r],[-r,r],[-r,r])
             do k=-r,r
             do j=-r,r
@@ -156,11 +155,13 @@ use m_arrayop
         real,dimension(3),intent(out) :: ifxyz, ixyz, ilxyz
 
         !index starts from 1 outside scope of build_1d_hicks
-        ifxyz(1)=h%ifx+1; ixyz(1)=h%ix+1; ilxyz(1)=h%ilx+1
-        if(.not.h%is_cubic) then
+        ifxyz(1)=ifx+1; ixyz(1)=ix+1; ilxyz(1)=ilx+1
+        if(.not.is_cubic) then
             ifxyz(2)=1; ixyz(2)=1; ilxyz(2)=1
         endif
-        ifxyz(3)=h%ifz+1; ixyz(3)=h%iz+1; ilxyz(3)=h%ilz+1
+        ifxyz(3)=ifz+1; ixyz(3)=iz+1; ilxyz(3)=ilz+1
+
+    end subroutine
 
     !========= private procedures =========
 
@@ -195,9 +196,9 @@ use m_arrayop
             xx=[(i,i=-r,r)]+alpha
             x_interp_coeff=W(xx)*sinc(xx)
         endif
+
     end subroutine
-    
-    
+
     
     !!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!! elemental functions !!!
@@ -213,39 +214,5 @@ use m_arrayop
             W=bessi0(b*sqrt(1.-y*y)) / bessi0(b)
          endif
     end function
-
-    !Zero-order Modified Bessel function of the first kind
-    !http://jean-pierre.moreau.pagesperso-orange.fr/Fortran/tbessi_f90.txt
-
-    elemental real function bessi0(x)
-        real, intent(in) :: x
-
-        real ax
-        double precision :: y
-        
-        double precision,parameter :: p1=1.0d0,p2=3.5156229d0,p3=3.0899424d0,p4=1.2067492d0,p5=0.2659732d0,p6=0.360768d-1,p7=0.45813d-2
-        double precision,parameter :: q1=0.39894228d0,q2=0.1328592d-1,q3=0.225319d-2,q4=-0.157565d-2,q5=0.916281d-2,q6=-0.2057706d-1,q7=0.2635537d-1,q8=-0.1647633d-1,q9=0.392377d-2
-
-        if (abs(x)<3.75) then
-            y=x*x/14.0625  !=(x/3.75)^2
-            bessi0=real( p1+y*(p2+y*(p3+y*(p4+y*(p5+y*(p6+y*p7))))) )
-        else
-            ax=abs(x)
-            y=3.75/ax
-            bessi0=real( (exp(ax)/sqrt(ax))*(q1+y*(q2+y*(q3+y*(q4+y*(q5+y*(q6+y*(q7+y*(q8+y*q9)))))))) )
-        endif
-    end function
-
-
-    elemental real function sinc(x)
-        real,intent(in) :: x
-        
-!         if (abs(x) < epsilon) then
-!             sinc = 1.
-!         else
-            sinc = sin(r_pi*x) / (r_pi*x)
-!         end if
-    end function
-
 
 end

@@ -1,5 +1,5 @@
 module m_suformat
-use m_sysio
+use m_setup
 
     private
     public :: t_suformat, init_suheader, read_sudata, write_sudata

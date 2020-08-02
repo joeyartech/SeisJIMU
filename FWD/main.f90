@@ -3,7 +3,7 @@
 program main
 use m_model
 use m_computebox
-use m_gen_acquisition
+use m_gen_acqui
 use m_shotlist
 use m_shot
 use m_propagator
@@ -23,10 +23,10 @@ use m_field
         stop
     endif
 
-    !estimate required memory
-    call model_estim_RAM
-    call computebox_estim_RAM
-    call field_estim_RAM
+    ! !estimate required memory
+    ! call model_estim_RAM
+    ! call computebox_estim_RAM
+    ! call field_estim_RAM
 
     !read initial model
     call model_read
@@ -34,19 +34,19 @@ use m_field
     !print FD scheme and field info
     call field_print_info
 
-    !generate acquisition and source wavelet
-    call acquisition_init
+    !user-defined acquisition
+    call gen_acqui_init
     
     !assign shots to processors
-    call build_shotlist(acqui%nsrc)
+    call shotlist_build(gen_acqui_nshot)
 
     call hud('      START LOOP OVER SHOTS          ')
 
-    do i=1,nshot_per_processor
+    do ishot=1,shotlist_nshot_per_processor
         
-        call shot_init(i,'setup')
+        call shot_init(ishot,'gen_acqui')
         
-        call hud('Modeling shot# '//shot%cindex)
+        call hud('Modeling shot# '//shot%sindex)
         
         !build computebox and its cpml
         call computebox_build
@@ -63,14 +63,14 @@ use m_field
         !*******************************
         
         !write synthetic data
-        open(12,file='synth_data_'//shot%cindex,access='stream')
-        write(12) dsyn
+        open(12,file='synth_data_'//shot%sindex,access='stream')
+        write(12) shot%dsyn
         close(12)
     enddo
     
     call hud('        END LOOP OVER SHOTS        ')
     
-    call mpiworld%finalize
+    call mpiworld_finalize
     
 end
 
