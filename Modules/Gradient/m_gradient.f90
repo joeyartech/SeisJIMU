@@ -87,6 +87,10 @@ endif
             write(12) dsyn
             close(12)
             
+open(12,file='pure_residue_'//shot%cindex,access='stream')
+write(12) dobs-dsyn
+close(12)
+            
             !fobjective and data residual
             call alloc(dres,shot%rcv(1)%nt,shot%nrcv)
             call objectivefunc_data_norm_residual
@@ -161,13 +165,25 @@ endif
     end subroutine
     
     subroutine gradient_matchfilter_data
-    
+
+character(:),allocatable :: temp
+temp=get_setup_char('SRCESTIM_IOFF')
+if(len(temp)==0) then
+    ioff1=1; ioff2=shot%nrcv
+else
+    read(temp,*) ioff1, ioff2
+endif
+noff=ioff2-ioff1+1
+if(mpiworld%is_master) print*,'ioff1 ioff2 noff = ', ioff1, ioff2, noff
+
         if(update_wavelet=='stack') then
             !average wavelet across all processors
             !note: if more shots than processors, non-assigned shots will not contribute to this averaging
-            call matchfilter_estimate(shot%src%nt,shot%nrcv,dsyn,dobs,shot%index,if_stack=.true.)
+!            call matchfilter_estimate(shot%src%nt,shot%nrcv,dsyn,dobs,shot%index,if_stack=.true.)
+call matchfilter_estimate(shot%src%nt,noff,dsyn(:,ioff1:ioff2),dobs(:,ioff1:ioff2),shot%index,if_stack=.true.)
         else
-            call matchfilter_estimate(shot%src%nt,shot%nrcv,dsyn,dobs,shot%index,if_stack=.false.)
+!            call matchfilter_estimate(shot%src%nt,shot%nrcv,dsyn,dobs,shot%index,if_stack=.false.)
+call matchfilter_estimate(shot%src%nt,noff,dsyn(:,ioff1:ioff2),dobs(:,ioff1:ioff2),shot%index,if_stack=.false.)
         endif
         
         call matchfilter_apply_to_wavelet(shot%src%nt,shot%src%wavelet)

@@ -87,6 +87,9 @@ use m_hicks
                 call hud('Use Ricker wavelet')
                 shot%src%wavelet=gen_wavelet_ricker(shot%src%nt,shot%src%dt,shot%src%fpeak)
             endif
+open(12,file='source_wavelet',access='direct',recl=4*shot%src%nt)
+write(12,rec=1)shot%src%wavelet
+close(12)
         else !wavelet file exists
             call alloc(shot%src%wavelet,shot%src%nt)
             open(11,file=file_wavelet,access='direct',recl=4*shot%src%nt)
@@ -242,6 +245,9 @@ use m_hicks
             shot%rcv(ir)%z=-sudata(ir)%hdr%gelev
             
             select case (sudata(ir)%hdr%trid)
+                case (2:3) !bad trace
+                shot%rcv(ir)%icomp=2
+                
                 case (11) !pressure
                 shot%rcv(ir)%icomp=1
                 case (12) !vertical component

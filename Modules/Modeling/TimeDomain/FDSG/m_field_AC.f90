@@ -78,10 +78,10 @@ use, intrinsic :: ieee_arithmetic
     
     subroutine check_discretization
         !grid dispersion condition
-        if (5.*m%cell_diagonal > cb%velmin/shot%src%fpeak/2.) then  !FDTDo4 rule
-            write(*,*) 'WARNING: Shot# '//shot%cindex//' can have grid dispersion!'
-            write(*,*) 'Shot# '//shot%cindex//' 5*dx, velmin, fpeak:',5.*m%cell_diagonal, cb%velmin,shot%src%fpeak
-        endif
+!         if (5.*m%cell_diagonal > cb%velmin/shot%src%fpeak/2.) then  !FDTDo4 rule
+!             write(*,*) 'WARNING: Shot# '//shot%cindex//' can have grid dispersion!'
+!             write(*,*) 'Shot# '//shot%cindex//' 5*dx, velmin, fpeak:',5.*m%cell_diagonal, cb%velmin,shot%src%fpeak
+!         endif
         
         !CFL condition
         cfl = cb%velmax*shot%src%dt*m%cell_inv_diagonal*sum(abs(fdcoeff_o4))! ~0.494 (3D); ~0.606 (2D)
