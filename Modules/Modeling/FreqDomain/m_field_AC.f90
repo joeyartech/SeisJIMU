@@ -56,11 +56,14 @@ use m_model, only:m
     include 'cmumps_struc.h'
     type(cmumps_struc) :: mumps
 
-    logical :: if_firstcall_mumps=.true.
+    logical :: if_freesurf=.true.
 
     !extended model
     real,dimension(:,:),allocatable :: buo !buoyancy = 1/rho
     complex,dimension(:,:),allocatable :: kpa !complex bulk modulus
+
+    !data
+    complex,dimension(:),allocatable :: dobs, dsyn, dres
     
     contains
 
@@ -73,9 +76,8 @@ use m_model, only:m
         mumps%SYM =  0 ! Unsymmetric matrix
         mumps%PAR =  1 ! Host working
         mumps%JOB = -1 ! Initilization of MUMPS
-
         call cmumps(mumps)
-        
+                
         if(mpiworld%is_master) then
             mumps%icntl(20)  =  0     !dense rhs
             mumps%icntl(21)  =  0     !0->centralized solution 
@@ -84,8 +86,6 @@ use m_model, only:m
             mumps%icntl(23)  =  get_setup_int('icntl_23',default=760) !memory (MB) per processor, introduced since MUMPS v4.9.X
             mumps%keep(84)   =  get_setup_int('keep_84',default=16)   !blocking factor for multiple RHS
         end if
-
-        if_firstcall_mumps = .false.
 
     end subroutine
 
@@ -136,79 +136,73 @@ use m_model, only:m
 
     end subroutine
 
-    subroutine field_matrix
+    subroutine field_matrix_factorize
+        logical,save :: if_analyze=.true.
 
         if (mpiworld%is_master) then
 
             !allocate mumps table
             !estimate maximum size of matrix
-            n=9*cb%nz*cb%nx
+            mumps%N=cb%n
+            n=9*mumps%N
 
             call alloc(mumps%A,n)
             call alloc(mumps%IRN,n)
             call alloc(mumps%JCN,n)
 
             !build matrix A
-            call build_matrix(mumps%A,mumps%IRN,mumps%JCN,n)
+            call build_matrix(mumps%A,mumps%IRN,mumps%JCN,n,mumps%Nz)
 
-        endif
-
-        !LU decomposition
-        if (mpiworld%is_master) then 
-            mumps%n = cb%nz*cb%nx
-            mumps%nz = nnz     
         end if
 
-        if (if_firstcall_mumps==.false.) then
-            call hud('MATRIX ANALYSIS')
-            mumps%job = 1
+        !matrix analysis only needs to be done once
+        if (if_analyze) then
+            mumps%JOB = 1
             call cmumps(mumps)
 
-            if_firstcall_mumps = .true.
-
+            if_analyze=.false.
         end if
 
-        call hud('MATRIX FACTORIZATION')
-        mumps%job = 2
+        !matrix factorization
+        mumps%JOB = 2
         call cmumps(mumps)
   
     end subroutine
 
 
 
-    subroutine field_solve(rhs)
-        !fill RHS
-        call cpu_time(t1)
-        
+    subroutine field_RHS_substitute(rhs)
+        !fill RHS        
         if (mpiworld%is_master) then
-            allocate(mumps%rhs(cb%n1e*cb%n2e*acqui%nsrc))
+            call alloc(mumps%RHS,cb%n*acqui%nsrc)
 
             if(rhs=='source') then
                 if(if_hicks) then
-                    call fill_rhs_source_hicks(pbdir,acqui%nsrc,pbdir%id%rhs)
+                    call fill_rhs_source_hicks(mumps%RHS,acqui%nsrc)
                 else
-                    call fill_rhs_source(mumps%rhs,cb%n1e,cb%n2e,cb%npml,m%h,acqui%nsrc,acqui%coord_src)
+                    call fill_rhs_source(mumps%RHS,acqui%nsrc,acqui%coord_src)
                 endif
 
             elseif(rhs=='receiver') then
                 if(if_hicks) then
-                    call fill_rhs_receiver_hicks(pbdir,acqui%nsrc,acqui%ntrace,acqui%nrecmax,&
+                    call fill_rhs_receiver_hicks(dres,mumps%RHS,&
+                        acqui%nsrc,acqui%ntrace,acqui%nrecmax,&
                         acqui%nbr_rec,acqui%associated_rec,inv%residual,mumps%rhs)
                 else
-                    call fill_rhs_receiver(mumps%rhs,cb%n1e,cb%n2e,cb%npml,&
-                        m%h,acqui%nsrc,acqui%nrec_tot,acqui%ntrace,acqui%nrecmax,&
-                        acqui%coord_rec,acqui%nbr_rec,acqui%associated_rec,inv%residual)
+                    call fill_rhs_receiver(dres,mumps%RHS,&
+                        acqui%nsrc,acqui%nrec_tot,acqui%ntrace,acqui%nrecmax,&
+                        acqui%coord_rec,acqui%nbr_rec,acqui%associated_rec)
                 endif
 
             endif
 
-            mumps%nrhs = acqui%nsrc
-            mumps%lrhs = mumps%n
+            mumps%NRHS = acqui%nsrc
+            mumps%LRHS = mumps%N
 
         endif
         
-        call cpu_time(t2)
-        if(mpiworld%is_master) write(*,*) '1st part solve acqui :',t2-t1, ' s'
+        ! call cpu_time(t2)
+        ! if(mpiworld%is_master) write(*,*) '1st part solve acqui :',t2-t1, ' s'
 
         if(rhs=='source') then ! src sources -> solve Ax=b
             mumps%icntl(9) = 1
@@ -217,25 +211,25 @@ use m_model, only:m
         end if
 
         !solve 
-        mumps%job = 3
-        
-        if(mpiworld%is_master) call cpu_time(t1)
+        mumps%JOB = 3
+        !if(mpiworld%is_master) call cpu_time(t1)
         call cmumps(mumps)
-        if(mpiworld%is_master) call cpu_time(t2)
+        !if(mpiworld%is_master) call cpu_time(t2)
 
-        if(mpiworld%is_master) then
-            write(*,*) 'time for mumps solution :',t2-t1, ' s' 
-        endif
+        ! if(mpiworld%is_master) then
+        !     write(*,*) 'time for mumps solution :',t2-t1, ' s' 
+        ! endif
 
     end subroutine
 
 
-    subroutine field_write
-        complex,dimension(:),allocatable ::data_cal
+    subroutine field_write(sfreq)
+        character(6) :: sfreq
+
         complex :: data_cal_k
 
         if (mpiworld%is_master) then
-            allocate(dcal(acqui%ntrace)); dcal(:)=0.
+            call alloc(dcal,acqui%ntrace)
             k=1
 
             do isrc = 1, acqui%nsrc
@@ -257,7 +251,7 @@ use m_model, only:m
 
                 else
                     call hicks_extraction(pbdir,acqui,isrc,irec_true,dcal_k)
-                    dcal(k)=data_cal_k
+                    dcal(k)=dcal_k
                 endif
 
                 k=k+1
@@ -265,15 +259,14 @@ use m_model, only:m
             end do
             end do
 
-            open(20,file='data_modeling',access='direct',recl=8*acqui%ntrace)
-            write(20,rec=ifreq) dcal(:)
+            open(20,file='synth_data_'//sfreq,access='direct',recl=8*acqui%ntrace)
+            write(20,rec=1) dcal(:)
             close(20)
             write(*,*) 'data modeling writing ok'
-              
-            open(20,file='wavefield',access='direct',recl=4*pbdir%n1e*pbdir%n2e)
-            write(20,rec=ifreq) real(mumps%rhs(1:cb%n1e*cb%n2e))
+            
+            open(20,file='wavefield',access='direct',recl=4*cb%n)
+            write(20,rec=1) real(mumps%RHS(1:cb%n))
             close(20)
-
             write(*,*) 'wavefield modeling writing ok'
 
         end if
@@ -281,9 +274,10 @@ use m_model, only:m
     end subroutine
 
 
-    subroutine build_matrix(A,IRN,ICN,n)
+    subroutine build_matrix(A,IRN,ICN,n,m)
         complex,dimension(n) :: A
         integer,dimension(n) :: IRN, ICN
+        integer m
 
         real,parameter :: damp=0.
 
@@ -297,7 +291,6 @@ use m_model, only:m
 
         complex :: dz0, dx0, dzp, dzm, dxp, dxm
 
-
         w1_p2 = w1/h2/h2
         w2_p2 = w2/h2/h2
         quarter_w1_p2 = 0.25*w1_p2
@@ -310,7 +303,7 @@ use m_model, only:m
         ICN=0.
         A=cmplx(0.,0.)
 
-        nnz=0
+        m=0
         jr=0
 
 
@@ -342,11 +335,11 @@ use m_model, only:m
             jr=(ix-1)*cb%nz+iz
             jc=jr
 
-            nnz=nnz+1
-            irn(nnz) = jr
-            icn(nnz) = jc
+            m=m+1
+            irn(m) = jr
+            icn(m) = jc
             
-            A(nnz) = wm1*omega2/kpa(iz,ix) &
+            A(m) = wm1*omega2/kpa(iz,ix) &
                     +quarter_w1_p2*( &
                         -dx0*ax*( bmp*dxp +bpm*dxm +bpp*dxp +bmm*dxm)  &
                         +dx0*bx*( bmp*dzm +bpm*dzp -bpp*dzp -bmm*dzm)  &
@@ -356,18 +349,18 @@ use m_model, only:m
                         -dx0*ax*( b0p*dxp +b0m*dxm) &
                         -dz0*bz*( bp0*dzp +bm0*dzm))
 
-            A(nnz)=A(nnz)+damp*4.*A(nnz)
+            A(m)=A(m)+damp*4.*A(m)
 
             !Node  0+1
             jc=0
             if (ix<cb%nx) then
                 jc=(ix-1+1)*cb%nz+iz
                 
-                nnz=nnz+1
-                irn(nnz)=jr
-                icn(nnz)=jc
+                m=m+1
+                irn(m)=jr
+                icn(m)=jc
                 
-                A(nnz)= quarter_wm2*omega2/kpa(iz,ix+1) &
+                A(m)= quarter_wm2*omega2/kpa(iz,ix+1) &
                     +quarter_w1_p2*( &
                          dx0*ax*( bmp*dxp +bpp*dxp)   &
                         +dx0*bx*( bmp*dzm -bpp*dzp)   &
@@ -377,18 +370,18 @@ use m_model, only:m
                               dx0*ax* b0p*dxp &
                         +0.25*dz0*az*(bp0*dx  -bm0*dx) )
 
-                A(nnz)=A(nnz)-damp*A(nnz)
+                A(m)=A(m)-damp*A(m)
             end if
            
             !Node  0-1
             if (ix>1) then
                 jc=(ix-1-1)*cb%nz+iz
 
-                nnz=nnz+1
-                irn(nnz)=jr
-                icn(nnz)=jc
+                m=m+1
+                irn(m)=jr
+                icn(m)=jc
 
-                A(nnz)= quarter_wm2*omega2/kpa(iz,ix-1) &
+                A(m)= quarter_wm2*omega2/kpa(iz,ix-1) &
                     +quarter_w1_p2*( &
                          dx0*ax*( bpm*dxm +bmm*dxm)  &
                         +dx0*bx*( bpm*dzp -bmm*dzm)  &
@@ -398,18 +391,18 @@ use m_model, only:m
                               dx0*ax*  b0m*dxm &
                         +0.25*dz0*az*(-bp0*dx0 +bm0*dx0) )
 
-                A(nnz)=A(nnz)-damp*A(nnz)
+                A(m)=A(m)-damp*A(m)
             end if
 
             !Node -1 0
             if (iz > 1) then
                 jc=(ix-1)*cb%nz+iz-1
 
-                nnz=nnz+1
-                irn(nnz)=jr
-                icn(nnz)=jc
+                m=m+1
+                irn(m)=jr
+                icn(m)=jc
 
-                A(nnz)= quarter_wm2*omega2/kpa(iz-1,ix) &
+                A(m)= quarter_wm2*omega2/kpa(iz-1,ix) &
                     +quarter_w1_p2*( &
                          dx0*ax*(-bmp*dxp -bmm*dxm)  &
                         +dx0*bx*(-bmp*dzm +bmm*dzm)  &
@@ -419,18 +412,18 @@ use m_model, only:m
                               dz0*bz*  bm0*dzm &
                         +0.25*dx0*bx*(-b0p*dz0 +b0m*dz0) )
 
-                A(nnz)=A(nnz)-damp*A(nnz)
+                A(m)=A(m)-damp*A(m)
             end if
 
             !Node +1 0
             if (iz < cb%nz) then
                 jc=(ix-1)*cb%nz+iz+1
 
-                nnz=nnz+1
-                irn(nnz)=jr
-                icn(nnz)=jc
+                m=m+1
+                irn(m)=jr
+                icn(m)=jc
 
-                A(nnz)= quarter_wm2*omega2/kpa(iz+1,ix) &
+                A(m)= quarter_wm2*omega2/kpa(iz+1,ix) &
                     +quarter_w1_p2*( &
                          dx0*ax*(-bpm*dxm -bpp*dxp)  &
                         +dx0*bx*(-bpm*dzp +bpp*dzp)  &
@@ -440,18 +433,18 @@ use m_model, only:m
                               dz0*bz*  bp0*dzp & 
                         +0.25*dx0*bx*(-b0m*dz0 +b0p*dz0) )
 
-                A(nnz)=A(nnz)-damp*A(nnz)
+                A(m)=A(m)-damp*A(m)
             end if
 
             !Node -1+1
             if (iz > 1 .and. ix < cb%nx) then
                 jc=(ix-1+1)*cb%nz+iz-1
 
-                nnz=nnz+1
-                irn(nnz)=jr
-                icn(nnz)=jc
+                m=m+1
+                irn(m)=jr
+                icn(m)=jc
                 
-                A(nnz)= quarter_wm3*omega2/kpa(iz-1,ix+1) &
+                A(m)= quarter_wm3*omega2/kpa(iz-1,ix+1) &
                     +quarter_w1_p2*( &
                          dx0*ax*bmp*dxp  &
                         -dx0*bx*bmp*dzm  &
@@ -467,11 +460,11 @@ use m_model, only:m
             if (iz < cb%nz .and. ix >1) then
                 jc=(ix-1-1)*cb%nz+iz+1
 
-                nnz=nnz+1
-                irn(nnz)=jr
-                icn(nnz)=jc
+                m=m+1
+                irn(m)=jr
+                icn(m)=jc
                 
-                A(nnz)= quarter_wm3*omega2/kpa(iz+1,ix-1) &
+                A(m)= quarter_wm3*omega2/kpa(iz+1,ix-1) &
                     +quarter_w1_p2*( &
                          dx0*ax*bpm*dxm  &
                         -dx0*bx*bpm*dzp  &
@@ -487,11 +480,11 @@ use m_model, only:m
             if (iz < cb%nz .and. ix < cb%nx) then
                 jc=(ix-1+1)*cb%nz+iz+1
 
-                nnz=nnz+1
-                irn(nnz)=jr
-                icn(nnz)=jc
+                m=m+1
+                irn(m)=jr
+                icn(m)=jc
                 
-                A(nnz)= quarter_wm3*omega2/kpa(iz+1,ix+1) &
+                A(m)= quarter_wm3*omega2/kpa(iz+1,ix+1) &
                    +quarter_w1_p2*( &
                          dx0*ax*bpp*dxp  &
                         +dx0*bx*bpp*dzp  &
@@ -507,11 +500,11 @@ use m_model, only:m
             if (iz > 1 .and. ix > 1) then
                 jc=(ix-1-1)*cb%nz+iz-1
 
-                nnz=nnz+1
-                irn(nnz)=jr
-                icn(nnz)=jc
+                m=m+1
+                irn(m)=jr
+                icn(m)=jc
                 
-                A(nnz)= quarter_wm3*omega2/kpa(iz-1,ix-1) &
+                A(m)= quarter_wm3*omega2/kpa(iz-1,ix-1) &
                     +quarter_w1_p2*( &
                          dx0*ax*bmm*dxm  &
                         +dx0*bx*bmm*dzm  &
@@ -530,10 +523,10 @@ use m_model, only:m
         if(if_freesurf) then
             do ix=1,cb%nx
             do iz=1,cb%npml then
-                nnz=nnz+1
-                irn(nnz)= (ix-1)*cb%nz+iz
-                icn(nnz)= (ix-1)*cb%nz+iz
-                A(nnz)= omega2/kpa(iz,ix)
+                m=m+1
+                irn(m)= (ix-1)*cb%nz+iz
+                icn(m)= (ix-1)*cb%nz+iz
+                A(m)= omega2/kpa(iz,ix)
             enddo
             enddo
         endif

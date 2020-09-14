@@ -13,6 +13,10 @@ use m_sysio
         module procedure alloc_real1
         module procedure alloc_real2
         module procedure alloc_real3
+        module procedure alloc_complex1
+        module procedure alloc_complex2
+        module procedure alloc_complex1_ubound
+        module procedure alloc_complex2_ubound
     end interface
     
     contains
@@ -316,6 +320,128 @@ use m_sysio
             endif
         endif
         a=0.
+        
+    end
+
+    subroutine alloc_complex1_ubound(a,n1,old,initialize)
+        integer n1
+        complex,dimension(:),allocatable :: a
+        complex,dimension(:),optional :: old
+        logical,optional :: initialize
+        
+        if(n1<1.or.n1>max_array_size) then
+            if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n1=',n1
+            error stop
+        endif
+         
+        if (allocated(a)) then
+            if(present(old)) then
+                old=a
+            endif
+            deallocate(a)
+        endif
+        allocate(a(n1))
+        
+        if(present(initialize)) then
+            if(initialize.eqv..false.) then
+                return
+            endif
+        endif
+        a=cmplx(0.,0.)
+        
+    end
+    
+    subroutine alloc_complex2_ubound(a,n1,n2,old,initialize)
+        integer n1,n2
+        complex,dimension(:,:),allocatable :: a
+        complex,dimension(:,:),optional :: old
+        logical,optional :: initialize
+        
+        if(n1<1.or.n1>max_array_size) then
+            if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n1=',n1
+            error stop
+        endif
+        
+        if(n2<1.or.n2>max_array_size) then
+            if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n2=',n2
+            error stop
+        endif
+        
+        if (allocated(a)) then
+            if(present(old)) then
+                old=a
+            endif
+            deallocate(a)
+        endif
+        allocate(a(n1,n2))
+        
+        if(present(initialize)) then
+            if(initialize.eqv..false.) then
+                return
+            endif
+        endif
+        a=cmplx(0.,0.)
+        
+    end
+
+    subroutine alloc_complex1(a,n1,old,initialize)
+        integer,dimension(2) :: n1
+        complex,dimension(:),allocatable :: a
+        complex,dimension(:),optional :: old
+        logical,optional :: initialize
+        
+        if(n1(1)>n1(2)) then
+            if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n1=',n1
+            error stop
+        endif
+        
+        if (allocated(a)) then
+            if(present(old)) then
+                old=a
+            endif
+            deallocate(a)
+        endif
+        allocate(a(n1(1):n1(2)))
+        
+        if(present(initialize)) then
+            if(initialize.eqv..false.) then
+                return
+            endif
+        endif
+        a=cmplx(0.,0.)
+        
+    end
+    
+    subroutine alloc_complex2(a,n1,n2,old,initialize)
+        integer,dimension(2) :: n1,n2
+        complex,dimension(:,:),allocatable :: a
+        complex,dimension(:,:),optional :: old
+        logical,optional :: initialize
+        
+        if(n1(1)>n1(2)) then
+            if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n1=',n1
+            error stop
+        endif
+        
+        if(n2(1)>n2(2)) then
+            if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n2=',n2
+            error stop
+        endif
+
+        if (allocated(a)) then
+            if(present(old)) then
+                old=a
+            endif
+            deallocate(a)
+        endif
+        allocate(a(n1(1):n1(2),n2(1):n2(2)))
+        
+        if(present(initialize)) then
+            if(initialize.eqv..false.) then
+                return
+            endif
+        endif
+        a=cmplx(0.,0.
         
     end
     

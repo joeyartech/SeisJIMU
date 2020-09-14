@@ -48,16 +48,20 @@ use m_field
         omega = freqs(i)*2*r_pi
         !nu = omega + i*sigma
 
+        write(sfreq,'(06i)') nint(freqs(i)*1e3)
+        !e.g. 100Hz -> 100000, 0.5Hz -> 000500
+
+
         call build_computebox(omega)
 
         !initialize field & extmodel
         call init_field_extmodel(omega)
 
-        call field_matrix
+        call field_matrix_factorize
 
-        call field_solve        
+        call field_RHS_substitute('source')
 
-        CALL field_write
+        call field_write(sfreq)
 
     enddo
     

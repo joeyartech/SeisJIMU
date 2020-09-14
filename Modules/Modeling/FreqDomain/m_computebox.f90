@@ -8,7 +8,7 @@ use m_shot
     public cb, build_computebox
   
     type t_computebox
-        integer :: nz,nx
+        integer :: nz,nx, n
         integer :: npml
         real    :: apml, bpml
 
@@ -28,6 +28,8 @@ use m_shot
 
         cb%nz=m%nz+2*cb%npml
         cb%nx=m%nx+2*cb%npml
+
+        cb%n=cb%nz*cb%nx
 
         if (mpiworld%is_master) then
             !pml
