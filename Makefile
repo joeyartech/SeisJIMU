@@ -1,3 +1,5 @@
+SHELL:=/bin/bash
+
 OMP=openmp
 ##Note: ifort does not implement openmp in debug mode
 
@@ -18,6 +20,7 @@ MOD= -module $(DIR)mod
 # MOD=-J $(DIR)mod
 
 
+include make_libs
 
 DIR=./
 
@@ -28,7 +31,7 @@ dir :
 .SUFFIX : %.f %.f90 %.o
 
 %.o : %.f90
-	mpif90 $(FLAGF90) $(MOD) -c $^ -o $@
+	mpif90 $(FLAGF90) $(MOD) -c $^ -o $@  $(INC)
 
 %.o : %.f
 	mpif77 $(FLAGF77)        -c $^ -o $@
@@ -36,6 +39,8 @@ dir :
 
 
 system = \
+$(DIR)Modules/System/m_global.f90 \
+$(DIR)Modules/System/m_string.f90 \
 $(DIR)Modules/System/m_mpienv.f90 \
 $(DIR)Modules/System/m_message.f90 \
 $(DIR)Modules/System/m_sysio.f90 \
@@ -65,8 +70,8 @@ OBJ0=$(system:.f90=.o) $(externf77:.f=.o) $(externf90:.f90=.o) $(signal:.f90=.o)
 WaveEq=AC
 # WaveEq=AC_VTI
 # WaveEq=PSV
-Solver=FDSG
-Domain=TimeDomain
+# Solver=FDSG
+Domain=FreqDomain
 
 modeling = \
 $(DIR)Modules/Modeling/m_model.f90 \
@@ -74,49 +79,51 @@ $(DIR)Modules/Modeling/m_gen_acquisition.f90 \
 $(DIR)Modules/Modeling/m_gen_wavelet.f90 \
 $(DIR)Modules/Modeling/$(Domain)/m_shotlist.f90 \
 $(DIR)Modules/Modeling/$(Domain)/m_shot.f90 \
+$(DIR)Modules/Modeling/$(Domain)/m_geometry.f90 \
+$(DIR)Modules/Modeling/$(Domain)/m_freqlist.f90 \
 $(DIR)Modules/Modeling/$(Domain)/m_computebox.f90 \
-$(DIR)Modules/Modeling/$(Domain)/$(Solver)/m_field_$(WaveEq).f90 \
-$(DIR)Modules/Modeling/$(Domain)/$(Solver)/m_boundarystore.f90 \
-$(DIR)Modules/Modeling/$(Domain)/$(Solver)/m_propagator.f90
+$(DIR)Modules/Modeling/$(Domain)/$(Solver)/m_field_$(WaveEq).f90
+#$(DIR)Modules/Modeling/$(Domain)/$(Solver)/m_boundarystore.f90 \
+#$(DIR)Modules/Modeling/$(Domain)/$(Solver)/m_propagator.f90
 
 OBJ_FWD=$(OBJ0) $(modeling:.f90=.o)
 
 
-#######
-# FWI #
-#######
-
-Norm=L2
-Param=velocities-density
-#Param=velocities-impedance
-#Param=slowness-density
-Preco=zpower
-LineS=Wolfe
-#Optim=NLCG
-Optim=LBFGS
-
-gradient = \
-$(DIR)Modules/Gradient/m_objectivefunc_$(Norm).f90 \
-$(DIR)Modules/Gradient/m_gradient.f90 \
-$(DIR)Modules/Gradient/m_parameterization_$(Param).f90 \
-
-optimization = \
-$(DIR)Modules/Optimization/m_preconditioner_$(Preco).f90 \
-$(DIR)Modules/Optimization/m_linesearcher_$(LineS).f90 \
-$(DIR)Modules/Optimization/m_optimizer_$(Optim).f90 \
-
+# #######
+# # FWI #
+# #######
+# 
+# Norm=L2
+# Param=velocities-density
+# #Param=velocities-impedance
+# #Param=slowness-density
+# Preco=zpower
+# LineS=Wolfe
+# #Optim=NLCG
+# Optim=LBFGS
+# 
+# gradient = \
+# $(DIR)Modules/Gradient/m_objectivefunc_$(Norm).f90 \
+# $(DIR)Modules/Gradient/m_gradient.f90 \
+# $(DIR)Modules/Gradient/m_parameterization_$(Param).f90 \
+# 
+# optimization = \
+# $(DIR)Modules/Optimization/m_preconditioner_$(Preco).f90 \
+# $(DIR)Modules/Optimization/m_linesearcher_$(LineS).f90 \
+# $(DIR)Modules/Optimization/m_optimizer_$(Optim).f90 \
+ 
 OBJ_FWI=$(OBJ_FWD) $(gradient:.f90=.o) $(optimization:.f90=.o)
 
 
 ###############################################################################################
 
 fwd : $(OBJ_FWD) FWD/main.o $(DIR)mod exe
-	mpif90 $(FLAGF90) $(OBJ_FWD) FWD/main.o $(MOD)  -o exe/fwd_$(WaveEq)_$(Solver)
+	mpif90 $(FLAGF90) $(OBJ_FWD) FWD/main.o $(MOD)  -o exe/fwd_$(WaveEq)_$(Solver)  $(LIB)
 	(cd exe; ln -sf fwd_$(WaveEq)_$(Solver) FWD)
 
-fwi : $(OBJ_FWI) FWI/main.o $(DIR)mod exe
-	mpif90 $(FLAGF90) $(OBJ_FWI) FWI/main.o $(MOD)  -o exe/fwi_$(WaveEq)_$(Solver)_$(Norm)_$(Param)_$(Preco)_$(LineS)_$(Optim)
-	(cd exe; ln -sf fwi_$(WaveEq)_$(Solver)_$(Norm)_$(Param)_$(Preco)_$(LineS)_$(Optim) FWI)
+#fwi : $(OBJ_FWI) FWI/main.o $(DIR)mod exe
+#	mpif90 $(FLAGF90) $(OBJ_FWI) FWI/main.o $(MOD)  -o exe/fwi_$(WaveEq)_$(Solver)_$(Norm)_$(Param)_$(Preco)_$(LineS)_$(Optim)
+#	(cd exe; ln -sf fwi_$(WaveEq)_$(Solver)_$(Norm)_$(Param)_$(Preco)_$(LineS)_$(Optim) FWI)
 
 
 clean :

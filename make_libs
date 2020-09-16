@@ -1,0 +1,21 @@
+#MKL
+LMKL= -L ${MKLROOT}/lib/intel64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lmkl_blas95_lp64 -lmkl_lapack95_lp64  #-lmkl_blacs_intelmpi_lp64
+
+#SCALAPACK
+LSCAL = -L ${SCALAPACK_LIB} -l scalapack
+
+#METIS
+LMETIS = -L${METIS_LIB} -lmetis
+
+#MUMPS (with fake MPI)
+LMUMPS = -L${MUMPS_LIB} -lpord -lmumps_common -lcmumps
+IMUMPS = -I${MUMPS_INC}
+
+
+LIB = -lm -lpthread $(LMKL) $(LMETIS) $(LSCAL) $(LMUMPS)
+INC =                                          $(IMUMPS)
+
+
+#module load won't work insiade Makefile..
+load :
+	module load scalapack metis mumps

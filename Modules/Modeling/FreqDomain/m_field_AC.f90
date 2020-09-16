@@ -142,7 +142,7 @@ use m_computebox, only:cb, computebox_dealloc_model
         if (mpiworld%is_master) then
             if(.not.associated(mumps%RHS)) allocate(mumps%RHS(cb%n*geo%nsrc))
 
-            call fill_RHS(mumps%RHS)
+            call fill_RHS_source(mumps%RHS)
             mumps%icntl(9) = 1
             mumps%NRHS = geo%nsrc
             mumps%LRHS = mumps%N
@@ -168,7 +168,7 @@ use m_computebox, only:cb, computebox_dealloc_model
         if (mpiworld%is_master) then
             if(.not.associated(mumps%RHS)) allocate(mumps%RHS(cb%n*geo%nsrc))
 
-            call fill_RHS_adjoint(mumps%RHS,conjg(dres))
+            call fill_RHS_receiver(mumps%RHS,conjg(dres))
 
             mumps%icntl(9) = 0
             mumps%NRHS = geo%nsrc
@@ -497,7 +497,7 @@ use m_computebox, only:cb, computebox_dealloc_model
 
     end subroutine
 
-    subroutine fill_RHS_adjoint(RHS,adjsource)
+    subroutine fill_RHS_receiver(RHS,adjsource)
         complex,dimension(cb%nz,cb%nx,geo%nsrc) :: RHS
         complex,dimension(*) :: adjsource
         
