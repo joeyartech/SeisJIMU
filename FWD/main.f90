@@ -1,10 +1,9 @@
 program main
 use m_model
-use m_computebox
 use m_gen_acquisition
-use m_shotlist
-use m_shot
-use m_propagator
+use m_geometry
+use m_freqlist
+use m_computebox
 use m_field
 
     call init_mpiworld
@@ -26,8 +25,21 @@ use m_field
     call init_model
     !call field_print_info
     
-    !generate acquisition and source wavelet
+    !generate acquisition
     call gen_acquisition
+
+    !Ideally, computebox can be a portion of the whole model, like in time-domain FWI
+    !to reduce the size of RAM required for LU decomposition.
+    !in this case, an inner loop over shots is needed inside frequency loop,
+    !and computebox, S/R position 1D arrays, matrix analysis etc. 
+    !should be re-done inside the inner loop.
+    !However, I'm not sure how frequently freq-domain FWI will be employed,
+    !and how large the problem can be.
+    !To keep things simple, this inner loop is not implemented for now
+    !and thus the matrix shape, S/R arrays etc. stay same (no need to rebuild)
+
+    !loop over shots to extract acqui geom for RHS
+    call build_geom_acqui
 
     !initialize mumps
     call init_field_mumps
@@ -40,28 +52,18 @@ use m_field
     do i=1,nfreq
 
         if(mpiworld%is_master) then
-            write(*,*) 'Modeling freq# ',i,freqs(i)
+            write(*,*) 'Modeling freq# ',i,freq(i),'Hz'
         endif
-
-        !convention on frequencies
-        !freq in Hz
-        omega = freqs(i)*2*r_pi
-        !nu = omega + i*sigma
-
-        write(sfreq,'(06i)') nint(freqs(i)*1e3)
-        !e.g. 100Hz -> 100000, 0.5Hz -> 000500
-
-
-        call build_computebox(omega)
+        call build_computebox(freq(i))
 
         !initialize field & extmodel
-        call init_field_extmodel(omega)
+        call init_field_extmodel(freq(i))
 
         call field_matrix_factorize
 
-        call field_RHS_substitute('source')
+        call field_RHS_substitute
 
-        call field_write(sfreq)
+        call field_write(i)
 
     enddo
     
@@ -202,4 +204,4 @@ end
 !         write(*,'(a)') ""
 !     endif
 
-end subroutine
+! end subroutine

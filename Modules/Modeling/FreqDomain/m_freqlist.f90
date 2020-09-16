@@ -1,24 +1,40 @@
 module m_freqlist
+use m_string
 use m_mpienv
 use m_message
 use m_arrayop
-use m_string
 
     integer :: nfreq=1
-    real,dimension(:),allocatable :: freqs
+    complex,dimension(:),allocatable :: freq
 
     contains
 
     subroutine build_freqlist
-        type(t_string),dimension(:),allocatable :: cfreqs
+        type(t_string),dimension(:),allocatable :: s_freq
+        logical :: if_complex_freq
 
-        cfreqs = partition(get_setup_char('FREQUENCIES'))
+        s_freq = partition(get_setup_char('FREQUENCIES','FREQ'))
+        if_complex_freq=.false.
 
-        nfreq = size(freq_array)
+        if(ask_setup('COMPLEX_FREQUENCIES','CFREQ')) then
+            s_freq = partition(get_setup_char('COMPLEX_FREQUENCIES','CFREQ'),';')
+            if_complex_freq=.true.
+        endif
 
-        call alloc(freqs,nfreq)
-        do i=1,nfreq
-            freqs(i)=str2real(str_array(i))
-        end
+        nfreq = size(s_freq)
+
+        call alloc(freq,nfreq)
+
+        if(if_complex_freq) then
+            do i=1,nfreq
+                read(s_freq(i)%string,*) freq(i)
+            enddo
+        else
+            do i=1,nfreq
+                read(s_freq(i)%string,*) tmp
+                freq(i)=cmplx(tmp,0.)
+            enddo
+        endif
+
     end subroutine
 end

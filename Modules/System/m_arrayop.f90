@@ -441,7 +441,7 @@ use m_sysio
                 return
             endif
         endif
-        a=cmplx(0.,0.
+        a=cmplx(0.,0.)
         
     end
     

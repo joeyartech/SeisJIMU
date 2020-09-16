@@ -7,8 +7,7 @@
 !https://github.com/szaghi/StringiFor
 
 module m_string
-!use m_const, only : i_str_len
-i_str_len=80
+use m_global, only : i_str_len
 
     public
     private :: A2a

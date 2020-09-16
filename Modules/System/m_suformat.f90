@@ -468,7 +468,7 @@ use m_sysio
         sudata(:)%hdr%shortpad=0
         sudata(:)%hdr%ntr=0
         
-        sudata(:)%hdr%unass(8)=0.
+        sudata(:)%hdr%unass(8)=0
         
     end subroutine
     
@@ -476,15 +476,13 @@ use m_sysio
         character(4) :: cshot
         type(t_suformat),dimension(:),allocatable :: sudata
 
-        character(:),allocatable :: tmp,data_file
+        character(:),allocatable :: data_file
         logical alive
         
         integer file_size
         integer(2) :: ns
         
-        tmp=get_setup_char('FILE_DATA')
-        
-        data_file=tmp//cshot//'.su'
+        data_file=get_setup_char('FILE_DATA')//cshot//'.su'
                 
         inquire(file=data_file, size=file_size, exist=alive) !file_size in bytes
         file_size=file_size/4 !file_size in sizeof(float)

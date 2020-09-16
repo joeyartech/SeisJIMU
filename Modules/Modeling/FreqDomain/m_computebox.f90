@@ -1,18 +1,20 @@
 module m_computebox
+use m_global
 use m_sysio
 use m_arrayop
 use m_model, only: m
-use m_shot
 
     private
-    public cb, build_computebox
+    public cb, build_computebox, computebox_dealloc_model
   
     type t_computebox
         integer :: nz,nx, n
         integer :: npml
         real    :: apml, bpml
 
-        complex,dimension(:),allocatable :: damp_z, damp_x
+        real,dimension(:,:),allocatable :: vp, rho
+
+        complex,dimension(:),allocatable :: damp_z,      damp_x
         complex,dimension(:),allocatable :: damp_z_half, damp_x_half
     end type
     
@@ -20,10 +22,11 @@ use m_shot
     
     contains
     
-    subroutine build_computebox(omega)
+    subroutine build_computebox(freq)
+        complex :: freq, omega
 
         cb%npml=get_setup_int('NBOUNDARYLAYER','NPML',default=10)
-        cb%apml=get_setup_int('PML_COEFF','NPML',default=90)
+        cb%apml=get_setup_int('PML_COEFF','APML',default=90)
         cb%bpml=0.
 
         cb%nz=m%nz+2*cb%npml
@@ -38,11 +41,12 @@ use m_shot
             call alloc(cb%damp_z_half,[0,cb%nz+1])
             call alloc(cb%damp_x_half,[0,cb%nx+1])
             
-            ! !computebox
-            ! call extend(m%vp, m%n2,m%n1, cb%vp, cb%npml,cb%npml)
-            ! call extend(m%rho,m%n2,m%n1, cb%rho,cb%npml,cb%npml)
+            !models in computebox
+            call alloc(cb%vp, cb%nz,cb%nx); call m2cb(m%vp, cb%vp )
+            call alloc(cb%rho,cb%nz,cb%nx); call m2cb(m%rho,cb%rho)
 
             !build pml
+            omega=freq*2.*r_pi
             call build_pml(cb%damp_z,cb%damp_z_half,cb%nz,omega)
             call build_pml(cb%damp_x,cb%damp_x_half,cb%nx,omega)
 
@@ -50,53 +54,53 @@ use m_shot
 
     end subroutine
 
-    subroutine extend(m,nx,nz,me,nspx,nspz)
-        real m(nz,nx),me(nz+2*nspz,nx+2*nspx)
+    subroutine computebox_dealloc_model
+        deallocate(cb%vp)
+        deallocate(cb%rho)
+    end subroutine
 
-        do ix=1,nx
-        do iz=1,nz
-            cb(iz+nspz,ix+nspx)     =m(iz,ix)
-        end do
+    subroutine m2cb(in,out)
+        real :: in ( m%nz, m%nx)
+        real :: out(cb%nz,cb%nx)
+
+        integer,dimension(:),allocatable :: indz, indx, indb
+
+        call alloc(indz,m%nz,initialize=.false.);    indz=[(i,i=1,m%nz)] !construct index array without semicolumns..
+        call alloc(indx,m%nx,initialize=.false.);    indx=[(i,i=1,m%nx)]
+        call alloc(indb,cb%npml,initialize=.false.); indb=[(i,i=1,cb%npml)]
+
+        out(indz+cb%npml,indx+cb%npml) = in
+
+        !copy values for PML zones
+        !left & right zones
+        do ix=1,cb%npml
+            out(indz+cb%npml ,ix)               =in(indz+cb%npml ,1)
+            out(indz+cb%npml ,ix+cb%npml+m%nx)  =in(indz+cb%npml ,m%nx)
         end do
 
-        !Extension of the model defined by m(nz,nx) into cb(nz+2*nsp,nz+2*nsp)
-        !copying values at edges into PML zones
-        
-        !left & right
-        do ix=1,nspx
-        do iz=1,nz
-            cb(iz+nspz,ix)          =m(iz,1)
-            cb(iz+nspz,ix+nspx+nx)  =m(iz,nx)
-        end do
-        end do
-
-        !top & bottom
-        do ix=1,nx
-        do iz=1,nspz
-            cb(iz,ix+nspx)          =m(1,ix)
-            cb(nz+iz+nspz,ix+nspx)  =m(nz,ix)
-        end do
+        !top & bottom zones
+        do iz=1,cb%npml
+            out(iz,             indx+cb%npml) =in(1,   indx)
+            out(iz+m%nz+cb%npml,indx+cb%npml) =in(m%nz,indx)
         end do
 
         !4 corners
-        do ix=1,nspx
-        do iz=1,nspz
-            cb(iz,ix)                =m(1,1)
-            cb(iz,ix+nspx+nx)        =m(1,nx)
-            cb(iz+nz+nspz,ix)        =m(nz,1)
-            cb(iz+nz+nspz,ix+nspx+nx)=m(nz,nx)
-        end do
-        end do
+        out(indb,indb)                          =in(1,1)
+        out(indb,indb+cb%npml+m%nx)             =in(1,m%nx)
+        out(indb+cb%npml+m%nz,indb)             =in(m%nz,1)
+        out(indb+cb%npml+m%nz,indb+cb%npml+m%nx)=in(m%nz,m%nx)
 
     end subroutine
 
-
     subroutine build_pml(damp,damp_half,n,omega)
+        complex,dimension(0:n+1) :: damp, damp_half
+        complex :: omega
         ! damp=1+i*gamma/omega
         ! where gamma ia a smoothly decreasing function
         ! damp      for classical grid
         ! damp_half for staggered grid
 
+        complex :: beta_w, betad, betad_half
         ! alphad: add a constant to the x function
         ! betad: add an imaginary part to frequency
 
@@ -139,12 +143,12 @@ use m_shot
             alpha_half=(alphad-1.)*tmp_half+1.
 
             if (abs(beta_max)<1e-3) then
-                betad     =0.
-                betad_half=0.
+                betad     =cmplx(0.,0.)
+                betad_half=cmplx(0.,0.)
             end if
             
-            damp(i)     =1./(alpha     +c_i*eps     /(c_omega+c_i*betad     ))
-            damp_half(i)=1./(alpha_half+c_i*eps_half/(c_omega+c_i*betad_half))
+            damp(i)     =1./(alpha     +c_i*eps     /(omega+c_i*betad     ))
+            damp_half(i)=1./(alpha_half+c_i*eps_half/(omega+c_i*betad_half))
             
             damp(n-i+1)=damp(i)
 
@@ -172,11 +176,11 @@ use m_shot
             alpha_half=(alphad-1.)*tmp_half+1.
         
             if (abs(beta_max)<1e-3) then
-                betad     =0.
-                betad_half=0.
+                betad     =cmplx(0.,0.)
+                betad_half=cmplx(0.,0.)
             end if
             
-            damp_half(n-i+1)=1./(alpha_half+c_i*eps_half/(c_omega+c_i*betad_half))
+            damp_half(n-i+1)=1./(alpha_half+c_i*eps_half/(omega+c_i*betad_half))
 
         end do
 
