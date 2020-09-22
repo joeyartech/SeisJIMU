@@ -21,13 +21,12 @@ use m_field
     endif
     
     
+if(mpiworld%is_master) then
     !read initial model
     call init_model
-    !call field_print_info
     
     !generate acquisition
     call gen_acquisition
-
     !Ideally, computebox can be a portion of the whole model, like in time-domain FWI
     !to reduce the size of RAM required for LU decomposition.
     !in this case, an inner loop over shots is needed inside frequency loop,
@@ -40,12 +39,13 @@ use m_field
 
     !loop over shots to extract acqui geom for RHS
     call build_geom_acqui
+endif
 
     !initialize mumps
     call init_field_mumps
 
     !read frequency list
-    call build_freqlist
+    if(mpiworld%is_master) call build_freqlist
     
     call hud('      START LOOP OVER FREQUENCIES         ')
 
@@ -54,7 +54,7 @@ use m_field
         if(mpiworld%is_master) then
             write(*,*) 'Modeling freq# ',i,freq(i),'Hz'
         endif
-        call build_computebox(freq(i))
+        if(mpiworld%is_master) call build_computebox(freq(i))
 
         !initialize field & extmodel
         call init_field_extmodel(freq(i))

@@ -25,7 +25,7 @@ use m_shot
         integer :: ntr !total number of traces
     end type
 
-    type(t_geometry) :: geo
+    type(t_geometry) :: geom
 
     contains
 
@@ -33,43 +33,41 @@ use m_shot
         integer,parameter :: r=4 !r chosen to be 4 in m_hicks
 
         call build_shotlist(acqui%nsrc)
-
-        !allocate
-        allocate(geo%src(nshots))
-        do i=1,nshots
-            allocate(geo%src(i)%interp_coeff(-r:r,-r:r))
-            allocate(geo%src(i)%rcv(shot%nrcv))
-
-            do j=1,shot%nrcv
-                allocate(geo%src(i)%rcv(j)%interp_coeff(-r:r,-r:r))
-            enddo
-        enddo
-
-        geo%ntr=0
-
+        
         !sources
-        geo%nsrc=nshots
+        geom%nsrc=nshots
+        allocate(geom%src(nshots))
+        
+        geom%ntr=0
+
         do i=1,nshots
 
             call init_shot(i,'setup')
-            geo%src(i)%ifz=shot%src%ifz; geo%src(i)%iz=shot%src%iz; geo%src(i)%ilz=shot%src%ilz
-            geo%src(i)%ifx=shot%src%ifx; geo%src(i)%ix=shot%src%ix; geo%src(i)%ilx=shot%src%ilx
+            
+            !sz,sx
+            geom%src(i)%ifz=shot%src%ifz; geom%src(i)%iz=shot%src%iz; geom%src(i)%ilz=shot%src%ilz
+            geom%src(i)%ifx=shot%src%ifx; geom%src(i)%ix=shot%src%ix; geom%src(i)%ilx=shot%src%ilx
 
-            geo%src(i)%interp_coeff=shot%src%interp_coeff(:,:,1)
+            !hicks coeff
+            allocate(geom%src(i)%interp_coeff(-r:r,-r:r))
+            geom%src(i)%interp_coeff=shot%src%interp_coeff(:,:,1)
 
             !receivers
-            geo%src(i)%nrcv=shot%nrcv
+            geom%src(i)%nrcv=shot%nrcv
+            allocate(geom%src(i)%rcv(shot%nrcv))
+            
+            !total number of traces
+            geom%ntr=geom%ntr+shot%nrcv
+            
+            !rz,rx
+            geom%src(i)%rcv(:)%ifz=shot%rcv(:)%ifz; geom%src(i)%rcv(:)%iz=shot%rcv(:)%iz; geom%src(i)%rcv(:)%ilz=shot%rcv(:)%ilz
+            geom%src(i)%rcv(:)%ifx=shot%rcv(:)%ifx; geom%src(i)%rcv(:)%ix=shot%rcv(:)%ix; geom%src(i)%rcv(:)%ilx=shot%rcv(:)%ilx
 
-            geo%src(i)%rcv(:)%ifz=shot%rcv(:)%ifz; geo%src(i)%rcv(:)%iz=shot%rcv(:)%iz; geo%src(i)%rcv(:)%ilz=shot%rcv(:)%ilz
-            geo%src(i)%rcv(:)%ifx=shot%rcv(:)%ifx; geo%src(i)%rcv(:)%ix=shot%rcv(:)%ix; geo%src(i)%rcv(:)%ilx=shot%rcv(:)%ilx
-
-            geo%src(i)%interp_coeff=shot%src%interp_coeff(:,:,1)
-
+            !hicks coeff
             do j=1,shot%nrcv
-                geo%src(i)%rcv(j)%interp_coeff=shot%rcv(j)%interp_coeff(:,:,1)
+                allocate(geom%src(i)%rcv(j)%interp_coeff(-r:r,-r:r))
+                geom%src(i)%rcv(j)%interp_coeff=shot%rcv(j)%interp_coeff(:,:,1)
             enddo
-
-            geo%ntr=geo%ntr+geo%src(i)%nrcv
 
         enddo
 
@@ -80,13 +78,13 @@ use m_shot
     !     npml=get_setup_int('NBOUNDARYLAYER','NPML',default=10)
 
     !     !sources
-    !     geo%src(:)%ifz=geo%src(:)%ifz+npml;  geo%src(:)%iz=geo%src(:)%iz+npml; geo%src(:)%ilz=geo%src(:)%ilz+npml
-    !     geo%src(:)%ifx=geo%src(:)%ifx+npml;  geo%src(:)%iz=geo%src(:)%ix+npml; geo%src(:)%ilx=geo%src(:)%ilx+npml
+    !     geom%src(:)%ifz=geom%src(:)%ifz+npml;  geom%src(:)%iz=geom%src(:)%iz+npml; geom%src(:)%ilz=geom%src(:)%ilz+npml
+    !     geom%src(:)%ifx=geom%src(:)%ifx+npml;  geom%src(:)%iz=geom%src(:)%ix+npml; geom%src(:)%ilx=geom%src(:)%ilx+npml
 
     !     !receivers
-    !     do i=1,geo%nsrc
-    !         geo%src(i)%rcv(:)%ifz=geo%src(i)%rcv(:)%ifz+npml; geo%src(i)%rcv(:)%iz=geo%src(i)%rcv(:)%iz+npml; geo%src(i)%rcv(:)%ilz=geo%src(i)%rcv(:)%ilz+npml
-    !         geo%src(i)%rcv(:)%ifx=geo%src(i)%rcv(:)%ifx+npml; geo%src(i)%rcv(:)%ix=geo%src(i)%rcv(:)%ix+npml; geo%src(i)%rcv(:)%ilz=geo%src(i)%rcv(:)%ilx+npml
+    !     do i=1,geom%nsrc
+    !         geom%src(i)%rcv(:)%ifz=geom%src(i)%rcv(:)%ifz+npml; geom%src(i)%rcv(:)%iz=geom%src(i)%rcv(:)%iz+npml; geom%src(i)%rcv(:)%ilz=geom%src(i)%rcv(:)%ilz+npml
+    !         geom%src(i)%rcv(:)%ifx=geom%src(i)%rcv(:)%ifx+npml; geom%src(i)%rcv(:)%ix=geom%src(i)%rcv(:)%ix+npml; geom%src(i)%rcv(:)%ilz=geom%src(i)%rcv(:)%ilx+npml
     !     enddo
 
     ! end subroutine

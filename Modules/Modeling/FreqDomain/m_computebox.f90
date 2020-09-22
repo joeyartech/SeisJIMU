@@ -6,11 +6,44 @@ use m_model, only: m
 
     private
     public cb, build_computebox, computebox_dealloc_model
-  
+    
+!   ifx<---- nx --->ilx
+! ifz+~~~~~~~~~~~~~~~+
+!  ^ l   1      mx   l
+!  | l  1+-------+   l
+!  | l   | *     |   l
+!    l D |   C   |   l
+! nz l   |       |   l
+!    l   |       |   l
+!  | l mz+-------+   l
+!  v l boundarylayer l
+! ilz+~~~~~~~~~~~~~~~+
+!
+!   Model: C
+!   Computebox: C+D
+!   * source point
+!
+!use a diff convention than toy2dac
+!I allocate vpe, rhoe, qpe(0:n1e+1,0:n2e+1)
+!to be same shape as mu, bu (toy2dac's variables)
+!to be consistent with time-dom branch convention,
+!while in toy2dac they are allocated as (1:n1e,1:n2e)
+    
+    
     type t_computebox
-        integer :: nz,nx, n
         integer :: npml
         real    :: apml, bpml
+        
+        !C's index in Model
+        integer :: iox,ioz
+        
+        !C's index in Computebox
+        integer :: mx,mz
+        
+        !C+D's index in Computebox
+        integer :: ifx,ifz
+        integer :: ilx,ilz
+        integer :: nx,nz,n
 
         real,dimension(:,:),allocatable :: vp, rho
 
@@ -28,28 +61,63 @@ use m_model, only: m
         cb%npml=get_setup_int('NBOUNDARYLAYER','NPML',default=10)
         cb%apml=get_setup_int('PML_COEFF','APML',default=90)
         cb%bpml=0.
-
-        cb%nz=m%nz+2*cb%npml
-        cb%nx=m%nx+2*cb%npml
-
+        
+        !C's origin index in model
+        cb%ioz=1
+        cb%iox=1
+        
+        !C's size
+        cb%mz=m%nz
+        cb%mx=m%nx
+        
+        !C+D's index
+        cb%ifx = 1     - cb%npml-1
+        cb%ilx = cb%mx + cb%npml+1
+        cb%ifz = 1     - cb%npml-1
+        cb%ilz = cb%mz + cb%npml+1
+        
+        cb%nz=cb%ilz-cb%ifz+1
+        cb%nx=cb%ilx-cb%ifx+1
         cb%n=cb%nz*cb%nx
-
+        if(mpiworld%is_master) then
+            write(*,*)'Computebox Size = [ifz,ilz] x [ifx,ilx] = ',cb%n
+            write(*,*)'  [ifz,ilz],nz:',cb%ifz,cb%ilz,cb%nz
+            write(*,*)'  [ifx,ilx],nx:',cb%ifx,cb%ilx,cb%nx
+            write(*,*)'Inner area of Computebox:'
+            write(*,*)'  ioz,mz:',cb%ioz,cb%mz
+            write(*,*)'  iox,mx:',cb%iox,cb%mx
+            write(*,*)'After entering field/mumps:'
+            write(*,*)'  0:nz+1',cb%nz-2+1
+            write(*,*)'  0:nx+1',cb%nx-2+1
+        endif
+        
         if (mpiworld%is_master) then
-            !pml
-            call alloc(cb%damp_z,     [0,cb%nz+1])
-            call alloc(cb%damp_x,     [0,cb%nx+1])
-            call alloc(cb%damp_z_half,[0,cb%nz+1])
-            call alloc(cb%damp_x_half,[0,cb%nx+1])
             
             !models in computebox
-            call alloc(cb%vp, cb%nz,cb%nx); call m2cb(m%vp, cb%vp )
-            call alloc(cb%rho,cb%nz,cb%nx); call m2cb(m%rho,cb%rho)
-
+            call alloc(cb%vp, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+            call alloc(cb%rho,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+            
+            !model -> computebox
+            call m2cb(m%vp, cb%vp)
+            call m2cb(m%rho,cb%rho)
+            
             !build pml
+!             call alloc(cb%damp_z,     [cb%ifz,cb%ilz])
+!             call alloc(cb%damp_x,     [cb%ifx,cb%ilx])
+!             call alloc(cb%damp_z_half,[cb%ifz,cb%ilz])
+!             call alloc(cb%damp_x_half,[cb%ifx,cb%ilx])
+            
+            !build pml
+            !to be compatible with toy2dac
+            call alloc(cb%damp_z,     [0,cb%nz-2+1])
+            call alloc(cb%damp_x,     [0,cb%nx-2+1])
+            call alloc(cb%damp_z_half,[0,cb%nz-2+1])
+            call alloc(cb%damp_x_half,[0,cb%nx-2+1])
+            
             omega=freq*2.*r_pi
-            call build_pml(cb%damp_z,cb%damp_z_half,cb%nz,omega)
-            call build_pml(cb%damp_x,cb%damp_x_half,cb%nx,omega)
-
+            call build_pml(cb%damp_z,cb%damp_z_half,cb%nz-2,omega)
+            call build_pml(cb%damp_x,cb%damp_x_half,cb%nx-2,omega)
+            
         endif
 
     end subroutine
@@ -59,52 +127,80 @@ use m_model, only: m
         deallocate(cb%rho)
     end subroutine
 
+!old version
+!     subroutine m2cb(in,out)
+!         real :: in ( m%nz, m%nx)
+!         real :: out(cb%nz,cb%nx)
+! 
+!         integer,dimension(:),allocatable :: indz, indx, indb
+! 
+!         call alloc(indz,m%nz,initialize=.false.);    indz=[(i,i=1,m%nz)] !construct index array without semicolumns..
+!         call alloc(indx,m%nx,initialize=.false.);    indx=[(i,i=1,m%nx)]
+!         call alloc(indb,cb%npml,initialize=.false.); indb=[(i,i=1,cb%npml)]
+! 
+!         out(indz+cb%npml,indx+cb%npml) = in
+! 
+!         !copy values for PML zones
+!         !left & right zones
+!         do ix=1,cb%npml
+!             out(indz+cb%npml ,ix)               =in(indz+cb%npml ,1)
+!             out(indz+cb%npml ,ix+cb%npml+m%nx)  =in(indz+cb%npml ,m%nx)
+!         end do
+! 
+!         !top & bottom zones
+!         do iz=1,cb%npml
+!             out(iz,             indx+cb%npml) =in(1,   indx)
+!             out(iz+m%nz+cb%npml,indx+cb%npml) =in(m%nz,indx)
+!         end do
+! 
+!         !4 corners
+!         out(indb,indb)                          =in(1,1)
+!         out(indb,indb+cb%npml+m%nx)             =in(1,m%nx)
+!         out(indb+cb%npml+m%nz,indb)             =in(m%nz,1)
+!         out(indb+cb%npml+m%nz,indb+cb%npml+m%nx)=in(m%nz,m%nx)
+! 
+!     end subroutine
+
     subroutine m2cb(in,out)
-        real :: in ( m%nz, m%nx)
-        real :: out(cb%nz,cb%nx)
-
-        integer,dimension(:),allocatable :: indz, indx, indb
-
-        call alloc(indz,m%nz,initialize=.false.);    indz=[(i,i=1,m%nz)] !construct index array without semicolumns..
-        call alloc(indx,m%nx,initialize=.false.);    indx=[(i,i=1,m%nx)]
-        call alloc(indb,cb%npml,initialize=.false.); indb=[(i,i=1,cb%npml)]
-
-        out(indz+cb%npml,indx+cb%npml) = in
-
-        !copy values for PML zones
-        !left & right zones
-        do ix=1,cb%npml
-            out(indz+cb%npml ,ix)               =in(indz+cb%npml ,1)
-            out(indz+cb%npml ,ix+cb%npml+m%nx)  =in(indz+cb%npml ,m%nx)
-        end do
-
-        !top & bottom zones
-        do iz=1,cb%npml
-            out(iz,             indx+cb%npml) =in(1,   indx)
-            out(iz+m%nz+cb%npml,indx+cb%npml) =in(m%nz,indx)
-        end do
-
-        !4 corners
-        out(indb,indb)                          =in(1,1)
-        out(indb,indb+cb%npml+m%nx)             =in(1,m%nx)
-        out(indb+cb%npml+m%nz,indb)             =in(m%nz,1)
-        out(indb+cb%npml+m%nz,indb+cb%npml+m%nx)=in(m%nz,m%nx)
-
+        real :: in(m%nz,m%nx,1)
+        real :: out(cb%ifz:cb%ilz,cb%ifx:cb%ilx)
+        
+        out(1:cb%mz,1:cb%mx)=in(cb%ioz:cb%ioz+cb%mz-1,cb%iox:cb%iox+cb%mx-1,1)
+        
+        !values in boundary layers
+        !!top
+        do iz=cb%ifz,0
+            out(iz,:)=out(1,:)
+        enddo
+        !!bottom
+        do iz=cb%mz+1,cb%ilz
+            out(iz,:)=out(cb%mz,:)
+        enddo
+        !!left
+        do ix=cb%ifx,0
+            out(:,ix)=out(:,1)
+        enddo
+        !!right
+        do ix=cb%mx+1,cb%ilx
+            out(:,ix)=out(:,cb%mx)
+        enddo
     end subroutine
 
     subroutine build_pml(damp,damp_half,n,omega)
+        integer n
+        complex omega
+        
         complex,dimension(0:n+1) :: damp, damp_half
-        complex :: omega
         ! damp=1+i*gamma/omega
-        ! where gamma ia a smoothly decreasing function
+        ! where gamma is a smoothly decreasing function
         ! damp      for classical grid
         ! damp_half for staggered grid
-
+        
         complex :: beta_w, betad, betad_half
         ! alphad: add a constant to the x function
         ! betad: add an imaginary part to frequency
 
-        real,parameter :: alphad=1., beta_max=0.        
+        real,parameter :: alphad=1., beta_max=0.
         real,parameter :: pi2=r_pi/2
         
         !nu=c_omega+cmplx(omega,betad*omega)

@@ -5,7 +5,7 @@ use m_mpienv
 use m_arrayop
 use m_sysio
 use m_model, only:m
-use m_geometry, only:geo
+use m_geometry, only:geom
 use m_computebox, only:cb, computebox_dealloc_model
 
 ! use, intrinsic :: ieee_arithmetic
@@ -31,23 +31,24 @@ use m_computebox, only:cb, computebox_dealloc_model
     contains
 
     subroutine init_field_mumps
- 
+    
         if_hicks=get_setup_logical('IF_HICKS',default=.true.)
 
         !initialize MUMPS
         mumps%COMM = MPI_COMM_WORLD ! Parallel session 
-        mumps%SYM =  0 ! Unsymmetric matrix
-        mumps%PAR =  1 ! Host working
-        mumps%JOB = -1 ! Initilization of MUMPS
+        mumps%SYM =  0 ! unsymmetric matrix
+        mumps%PAR =  1 ! master processor also involved in solving Ax=B
+        
+        mumps%JOB = -1 ! initialize mumps
         call cmumps(mumps)
                 
         if(mpiworld%is_master) then
-            mumps%icntl(20)  =  0     !dense rhs
-            mumps%icntl(21)  =  0     !0->centralized solution 
-            mumps%icntl(7)   =  get_setup_int('icntl_7',default=7)  !choice of ordering for analysis (default: automatic choice)
-            mumps%icntl(14)  =  get_setup_int('icntl_14',default=60)  !percentage of increasing of estimated workspace for facto (default=20). No longer really used since MUMPS v4.9.X
-            mumps%icntl(23)  =  get_setup_int('icntl_23',default=760) !memory (MB) per processor, introduced since MUMPS v4.9.X
-            mumps%keep(84)   =  get_setup_int('keep_84',default=16)   !blocking factor for multiple RHS
+            mumps%ICNTL(20)  =  0     !dense RHS
+            mumps%ICNTL(21)  =  0     !0->centralized solution 
+            mumps%ICNTL(7)   =  get_setup_int('MUMPS_ORDERING','ICNTL(7)',default=7)  !choice of ordering for analysis (default: automatic choice)
+            mumps%ICNTL(14)  =  get_setup_int('MUMPS_EXTRA_RAM','ICNTL(14)',default=60)  !percentage of increasing of estimated workspace for facto (default=20). No longer really used since MUMPS v4.9.X
+            mumps%ICNTL(23)  =  get_setup_int('MUMPS_MAM_RAM','ICNTL(23)',default=760) !memory (MB) per processor, introduced since MUMPS v4.9.X
+            mumps%KEEP(84)   =  get_setup_int('MUMPS_BLOCKING_FACTOR','KEEP(84)',default=16)   !blocking factor for multiple RHS
         end if
 
     end subroutine
@@ -58,47 +59,50 @@ use m_computebox, only:cb, computebox_dealloc_model
         oga=freq*2.*r_pi
         h2=m%h*m%h
 
-        call alloc(kpa,[0,cb%nz+1],[0,cb%nx+1])
-        call alloc(buo,[0,cb%nz+1],[0,cb%nx+1])
+        if(mpiworld%is_master) then
+            call alloc(kpa,[0,cb%nz-2+1],[0,cb%nx-2+1])
+            call alloc(buo,[0,cb%nz-2+1],[0,cb%nx-2+1])
 
-        ! !Kolsky-Futterman
-        ! kpa=rho* vp*vp*(1.-0.5*c_i/qp)*(1.-0.5*c_i/qp) !dispersion-free
+            ! !Kolsky-Futterman
+            ! kpa=rho* vp*vp*(1.-0.5*c_i/qp)*(1.-0.5*c_i/qp) !dispersion-free
 
-        ! vc=1./cmplx( (1./vp)+(1./(r_pi*vp*qp))*log(oga_ref/oga) , 0.5/(vp*qp) )
-        ! kpa=rho* vc*vc !with dispersion
+            ! vc=1./cmplx( (1./vp)+(1./(r_pi*vp*qp))*log(oga_ref/oga) , 0.5/(vp*qp) )
+            ! kpa=rho* vc*vc !with dispersion
 
 
-        kpa(1:cb%nz,1:cb%nx)=cb%rho*cb%vp*cb%vp !ACoustic
-        buo(1:cb%nz,1:cb%nx)=1./cb%rho
+            kpa=cb%rho*cb%vp*cb%vp !ACoustic
+            buo=1./cb%rho
 
-        !left & right edges
-        kpa(1:cb%nz,0)      =kpa(1:cb%nz,1)
-        buo(1:cb%nz,0)      =buo(1:cb%nz,1)
-        kpa(1:cb%nz,cb%nx+1)=kpa(1:cb%nz,cb%nx)       
-        buo(1:cb%nz,cb%nx+1)=buo(1:cb%nz,cb%nx)
+    !         !left & right edges
+    !         kpa(1:cb%nz,0)      =kpa(1:cb%nz,1)
+    !         buo(1:cb%nz,0)      =buo(1:cb%nz,1)
+    !         kpa(1:cb%nz,cb%nx+1)=kpa(1:cb%nz,cb%nx)       
+    !         buo(1:cb%nz,cb%nx+1)=buo(1:cb%nz,cb%nx)
+    ! 
+    !         
+    !         !top & bottom edges
+    !         kpa(0,1:cb%nx)      =kpa(1,1:cb%nx)
+    !         buo(0,1:cb%nx)      =buo(1,1:cb%nx)
+    !         kpa(cb%nz+1,1:cb%nx)=kpa(cb%nz,1:cb%nx)       
+    !         buo(cb%nz+1,1:cb%nx)=buo(cb%nz,1:cb%nx)
+    ! 
+    !         !4 corners
+    !         kpa(0,0)            =kpa(1,1)
+    !         buo(0,0)            =buo(1,1)
+    !         
+    !         kpa(0,cb%nx+1)      =kpa(1,cb%nx)
+    !         buo(0,cb%nx+1)      =buo(1,cb%nx)
+    !         
+    !         kpa(cb%nz+1,0)      =kpa(cb%nz,1)
+    !         buo(cb%nz+1,0)      =buo(cb%nz,1)
+    ! 
+    !         kpa(cb%nz+1,cb%nx+1)=kpa(cb%nz,cb%nx)
+    !         buo(cb%nz+1,cb%nx+1)=buo(cb%nz,cb%nx)
 
-        
-        !top & bottom edges
-        kpa(0,1:cb%nx)      =kpa(1,1:cb%nx)
-        buo(0,1:cb%nx)      =buo(1,1:cb%nx)
-        kpa(cb%nz+1,1:cb%nx)=kpa(cb%nz,1:cb%nx)       
-        buo(cb%nz+1,1:cb%nx)=buo(cb%nz,1:cb%nx)
-
-        !4 corners
-        kpa(0,0)            =kpa(1,1)
-        buo(0,0)            =buo(1,1)
-        
-        kpa(0,cb%nx+1)      =kpa(1,cb%nx)
-        buo(0,cb%nx+1)      =buo(1,cb%nx)
-        
-        kpa(cb%nz+1,0)      =kpa(cb%nz,1)
-        buo(cb%nz+1,0)      =buo(cb%nz,1)
-
-        kpa(cb%nz+1,cb%nx+1)=kpa(cb%nz,cb%nx)
-        buo(cb%nz+1,cb%nx+1)=buo(cb%nz,cb%nx)
-
-        !save some memory
-        call computebox_dealloc_model
+            !save some memory
+            call computebox_dealloc_model
+            
+        endif
 
     end subroutine
 
@@ -110,7 +114,7 @@ use m_computebox, only:cb, computebox_dealloc_model
 
             !allocate mumps table
             !estimate maximum size of matrix
-            mumps%N=cb%n
+            mumps%N=(cb%nz-2)*(cb%nx-2)
             n=9*mumps%N
 
             if(.not.associated(mumps%A))   allocate(mumps%A(n))
@@ -140,11 +144,11 @@ use m_computebox, only:cb, computebox_dealloc_model
     subroutine field_RHS_substitute
         !fill RHS
         if (mpiworld%is_master) then
-            if(.not.associated(mumps%RHS)) allocate(mumps%RHS(cb%n*geo%nsrc))
-
+            if(.not.associated(mumps%RHS)) allocate(mumps%RHS((cb%nz-2)*(cb%nx-2)*geom%nsrc))
+            
             call fill_RHS_source(mumps%RHS)
-            mumps%icntl(9) = 1
-            mumps%NRHS = geo%nsrc
+            mumps%ICNTL(9) = 1
+            mumps%NRHS = geom%nsrc
             mumps%LRHS = mumps%N
 
         endif
@@ -162,16 +166,16 @@ use m_computebox, only:cb, computebox_dealloc_model
     end subroutine
 
     subroutine field_RHS_substitute_adjoint(dres)
-        complex,dimension(geo%nsrc) :: dres
+        complex,dimension(geom%nsrc) :: dres
 
         !fill RHS
         if (mpiworld%is_master) then
-            if(.not.associated(mumps%RHS)) allocate(mumps%RHS(cb%n*geo%nsrc))
+            if(.not.associated(mumps%RHS)) allocate(mumps%RHS(cb%n*geom%nsrc))
 
             call fill_RHS_receiver(mumps%RHS,conjg(dres))
 
             mumps%icntl(9) = 0
-            mumps%NRHS = geo%nsrc
+            mumps%NRHS = geom%nsrc
             mumps%LRHS = mumps%N
 
         endif
@@ -192,18 +196,18 @@ use m_computebox, only:cb, computebox_dealloc_model
         complex,dimension(:),allocatable :: seismo
 
         if (mpiworld%is_master) then
-            call alloc(seismo,geo%ntr)
+            call alloc(seismo,geom%ntr)
 
             call get_RHS(mumps%RHS,seismo)
 
-            open(20,file='synth_data_'//num2str(ifreq,'(04i)'),access='direct',recl=4*geo%ntr)
+            open(20,file='synth_data_'//num2str(ifreq,'(04i)'),access='direct',recl=4*geom%ntr)
             write(20,rec=1) real(seismo(:))
             write(20,rec=2) aimag(seismo(:))
             close(20)
             
             open(20,file='wavefield',access='direct',recl=4*cb%n)
-            write(20,rec=1) real(mumps%RHS(1:cb%n))
-            write(20,rec=2) aimag(mumps%RHS(1:cb%n))
+            write(20,rec=1) real(mumps%RHS(:))
+            write(20,rec=2) aimag(mumps%RHS(:))
             close(20)
 
         end if
@@ -245,8 +249,8 @@ use m_computebox, only:cb, computebox_dealloc_model
         jr=0
 
 
-        do ix=1,cb%nx
-        do iz=1,cb%nz
+        do ix=1,cb%nx-2
+        do iz=1,cb%nz-2
 
             !interpolate buoyancy at half grid points
             !arithmetic averaging is used
@@ -473,7 +477,7 @@ use m_computebox, only:cb, computebox_dealloc_model
 
 
     subroutine fill_RHS_source(RHS)
-        complex,dimension(cb%nz,cb%nx,geo%nsrc) :: RHS
+        complex,dimension(cb%nz,cb%nx,geom%nsrc) :: RHS
 
         complex :: source_term
         
@@ -481,14 +485,14 @@ use m_computebox, only:cb, computebox_dealloc_model
 
         source_term=1./(m%h*m%h)
 
-        do i=1,geo%nsrc
+        do i=1,geom%nsrc
 
-            ifz=geo%src(i)%ifz+cb%npml; iz=geo%src(i)%iz+cb%npml; ilz=geo%src(i)%ilz+cb%npml
-            ifx=geo%src(i)%ifx+cb%npml; ix=geo%src(i)%ix+cb%npml; ilx=geo%src(i)%ilx+cb%npml
+            ifz=geom%src(i)%ifz+cb%npml; iz=geom%src(i)%iz+cb%npml; ilz=geom%src(i)%ilz+cb%npml
+            ifx=geom%src(i)%ifx+cb%npml; ix=geom%src(i)%ix+cb%npml; ilx=geom%src(i)%ilx+cb%npml
 
 
             if(if_hicks) then
-                RHS(ifz:ilz,ifx:ilx,i) = RHS(ifz:ilz,ifx:ilx,i) + source_term *geo%src(i)%interp_coeff
+                RHS(ifz:ilz,ifx:ilx,i) = RHS(ifz:ilz,ifx:ilx,i) + source_term *geom%src(i)%interp_coeff
             else
                 RHS(iz,ix,i) = RHS(iz,ix,i) + source_term
             endif
@@ -498,7 +502,7 @@ use m_computebox, only:cb, computebox_dealloc_model
     end subroutine
 
     subroutine fill_RHS_receiver(RHS,adjsource)
-        complex,dimension(cb%nz,cb%nx,geo%nsrc) :: RHS
+        complex,dimension(cb%nz,cb%nx,geom%nsrc) :: RHS
         complex,dimension(*) :: adjsource
         
         complex :: source_term
@@ -507,11 +511,11 @@ use m_computebox, only:cb, computebox_dealloc_model
 
         k=1
 
-        do i=1,geo%nsrc
-        do j=1,geo%src(i)%nrcv
+        do i=1,geom%nsrc
+        do j=1,geom%src(i)%nrcv
 
-            ifz=geo%src(i)%rcv(j)%ifz+cb%npml; iz=geo%src(i)%rcv(j)%iz+cb%npml; ilz=geo%src(i)%rcv(j)%ilz+cb%npml
-            ifx=geo%src(i)%rcv(j)%ifx+cb%npml; ix=geo%src(i)%rcv(j)%ix+cb%npml; ilx=geo%src(i)%rcv(j)%ilx+cb%npml
+            ifz=geom%src(i)%rcv(j)%ifz+cb%npml; iz=geom%src(i)%rcv(j)%iz+cb%npml; ilz=geom%src(i)%rcv(j)%ilz+cb%npml
+            ifx=geom%src(i)%rcv(j)%ifx+cb%npml; ix=geom%src(i)%rcv(j)%ix+cb%npml; ilx=geom%src(i)%rcv(j)%ilx+cb%npml
 
             source_term=adjsource(k)/(m%h*m%h)
             k=k+1
@@ -519,7 +523,7 @@ use m_computebox, only:cb, computebox_dealloc_model
             if(if_hicks) then
                 ! select case (shot%rcv(ircv)%icomp)
                 !     case (1) !pressure adjsource
-                    RHS(ifz:ilz,ifx:ilx,i) = RHS(ifz:ilz,ifx:ilx,i) + source_term *geo%src(i)%rcv(j)%interp_coeff
+                    RHS(ifz:ilz,ifx:ilx,i) = RHS(ifz:ilz,ifx:ilx,i) + source_term *geom%src(i)%rcv(j)%interp_coeff
                 ! end select
 
             else
@@ -537,19 +541,19 @@ use m_computebox, only:cb, computebox_dealloc_model
     end subroutine
 
     subroutine get_RHS(RHS,seismo)
-        complex,dimension(cb%nz,cb%nx,geo%nsrc) :: RHS
+        complex,dimension(cb%nz-2,cb%nx-2,geom%nsrc) :: RHS
         complex,dimension(*) :: seismo
 
         k=1
 
-        do i=1,geo%nsrc
-        do j=1,geo%src(i)%nrcv
+        do i=1,geom%nsrc
+        do j=1,geom%src(i)%nrcv
 
-            ifz=geo%src(i)%rcv(j)%ifz+cb%npml; iz=geo%src(i)%rcv(j)%iz+cb%npml; ilz=geo%src(i)%rcv(j)%ilz+cb%npml
-            ifx=geo%src(i)%rcv(j)%ifx+cb%npml; ix=geo%src(i)%rcv(j)%ix+cb%npml; ilx=geo%src(i)%rcv(j)%ilx+cb%npml
+            ifz=geom%src(i)%rcv(j)%ifz+cb%npml; iz=geom%src(i)%rcv(j)%iz+cb%npml; ilz=geom%src(i)%rcv(j)%ilz+cb%npml
+            ifx=geom%src(i)%rcv(j)%ifx+cb%npml; ix=geom%src(i)%rcv(j)%ix+cb%npml; ilx=geom%src(i)%rcv(j)%ilx+cb%npml
 
             if(if_hicks) then
-                seismo(k)=sum(RHS(ifz:ilz,ifx:ilx,i) *geo%src(i)%rcv(j)%interp_coeff )
+                seismo(k)=sum(RHS(ifz:ilz,ifx:ilx,i) *geom%src(i)%rcv(j)%interp_coeff )
             else
                 seismo(k)= RHS(iz,ix,i)
             endif

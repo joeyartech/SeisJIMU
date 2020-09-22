@@ -103,7 +103,8 @@ use m_arrayop
             close(12)
             call hud('rho model is read.')
         else
-            call alloc(m%rho,1,1,1); m%rho=1000. !in [kg/m3]
+            !call alloc(m%rho,1,1,1); m%rho=1000. !in [kg/m3]
+            call alloc(m%rho,m%nz,m%nx,m%ny); m%rho=1000. !in [kg/m3]
         endif
         
         ! !epsilon

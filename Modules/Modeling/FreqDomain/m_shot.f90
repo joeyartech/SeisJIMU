@@ -51,7 +51,6 @@ use m_hicks
     contains
     
     subroutine init_shot(k,from)
-        integer k
         character(*) :: from
 
         logical :: if_staggered_grid
