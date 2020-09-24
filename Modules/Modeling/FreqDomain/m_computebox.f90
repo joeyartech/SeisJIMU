@@ -71,10 +71,10 @@ use m_model, only: m
         cb%mx=m%nx
         
         !C+D's index
-        cb%ifx = 1     - cb%npml-1
-        cb%ilx = cb%mx + cb%npml+1
-        cb%ifz = 1     - cb%npml-1
-        cb%ilz = cb%mz + cb%npml+1
+        cb%ifx = 1     - cb%npml
+        cb%ilx = cb%mx + cb%npml
+        cb%ifz = 1     - cb%npml
+        cb%ilz = cb%mz + cb%npml
         
         cb%nz=cb%ilz-cb%ifz+1
         cb%nx=cb%ilx-cb%ifx+1
@@ -86,9 +86,6 @@ use m_model, only: m
             write(*,*)'Inner area of Computebox:'
             write(*,*)'  ioz,mz:',cb%ioz,cb%mz
             write(*,*)'  iox,mx:',cb%iox,cb%mx
-            write(*,*)'After entering field/mumps:'
-            write(*,*)'  0:nz+1',cb%nz-2+1
-            write(*,*)'  0:nx+1',cb%nx-2+1
         endif
         
         if (mpiworld%is_master) then
@@ -102,21 +99,14 @@ use m_model, only: m
             call m2cb(m%rho,cb%rho)
             
             !build pml
-!             call alloc(cb%damp_z,     [cb%ifz,cb%ilz])
-!             call alloc(cb%damp_x,     [cb%ifx,cb%ilx])
-!             call alloc(cb%damp_z_half,[cb%ifz,cb%ilz])
-!             call alloc(cb%damp_x_half,[cb%ifx,cb%ilx])
-            
-            !build pml
-            !to be compatible with toy2dac
-            call alloc(cb%damp_z,     [0,cb%nz-2+1])
-            call alloc(cb%damp_x,     [0,cb%nx-2+1])
-            call alloc(cb%damp_z_half,[0,cb%nz-2+1])
-            call alloc(cb%damp_x_half,[0,cb%nx-2+1])
+            call alloc(cb%damp_z,     [0,cb%nz+1])
+            call alloc(cb%damp_x,     [0,cb%nx+1])
+            call alloc(cb%damp_z_half,[0,cb%nz+1])
+            call alloc(cb%damp_x_half,[0,cb%nx+1])
             
             omega=freq*2.*r_pi
-            call build_pml(cb%damp_z,cb%damp_z_half,cb%nz-2,omega)
-            call build_pml(cb%damp_x,cb%damp_x_half,cb%nx-2,omega)
+            call build_pml(cb%damp_z,cb%damp_z_half,cb%nz,omega)
+            call build_pml(cb%damp_x,cb%damp_x_half,cb%nx,omega)
             
         endif
 

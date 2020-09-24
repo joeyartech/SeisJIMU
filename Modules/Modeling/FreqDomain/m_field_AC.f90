@@ -43,6 +43,8 @@ use m_computebox, only:cb, computebox_dealloc_model
         call cmumps(mumps)
                 
         if(mpiworld%is_master) then
+            mumps%ICNTL(4)   = get_setup_int('MUMPS_LEVEL_PRINTING','ICNTL(4)',default=2)  !level of printing
+
             mumps%ICNTL(20)  =  0     !dense RHS
             mumps%ICNTL(21)  =  0     !0->centralized solution 
             mumps%ICNTL(7)   =  get_setup_int('MUMPS_ORDERING','ICNTL(7)',default=7)  !choice of ordering for analysis (default: automatic choice)
@@ -60,8 +62,8 @@ use m_computebox, only:cb, computebox_dealloc_model
         h2=m%h*m%h
 
         if(mpiworld%is_master) then
-            call alloc(kpa,[0,cb%nz-2+1],[0,cb%nx-2+1])
-            call alloc(buo,[0,cb%nz-2+1],[0,cb%nx-2+1])
+            call alloc(kpa,[0,cb%nz+1],[0,cb%nx+1])
+            call alloc(buo,[0,cb%nz+1],[0,cb%nx+1])
 
             ! !Kolsky-Futterman
             ! kpa=rho* vp*vp*(1.-0.5*c_i/qp)*(1.-0.5*c_i/qp) !dispersion-free
@@ -70,34 +72,34 @@ use m_computebox, only:cb, computebox_dealloc_model
             ! kpa=rho* vc*vc !with dispersion
 
 
-            kpa=cb%rho*cb%vp*cb%vp !ACoustic
-            buo=1./cb%rho
+            kpa(1:cb%nz,1:cb%nx)=cb%rho*cb%vp*cb%vp !ACoustic
+            buo(1:cb%nz,1:cb%nx)=1./cb%rho
 
-    !         !left & right edges
-    !         kpa(1:cb%nz,0)      =kpa(1:cb%nz,1)
-    !         buo(1:cb%nz,0)      =buo(1:cb%nz,1)
-    !         kpa(1:cb%nz,cb%nx+1)=kpa(1:cb%nz,cb%nx)       
-    !         buo(1:cb%nz,cb%nx+1)=buo(1:cb%nz,cb%nx)
-    ! 
-    !         
-    !         !top & bottom edges
-    !         kpa(0,1:cb%nx)      =kpa(1,1:cb%nx)
-    !         buo(0,1:cb%nx)      =buo(1,1:cb%nx)
-    !         kpa(cb%nz+1,1:cb%nx)=kpa(cb%nz,1:cb%nx)       
-    !         buo(cb%nz+1,1:cb%nx)=buo(cb%nz,1:cb%nx)
-    ! 
-    !         !4 corners
-    !         kpa(0,0)            =kpa(1,1)
-    !         buo(0,0)            =buo(1,1)
-    !         
-    !         kpa(0,cb%nx+1)      =kpa(1,cb%nx)
-    !         buo(0,cb%nx+1)      =buo(1,cb%nx)
-    !         
-    !         kpa(cb%nz+1,0)      =kpa(cb%nz,1)
-    !         buo(cb%nz+1,0)      =buo(cb%nz,1)
-    ! 
-    !         kpa(cb%nz+1,cb%nx+1)=kpa(cb%nz,cb%nx)
-    !         buo(cb%nz+1,cb%nx+1)=buo(cb%nz,cb%nx)
+            !left & right edges
+            ! kpa(1:cb%nz,0)      =kpa(1:cb%nz,1)
+            buo(1:cb%nz,0)      =buo(1:cb%nz,1)
+            ! kpa(1:cb%nz,cb%nx+1)=kpa(1:cb%nz,cb%nx)       
+            buo(1:cb%nz,cb%nx+1)=buo(1:cb%nz,cb%nx)
+    
+            
+            !top & bottom edges
+            ! kpa(0,1:cb%nx)      =kpa(1,1:cb%nx)
+            buo(0,1:cb%nx)      =buo(1,1:cb%nx)
+            ! kpa(cb%nz+1,1:cb%nx)=kpa(cb%nz,1:cb%nx)       
+            buo(cb%nz+1,1:cb%nx)=buo(cb%nz,1:cb%nx)
+    
+            !4 corners
+            ! kpa(0,0)            =kpa(1,1)
+            buo(0,0)            =buo(1,1)
+            
+            ! kpa(0,cb%nx+1)      =kpa(1,cb%nx)
+            buo(0,cb%nx+1)      =buo(1,cb%nx)
+            
+            ! kpa(cb%nz+1,0)      =kpa(cb%nz,1)
+            buo(cb%nz+1,0)      =buo(cb%nz,1)
+    
+            ! kpa(cb%nz+1,cb%nx+1)=kpa(cb%nz,cb%nx)
+            buo(cb%nz+1,cb%nx+1)=buo(cb%nz,cb%nx)
 
             !save some memory
             call computebox_dealloc_model
@@ -112,17 +114,29 @@ use m_computebox, only:cb, computebox_dealloc_model
 
         if (mpiworld%is_master) then
 
-            !allocate mumps table
-            !estimate maximum size of matrix
-            mumps%N=(cb%nz-2)*(cb%nx-2)
-            n=9*mumps%N
+            mumps%N=cb%n
+
+            !max possible number of non-0 entries
+            !which is a good estimate of
+            !the actual number of non-0 entries (mump%Nz)
+            n=9*cb%n
 
             if(.not.associated(mumps%A))   allocate(mumps%A(n))
             if(.not.associated(mumps%IRN)) allocate(mumps%IRN(n))
             if(.not.associated(mumps%JCN)) allocate(mumps%JCN(n))
-            
+
             !build matrix A
-            call build_matrix(mumps%A,mumps%IRN,mumps%JCN,n,mumps%Nz)
+            call build_matrix(mumps%A,mumps%IRN,mumps%JCN,mumps%Nz)
+
+! open(12,file='A',access='direct',recl=8*n)
+! write(12,rec=1)mumps%A
+! close(12)
+! open(12,file='IRN',access='direct',recl=4*n)
+! write(12,rec=1)real(mumps%IRN)
+! close(12)
+! open(12,file='JCN',access='direct',recl=4*n)
+! write(12,rec=1)real(mumps%JCN)
+! close(12)
 
         end if
 
@@ -141,12 +155,19 @@ use m_computebox, only:cb, computebox_dealloc_model
   
     end subroutine
 
-    subroutine field_RHS_substitute
+    subroutine field_RHS_substitute(o_source_term)
+        complex,optional :: o_source_term
+
         !fill RHS
         if (mpiworld%is_master) then
-            if(.not.associated(mumps%RHS)) allocate(mumps%RHS((cb%nz-2)*(cb%nx-2)*geom%nsrc))
+            if(.not.associated(mumps%RHS)) allocate(mumps%RHS(cb%n*geom%nsrc))
             
-            call fill_RHS_source(mumps%RHS)
+            if(present(o_source_term)) then
+                call fill_RHS_source(mumps%RHS,o_source_term)
+            else
+                call fill_RHS_source(mumps%RHS)
+            endif
+
             mumps%ICNTL(9) = 1
             mumps%NRHS = geom%nsrc
             mumps%LRHS = mumps%N
@@ -166,7 +187,7 @@ use m_computebox, only:cb, computebox_dealloc_model
     end subroutine
 
     subroutine field_RHS_substitute_adjoint(dres)
-        complex,dimension(geom%nsrc) :: dres
+        complex,dimension(geom%ntr) :: dres
 
         !fill RHS
         if (mpiworld%is_master) then
@@ -174,7 +195,7 @@ use m_computebox, only:cb, computebox_dealloc_model
 
             call fill_RHS_receiver(mumps%RHS,conjg(dres))
 
-            mumps%icntl(9) = 0
+            mumps%ICNTL(9) = 0
             mumps%NRHS = geom%nsrc
             mumps%LRHS = mumps%N
 
@@ -205,20 +226,28 @@ use m_computebox, only:cb, computebox_dealloc_model
             write(20,rec=2) aimag(seismo(:))
             close(20)
             
-            open(20,file='wavefield',access='direct',recl=4*cb%n)
-            write(20,rec=1) real(mumps%RHS(:))
-            write(20,rec=2) aimag(mumps%RHS(:))
+            open(20,file='wavefield_'//num2str(ifreq,'(04i)'),access='direct',recl=4*cb%n*geom%nsrc)
+            write(20,rec=1) real(mumps%RHS(1:cb%n*geom%nsrc))
+            write(20,rec=2) aimag(mumps%RHS(1:cb%n*geom%nsrc))
             close(20)
 
-        end if
+            ! open(20,file='wavefield',access='direct',recl=4*pbdir%n1e*pbdir%n2e)
+            ! write(20,rec=iw)sngl(real(pbdir%id%rhs(1:pbdir%n1e*pbdir%n2e)))
 
+        endif
+
+    end subroutine
+
+    subroutine field_mumps_finalize
+        mumps%JOB = -2
+        call cmumps(mumps)
     end subroutine
 
     !========= set up Ax=b =================
 
-    subroutine build_matrix(A,IRN,ICN,n,k)
-        complex,dimension(n) :: A
-        integer,dimension(n) :: IRN, ICN
+    subroutine build_matrix(A,IRN,JCN,k)
+        complex,dimension(*) :: A
+        integer,dimension(*) :: IRN, JCN
 
         real,parameter :: damp=0.
 
@@ -233,26 +262,25 @@ use m_computebox, only:cb, computebox_dealloc_model
         complex :: dz0, dx0, dzp, dzm, dxp, dxm
         complex :: oga2
 
-        w1_p2 = w1/(h2*h2)
-        w2_p2 = w2/(h2*h2)
+        w1_p2 = w1/h2
+        w2_p2 = w2/h2
         quarter_w1_p2 = 0.25*w1_p2
         quarter_w2_p2 = 0.25*w2_p2
 
         oga2=oga*oga
         
-        ! initialize sparse impedance matrix
-        IRN=0
-        ICN=0
-        A=cmplx(0.,0.)
-
-        k=0
-        jr=0
+        IRN(1:9*cb%n)=0
+        JCN(1:9*cb%n)=0
+        A(1:9*cb%n)=cmplx(0.,0.)
 
 
-        do ix=1,cb%nx-2
-        do iz=1,cb%nz-2
+        k=0 !number of non-0 entries in A
+        ir=0 !index of row
 
-            !interpolate buoyancy at half grid points
+        do ix=1,cb%nx
+        do iz=1,cb%nz
+
+            !interpolate buoyancy at off-grid points
             !arithmetic averaging is used
             bpm=0.25*(buo(iz,ix)+buo(iz+1,ix)+buo(iz,ix-1)+buo(iz+1,ix-1))
             bmp=0.25*(buo(iz,ix)+buo(iz-1,ix)+buo(iz,ix+1)+buo(iz-1,ix+1))
@@ -273,13 +301,13 @@ use m_computebox, only:cb, computebox_dealloc_model
             dzm=cb%damp_z_half(iz-1)
             
 
-            !Node  0 0
-            jr=(ix-1)*cb%nz+iz
+            !Node  0, 0
+            ir=(ix-1)*cb%nz+iz
             jc=(ix-1)*cb%nz+iz
 
             k=k+1
-            irn(k) = jr
-            icn(k) = jc
+            IRN(k) = ir
+            JCN(k) = jc
             
             A(k) = wm1*oga2/kpa(iz,ix) &
                     +quarter_w1_p2*( &
@@ -293,14 +321,14 @@ use m_computebox, only:cb, computebox_dealloc_model
 
             A(k)=A(k)+damp*4.*A(k)
 
-            !Node  0+1
+            !Node  0,+1
             jc=0
             if (ix<cb%nx) then
                 jc=(ix-1+1)*cb%nz+iz
                 
                 k=k+1
-                irn(k)=jr
-                icn(k)=jc
+                IRN(k)=ir
+                JCN(k)=jc
                 
                 A(k)= quarter_wm2*oga2/kpa(iz,ix+1) &
                     +quarter_w1_p2*( &
@@ -315,13 +343,13 @@ use m_computebox, only:cb, computebox_dealloc_model
                 A(k)=A(k)-damp*A(k)
             end if
            
-            !Node  0-1
+            !Node  0,-1
             if (ix>1) then
                 jc=(ix-1-1)*cb%nz+iz
 
                 k=k+1
-                irn(k)=jr
-                icn(k)=jc
+                IRN(k)=ir
+                JCN(k)=jc
 
                 A(k)= quarter_wm2*oga2/kpa(iz,ix-1) &
                     +quarter_w1_p2*( &
@@ -336,13 +364,13 @@ use m_computebox, only:cb, computebox_dealloc_model
                 A(k)=A(k)-damp*A(k)
             end if
 
-            !Node -1 0
-            if (iz > 1) then
+            !Node -1, 0
+            if (iz>1) then
                 jc=(ix-1)*cb%nz+iz-1
 
                 k=k+1
-                irn(k)=jr
-                icn(k)=jc
+                IRN(k)=ir
+                JCN(k)=jc
 
                 A(k)= quarter_wm2*oga2/kpa(iz-1,ix) &
                     +quarter_w1_p2*( &
@@ -357,13 +385,13 @@ use m_computebox, only:cb, computebox_dealloc_model
                 A(k)=A(k)-damp*A(k)
             end if
 
-            !Node +1 0
-            if (iz < cb%nz) then
+            !Node +1, 0
+            if (iz<cb%nz) then
                 jc=(ix-1)*cb%nz+iz+1
 
                 k=k+1
-                irn(k)=jr
-                icn(k)=jc
+                IRN(k)=ir
+                JCN(k)=jc
 
                 A(k)= quarter_wm2*oga2/kpa(iz+1,ix) &
                     +quarter_w1_p2*( &
@@ -378,13 +406,13 @@ use m_computebox, only:cb, computebox_dealloc_model
                 A(k)=A(k)-damp*A(k)
             end if
 
-            !Node -1+1
-            if (iz > 1 .and. ix < cb%nx) then
+            !Node -1,+1
+            if (iz>1 .and. ix<cb%nx) then
                 jc=(ix-1+1)*cb%nz+iz-1
 
                 k=k+1
-                irn(k)=jr
-                icn(k)=jc
+                IRN(k)=ir
+                JCN(k)=jc
                 
                 A(k)= quarter_wm3*oga2/kpa(iz-1,ix+1) &
                     +quarter_w1_p2*( &
@@ -398,13 +426,13 @@ use m_computebox, only:cb, computebox_dealloc_model
 
             end if
 
-            !Node +1-1
-            if (iz < cb%nz .and. ix >1) then
+            !Node +1,-1
+            if (iz<cb%nz .and. ix>1) then
                 jc=(ix-1-1)*cb%nz+iz+1
 
                 k=k+1
-                irn(k)=jr
-                icn(k)=jc
+                IRN(k)=ir
+                JCN(k)=jc
                 
                 A(k)= quarter_wm3*oga2/kpa(iz+1,ix-1) &
                     +quarter_w1_p2*( &
@@ -418,13 +446,13 @@ use m_computebox, only:cb, computebox_dealloc_model
 
             end if
 
-            !Node +1+1
-            if (iz < cb%nz .and. ix < cb%nx) then
+            !Node +1,+1
+            if (iz<cb%nz .and. ix<cb%nx) then
                 jc=(ix-1+1)*cb%nz+iz+1
 
                 k=k+1
-                irn(k)=jr
-                icn(k)=jc
+                IRN(k)=ir
+                JCN(k)=jc
                 
                 A(k)= quarter_wm3*oga2/kpa(iz+1,ix+1) &
                    +quarter_w1_p2*( &
@@ -438,13 +466,13 @@ use m_computebox, only:cb, computebox_dealloc_model
 
             end if
            
-            !Node -1-1
-            if (iz > 1 .and. ix > 1) then
+            !Node -1,-1
+            if (iz>1 .and. ix>1) then
                 jc=(ix-1-1)*cb%nz+iz-1
 
                 k=k+1
-                irn(k)=jr
-                icn(k)=jc
+                IRN(k)=ir
+                JCN(k)=jc
                 
                 A(k)= quarter_wm3*oga2/kpa(iz-1,ix-1) &
                     +quarter_w1_p2*( &
@@ -462,28 +490,35 @@ use m_computebox, only:cb, computebox_dealloc_model
         end do
 
 
-        if(m%if_freesurface) then
-            do ix=1,cb%nx
-            do iz=1,cb%npml
-                k=k+1  !PROBLEMATIC
-                irn(k)= (ix-1)*cb%nz+iz
-                icn(k)= (ix-1)*cb%nz+iz
-                A(k)= oga2/kpa(iz,ix)
-            enddo
-            enddo
-        endif
+        ! if(m%if_freesurface) then
+        !     do ix=1,cb%nx
+        !     do iz=1,cb%npml
+        !         k=k+1  !PROBLEMATIC
+        !         IRN(k)= (ix-1)*cb%nz+iz
+        !         JCN(k)= (ix-1)*cb%nz+iz
+        !         A(k)= oga2/kpa(iz,ix)
+        !     enddo
+        !     enddo
+        ! endif
 
     end subroutine
 
-
-    subroutine fill_RHS_source(RHS)
+    subroutine fill_RHS_source(RHS,o_source_term)
         complex,dimension(cb%nz,cb%nx,geom%nsrc) :: RHS
-
+        complex,optional :: o_source_term
+        
         complex :: source_term
         
         RHS=cmplx(0.,0.)
 
-        source_term=1./(m%h*m%h)
+        if(present(o_source_term)) then
+            source_term=o_source_term
+        else
+            source_term=1.
+        endif
+
+        source_term=source_term/h2
+
 
         do i=1,geom%nsrc
 
@@ -517,7 +552,7 @@ use m_computebox, only:cb, computebox_dealloc_model
             ifz=geom%src(i)%rcv(j)%ifz+cb%npml; iz=geom%src(i)%rcv(j)%iz+cb%npml; ilz=geom%src(i)%rcv(j)%ilz+cb%npml
             ifx=geom%src(i)%rcv(j)%ifx+cb%npml; ix=geom%src(i)%rcv(j)%ix+cb%npml; ilx=geom%src(i)%rcv(j)%ilx+cb%npml
 
-            source_term=adjsource(k)/(m%h*m%h)
+            source_term=adjsource(k)/h2
             k=k+1
 
             if(if_hicks) then
@@ -541,7 +576,7 @@ use m_computebox, only:cb, computebox_dealloc_model
     end subroutine
 
     subroutine get_RHS(RHS,seismo)
-        complex,dimension(cb%nz-2,cb%nx-2,geom%nsrc) :: RHS
+        complex,dimension(cb%nz,cb%nx,geom%nsrc) :: RHS
         complex,dimension(*) :: seismo
 
         k=1

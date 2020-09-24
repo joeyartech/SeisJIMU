@@ -69,6 +69,7 @@ endif
     
     call hud('        END LOOP OVER FREQUENCIES         ')
     
+    call field_mumps_finalize
     call mpiworld_finalize
     
 end
