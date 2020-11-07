@@ -472,7 +472,8 @@ use m_sysio
         
     end subroutine
     
-    subroutine read_sudata(cshot,sudata)
+    subroutine read_sudata(survey,cshot,sudata)
+        character(4) :: survey
         character(4) :: cshot
         type(t_suformat),dimension(:),allocatable :: sudata
 
@@ -482,7 +483,11 @@ use m_sysio
         integer file_size
         integer(2) :: ns
         
-        tmp=get_setup_char('FILE_DATA')
+        if(survey=='base') then
+            tmp=get_setup_char('FILE_DATA')
+        else
+            tmp=get_setup_char('FILE_DATA_2')
+        endif
         
         data_file=tmp//cshot//'.su'
                 

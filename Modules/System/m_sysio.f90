@@ -217,10 +217,11 @@ use m_message
         
     end function
     
-    function get_setup_file(word,word2)
+    function get_setup_file(word,word2,default)
         character(:),allocatable :: get_setup_file
         character(*) :: word
         character(*),optional :: word2
+        character(*),optional :: default
         
         character(80) :: text
         character(80) :: tmp,tmp2,tmp3,tmp4
@@ -263,8 +264,16 @@ use m_message
             get_setup_file=trim(adjustl(tmp4))
             if(mpiworld%is_master) write(*,*) word//' '//get_setup_file
         else
-            get_setup_file=''
-            call hud(word//' is NOT found, take empty filename')
+            if(present(default)) then
+                inquire(file=trim(adjustl(default)),exist=alive)
+                if(alive) then
+                    get_setup_file=default
+                    call hud(word//' is NOT found, take default: '//get_setup_file)
+                endif
+            else
+                get_setup_file=''
+                call hud(word//' is NOT found, take empty filename')
+            endif
         endif
         
     end function

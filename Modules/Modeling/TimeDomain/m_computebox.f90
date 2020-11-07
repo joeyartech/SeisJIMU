@@ -226,13 +226,13 @@ use m_shot
         call hud('Computebox value ranges:')
         if(mpiworld%iproc==0) then
             write(*,*)'vp' ,minval(cb%vp),maxval(cb%vp)
-            write(*,*)'vp-2' ,minval(cb%vp2),maxval(cb%vp2)
+            write(*,*)'vp2' ,minval(cb%vp2),maxval(cb%vp2)
             write(*,*)'vs' ,minval(cb%vs),maxval(cb%vs)
-            write(*,*)'vs-2' ,minval(cb%vs2),maxval(cb%vs2)
+            write(*,*)'vs2' ,minval(cb%vs2),maxval(cb%vs2)
             write(*,*)'rho',minval(cb%rho),maxval(cb%rho)
-            write(*,*)'rho-2',minval(cb%rho2),maxval(cb%rho2)
+            write(*,*)'rho2',minval(cb%rho2),maxval(cb%rho2)
             write(*,*)'ip' ,minval(cb%vp*cb%rho),maxval(cb%vp*cb%rho)
-            write(*,*)'ip-2' ,minval(cb%vp2*cb%rho2),maxval(cb%vp2*cb%rho2)
+            write(*,*)'ip2' ,minval(cb%vp2*cb%rho2),maxval(cb%vp2*cb%rho2)
             write(*,*)'eps',minval(cb%eps),maxval(cb%eps)
             write(*,*)'del',minval(cb%del),maxval(cb%del)
         end if

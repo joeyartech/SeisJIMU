@@ -46,7 +46,7 @@ use m_hicks
     real,dimension(:,:),allocatable :: dsyn, dsyn2 !synthetic seismogram
     real,dimension(:,:),allocatable :: dres, dres2 !residual as well as adjoint source seismogram
     
-    character(:),allocatable :: file_wavelet
+    character(:),allocatable :: file_wavelet, file_wavelet2
     
     contains
     
@@ -57,14 +57,16 @@ use m_hicks
         logical :: if_staggered_grid
         
         shot%index=shotlist(k)
+        shot2%index=shotlist(k)
         write(shot%cindex,'(i0.4)') shot%index
+        write(shot2%cindex,'(i0.4)') shot2%index
         
         !read geometry, nt and dt
         ! if(from=='setup') then
         !     call init_shot_from_setup
         ! elseif(from=='data') then
-            call init_shot_from_data(shot)
-            call init_shot_from_data(shot2)
+            call init_shot_from_data('base',shot)
+            call init_shot_from_data('moni',shot2)
         ! endif
         
         !shift position to be 0-based
@@ -100,9 +102,9 @@ use m_hicks
             close(11)
         endif
 
-        shot2%src%fpeak=get_setup_real('PEAK_FREQUENCY_2')
-        file_wavelet=get_setup_file('FILE_WAVELET_2')
-        if(file_wavelet=='') then
+        shot2%src%fpeak=get_setup_real('PEAK_FREQUENCY_2',default=shot%src%fpeak)
+        file_wavelet2=get_setup_file('FILE_WAVELET_2',default=file_wavelet)
+        if(file_wavelet2=='') then
             if(get_setup_char('WAVELET_TYPE_2',default='sinexp')=='sinexp') then
                 call hud('Use filtered sinexp wavelet')
                 shot2%src%wavelet=gen_wavelet_sinexp(shot2%src%nt,shot2%src%dt,shot2%src%fpeak)
@@ -112,7 +114,7 @@ use m_hicks
             endif
         else !wavelet file exists
             call alloc(shot2%src%wavelet,shot2%src%nt)
-            open(11,file=file_wavelet,access='direct',recl=4*shot2%src%nt)
+            open(11,file=file_wavelet2,access='direct',recl=4*shot2%src%nt)
             read(11,rec=1) shot2%src%wavelet
             close(11)
         endif
@@ -249,22 +251,22 @@ use m_hicks
             write(*,*)'  minmax ify,ily:',minval(shot%rcv(:)%ify),maxval(shot%rcv(:)%ify),minval(shot%rcv(:)%ily),maxval(shot%rcv(:)%ily)
             write(*,*)'  nrcv:',shot%nrcv
             write(*,*)'---------------------------------'
-            write(*,*)'  2- nt,dt:',shot2%src%nt,shot2%src%dt
+            write(*,*)'  2/ nt,dt:',shot2%src%nt,shot2%src%dt
             write(*,*)'---------------------------------'
-            write(*,*)'  2- sz,isz:',shot2%src%z,shot2%src%iz
-            write(*,*)'  2- sx,isx:',shot2%src%x,shot2%src%ix
-            write(*,*)'  2- sy,isy:',shot2%src%y,shot2%src%iy
-            write(*,*)'  2- ifz,ilz:',shot2%src%ifz,shot2%src%ilz
-            write(*,*)'  2- ifx,ilx:',shot2%src%ifx,shot2%src%ilx
-            write(*,*)'  2- ify,ily:',shot2%src%ify,shot2%src%ily
+            write(*,*)'  2/ sz,isz:',shot2%src%z,shot2%src%iz
+            write(*,*)'  2/ sx,isx:',shot2%src%x,shot2%src%ix
+            write(*,*)'  2/ sy,isy:',shot2%src%y,shot2%src%iy
+            write(*,*)'  2/ ifz,ilz:',shot2%src%ifz,shot2%src%ilz
+            write(*,*)'  2/ ifx,ilx:',shot2%src%ifx,shot2%src%ilx
+            write(*,*)'  2/ ify,ily:',shot2%src%ify,shot2%src%ily
             write(*,*)'---------------------------------'
-            write(*,*)'  2- minmax rz,irz:',minval(shot2%rcv(:)%z),maxval(shot2%rcv(:)%z),minval(shot2%rcv(:)%iz),maxval(shot2%rcv(:)%iz)
-            write(*,*)'  2- minmax rx,irx:',minval(shot2%rcv(:)%x),maxval(shot2%rcv(:)%x),minval(shot2%rcv(:)%ix),maxval(shot2%rcv(:)%ix)
-            write(*,*)'  2- minmax ry,iry:',minval(shot2%rcv(:)%y),maxval(shot2%rcv(:)%y),minval(shot2%rcv(:)%iy),maxval(shot2%rcv(:)%iy)
-            write(*,*)'  2- minmax ifz,ilz:',minval(shot2%rcv(:)%ifz),maxval(shot2%rcv(:)%ifz),minval(shot2%rcv(:)%ilz),maxval(shot2%rcv(:)%ilz)
-            write(*,*)'  2- minmax ifx,ilx:',minval(shot2%rcv(:)%ifx),maxval(shot2%rcv(:)%ifx),minval(shot2%rcv(:)%ilx),maxval(shot2%rcv(:)%ilx)
-            write(*,*)'  2- minmax ify,ily:',minval(shot2%rcv(:)%ify),maxval(shot2%rcv(:)%ify),minval(shot2%rcv(:)%ily),maxval(shot2%rcv(:)%ily)
-            write(*,*)'  2- nrcv:',shot2%nrcv
+            write(*,*)'  2/ minmax rz,irz:',minval(shot2%rcv(:)%z),maxval(shot2%rcv(:)%z),minval(shot2%rcv(:)%iz),maxval(shot2%rcv(:)%iz)
+            write(*,*)'  2/ minmax rx,irx:',minval(shot2%rcv(:)%x),maxval(shot2%rcv(:)%x),minval(shot2%rcv(:)%ix),maxval(shot2%rcv(:)%ix)
+            write(*,*)'  2/ minmax ry,iry:',minval(shot2%rcv(:)%y),maxval(shot2%rcv(:)%y),minval(shot2%rcv(:)%iy),maxval(shot2%rcv(:)%iy)
+            write(*,*)'  2/ minmax ifz,ilz:',minval(shot2%rcv(:)%ifz),maxval(shot2%rcv(:)%ifz),minval(shot2%rcv(:)%ilz),maxval(shot2%rcv(:)%ilz)
+            write(*,*)'  2/ minmax ifx,ilx:',minval(shot2%rcv(:)%ifx),maxval(shot2%rcv(:)%ifx),minval(shot2%rcv(:)%ilx),maxval(shot2%rcv(:)%ilx)
+            write(*,*)'  2/ minmax ify,ily:',minval(shot2%rcv(:)%ify),maxval(shot2%rcv(:)%ify),minval(shot2%rcv(:)%ily),maxval(shot2%rcv(:)%ily)
+            write(*,*)'  2/ nrcv:',shot2%nrcv
             write(*,*)'---------------------------------'
         endif
         
@@ -301,11 +303,12 @@ use m_hicks
 !     end subroutine
     
     
-    subroutine init_shot_from_data(shot)
+    subroutine init_shot_from_data(survey,shot)
+        character(4) :: survey
         type(t_shot) :: shot
         type(t_suformat),dimension(:),allocatable :: sudata
         
-        call read_sudata(shot%cindex,sudata)
+        call read_sudata(survey,shot%cindex,sudata)
         
         !source & receiver geometry
         shot%src%x=sudata(1)%hdr%sx

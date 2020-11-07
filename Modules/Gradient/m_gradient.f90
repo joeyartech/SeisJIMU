@@ -174,17 +174,17 @@ open(12,file='synth_raw_2_'//shot%cindex,access='stream')
 write(12) dsyn2
 close(12)
 endif
-            !update shot%src%wavelet
-            if(update_wavelet/='no') then
-                call gradient_matchfilter_data
+            ! !update shot%src%wavelet
+            ! if(update_wavelet/='no') then
+            !     call gradient_matchfilter_data
                 
-                !write wavelet updates for QC
-                if(mpiworld%is_master) then
-                    open(12,file='wavelet_update_2',access='stream',position='append')
-                    write(12) shot2%src%wavelet
-                    close(12)
-                endif
-            endif
+            !     !write wavelet updates for QC
+            !     if(mpiworld%is_master) then
+            !         open(12,file='wavelet_update_2',access='stream',position='append')
+            !         write(12) shot2%src%wavelet
+            !         close(12)
+            !     endif
+            ! endif
 
             !write synthetic data
             open(12,file='synth_data_2_'//shot%cindex,access='stream')
@@ -195,7 +195,7 @@ endif
             call alloc(dres2, shot2%rcv(1)%nt, shot2%nrcv)
             call objectivefunc_data_norm_residual
             
-            if(mpiworld%is_master) write(*,*) 'Shot# 0001: 2- Data misfit norm', dnorm
+            if(mpiworld%is_master) write(*,*) 'Shot# 0001: 2/ Data misfit norm', dnorm
             
             fobjective(2)=fobjective(2)+dnorm
 
@@ -207,9 +207,9 @@ endif
             if(if_gradient) then
                 
                 !adjoint source
-                if(update_wavelet/='no') then
-                    call matchfilter_correlate_filter_residual(shot2%src%nt,shot2%nrcv,dres2)
-                endif
+                ! if(update_wavelet/='no') then
+                !     call matchfilter_correlate_filter_residual(shot2%src%nt,shot2%nrcv,dres2)
+                ! endif
                 
                 call alloc(cb%gradient2, cb%mz,cb%mx,cb%my,ncorr) !(:,:,:,1) is glda, (:,:,:,2) is gmu, (:,:,:,3) is grho0
                 !*******************************
@@ -299,7 +299,6 @@ endif
             call matchfilter_apply_to_wavelet(shot2%src%nt,shot2%src%wavelet)
             
             call matchfilter_apply_to_data(shot2%src%nt,shot2%nrcv,dsyn2)
-            
         endif
         
     end subroutine
