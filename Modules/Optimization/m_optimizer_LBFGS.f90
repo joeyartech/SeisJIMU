@@ -61,7 +61,7 @@ use m_linesearcher
         
         !initialize current point
         call alloc(current%x, n,initialize=.false.) !quiry point
-        current%f=fobjective
+        current%f=fobjective(3)
         call alloc(current%g, n,initialize=.false.) !gradient
         call alloc(current%pg,n,initialize=.false.) !preconditioned gradient
         call alloc(current%d, n,initialize=.false.) !descent direction
@@ -243,6 +243,7 @@ use m_linesearcher
                                    !e.g.  !    0    1.00E+00    1.00E+00    1.00E+00    1.00E+00      0       1
                     write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, current%f, current%f/f0, norm2(current%g)/g0norm, alpha, isearch, imodeling
                     open(18,file='model_update',access='stream')
+                    open(28,file='model_update_2',access='stream')
                 case('update')
                     write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, current%f, current%f/f0, norm2(current%g)/g0norm, alpha, isearch, imodeling
                     
@@ -251,6 +252,10 @@ use m_linesearcher
                     if(if_write_vs)  write(18) m%vs
                     if(if_write_rho) write(18) m%rho
                     !write(18) m%vp*m%rho
+
+                    if(if_write_vp)  write(28) m%vp2
+                    if(if_write_vs)  write(28) m%vs2
+                    if(if_write_rho) write(28) m%rho2
                 case('maximum')
                     write(16,'(a)'      ) ' **********************************************************************'
                     write(16,'(a)'      ) '     STOP: MAXIMUM MODELING NUMBER REACHED                             '
@@ -273,13 +278,25 @@ use m_linesearcher
                     !write(18) m%vp*m%rho
                     close(18)
                     
-                    open(18,file='model_final',access='stream')
+                    if(if_write_vp)  write(28) m%vp2
+                    if(if_write_vs)  write(28) m%vs2
+                    if(if_write_rho) write(28) m%rho2
+                    close(28)
+
+                    
                     call parameterization_transform('x2m',current%x)
+                    open(18,file='model_final',access='stream')
                     if(if_write_vp)  write(18) m%vp
                     if(if_write_vs)  write(18) m%vs
                     if(if_write_rho) write(18) m%rho
                     !write(18) m%vp*m%rho
                     close(18)
+
+                    open(28,file='model_final_2',access='stream')
+                    if(if_write_vp)  write(28) m%vp2
+                    if(if_write_vs)  write(28) m%vs2
+                    if(if_write_rho) write(28) m%rho2
+                    close(28)
                     
                     write(*,'(a,i0.4)') 'ximage < model_final n1=',m%nz
                     write(*,'(a,i0.4,a,i0.4)') 'xmovie < model_update loop=1 title=%g n1=',m%nz,' n2=',m%nx

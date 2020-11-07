@@ -9,6 +9,7 @@ use m_arrayop
         real    :: ox,oy,oz
         logical :: is_cubic, is_isotropic, if_freesurface
         real,dimension(:,:,:),allocatable :: vp,vs,rho,eps,del,eta
+        real,dimension(:,:,:),allocatable :: vp2,vs2,rho2 !,eps,del,eta
         real,dimension(:,:),allocatable :: topo
         integer,dimension(:,:),allocatable :: itopo
         real,dimension(:,:,:),allocatable :: vp_mask,vs_mask,rho_mask
@@ -26,7 +27,7 @@ use m_arrayop
     contains
     
     subroutine init_model
-        character(:),allocatable :: tmp1,tmp2,tmp3,tmp4
+        character(:),allocatable :: tmp1,tmp2,tmp3,tmp4,tmp5
         logical alive
         
         tmp1=get_setup_char('MODEL_DIMENSION')
@@ -63,6 +64,7 @@ use m_arrayop
         
         !read models
         tmp4=get_setup_char('FILE_MODELS')
+        tmp5=get_setup_char('FILE_MODELS_2')
         
         !vp
         inquire(file=tmp4//'_vp', exist=alive)
@@ -75,6 +77,17 @@ use m_arrayop
         read(12,rec=1) m%vp 
         close(12)
         call hud('vp model is read.')
+
+        inquire(file=tmp5//'_vp', exist=alive)
+        if(.not.alive) then
+            call hud('ERROR: Unable to find vp2 model!')
+            stop
+        endif
+        call alloc(m%vp2,m%nz,m%nx,m%ny)
+        open(12,file=tmp5//'_vp',access='direct',recl=n,action='read',status='old')
+        read(12,rec=1) m%vp2
+        close(12)
+        call hud('vp2 model is read.')
         
         !vs
         inquire(file=tmp4//'_vs', exist=alive)
@@ -88,6 +101,17 @@ use m_arrayop
             call alloc(m%vs,1,1,1)
         endif
         
+        inquire(file=tmp5//'_vs', exist=alive)
+        if(alive) then
+            call alloc(m%vs2,m%nz,m%nx,m%ny)
+            open(12,file=tmp5//'_vs',access='direct',recl=n,action='read',status='old')
+            read(12,rec=1) m%vs2
+            close(12)
+            call hud('vs 2 model is read.')
+        else
+            call alloc(m%vs2,1,1,1)
+        endif
+
         !rho
         inquire(file=tmp4//'_rho', exist=alive)
         if(alive) then
@@ -100,6 +124,17 @@ use m_arrayop
             call alloc(m%rho,1,1,1); m%rho=1000. !in [kg/m3]
         endif
         
+        inquire(file=tmp5//'_rho', exist=alive)
+        if(alive) then
+            call alloc(m%rho2,m%nz,m%nx,m%ny)
+            open(12,file=tmp5//'_rho',access='direct',recl=n,action='read',status='old')
+            read(12,rec=1) m%rho2
+            close(12)
+            call hud('rho2 model is read.')
+        else
+            call alloc(m%rho2,1,1,1); m%rho2=1000. !in [kg/m3]
+        endif
+
         !epsilon
         inquire(file=tmp4//'_eps', exist=alive)
         if(alive) then
@@ -190,9 +225,11 @@ use m_arrayop
         select case (cmodel)
             case ('rho')
                 if(size(m%rho)==1) then
-                    deallocate(m%rho)
-                    call alloc(m%rho,m%nz,m%nx,m%ny,initialize=.false.)
+                    deallocate(m%rho,m%rho2)
+                    call alloc(m%rho ,m%nz,m%nx,m%ny,initialize=.false.)
+                    call alloc(m%rho2,m%nz,m%nx,m%ny,initialize=.false.)
                     m%rho=1000.
+                    m%rho2=1000.
                 endif
         end select
         

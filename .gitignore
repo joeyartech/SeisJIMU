@@ -2,8 +2,10 @@
 # Don't track these files & folders #
 #####################################
 Demo/
+Doc/
 devel/
 exe/
+master/
 mod/
 philosophy.odp
 Validations/
@@ -31,6 +33,7 @@ test
 *.snm
 *.backup
 *.toc
+*.odp
 
 
 

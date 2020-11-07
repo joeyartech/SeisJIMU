@@ -3,7 +3,7 @@ use m_mpienv
 use m_arrayop
 use m_sysio
 use m_model, only:m
-use m_shot, only:shot
+use m_shot, only:shot, shot2
 use m_computebox, only: cb
 
 use, intrinsic :: ieee_arithmetic
@@ -27,11 +27,14 @@ use, intrinsic :: ieee_arithmetic
     real,parameter :: k_z = 1.
     real,parameter :: npower=2.
     real,parameter :: rcoef=0.001
+
+    !switch on baseline or monitor survey
+    character(4) :: survey
     
     !local models in computebox
     type t_localmodel
         sequence
-        real,dimension(:,:,:),allocatable ::  buox, buoy, buoz, kpa, invkpa
+        real,dimension(:,:,:),allocatable ::  buo, buox, buoy, buoz, kpa, invkpa
     end type
     
     type(t_localmodel) :: lm
@@ -105,24 +108,49 @@ use, intrinsic :: ieee_arithmetic
         call alloc(lm%kpa, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily],initialize=.false.)
         call alloc(lm%invkpa,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily],initialize=.false.)
         
-        lm%kpa(:,:,:)=cb%vp(:,:,:)*cb%vp(:,:,:)*cb%rho(:,:,:)
-        lm%invkpa(:,:,:)=1./lm%kpa(:,:,:)
+        if(survey=='base') then
+            lm%kpa(:,:,:)=cb%vp(:,:,:)*cb%vp(:,:,:)*cb%rho(:,:,:)
+            lm%invkpa(:,:,:)=1./lm%kpa(:,:,:)
 
-        lm%buoz(cb%ifz,:,:)=1./cb%rho(cb%ifz,:,:)
-        lm%buox(:,cb%ifx,:)=1./cb%rho(:,cb%ifx,:)
-        lm%buoy(:,:,cb%ify)=1./cb%rho(:,:,cb%ify)
+            lm%buo(:,:,:)=1./cb%rho(:,:,:)
+            lm%buoz(cb%ifz,:,:)=1./cb%rho(cb%ifz,:,:)
+            lm%buox(:,cb%ifx,:)=1./cb%rho(:,cb%ifx,:)
+            lm%buoy(:,:,cb%ify)=1./cb%rho(:,:,cb%ify)
+        else
+            lm%kpa(:,:,:)=cb%vp2(:,:,:)*cb%vp2(:,:,:)*cb%rho2(:,:,:)
+            lm%invkpa(:,:,:)=1./lm%kpa(:,:,:)
 
-        do iz=cb%ifz+1,cb%ilz
-            lm%buoz(iz,:,:)=0.5/cb%rho(iz,:,:)+0.5/cb%rho(iz-1,:,:)
-        enddo
-        
-        do ix=cb%ifx+1,cb%ilx
-            lm%buox(:,ix,:)=0.5/cb%rho(:,ix,:)+0.5/cb%rho(:,ix-1,:)
-        enddo
+            lm%buo(:,:,:)=1./cb%rho2(:,:,:)
+            lm%buoz(cb%ifz,:,:)=1./cb%rho2(cb%ifz,:,:)
+            lm%buox(:,cb%ifx,:)=1./cb%rho2(:,cb%ifx,:)
+            lm%buoy(:,:,cb%ify)=1./cb%rho2(:,:,cb%ify)
+        endif
 
-        do iy=cb%ify+1,cb%ily
-            lm%buoy(:,:,iy)=0.5/cb%rho(:,:,iy)+0.5/cb%rho(:,:,iy-1)
-        enddo
+        if(survey=='base') then
+            do iz=cb%ifz+1,cb%ilz
+                lm%buoz(iz,:,:)=0.5/cb%rho(iz,:,:)+0.5/cb%rho(iz-1,:,:)
+            enddo
+            
+            do ix=cb%ifx+1,cb%ilx
+                lm%buox(:,ix,:)=0.5/cb%rho(:,ix,:)+0.5/cb%rho(:,ix-1,:)
+            enddo
+
+            do iy=cb%ify+1,cb%ily
+                lm%buoy(:,:,iy)=0.5/cb%rho(:,:,iy)+0.5/cb%rho(:,:,iy-1)
+            enddo
+        else
+            do iz=cb%ifz+1,cb%ilz
+                lm%buoz(iz,:,:)=0.5/cb%rho2(iz,:,:)+0.5/cb%rho2(iz-1,:,:)
+            enddo
+            
+            do ix=cb%ifx+1,cb%ilx
+                lm%buox(:,ix,:)=0.5/cb%rho2(:,ix,:)+0.5/cb%rho2(:,ix-1,:)
+            enddo
+
+            do iy=cb%ify+1,cb%ily
+                lm%buoy(:,:,iy)=0.5/cb%rho2(:,:,iy)+0.5/cb%rho2(:,:,iy-1)
+            enddo
+        endif
         
     end subroutine
     
@@ -199,35 +227,45 @@ use, intrinsic :: ieee_arithmetic
         real :: w
         type(t_field) :: f
         
-        ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
-        ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
-        ify=shot%src%ify; iy=shot%src%iy; ily=shot%src%ily
-        
+        if(survey=='base') then
+            ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
+            ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
+            ify=shot%src%ify; iy=shot%src%iy; ily=shot%src%ily
+        else
+            ifz=shot2%src%ifz; iz=shot2%src%iz; ilz=shot2%src%ilz
+            ifx=shot2%src%ifx; ix=shot2%src%ix; ilx=shot2%src%ilx
+            ify=shot2%src%ify; iy=shot2%src%iy; ily=shot2%src%ily
+        endif
+
         source_term=time_dir*w
         
         if(if_hicks) then
-            select case (shot%src%icomp)
+            select case (shot%src%icomp) !=shot2%src%icomp
                 case (2)
-                f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + source_term *lm%buox(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff
+                if(survey=='base') then
+                    f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + source_term *lm%buox(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff
+                else
+                    f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + source_term *lm%buox(ifz:ilz,ifx:ilx,ify:ily) *shot2%src%interp_coeff
+                endif
                 
-                case (3)
-                f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + source_term *lm%buoy(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff
+                ! case (3)
+                ! f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + source_term *lm%buoy(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff
                 
-                case (4)
-                f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + source_term *lm%buoz(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff
+                ! case (4)
+                ! f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + source_term *lm%buoz(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff
                 
             end select
             
         else
-            select case (shot%src%icomp)
+            select case (shot%src%icomp)  !=shot2%src%icomp
                 case (2) !horizontal x force on vx[iz,ix-0.5,iy]
                 f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + source_term*lm%buox(iz,ix,iy)
                 
-                case (3) !horizontal y force on vy[iz,ix,iy-0.5]
-                f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + source_term*lm%buoy(iz,ix,iy)
+                ! case (3) !horizontal y force on vy[iz,ix,iy-0.5]
+                ! f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + source_term*lm%buoy(iz,ix,iy)
                 
-                case (4) !vertical force     on vz[iz-0.5,ix,iy]
-                f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + source_term*lm%buoz(iz,ix,iy)
+                ! case (4) !vertical force     on vz[iz-0.5,ix,iy]
+                ! f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + source_term*lm%buoz(iz,ix,iy)
                 
             end select
             
@@ -289,16 +327,26 @@ use, intrinsic :: ieee_arithmetic
         real :: w
         type(t_field) :: f
         
-        ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
-        ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
-        ify=shot%src%ify; iy=shot%src%iy; ily=shot%src%ily
-        
+        if(survey=='base') then
+            ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
+            ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
+            ify=shot%src%ify; iy=shot%src%iy; ily=shot%src%ily
+        else
+            ifz=shot2%src%ifz; iz=shot2%src%iz; ilz=shot2%src%ilz
+            ifx=shot2%src%ifx; ix=shot2%src%ix; ilx=shot2%src%ilx
+            ify=shot2%src%ify; iy=shot2%src%iy; ily=shot2%src%ily
+        endif
+
         source_term=time_dir*w
         
         if(if_hicks) then
             select case (shot%src%icomp)
                 case (1)
-                f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + source_term *shot%src%interp_coeff
+                if(survey=='base') then
+                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + source_term *shot%src%interp_coeff
+                else
+                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + source_term *shot2%src%interp_coeff
+                endif
             end select
             
         else
@@ -368,38 +416,73 @@ use, intrinsic :: ieee_arithmetic
         type(t_field) :: f
         real,dimension(*) :: seismo
         
-        do ircv=1,shot%nrcv
-            ifz=shot%rcv(ircv)%ifz; iz=shot%rcv(ircv)%iz; ilz=shot%rcv(ircv)%ilz
-            ifx=shot%rcv(ircv)%ifx; ix=shot%rcv(ircv)%ix; ilx=shot%rcv(ircv)%ilx
-            ify=shot%rcv(ircv)%ify; iy=shot%rcv(ircv)%iy; ily=shot%rcv(ircv)%ily
-            
-            if(if_hicks) then
-                select case (shot%rcv(ircv)%icomp)
-                    case (1)
-                    seismo(ircv)=sum(  f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff )
-                    case (2)
-                    seismo(ircv)=sum( f%vx(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff )
-                    case (3)
-                    seismo(ircv)=sum( f%vy(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff )
-                    case (4)
-                    seismo(ircv)=sum( f%vz(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff )
-                end select
+        if(survey=='base') then
+            do ircv=1,shot%nrcv
+                ifz=shot%rcv(ircv)%ifz; iz=shot%rcv(ircv)%iz; ilz=shot%rcv(ircv)%ilz
+                ifx=shot%rcv(ircv)%ifx; ix=shot%rcv(ircv)%ix; ilx=shot%rcv(ircv)%ilx
+                ify=shot%rcv(ircv)%ify; iy=shot%rcv(ircv)%iy; ily=shot%rcv(ircv)%ily
                 
-            else
-                select case (shot%rcv(ircv)%icomp)
-                    case (1) !p[iz,ix,iy]
-                    seismo(ircv)= f%p(iz,ix,iy)
-                    case (2) !vx[iz,ix-0.5,iy]
-                    seismo(ircv)=f%vx(iz,ix,iy)
-                    case (3) !vy[iz,ix,iy-0.5]
-                    seismo(ircv)=f%vy(iz,ix,iy)
-                    case (4) !vz[iz-0.5,ix,iy]
-                    seismo(ircv)=f%vz(iz,ix,iy)
-                end select
+                if(if_hicks) then
+                    select case (shot%rcv(ircv)%icomp)
+                        case (1)
+                        seismo(ircv)=sum(  f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff )
+                        case (2)
+                        seismo(ircv)=sum( f%vx(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff )
+                        case (3)
+                        seismo(ircv)=sum( f%vy(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff )
+                        case (4)
+                        seismo(ircv)=sum( f%vz(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff )
+                    end select
+                    
+                else
+                    select case (shot%rcv(ircv)%icomp)
+                        case (1) !p[iz,ix,iy]
+                        seismo(ircv)= f%p(iz,ix,iy)
+                        ! case (2) !vx[iz,ix-0.5,iy]
+                        ! seismo(ircv)=f%vx(iz,ix,iy)
+                        ! case (3) !vy[iz,ix,iy-0.5]
+                        ! seismo(ircv)=f%vy(iz,ix,iy)
+                        ! case (4) !vz[iz-0.5,ix,iy]
+                        ! seismo(ircv)=f%vz(iz,ix,iy)
+                    end select
+                    
+                endif
                 
-            endif
-            
-        enddo
+            enddo
+        else
+            do ircv=1,shot2%nrcv
+                ifz=shot2%rcv(ircv)%ifz; iz=shot2%rcv(ircv)%iz; ilz=shot2%rcv(ircv)%ilz
+                ifx=shot2%rcv(ircv)%ifx; ix=shot2%rcv(ircv)%ix; ilx=shot2%rcv(ircv)%ilx
+                ify=shot2%rcv(ircv)%ify; iy=shot2%rcv(ircv)%iy; ily=shot2%rcv(ircv)%ily
+                
+                if(if_hicks) then
+                    select case (shot2%rcv(ircv)%icomp)
+                        case (1)
+                        seismo(ircv)=sum(  f%p(ifz:ilz,ifx:ilx,ify:ily) *shot2%rcv(ircv)%interp_coeff )
+                        case (2)
+                        seismo(ircv)=sum( f%vx(ifz:ilz,ifx:ilx,ify:ily) *shot2%rcv(ircv)%interp_coeff )
+                        case (3)
+                        seismo(ircv)=sum( f%vy(ifz:ilz,ifx:ilx,ify:ily) *shot2%rcv(ircv)%interp_coeff )
+                        case (4)
+                        seismo(ircv)=sum( f%vz(ifz:ilz,ifx:ilx,ify:ily) *shot2%rcv(ircv)%interp_coeff )
+                    end select
+                    
+                else
+                    select case (shot2%rcv(ircv)%icomp)
+                        case (1) !p[iz,ix,iy]
+                        seismo(ircv)= f%p(iz,ix,iy)
+                        ! case (2) !vx[iz,ix-0.5,iy]
+                        ! seismo(ircv)=f%vx(iz,ix,iy)
+                        ! case (3) !vy[iz,ix,iy-0.5]
+                        ! seismo(ircv)=f%vy(iz,ix,iy)
+                        ! case (4) !vz[iz-0.5,ix,iy]
+                        ! seismo(ircv)=f%vz(iz,ix,iy)
+                    end select
+                    
+                endif
+                
+            enddo
+        endif
         
     end subroutine
     
@@ -445,31 +528,59 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(*) :: adjsource
         type(t_field) :: f
         
-        do ircv=1,shot%nrcv
-            ifz=shot%rcv(ircv)%ifz; iz=shot%rcv(ircv)%iz; ilz=shot%rcv(ircv)%ilz
-            ifx=shot%rcv(ircv)%ifx; ix=shot%rcv(ircv)%ix; ilx=shot%rcv(ircv)%ilx
-            ify=shot%rcv(ircv)%ify; iy=shot%rcv(ircv)%iy; ily=shot%rcv(ircv)%ily
-            
-            tmp=adjsource(ircv)
-            
-            if(if_hicks) then
-                select case (shot%rcv(ircv)%icomp)
-                    case (1) !pressure adjsource
-                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) &
-                        +tmp* lm%kpa(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff
-                end select
+        if(survey=='base') then
+            do ircv=1,shot%nrcv
+                ifz=shot%rcv(ircv)%ifz; iz=shot%rcv(ircv)%iz; ilz=shot%rcv(ircv)%ilz
+                ifx=shot%rcv(ircv)%ifx; ix=shot%rcv(ircv)%ix; ilx=shot%rcv(ircv)%ilx
+                ify=shot%rcv(ircv)%ify; iy=shot%rcv(ircv)%iy; ily=shot%rcv(ircv)%ily
                 
-            else
-                select case (shot%rcv(ircv)%icomp)
-                    case (1) !pressure adjsource
-                    !p[iz,ix,iy]
-                    f%p(iz,ix,iy) = f%p(iz,ix,iy)  &
-                        +tmp* lm%kpa(iz,ix,iy)
-                end select
+                tmp=adjsource(ircv)
                 
-            endif
-            
-        enddo
+                if(if_hicks) then
+                    select case (shot%rcv(ircv)%icomp)
+                        case (1) !pressure adjsource
+                        f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) &
+                            +tmp* lm%kpa(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff
+                    end select
+                    
+                else
+                    select case (shot%rcv(ircv)%icomp)
+                        case (1) !pressure adjsource
+                        !p[iz,ix,iy]
+                        f%p(iz,ix,iy) = f%p(iz,ix,iy)  &
+                            +tmp* lm%kpa(iz,ix,iy)
+                    end select
+                    
+                endif
+                
+            enddo
+        else
+            do ircv=1,shot2%nrcv
+                ifz=shot2%rcv(ircv)%ifz; iz=shot2%rcv(ircv)%iz; ilz=shot2%rcv(ircv)%ilz
+                ifx=shot2%rcv(ircv)%ifx; ix=shot2%rcv(ircv)%ix; ilx=shot2%rcv(ircv)%ilx
+                ify=shot2%rcv(ircv)%ify; iy=shot2%rcv(ircv)%iy; ily=shot2%rcv(ircv)%ily
+                
+                tmp=adjsource(ircv)
+                
+                if(if_hicks) then
+                    select case (shot2%rcv(ircv)%icomp)
+                        case (1) !pressure adjsource
+                        f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) &
+                            +tmp* lm%kpa(ifz:ilz,ifx:ilx,ify:ily) *shot2%rcv(ircv)%interp_coeff
+                    end select
+                    
+                else
+                    select case (shot2%rcv(ircv)%icomp)
+                        case (1) !pressure adjsource
+                        !p[iz,ix,iy]
+                        f%p(iz,ix,iy) = f%p(iz,ix,iy)  &
+                            +tmp* lm%kpa(iz,ix,iy)
+                    end select
+                    
+                endif
+                
+            enddo
+        endif
         
     end subroutine
     
@@ -490,43 +601,83 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(*) :: adjsource
         type(t_field) :: f
         
-        do ircv=1,shot%nrcv
-            ifz=shot%rcv(ircv)%ifz; iz=shot%rcv(ircv)%iz; ilz=shot%rcv(ircv)%ilz
-            ifx=shot%rcv(ircv)%ifx; ix=shot%rcv(ircv)%ix; ilx=shot%rcv(ircv)%ilx
-            ify=shot%rcv(ircv)%ify; iy=shot%rcv(ircv)%iy; ily=shot%rcv(ircv)%ily
-            
-            tmp=adjsource(ircv)
-            
-            if(if_hicks) then
-                select case (shot%rcv(ircv)%icomp)
-                    case (2) !horizontal x adjsource
-                    f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + tmp*lm%buox(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff
-                    
-                    case (3) !horizontal y adjsource
-                    f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + tmp*lm%buoy(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff
-                    
-                    case (4) !horizontal z adjsource
-                    f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + tmp*lm%buoz(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff
-                end select
+        if(survey=='base') then
+            do ircv=1,shot%nrcv
+                ifz=shot%rcv(ircv)%ifz; iz=shot%rcv(ircv)%iz; ilz=shot%rcv(ircv)%ilz
+                ifx=shot%rcv(ircv)%ifx; ix=shot%rcv(ircv)%ix; ilx=shot%rcv(ircv)%ilx
+                ify=shot%rcv(ircv)%ify; iy=shot%rcv(ircv)%iy; ily=shot%rcv(ircv)%ily
                 
-            else
-                select case (shot%rcv(ircv)%icomp)
-                    case (2) !horizontal x adjsource
-                    !vx[ix-0.5,iy,iz]
-                    f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + tmp*lm%buox(iz,ix,iy)
-                    
-                    case (3) !horizontal y adjsource
-                    !vy[ix,iy-0.5,iz]
-                    f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + tmp*lm%buoy(iz,ix,iy)
-                    
-                    case (4) !horizontal z adjsource
-                    !vz[ix,iy,iz-0.5]
-                    f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + tmp*lm%buoz(iz,ix,iy)
-                end select
+                tmp=adjsource(ircv)
                 
-            endif
-            
-        enddo
+                if(if_hicks) then
+                    select case (shot%rcv(ircv)%icomp)
+                        case (2) !horizontal x adjsource
+                        f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + tmp*lm%buox(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff
+                        
+                        case (3) !horizontal y adjsource
+                        f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + tmp*lm%buoy(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff
+                        
+                        case (4) !horizontal z adjsource
+                        f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + tmp*lm%buoz(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff
+                    end select
+                    
+                else
+                    select case (shot%rcv(ircv)%icomp)
+                        case (2) !horizontal x adjsource
+                        !vx[ix-0.5,iy,iz]
+                        f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + tmp*lm%buox(iz,ix,iy)
+                        
+                        case (3) !horizontal y adjsource
+                        !vy[ix,iy-0.5,iz]
+                        f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + tmp*lm%buoy(iz,ix,iy)
+                        
+                        case (4) !horizontal z adjsource
+                        !vz[ix,iy,iz-0.5]
+                        f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + tmp*lm%buoz(iz,ix,iy)
+                    end select
+                    
+                endif
+                
+            enddo
+        else
+            do ircv=1,shot2%nrcv
+                ifz=shot2%rcv(ircv)%ifz; iz=shot2%rcv(ircv)%iz; ilz=shot2%rcv(ircv)%ilz
+                ifx=shot2%rcv(ircv)%ifx; ix=shot2%rcv(ircv)%ix; ilx=shot2%rcv(ircv)%ilx
+                ify=shot2%rcv(ircv)%ify; iy=shot2%rcv(ircv)%iy; ily=shot2%rcv(ircv)%ily
+                
+                tmp=adjsource(ircv)
+                
+                if(if_hicks) then
+                    select case (shot2%rcv(ircv)%icomp)
+                        case (2) !horizontal x adjsource
+                        f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + tmp*lm%buox(ifz:ilz,ifx:ilx,ify:ily) *shot2%rcv(ircv)%interp_coeff
+                        
+                        ! case (3) !horizontal y adjsource
+                        ! f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + tmp*lm%buoy(ifz:ilz,ifx:ilx,ify:ily) *shot2%rcv(ircv)%interp_coeff
+                        
+                        ! case (4) !horizontal z adjsource
+                        ! f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + tmp*lm%buoz(ifz:ilz,ifx:ilx,ify:ily) *shot2%rcv(ircv)%interp_coeff
+                    end select
+                    
+                else
+                    select case (shot2%rcv(ircv)%icomp)
+                        case (2) !horizontal x adjsource
+                        !vx[ix-0.5,iy,iz]
+                        f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + tmp*lm%buox(iz,ix,iy)
+                        
+                        ! case (3) !horizontal y adjsource
+                        ! !vy[ix,iy-0.5,iz]
+                        ! f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + tmp*lm%buoy(iz,ix,iy)
+                        
+                        ! case (4) !horizontal z adjsource
+                        ! !vz[ix,iy,iz-0.5]
+                        ! f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + tmp*lm%buoz(iz,ix,iy)
+                    end select
+                    
+                endif
+                
+            enddo
+        endif
         
     end subroutine
     
@@ -546,23 +697,33 @@ use, intrinsic :: ieee_arithmetic
         type(t_field) :: f
         real w
         
-        ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
-        ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
-        ify=shot%src%ify; iy=shot%src%iy; ily=shot%src%ily
+        if(survey=='base') then
+            ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
+            ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
+            ify=shot%src%ify; iy=shot%src%iy; ily=shot%src%ily
+        else
+            ifz=shot2%src%ifz; iz=shot2%src%iz; ilz=shot2%src%ilz
+            ifx=shot2%src%ifx; ix=shot2%src%ix; ilx=shot2%src%ilx
+            ify=shot2%src%ify; iy=shot2%src%iy; ily=shot2%src%ily
+        endif
         
         if(if_hicks) then
             select case (shot%src%icomp)
                 case (1)
-                w = sum(lm%invkpa(ifz:ilz,ifx:ilx,ify:ily)*f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff )
+                if(survey=='base') then
+                    w = sum(lm%invkpa(ifz:ilz,ifx:ilx,ify:ily)*f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff )
+                else
+                    w = sum(lm%invkpa(ifz:ilz,ifx:ilx,ify:ily)*f%p(ifz:ilz,ifx:ilx,ify:ily) *shot2%src%interp_coeff )
+                endif
                 
-                case (2)
-                w = sum(     f%vx(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff )
+                ! case (2)
+                ! w = sum(     f%vx(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff )
                 
-                case (3)
-                w = sum(     f%vy(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff )
+                ! case (3)
+                ! w = sum(     f%vy(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff )
                 
-                case (4)
-                w = sum(     f%vz(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff )
+                ! case (4)
+                ! w = sum(     f%vz(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff )
                 
             end select
             
@@ -650,7 +811,7 @@ use, intrinsic :: ieee_arithmetic
         
         corr(:,:,:,1)=corr(:,:,:,1) * (-lm%invkpa(1:cb%mz,1:cb%mx,1:cb%my))
 
-        corr(:,:,:,2)=corr(:,:,:,2) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
+        corr(:,:,:,2)=corr(:,:,:,2) * lm%buo(1:cb%mz,1:cb%mx,1:cb%my)
 
         corr(1,:,:,:) = corr(2,:,:,:)
         corr(cb%mz-1,:,:,:) = corr(cb%mz-2,:,:,:)

@@ -38,6 +38,7 @@ use m_optimizer
 
     open(12,file='gradient',action='write',access='stream')
     write(12) gradient
+    write(12) gradient2
     close(12)
         
     
@@ -57,7 +58,7 @@ use m_optimizer
     call init_parameterization
     
     !initialize optimizer
-    call init_optimizer(m%n*npar)
+    call init_optimizer(m%n*npar*2)
     
     open(12,file='initial%pg',action='write',access='direct',recl=4*m%n*npar)
     write(12,rec=1) current%pg

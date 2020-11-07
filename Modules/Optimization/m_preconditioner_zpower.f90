@@ -18,7 +18,7 @@ use m_parameterization, only: npar
     end subroutine
     
     subroutine preconditioner_apply(g,pg)
-        real,dimension(m%nz,m%nx,m%ny,npar) :: g,pg
+        real,dimension(m%nz,m%nx,m%ny,npar,2) :: g,pg
         
         real :: old_norm
 
@@ -35,10 +35,12 @@ use m_parameterization, only: npar
 
         !precond whole grediant
         old_norm = norm2(g)
+        do j=1,2
         do i=1,npar
         do iy=1,m%ny
         do ix=1,m%nx
-            pg(:,ix,iy,i)=g(:,ix,iy,i)*precond
+            pg(:,ix,iy,i,j)=g(:,ix,iy,i,j)*precond
+        enddo
         enddo
         enddo
         enddo

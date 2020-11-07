@@ -36,11 +36,15 @@ use m_boundarystore
         ift=1
         ilt=shot%src%nt
         nt=ilt-ift+1
-        dt=shot%src%dt
+        dt=shot%src%dt !=shot2%src%dt
         
         !scaling source wavelet
         call alloc(wavelet,nt)
-        wavelet = shot%src%wavelet !*dt/m%cell_size
+        if(survey=='base') then !survey is public in m_field_AC.f90
+            wavelet = shot%src%wavelet !*dt/m%cell_size
+        else
+            wavelet = shot2%src%wavelet !*dt/m%cell_size
+        endif
         
         !field
         call init_field_localmodel
@@ -60,12 +64,21 @@ use m_boundarystore
         distx = cb%velmax * dt / m%dx
         disty = cb%velmax * dt / m%dy
         
-        sbloom(1,1)=shot%src%iz -initial_half_bloomwidth
-        sbloom(2,1)=shot%src%iz +initial_half_bloomwidth
-        sbloom(3,1)=shot%src%ix -initial_half_bloomwidth
-        sbloom(4,1)=shot%src%ix +initial_half_bloomwidth
-        sbloom(5,1)=shot%src%iy -initial_half_bloomwidth
-        sbloom(6,1)=shot%src%iy +initial_half_bloomwidth
+        if(survey=='base') then
+            sbloom(1,1)=shot%src%iz -initial_half_bloomwidth
+            sbloom(2,1)=shot%src%iz +initial_half_bloomwidth
+            sbloom(3,1)=shot%src%ix -initial_half_bloomwidth
+            sbloom(4,1)=shot%src%ix +initial_half_bloomwidth
+            sbloom(5,1)=shot%src%iy -initial_half_bloomwidth
+            sbloom(6,1)=shot%src%iy +initial_half_bloomwidth
+        else
+            sbloom(1,1)=shot2%src%iz -initial_half_bloomwidth
+            sbloom(2,1)=shot2%src%iz +initial_half_bloomwidth
+            sbloom(3,1)=shot2%src%ix -initial_half_bloomwidth
+            sbloom(4,1)=shot2%src%ix +initial_half_bloomwidth
+            sbloom(5,1)=shot2%src%iy -initial_half_bloomwidth
+            sbloom(6,1)=shot2%src%iy +initial_half_bloomwidth
+        endif
         do it=2,nt
             sbloom(1,it)=max(nint(sbloom(1,1)-it*distz),cb%ifz) !bloombox ifz
             sbloom(2,it)=min(nint(sbloom(2,1)+it*distz),cb%ilz) !bloombox ilz
@@ -74,7 +87,7 @@ use m_boundarystore
             sbloom(5,it)=max(nint(sbloom(5,1)-it*disty),cb%ify) !bloombox ify
             sbloom(6,it)=min(nint(sbloom(6,1)+it*disty),cb%ily) !bloombox ily
         enddo
-
+        
 ! sbloom(1,:)=cb%ifz
 ! sbloom(2,:)=cb%ilz
 ! sbloom(3,:)=cb%ifx
@@ -84,12 +97,21 @@ use m_boundarystore
         
         if(present(if_will_do_rfield)) then
         if(if_will_do_rfield) then
-            rbloom(1,nt)=minval(shot%rcv(:)%iz) -initial_half_bloomwidth
-            rbloom(2,nt)=maxval(shot%rcv(:)%iz) +initial_half_bloomwidth
-            rbloom(3,nt)=minval(shot%rcv(:)%ix) -initial_half_bloomwidth
-            rbloom(4,nt)=maxval(shot%rcv(:)%ix) +initial_half_bloomwidth
-            rbloom(5,nt)=minval(shot%rcv(:)%iy) -initial_half_bloomwidth
-            rbloom(6,nt)=maxval(shot%rcv(:)%iy) +initial_half_bloomwidth
+            if(survey=='base') then
+                rbloom(1,nt)=minval(shot%rcv(:)%iz) -initial_half_bloomwidth
+                rbloom(2,nt)=maxval(shot%rcv(:)%iz) +initial_half_bloomwidth
+                rbloom(3,nt)=minval(shot%rcv(:)%ix) -initial_half_bloomwidth
+                rbloom(4,nt)=maxval(shot%rcv(:)%ix) +initial_half_bloomwidth
+                rbloom(5,nt)=minval(shot%rcv(:)%iy) -initial_half_bloomwidth
+                rbloom(6,nt)=maxval(shot%rcv(:)%iy) +initial_half_bloomwidth
+            else
+                rbloom(1,nt)=minval(shot2%rcv(:)%iz) -initial_half_bloomwidth
+                rbloom(2,nt)=maxval(shot2%rcv(:)%iz) +initial_half_bloomwidth
+                rbloom(3,nt)=minval(shot2%rcv(:)%ix) -initial_half_bloomwidth
+                rbloom(4,nt)=maxval(shot2%rcv(:)%ix) +initial_half_bloomwidth
+                rbloom(5,nt)=minval(shot2%rcv(:)%iy) -initial_half_bloomwidth
+                rbloom(6,nt)=maxval(shot2%rcv(:)%iy) +initial_half_bloomwidth
+            endif
             do it=nt-1,1,-1
                 it_fwd=nt-it+1
                 rbloom(1,it)=max(nint(rbloom(1,nt)-it_fwd*distz),cb%ifz) !bloombox ifz
@@ -121,7 +143,11 @@ use m_boundarystore
         
         real,dimension(:,:),allocatable :: seismo
         
-        call alloc(seismo,shot%nrcv,nt,initialize=.false.)
+        if(survey=='base') then
+            call alloc(seismo,shot%nrcv,nt,initialize=.false.)
+        else
+            call alloc(seismo,shot2%nrcv,nt,initialize=.false.)
+        endif
         
         tt1=0.; tt2=0.; tt3=0.
         tt4=0.; tt5=0.; tt6=0.
@@ -193,8 +219,13 @@ use m_boundarystore
         endif
         
         !synthetic data
-        call alloc(dsyn,shot%rcv(1)%nt,shot%nrcv)
-        dsyn=transpose(seismo)
+        if(survey=='base') then
+            call alloc(dsyn,shot%rcv(1)%nt,shot%nrcv)
+            dsyn=transpose(seismo)
+        else
+            call alloc(dsyn2,shot2%rcv(1)%nt,shot2%nrcv)
+            dsyn2=transpose(seismo)
+        endif
         
         deallocate(seismo)
 
@@ -211,9 +242,14 @@ use m_boundarystore
         !reinitialize memory for incident wavefield reconstruction
         call field_cpml_reinitialize(sfield)
 
-        call alloc(seismo,shot%nrcv,nt,initialize=.false.)
-        seismo=transpose(dres) !to save mem space, seismo could be just time slices..
-        
+        if(survey=='base') then
+            call alloc(seismo,shot%nrcv,nt,initialize=.false.)
+            seismo=transpose(dres) !to save mem space, seismo could be just time slices..
+        else
+            call alloc(seismo,shot2%nrcv,nt,initialize=.false.)
+            seismo=transpose(dres2) !to save mem space, seismo could be just time slices..
+        endif
+
         !timing
         tt1=0.; tt2=0.; tt3=0.
         tt4=0.; tt5=0.; tt6=0.

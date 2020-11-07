@@ -78,7 +78,7 @@ integer,parameter :: max_search=12
         if(if_reinitialize_alpha) alpha=alpha0 !reinitialize alpha in each iterate may help convergence for LBFGS method..
 !         if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Initial alphaL/alpha/alphaR =',alphaL,alpha,alphaR
         if(mpiworld%is_master) write(*,'(a, 2x,es8.2)')   ' Initial alpha =',alpha
-        if(mpiworld%is_master) write(*,*) 'Initial f,||g|| =',current%f,norm2(current%g)
+        if(mpiworld%is_master) write(*,*) "Initial f's,||g||'s =",fobjective,current%f,norm2(current%g)
         perturb%x=current%x+alpha*current%d
         
         !save gradients
@@ -98,7 +98,7 @@ integer,parameter :: max_search=12
             if(if_project_x) call linesearcher_project(perturb%x)
             call parameterization_transform('x2m',perturb%x)
             call gradient_modeling(if_gradient=.true.)
-            perturb%f=fobjective
+            perturb%f=fobjective(3)
             call parameterization_transform('m2x',perturb%x,perturb%g)
             if(if_scaling) call linesearch_scaling(perturb)
             call preconditioner_apply(perturb%g,perturb%pg)
@@ -185,7 +185,7 @@ integer,parameter :: max_search=12
             
             !if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Linesearch alphaL/alpha/alphaR =',alphaL,alpha,alphaR
             if(mpiworld%is_master) write(*,'(a, 2x,es8.2)')   ' Linesearch alpha =',alpha
-            if(mpiworld%is_master) write(*,*) 'f,||g|| =',perturb%f,norm2(perturb%g)
+            if(mpiworld%is_master) write(*,*) "f's,||g|| =",fobjective,perturb%f,norm2(perturb%g)
         
         enddo loop
         

@@ -40,11 +40,11 @@ use m_hicks
 !         logical :: if_hicks
     end type
     
-    type(t_shot) :: shot
+    type(t_shot) :: shot, shot2
     
-    real,dimension(:,:),allocatable :: dobs !observed seismogram
-    real,dimension(:,:),allocatable :: dsyn !synthetic seismogram
-    real,dimension(:,:),allocatable :: dres !residual as well as adjoint source seismogram
+    real,dimension(:,:),allocatable :: dobs, dobs2 !observed seismogram
+    real,dimension(:,:),allocatable :: dsyn, dsyn2 !synthetic seismogram
+    real,dimension(:,:),allocatable :: dres, dres2 !residual as well as adjoint source seismogram
     
     character(:),allocatable :: file_wavelet
     
@@ -60,11 +60,12 @@ use m_hicks
         write(shot%cindex,'(i0.4)') shot%index
         
         !read geometry, nt and dt
-        if(from=='setup') then
-            call init_shot_from_setup
-        elseif(from=='data') then
-            call init_shot_from_data
-        endif
+        ! if(from=='setup') then
+        !     call init_shot_from_setup
+        ! elseif(from=='data') then
+            call init_shot_from_data(shot)
+            call init_shot_from_data(shot2)
+        ! endif
         
         !shift position to be 0-based
         shot%src%x=shot%src%x - m%ox
@@ -74,6 +75,13 @@ use m_hicks
         shot%rcv(:)%y=shot%rcv(:)%y - m%oy
         shot%rcv(:)%z=shot%rcv(:)%z - m%oz
         
+        shot2%src%x=shot2%src%x - m%ox
+        shot2%src%y=shot2%src%y - m%oy
+        shot2%src%z=shot2%src%z - m%oz
+        shot2%rcv(:)%x=shot2%rcv(:)%x - m%ox
+        shot2%rcv(:)%y=shot2%rcv(:)%y - m%oy
+        shot2%rcv(:)%z=shot2%rcv(:)%z - m%oz
+
         !read wavelet
         shot%src%fpeak=get_setup_real('PEAK_FREQUENCY')
         file_wavelet=get_setup_file('FILE_WAVELET')
@@ -91,6 +99,24 @@ use m_hicks
             read(11,rec=1) shot%src%wavelet
             close(11)
         endif
+
+        shot2%src%fpeak=get_setup_real('PEAK_FREQUENCY_2')
+        file_wavelet=get_setup_file('FILE_WAVELET_2')
+        if(file_wavelet=='') then
+            if(get_setup_char('WAVELET_TYPE_2',default='sinexp')=='sinexp') then
+                call hud('Use filtered sinexp wavelet')
+                shot2%src%wavelet=gen_wavelet_sinexp(shot2%src%nt,shot2%src%dt,shot2%src%fpeak)
+            else
+                call hud('Use Ricker wavelet')
+                shot2%src%wavelet=gen_wavelet_ricker(shot2%src%nt,shot2%src%dt,shot2%src%fpeak)
+            endif
+        else !wavelet file exists
+            call alloc(shot2%src%wavelet,shot2%src%nt)
+            open(11,file=file_wavelet,access='direct',recl=4*shot2%src%nt)
+            read(11,rec=1) shot2%src%wavelet
+            close(11)
+        endif
+
         
         !hicks coeff for source point
         hicks%x=shot%src%x; hicks%dx=m%dx
@@ -145,7 +171,63 @@ use m_hicks
             shot%rcv(i)%ify=hicks%ify; shot%rcv(i)%iy=hicks%iy; shot%rcv(i)%ily=hicks%ily
         
         enddo
+
+
+        !hicks coeff for source point
+        hicks%x=shot2%src%x; hicks%dx=m%dx
+        hicks%y=shot2%src%y; hicks%dy=m%dy
+        hicks%z=shot2%src%z; hicks%dz=m%dz
+        !hicks%is_cubic=m%is_cubic
+        !hicks%if_freesurface=m%if_freesurface
+        
+        !for vx,vy,vz, hicks%x,y,z should be added by m%dx/2,dy/2,dz/2, respectively, as v(1) is actually v[0.5], v(2) is v[1.5] etc.
+        !if_staggered_grid=get_setup_logical('IF_STAGGERED_GRID',default=.true.)
+        if(if_staggered_grid) then
+            if(shot2%src%icomp==2) hicks%x=shot2%src%x+m%dx/2.
+            if(shot2%src%icomp==3) hicks%y=shot2%src%y+m%dy/2.
+            if(shot2%src%icomp==4) hicks%z=shot2%src%z+m%dz/2.
+        endif
+        
+        if(shot2%src%icomp==1) then !explosive source or non-vertical force
+            call build_hicks(hicks,'antisym',  shot2%src%interp_coeff)
+        elseif(shot2%src%icomp==4) then !vertical force
+            call build_hicks(hicks,'symmetric',shot2%src%interp_coeff)
+        else
+            call build_hicks(hicks,'truncate', shot2%src%interp_coeff)
+        endif
+        
+        shot2%src%ifz=hicks%ifz; shot2%src%iz=hicks%iz; shot2%src%ilz=hicks%ilz
+        shot2%src%ifx=hicks%ifx; shot2%src%ix=hicks%ix; shot2%src%ilx=hicks%ilx
+        shot2%src%ify=hicks%ify; shot2%src%iy=hicks%iy; shot2%src%ily=hicks%ily
+
+        !hicks coeff for receivers
+        do i=1,shot2%nrcv
+            hicks%x=shot2%rcv(i)%x
+            hicks%y=shot2%rcv(i)%y
+            hicks%z=shot2%rcv(i)%z
+            
+            !for vx,vy,vz, hicks%x,y,z should be added by m%dx/2,dy/2,dz/2, respectively, as v(1) is actually v[0.5], v(2) is v[1.5] etc.
+            if(if_staggered_grid) then
+                if(shot2%rcv(i)%icomp==2) hicks%x=shot2%rcv(i)%x+m%dx/2.
+                if(shot2%rcv(i)%icomp==3) hicks%y=shot2%rcv(i)%y+m%dy/2.
+                if(shot2%rcv(i)%icomp==4) hicks%z=shot2%rcv(i)%z+m%dz/2.
+            endif
+            
+            if(shot2%rcv(i)%icomp==1) then !pressure component
+                call build_hicks(hicks,'antisym',  shot2%rcv(i)%interp_coeff)
+            elseif(shot2%rcv(i)%icomp==4) then !vz component
+                call build_hicks(hicks,'symmetric',shot2%rcv(i)%interp_coeff)
+            else
+                call build_hicks(hicks,'truncate', shot2%rcv(i)%interp_coeff)
+            endif
+            
+            shot2%rcv(i)%ifz=hicks%ifz; shot2%rcv(i)%iz=hicks%iz; shot2%rcv(i)%ilz=hicks%ilz
+            shot2%rcv(i)%ifx=hicks%ifx; shot2%rcv(i)%ix=hicks%ix; shot2%rcv(i)%ilx=hicks%ilx
+            shot2%rcv(i)%ify=hicks%ify; shot2%rcv(i)%iy=hicks%iy; shot2%rcv(i)%ily=hicks%ily
+        
+        enddo
                 
+        !HUD
         if(mpiworld%is_master) then
             write(*,*)'================================='
             write(*,*)'Shot# '//shot%cindex//' info:'
@@ -167,42 +249,60 @@ use m_hicks
             write(*,*)'  minmax ify,ily:',minval(shot%rcv(:)%ify),maxval(shot%rcv(:)%ify),minval(shot%rcv(:)%ily),maxval(shot%rcv(:)%ily)
             write(*,*)'  nrcv:',shot%nrcv
             write(*,*)'---------------------------------'
+            write(*,*)'  2- nt,dt:',shot2%src%nt,shot2%src%dt
+            write(*,*)'---------------------------------'
+            write(*,*)'  2- sz,isz:',shot2%src%z,shot2%src%iz
+            write(*,*)'  2- sx,isx:',shot2%src%x,shot2%src%ix
+            write(*,*)'  2- sy,isy:',shot2%src%y,shot2%src%iy
+            write(*,*)'  2- ifz,ilz:',shot2%src%ifz,shot2%src%ilz
+            write(*,*)'  2- ifx,ilx:',shot2%src%ifx,shot2%src%ilx
+            write(*,*)'  2- ify,ily:',shot2%src%ify,shot2%src%ily
+            write(*,*)'---------------------------------'
+            write(*,*)'  2- minmax rz,irz:',minval(shot2%rcv(:)%z),maxval(shot2%rcv(:)%z),minval(shot2%rcv(:)%iz),maxval(shot2%rcv(:)%iz)
+            write(*,*)'  2- minmax rx,irx:',minval(shot2%rcv(:)%x),maxval(shot2%rcv(:)%x),minval(shot2%rcv(:)%ix),maxval(shot2%rcv(:)%ix)
+            write(*,*)'  2- minmax ry,iry:',minval(shot2%rcv(:)%y),maxval(shot2%rcv(:)%y),minval(shot2%rcv(:)%iy),maxval(shot2%rcv(:)%iy)
+            write(*,*)'  2- minmax ifz,ilz:',minval(shot2%rcv(:)%ifz),maxval(shot2%rcv(:)%ifz),minval(shot2%rcv(:)%ilz),maxval(shot2%rcv(:)%ilz)
+            write(*,*)'  2- minmax ifx,ilx:',minval(shot2%rcv(:)%ifx),maxval(shot2%rcv(:)%ifx),minval(shot2%rcv(:)%ilx),maxval(shot2%rcv(:)%ilx)
+            write(*,*)'  2- minmax ify,ily:',minval(shot2%rcv(:)%ify),maxval(shot2%rcv(:)%ify),minval(shot2%rcv(:)%ily),maxval(shot2%rcv(:)%ily)
+            write(*,*)'  2- nrcv:',shot2%nrcv
+            write(*,*)'---------------------------------'
         endif
         
     end subroutine
     
-    subroutine init_shot_from_setup
+!     subroutine init_shot_from_setup
         
-        !source side
-        shot%src%x=acqui%src(shot%index)%x
-        shot%src%y=acqui%src(shot%index)%y
-        shot%src%z=acqui%src(shot%index)%z
-        shot%src%icomp=acqui%iscomp
-        shot%src%nt=acqui%nt
-        shot%src%dt=acqui%dt
+!         !source side
+!         shot%src%x=acqui%src(shot%index)%x
+!         shot%src%y=acqui%src(shot%index)%y
+!         shot%src%z=acqui%src(shot%index)%z
+!         shot%src%icomp=acqui%iscomp
+!         shot%src%nt=acqui%nt
+!         shot%src%dt=acqui%dt
         
-        !receiver side
-        shot%nrcv=acqui%src(shot%index)%nrcv
-        if(allocated(shot%rcv))deallocate(shot%rcv)
-        allocate(shot%rcv(shot%nrcv))
-        do ir=1,shot%nrcv
-            shot%rcv(ir)%x=acqui%src(shot%index)%rcv(ir)%x
-            shot%rcv(ir)%y=acqui%src(shot%index)%rcv(ir)%y
-            shot%rcv(ir)%z=acqui%src(shot%index)%rcv(ir)%z
-!            shot%rcv(ir)%aoffset=sqrt( (shot%src%x-shot%rcv(ir)%x)**2 &
-!                                      +(shot%src%y-shot%rcv(ir)%y)**2 &
-!                                      +(shot%src%z-shot%rcv(ir)%z)**2 )
-            shot%rcv(ir)%aoffset=sqrt( (shot%src%x-shot%rcv(ir)%x)**2 &
-                                      +(shot%src%y-shot%rcv(ir)%y)**2 )
-            shot%rcv(ir)%icomp=acqui%ircomp
-            shot%rcv(ir)%nt=acqui%nt
-            shot%rcv(ir)%dt=acqui%dt
-        enddo
+!         !receiver side
+!         shot%nrcv=acqui%src(shot%index)%nrcv
+!         if(allocated(shot%rcv))deallocate(shot%rcv)
+!         allocate(shot%rcv(shot%nrcv))
+!         do ir=1,shot%nrcv
+!             shot%rcv(ir)%x=acqui%src(shot%index)%rcv(ir)%x
+!             shot%rcv(ir)%y=acqui%src(shot%index)%rcv(ir)%y
+!             shot%rcv(ir)%z=acqui%src(shot%index)%rcv(ir)%z
+! !            shot%rcv(ir)%aoffset=sqrt( (shot%src%x-shot%rcv(ir)%x)**2 &
+! !                                      +(shot%src%y-shot%rcv(ir)%y)**2 &
+! !                                      +(shot%src%z-shot%rcv(ir)%z)**2 )
+!             shot%rcv(ir)%aoffset=sqrt( (shot%src%x-shot%rcv(ir)%x)**2 &
+!                                       +(shot%src%y-shot%rcv(ir)%y)**2 )
+!             shot%rcv(ir)%icomp=acqui%ircomp
+!             shot%rcv(ir)%nt=acqui%nt
+!             shot%rcv(ir)%dt=acqui%dt
+!         enddo
         
-    end subroutine
+!     end subroutine
     
     
-    subroutine init_shot_from_data
+    subroutine init_shot_from_data(shot)
+        type(t_shot) :: shot
         type(t_suformat),dimension(:),allocatable :: sudata
         
         call read_sudata(shot%cindex,sudata)
@@ -291,7 +391,9 @@ use m_hicks
     end subroutine
     
     
-    subroutine shot_shift_by_computebox(iox,ioy,ioz)
+    subroutine shot_shift_by_computebox(shot,iox,ioy,ioz)
+        type(t_shot) :: shot
+
         !source side
         shot%src%ix=shot%src%ix-iox+1
         shot%src%iy=shot%src%iy-ioy+1

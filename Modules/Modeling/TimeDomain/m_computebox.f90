@@ -38,6 +38,7 @@ use m_shot
         real velmin, velmax
         
         real,dimension(:,:,:),allocatable :: vp,vs,rho,eps,del
+        real,dimension(:,:,:),allocatable :: vp2,vs2,rho2!,eps,del
         real,dimension(:),allocatable :: b_x,b_x_half,a_x,a_x_half
         real,dimension(:),allocatable :: b_y,b_y_half,a_y,a_y_half
         real,dimension(:),allocatable :: b_z,b_z_half,a_z,a_z_half
@@ -47,6 +48,7 @@ use m_shot
         real,dimension(:),allocatable :: kappa_z,kappa_z_half
 
         real,dimension(:,:,:,:),allocatable :: gradient,image
+        real,dimension(:,:,:,:),allocatable :: gradient2,image2
         
     end type
     
@@ -69,27 +71,27 @@ use m_shot
         
         !C's origin index in model
         cb%ioz=1 !always from top of model
-        x=minval(shot%rcv(:)%x)
-        x=min(x,shot%src%x,shot%src%x+aperture(1))
-        y=minval(shot%rcv(:)%y)
-        y=min(y,shot%src%y,shot%src%y+aperture(3))
+        x=min( minval(shot%rcv(:)%x), minval(shot2%rcv(:)%x) )
+        x=min( x, shot%src%x,shot%src%x+aperture(1), shot2%src%x,shot2%src%x+aperture(1) )
+        ! y=minval(shot%rcv(:)%y)
+        ! y=min(y,shot%src%y,shot%src%y+aperture(3))
         cb%iox=max(1,   nint(x/m%dx)+1) !can't exceed size of model
-        cb%ioy=max(1,   nint(y/m%dy)+1) !can't exceed size of model
+        ! cb%ioy=max(1,   nint(y/m%dy)+1) !can't exceed size of model
         
         !C's size
         cb%mz=m%nz !always down to bottom of model
-        x=maxval(shot%rcv(:)%x)
-        x=max(x,shot%src%x,shot%src%x+aperture(2))
-        y=maxval(shot%rcv(:)%y)
-        y=max(y,shot%src%y,shot%src%y+aperture(4))
+        x=max( maxval(shot%rcv(:)%x), maxval(shot2%rcv(:)%x) )
+        x=max( x, shot%src%x,shot%src%x+aperture(2), shot2%src%x,shot2%src%x+aperture(2) )
+        ! y=maxval(shot%rcv(:)%y)
+        ! y=max(y,shot%src%y,shot%src%y+aperture(4))
         cb%mx=min(m%nx,nint(x/m%dx)+1) +1 -cb%iox
-        cb%my=min(m%ny,nint(y/m%dy)+1) +1 -cb%ioy
+        ! cb%my=min(m%ny,nint(y/m%dy)+1) +1 -cb%ioy
         
         !C+D's index
         cb%ifx = 1     - cb%nboundarylayer
         cb%ilx = cb%mx + cb%nboundarylayer
-        cb%ify = 1     - cb%nboundarylayer
-        cb%ily = cb%my + cb%nboundarylayer
+        ! cb%ify = 1     - cb%nboundarylayer
+        ! cb%ily = cb%my + cb%nboundarylayer
         cb%ifz = 1     - cb%nboundarylayer
         cb%ilz = cb%mz + cb%nboundarylayer
         
@@ -118,7 +120,9 @@ use m_shot
         endif
         
         !shift source and receiver positions by computebox origin
-        call shot_shift_by_computebox(cb%iox,cb%ioy,cb%ioz)
+        !no need for pressure-only acqui
+        ! call shot_shift_by_computebox(shot,cb%iox,cb%ioy,cb%ioz)
+        ! call shot_shift_by_computebox(shot2,cb%iox,cb%ioy,cb%ioz)
         
         !models in computebox
         call alloc(cb%vp, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -127,6 +131,10 @@ use m_shot
         call alloc(cb%eps,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(cb%del,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
+        call alloc(cb%vp2, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(cb%vs2, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(cb%rho2,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+
         !model -> computebox
         call m2cb(shape(m%vp), m%vp, cb%vp)
         call m2cb(shape(m%vs), m%vs, cb%vs)
@@ -134,6 +142,10 @@ use m_shot
         call m2cb(shape(m%eps),m%eps,cb%eps)
         call m2cb(shape(m%del),m%del,cb%del)
         
+        call m2cb(shape(m%vp2), m%vp2, cb%vp2)
+        call m2cb(shape(m%vs2), m%vs2, cb%vs2)
+        call m2cb(shape(m%rho2),m%rho2,cb%rho2)
+
         !values in boundary layers
         !!top
         do iz=cb%ifz,0
@@ -142,6 +154,10 @@ use m_shot
             cb%rho(iz,:,:)=cb%rho(1,:,:)
             cb%eps(iz,:,:)=cb%eps(1,:,:)
             cb%del(iz,:,:)=cb%del(1,:,:)
+            
+            cb%vp2(iz,:,:)=cb%vp2(1,:,:)
+            cb%vs2(iz,:,:)=cb%vs2(1,:,:)
+            cb%rho2(iz,:,:)=cb%rho2(1,:,:)
         enddo
         !!bottom
         do iz=cb%mz+1,cb%ilz
@@ -150,6 +166,10 @@ use m_shot
             cb%rho(iz,:,:)=cb%rho(cb%mz,:,:)
             cb%eps(iz,:,:)=cb%eps(cb%mz,:,:)
             cb%del(iz,:,:)=cb%del(cb%mz,:,:)
+
+            cb%vp2(iz,:,:)=cb%vp2(cb%mz,:,:)
+            cb%vs2(iz,:,:)=cb%vs2(cb%mz,:,:)
+            cb%rho2(iz,:,:)=cb%rho2(cb%mz,:,:)
         enddo
         !!left
         do ix=cb%ifx,0
@@ -158,6 +178,10 @@ use m_shot
             cb%rho(:,ix,:)=cb%rho(:,1,:)
             cb%eps(:,ix,:)=cb%eps(:,1,:)
             cb%del(:,ix,:)=cb%del(:,1,:)
+
+            cb%vp2(:,ix,:)=cb%vp2(:,1,:)
+            cb%vs2(:,ix,:)=cb%vs2(:,1,:)
+            cb%rho2(:,ix,:)=cb%rho2(:,1,:)
         enddo
         !!right
         do ix=cb%mx+1,cb%ilx
@@ -166,6 +190,10 @@ use m_shot
             cb%rho(:,ix,:)=cb%rho(:,cb%mx,:)
             cb%eps(:,ix,:)=cb%eps(:,cb%mx,:)
             cb%del(:,ix,:)=cb%del(:,cb%mx,:)
+
+            cb%vp2(:,ix,:)=cb%vp2(:,cb%mx,:)
+            cb%vs2(:,ix,:)=cb%vs2(:,cb%mx,:)
+            cb%rho2(:,ix,:)=cb%rho2(:,cb%mx,:)
         enddo
         !!front
         do iy=cb%ify,0
@@ -174,6 +202,10 @@ use m_shot
             cb%rho(:,:,iy)=cb%rho(:,:,1)
             cb%eps(:,:,iy)=cb%eps(:,:,1)
             cb%del(:,:,iy)=cb%del(:,:,1)
+
+            cb%vp2(:,:,iy)=cb%vp2(:,:,1)
+            cb%vs2(:,:,iy)=cb%vs2(:,:,1)
+            cb%rho2(:,:,iy)=cb%rho2(:,:,1)
         enddo
         !!rear
         do iy=cb%my+1,cb%ily
@@ -182,17 +214,25 @@ use m_shot
             cb%rho(:,:,iy)=cb%rho(:,:,cb%my)
             cb%eps(:,:,iy)=cb%eps(:,:,cb%my)
             cb%del(:,:,iy)=cb%del(:,:,cb%my)
+
+            cb%vp2(:,:,iy)=cb%vp2(:,:,cb%my)
+            cb%vs2(:,:,iy)=cb%vs2(:,:,cb%my)
+            cb%rho2(:,:,iy)=cb%rho2(:,:,cb%my)
         enddo
         
-        cb%velmin=min(minval(cb%vp), minval(cb%vs,cb%vs>0.))
-        cb%velmax=maxval(cb%vp*sqrt(1.+2*cb%eps)) !I don't think negative epsilon value can play a role here..
+        cb%velmin=min(minval(cb%vp), minval(cb%vs,cb%vs>0.), minval(cb%vp2), minval(cb%vs2,cb%vs2>0.))
+        cb%velmax=max(maxval(cb%vp*sqrt(1.+2*cb%eps)),maxval(cb%vp2)) !I don't think negative epsilon value can play a role here..
         
         call hud('Computebox value ranges:')
         if(mpiworld%iproc==0) then
             write(*,*)'vp' ,minval(cb%vp),maxval(cb%vp)
+            write(*,*)'vp-2' ,minval(cb%vp2),maxval(cb%vp2)
             write(*,*)'vs' ,minval(cb%vs),maxval(cb%vs)
+            write(*,*)'vs-2' ,minval(cb%vs2),maxval(cb%vs2)
             write(*,*)'rho',minval(cb%rho),maxval(cb%rho)
+            write(*,*)'rho-2',minval(cb%rho2),maxval(cb%rho2)
             write(*,*)'ip' ,minval(cb%vp*cb%rho),maxval(cb%vp*cb%rho)
+            write(*,*)'ip-2' ,minval(cb%vp2*cb%rho2),maxval(cb%vp2*cb%rho2)
             write(*,*)'eps',minval(cb%eps),maxval(cb%eps)
             write(*,*)'del',minval(cb%del),maxval(cb%del)
         end if

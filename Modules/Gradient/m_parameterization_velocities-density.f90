@@ -3,7 +3,7 @@ use m_sysio
 use m_arrayop
 use m_model
 use m_field, only:waveeq_info
-use m_gradient, only: gradient
+use m_gradient, only: gradient, gradient2
 
 
     !PARAMETERIZATION     -- ALLOWED PARAMETERS
@@ -183,8 +183,8 @@ use m_gradient, only: gradient
     
     subroutine parameterization_transform(dir,x,g)
         character(3) :: dir
-        real,dimension(m%nz,m%nx,m%ny,npar) :: x
-        real,dimension(m%nz,m%nx,m%ny,npar),optional :: g
+        real,dimension(m%nz,m%nx,m%ny,npar,2) :: x
+        real,dimension(m%nz,m%nx,m%ny,npar,2),optional :: g
 
         logical :: if_acoustic, if_elastic
 
@@ -195,21 +195,29 @@ use m_gradient, only: gradient
         if(dir=='m2x') then
             do ipar=1,npar
                 select case (pars(ipar))
-                case ('vp' ); x(:,:,:,ipar) = m%vp
-                case ('vs' ); x(:,:,:,ipar) = m%vs
-                case ('rho'); x(:,:,:,ipar) = m%rho
+                case ('vp' ); x(:,:,:,ipar,1) = m%vp;  x(:,:,:,ipar,2) = m%vp2
+                case ('vs' ); x(:,:,:,ipar,1) = m%vs;  x(:,:,:,ipar,2) = m%vs2
+                case ('rho'); x(:,:,:,ipar,1) = m%rho; x(:,:,:,ipar,2) = m%rho2
                 end select
 
                 !normalize x to be unitless
-                x(:,:,:,ipar)=(x(:,:,:,ipar)-pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+                x(:,:,:,ipar,:)=(x(:,:,:,ipar,:)-pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
             enddo
 
         else !x2m
             do ipar=1,npar
                 select case (pars(ipar))
-                case ('vp' ); m%vp = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar)
-                case ('vs' ); m%vs = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar)
-                case ('rho'); m%rho= x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar)
+                case ('vp' ); m%vp = x(:,:,:,ipar,1)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar)
+                case ('vs' ); m%vs = x(:,:,:,ipar,1)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar)
+                case ('rho'); m%rho= x(:,:,:,ipar,1)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar)
+                end select
+            enddo
+
+            do ipar=1,npar
+                select case (pars(ipar))
+                case ('vp' ); m%vp2 = x(:,:,:,ipar,2)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar)
+                case ('vs' ); m%vs2 = x(:,:,:,ipar,2)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar)
+                case ('rho'); m%rho2= x(:,:,:,ipar,2)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar)
                 end select
             enddo
 
@@ -217,7 +225,8 @@ use m_gradient, only: gradient
             if(if_gardner) then
                 do iy=1,m%ny; do ix=1,m%nx
                 do iz=m%itopo(ix,iy),m%nz
-                    m%rho(iz,ix,iy) = a*m%vp(iz,ix,iy)**b
+                    m%rho (iz,ix,iy) = a*m%vp (iz,ix,iy)**b
+                    m%rho2(iz,ix,iy) = a*m%vp2(iz,ix,iy)**b
                 enddo
                 enddo; enddo
             endif
@@ -233,24 +242,40 @@ use m_gradient, only: gradient
             if(if_acoustic .and. .not. if_empirical) then
                 do ipar=1,npar
                     select case (pars(ipar))
-                    case ('vp' ); g(:,:,:,ipar) = gradient(:,:,:,1)*2*m%rho*m%vp
-                    case ('rho'); g(:,:,:,ipar) = gradient(:,:,:,1)*m%vp**2 + gradient(:,:,:,2)
+                    case ('vp' ); g(:,:,:,ipar,1) = gradient(:,:,:,1)*2*m%rho*m%vp
+                    case ('rho'); g(:,:,:,ipar,1) = gradient(:,:,:,1)*m%vp**2 + gradient(:,:,:,2)
+                    end select
+                enddo
+
+                do ipar=1,npar
+                    select case (pars(ipar))
+                    case ('vp' ); g(:,:,:,ipar,2) = gradient2(:,:,:,1)*2*m%rho2*m%vp2
+                    case ('rho'); g(:,:,:,ipar,2) = gradient2(:,:,:,1)*m%vp2**2 + gradient2(:,:,:,2)
                     end select
                 enddo
             endif
 
             !acoustic + gardner
             if(if_acoustic .and. if_gardner) then
-                g(:,:,:,1) =(gradient(:,:,:,1)*(b+2)/b*m%vp**2 + gradient(:,:,:,2))*a*b*m%vp**(b-1)
+                g(:,:,:,1,1) =(gradient (:,:,:,1)*(b+2)/b*m%vp **2 + gradient (:,:,:,2))*a*b*m%vp **(b-1)
+                g(:,:,:,1,2) =(gradient2(:,:,:,1)*(b+2)/b*m%vp2**2 + gradient2(:,:,:,2))*a*b*m%vp2**(b-1)
             endif
 
             !elastic
             if(if_elastic .and. .not. if_empirical) then
                 do ipar=1,npar
                     select case (pars(ipar))
-                    case ('vp' ); g(:,:,:,ipar) = gradient(:,:,:,1)*2*m%rho*m%vp
-                    case ('vs' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*(-2) + gradient(:,:,:,2))*2*m%rho*m%vs
-                    case ('rho'); g(:,:,:,ipar) = gradient(:,:,:,1)*m%vp**2 + (-2*gradient(:,:,:,1)+gradient(:,:,:,2))*m%vs**2 + gradient(:,:,:,3)
+                    case ('vp' ); g(:,:,:,ipar,1) = gradient(:,:,:,1)*2*m%rho*m%vp
+                    case ('vs' ); g(:,:,:,ipar,1) =(gradient(:,:,:,1)*(-2) + gradient(:,:,:,2))*2*m%rho*m%vs
+                    case ('rho'); g(:,:,:,ipar,1) = gradient(:,:,:,1)*m%vp**2 + (-2*gradient(:,:,:,1)+gradient(:,:,:,2))*m%vs**2 + gradient(:,:,:,3)
+                    end select
+                enddo
+
+                do ipar=1,npar
+                    select case (pars(ipar))
+                    case ('vp' ); g(:,:,:,ipar,2) = gradient2(:,:,:,1)*2*m%rho2*m%vp2
+                    case ('vs' ); g(:,:,:,ipar,2) =(gradient2(:,:,:,1)*(-2) + gradient2(:,:,:,2))*2*m%rho2*m%vs2
+                    case ('rho'); g(:,:,:,ipar,2) = gradient2(:,:,:,1)*m%vp2**2 + (-2*gradient2(:,:,:,1)+gradient2(:,:,:,2))*m%vs2**2 + gradient2(:,:,:,3)
                     end select
                 enddo
             endif
@@ -259,8 +284,15 @@ use m_gradient, only: gradient
             if(if_elastic .and. if_gardner) then
                 do ipar=1,npar
                     select case (pars(ipar))
-                    case ('vp' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*(b+2)/b*m%vp + (-2*gradient(:,:,:,1)+gradient(:,:,:,2))*m%vs**2 + gradient(:,:,:,3))*a*b*m%vp**(b-1)
-                    case ('vs' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*(-2) + gradient(:,:,:,2))*2*a*m%vp**b*m%vs
+                    case ('vp' ); g(:,:,:,ipar,1) =(gradient(:,:,:,1)*(b+2)/b*m%vp + (-2*gradient(:,:,:,1)+gradient(:,:,:,2))*m%vs**2 + gradient(:,:,:,3))*a*b*m%vp**(b-1)
+                    case ('vs' ); g(:,:,:,ipar,1) =(gradient(:,:,:,1)*(-2) + gradient(:,:,:,2))*2*a*m%vp**b*m%vs
+                    end select
+                enddo
+
+                do ipar=1,npar
+                    select case (pars(ipar))
+                    case ('vp' ); g(:,:,:,ipar,2) =(gradient2(:,:,:,1)*(b+2)/b*m%vp2 + (-2*gradient2(:,:,:,1)+gradient2(:,:,:,2))*m%vs2**2 + gradient2(:,:,:,3))*a*b*m%vp2**(b-1)
+                    case ('vs' ); g(:,:,:,ipar,2) =(gradient2(:,:,:,1)*(-2) + gradient2(:,:,:,2))*2*a*m%vp2**b*m%vs2
                     end select
                 enddo
             endif
@@ -268,7 +300,7 @@ use m_gradient, only: gradient
 
             !normaliz g to be unitless
             do ipar=1,npar
-                g(:,:,:,ipar)=g(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))
+                g(:,:,:,ipar,:)=g(:,:,:,ipar,:)*(pars_max(ipar)-pars_min(ipar))
             enddo
 
 !open(88,file='gvpvs',access='stream')
@@ -282,7 +314,7 @@ use m_gradient, only: gradient
     
 
     subroutine parameterization_applymask(x)
-        real,dimension(m%nz,m%nx,m%ny,npar) :: x
+        real,dimension(m%nz,m%nx,m%ny,npar,2) :: x
 
         ! !in water, vp=1500. vs=0. rho=1.
         ! do ipar=1,npar
@@ -314,19 +346,19 @@ use m_gradient, only: gradient
             case ('vp' )
                 do iy=1,m%ny; do ix=1,m%nx
                 do iz=1,m%itopo(ix,iy)-1
-                    x(iz,ix,iy,ipar) = (m%vp_mask(iz,ix,iy) -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+                    x(iz,ix,iy,ipar,:) = (m%vp_mask(iz,ix,iy) -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
                 enddo
                 enddo; enddo
             case ('vs' )
                 do iy=1,m%ny; do ix=1,m%nx
                 do iz=1,m%itopo(ix,iy)-1
-                    x(iz,ix,iy,ipar) = (m%vs_mask(iz,ix,iy)  -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+                    x(iz,ix,iy,ipar,:) = (m%vs_mask(iz,ix,iy)  -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
                 enddo
                 enddo; enddo
             case ('rho')
                 do iy=1,m%ny; do ix=1,m%nx
                 do iz=1,m%itopo(ix,iy)-1
-                    x(iz,ix,iy,ipar) = (m%rho_mask(iz,ix,iy) -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+                    x(iz,ix,iy,ipar,:) = (m%rho_mask(iz,ix,iy) -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
                 enddo
                 enddo; enddo
             end select
