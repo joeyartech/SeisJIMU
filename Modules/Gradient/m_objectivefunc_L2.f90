@@ -92,7 +92,7 @@ endif
                 endif
             enddo
         else
-            dres2 = - dres2*weight2
+            dres2 = - dres2*weight
             do ir=1,shot2%nrcv
                 if(shot2%rcv(ir)%icomp==1) then !for pressure data
                     dres2(:,ir) = dres2(:,ir) / ref_modulus/shot2%rcv(1)%dt
@@ -117,7 +117,7 @@ if(survey=='base') then
     endif
 else
     if(mpiworld%is_master) then
-    open(12,file='adjsrc_unit_2_'//shot%cindex,access='stream')
+    open(12,file='adjsrc_unit_2_'//shot2%cindex,access='stream')
     do ir=1,shot2%nrcv
       if(shot2%rcv(ir)%icomp==1) then !for pressure data
         write(12) dres2(:,ir)/ref_modulus

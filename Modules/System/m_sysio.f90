@@ -265,9 +265,9 @@ use m_message
             if(mpiworld%is_master) write(*,*) word//' '//get_setup_file
         else
             if(present(default)) then
-                inquire(file=trim(adjustl(default)),exist=alive)
+                inquire(file=adjustl(default//' '),exist=alive) !avoid the case default=''
                 if(alive) then
-                    get_setup_file=default
+                    get_setup_file=trim(adjustl(default))
                     call hud(word//' is NOT found, take default: '//get_setup_file)
                 endif
             else

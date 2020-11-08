@@ -64,7 +64,7 @@ use m_arrayop
         
         !read models
         tmp4=get_setup_char('FILE_MODELS')
-        tmp5=get_setup_char('FILE_MODELS_2')
+        tmp5=get_setup_char('FILE_MODELS_2',default=tmp4)
         
         !vp
         inquire(file=tmp4//'_vp', exist=alive)

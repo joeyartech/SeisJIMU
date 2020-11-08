@@ -25,11 +25,6 @@ use m_smoother_laplacian_sparse
     subroutine gradient_modeling(if_gradient)
         logical,optional :: if_gradient
         
-        !nshots=get_setup_int('NSHOTS',default=1)
-        !
-        !!assign shots to processors
-        !call build_shotlist(nshots)
-
         !assign shots to processors
         if(.not. allocated(shotlist)) call build_shotlist
         
@@ -41,9 +36,6 @@ use m_smoother_laplacian_sparse
             call alloc(gradient2,m%nz,m%nx,m%ny,ncorr)
         endif
         endif
-
-
-! allocate(itstart(shot%nrcv))
         
         
         call hud('      START LOOP OVER SHOTS          ')
@@ -152,8 +144,8 @@ endif
                          cb%iox:cb%iox+cb%mx-1,&
                          cb%ioy:cb%ioy+cb%my-1,:) + cb%gradient(:,:,:,:)
 
-                endif
-                endif
+            endif
+            endif
 
 
                 !==== MONITOR SURVEY =========================
@@ -174,17 +166,17 @@ open(12,file='synth_raw_2_'//shot%cindex,access='stream')
 write(12) dsyn2
 close(12)
 endif
-            ! !update shot%src%wavelet
-            ! if(update_wavelet/='no') then
-            !     call gradient_matchfilter_data
+            !update shot%src%wavelet
+            if(update_wavelet/='no') then
+                call gradient_matchfilter_data
                 
-            !     !write wavelet updates for QC
-            !     if(mpiworld%is_master) then
-            !         open(12,file='wavelet_update_2',access='stream',position='append')
-            !         write(12) shot2%src%wavelet
-            !         close(12)
-            !     endif
-            ! endif
+                !write wavelet updates for QC
+                if(mpiworld%is_master) then
+                    open(12,file='wavelet_update_2',access='stream',position='append')
+                    write(12) shot2%src%wavelet
+                    close(12)
+                endif
+            endif
 
             !write synthetic data
             open(12,file='synth_data_2_'//shot%cindex,access='stream')
@@ -200,16 +192,16 @@ endif
             fobjective(2)=fobjective(2)+dnorm
 
             !add baseline & monitor misfit
-            fobjective=fobjective(1)+fobjective(2)
+            fobjective(3)=fobjective(1)+fobjective(2)
             
             !gradient2
             if(present(if_gradient)) then
             if(if_gradient) then
                 
                 !adjoint source
-                ! if(update_wavelet/='no') then
-                !     call matchfilter_correlate_filter_residual(shot2%src%nt,shot2%nrcv,dres2)
-                ! endif
+                if(update_wavelet/='no') then
+                    call matchfilter_correlate_filter_residual(shot2%src%nt,shot2%nrcv,dres2)
+                endif
                 
                 call alloc(cb%gradient2, cb%mz,cb%mx,cb%my,ncorr) !(:,:,:,1) is glda, (:,:,:,2) is gmu, (:,:,:,3) is grho0
                 !*******************************

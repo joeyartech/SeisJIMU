@@ -176,9 +176,9 @@ use m_hicks
 
 
         !hicks coeff for source point
-        hicks%x=shot2%src%x; hicks%dx=m%dx
-        hicks%y=shot2%src%y; hicks%dy=m%dy
-        hicks%z=shot2%src%z; hicks%dz=m%dz
+        hicks%x=shot2%src%x!; hicks%dx=m%dx
+        hicks%y=shot2%src%y!; hicks%dy=m%dy
+        hicks%z=shot2%src%z!; hicks%dz=m%dz
         !hicks%is_cubic=m%is_cubic
         !hicks%if_freesurface=m%if_freesurface
         
@@ -380,10 +380,17 @@ use m_hicks
         enddo
         
         !load obs traces
-        call alloc(dobs,shot%rcv(1)%nt,shot%nrcv)
-        do ir=1,shot%nrcv
-            dobs(:,ir)=sudata(ir)%trace
-        enddo
+        if(survey=='base') then
+            call alloc(dobs,shot%rcv(1)%nt,shot%nrcv)
+            do ir=1,shot%nrcv
+                dobs(:,ir)=sudata(ir)%trace
+            enddo
+        else
+            call alloc(dobs2,shot%rcv(1)%nt,shot%nrcv)
+            do ir=1,shot%nrcv
+                dobs2(:,ir)=sudata(ir)%trace
+            enddo
+        endif
         
         !clean su data
         do ir=1,shot%nrcv
