@@ -38,6 +38,9 @@ use m_optimizer
 
     open(12,file='gradient',action='write',access='stream')
     write(12) gradient
+    close(12)
+
+    open(12,file='gradient_2',action='write',access='stream')
     write(12) gradient2
     close(12)
         

@@ -386,8 +386,8 @@ use m_hicks
                 dobs(:,ir)=sudata(ir)%trace
             enddo
         else
-            call alloc(dobs2,shot%rcv(1)%nt,shot%nrcv)
-            do ir=1,shot%nrcv
+            call alloc(dobs2,shot2%rcv(1)%nt,shot2%nrcv)
+            do ir=1,shot2%nrcv
                 dobs2(:,ir)=sudata(ir)%trace
             enddo
         endif
