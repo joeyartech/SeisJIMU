@@ -70,6 +70,7 @@ integer,parameter :: max_search=12
         real,dimension(:,:),intent(inout),optional :: gradient_history
         character(7) :: result
         
+! character(4) :: citerate
         logical :: first_condition, second_condition
         
         !initialize
@@ -90,6 +91,9 @@ integer,parameter :: max_search=12
         endif
         
         !linesearch loop
+! write(citerate,'(i0.4)') iterate
+! open(118,file='model_perturb_'//citerate);   close(118,status='delete')
+! open(128,file='model_perturb_2_'//citerate); close(128,status='delete')
         loop: do isearch=1,max_search
         
             if(mpiworld%is_master) write(*,'(a,3(2x,i5))') '  Iteration.Linesearch.Modeling#',iterate,isearch,imodeling
@@ -97,6 +101,12 @@ integer,parameter :: max_search=12
             call hud('Modeling with perturbed parameters')
             if(if_project_x) call linesearcher_project(perturb%x)
             call parameterization_transform('x2m',perturb%x)
+! open(118,file=  'model_perturb_'//citerate,access='stream',position='append')
+! open(128,file='model_perturb_2_'//citerate,access='stream',position='append')
+! write(118) m%vp
+! write(128) m%vp2
+! close(118)
+! close(128)
             call gradient_modeling(if_gradient=.true.)
             perturb%f=fobjective(3)
             call parameterization_transform('m2x',perturb%x,perturb%g)
@@ -223,6 +233,11 @@ integer,parameter :: max_search=12
             !scaling=1e3* 1e-2*m%n/ (sum(abs(fm%g(1:m%n)))) / (par_vp_max -par_vp_min)  !=1e3* |gp1|_L1 / |gvp|_L1 / (vpmax-vpmin)
 
             scaling=1e3* 1e-2*m%n/ (sum(abs(fm%g(1:m%n)))) / (pars_max(1)-pars_min(1))  !=1e3* |gpar1|_L1 / |gpar|_L1 / par1_range
+
+! !halve the scaling factor
+! !since current%f=fobjective(1)+fobjective(2)
+! !otherwise the gradient is 2x larger than needed to perturb the model..
+! scaling=scaling/2.
 
             if(mpiworld%is_master) write(*,*) 'Linesearch Scaling Factor:', scaling
 
