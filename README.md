@@ -12,7 +12,7 @@ licensed under GNU GENERAL PUBLIC LICENSE Version 3 (see LICENSE).
 
 ~Version 1.1.1.1
  - Authors: 
-	 - Joeyartech  (joeyartech@gmail.com)
+	 - Joeyartech  (joeyartech4humain@gmail.com)
 	 - David Lumley (david.lumley@utdallas.edu)
  - Language: Fortran
  - Libraries: OpenMP, MPI
