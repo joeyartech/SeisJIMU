@@ -9,6 +9,7 @@ use m_arrayop
         real    :: ox,oy,oz
         logical :: is_cubic, is_isotropic, if_freesurface
         real,dimension(:,:,:),allocatable :: vp,vs,rho,eps,del,eta
+        real,dimension(:,:,:),allocatable :: rho_bckg
         real,dimension(:,:),allocatable :: topo
         integer,dimension(:,:),allocatable :: itopo
         real,dimension(:,:,:),allocatable :: vp_mask,vs_mask,rho_mask
@@ -98,6 +99,17 @@ use m_arrayop
             call hud('rho model is read.')
         else
             call alloc(m%rho,1,1,1); m%rho=1000. !in [kg/m3]
+        endif
+
+        inquire(file=tmp4//'_rhobckg', exist=alive)
+        if(alive) then
+            call alloc(m%rho_bckg,m%nz,m%nx,m%ny)
+            open(12,file=tmp4//'_rhobckg',access='direct',recl=n,action='read',status='old')
+            read(12,rec=1) m%rho_bckg
+            close(12)
+            call hud('background rho model is read.')
+        else
+            call alloc(m%rho_bckg,1,1,1); m%rho_bckg=1000. !in [kg/m3]
         endif
         
         !epsilon

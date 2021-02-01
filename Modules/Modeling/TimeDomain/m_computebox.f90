@@ -46,7 +46,7 @@ use m_shot
         real,dimension(:),allocatable :: kappa_y,kappa_y_half
         real,dimension(:),allocatable :: kappa_z,kappa_z_half
 
-        real,dimension(:,:,:,:),allocatable :: gradient,image
+        real,dimension(:,:,:,:),allocatable :: gradient,gradient_bckg,image
         
     end type
     
@@ -54,7 +54,9 @@ use m_shot
     
     contains
     
-    subroutine build_computebox
+    subroutine build_computebox(if_background)
+        logical,optional :: if_background
+
         character(:),allocatable :: c_aperture
         real :: aperture(4)=0.
         
@@ -131,6 +133,9 @@ use m_shot
         call m2cb(shape(m%vp), m%vp, cb%vp)
         call m2cb(shape(m%vs), m%vs, cb%vs)
         call m2cb(shape(m%rho),m%rho,cb%rho)
+        if(present(if_background)) then; if(if_background) then
+            call m2cb(shape(m%rho),m%rho_bckg,cb%rho)
+        endif; endif
         call m2cb(shape(m%eps),m%eps,cb%eps)
         call m2cb(shape(m%del),m%del,cb%del)
         

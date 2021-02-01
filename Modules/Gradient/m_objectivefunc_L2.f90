@@ -3,14 +3,18 @@ use m_shot
 use m_matchfilter
 use m_weighter_polygon
 use m_weighter_table
+use m_separater
 
     real dnorm, mnorm !norm of data and model residuals
 
     real,dimension(:,:),allocatable :: weight
 
+    real,dimension(:,:),allocatable :: sepa_div, sepa_rfl
+
     contains
 
-    subroutine objectivefunc_data_norm_residual
+    subroutine objectivefunc_data_norm_residual(if_background)
+        logical,optional :: if_background
         
         real,save :: ref_modulus
 
@@ -25,8 +29,19 @@ use m_weighter_table
 ! close(33)
         endif
 
+        if(.not. allocated(sepa_div) .or. .not. allocated(sepa_rfl)) then
+            call alloc(sepa_div,shot%rcv(1)%nt,shot%nrcv)
+            call alloc(sepa_rfl,shot%rcv(1)%nt,shot%nrcv)
+            call build_separater(shot%rcv(1)%nt,shot%rcv(1)%dt,shot%nrcv,shot%rcv(:)%aoffset,sepa_div,sepa_rfl)
+        endif
+
         dres = (dsyn-dobs)*weight
-        
+
+            dres =           sepa_rfl * dres
+        if(present(if_background)) then; if(if_background) then
+            dres = (sepa_div-sepa_rfl)* dres
+        endif; endif
+            
         dnorm= 0.
         
         !set unit of dnorm to be [Nm], same as Lagrangian

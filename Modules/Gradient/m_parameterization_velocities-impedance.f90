@@ -24,18 +24,20 @@ use m_gradient, only: gradient
     !gip = (glda*vp^2 + (-2glda+gmu)*vs^2 +grho0) /vp
 
 
-    public  parameterization, npar
-    private 
+    public
+    private empirical, parlist, a,b!, if_empirical
     
-    character(:),parameter :: parameterization='velocities-impedance'
-
+    character(*),parameter :: parameterization='velocities-impedance'
     character(:),allocatable :: empirical, parlist
     character(3),dimension(3) :: pars !max 3 active parameters, max 3 letters for each
     real,dimension(3) :: pars_min, pars_max
     integer :: npar=0
 
+    !if output model
+    logical :: if_write_vp=.false., if_write_vs=.false., if_write_rho=.false.
+
     !real,dimension(3) :: hyper=0. !max 3 hyper-parameters for empirical law
-    !real :: a,b
+    real :: a,b
 
     logical :: if_empirical=.false.
     !logical :: if_gardner=.false., if_castagna=.false.
@@ -52,6 +54,14 @@ use m_gradient, only: gradient
         !read in active parameters and their allowed ranges
         parlist=get_setup_char('ACTIVE_PARAMETER',default='vp1500:3400')
         call read_parlist
+
+        do ipar=1,npar
+            select case (pars(ipar))
+            case ('vp'); if_write_vp=.true.
+            case ('vs'); if_write_vs=.true.
+            case ('ip'); if_write_rho=.true.
+            end select
+        enddo
 
     end subroutine
 
@@ -248,6 +258,60 @@ use m_gradient, only: gradient
         endif
         endif
         
+    end subroutine
+
+
+    subroutine parameterization_applymask(x)
+        real,dimension(m%nz,m%nx,m%ny,npar) :: x
+
+        ! !in water, vp=1500. vs=0. rho=1.
+        ! do ipar=1,npar
+        !     select case (pars(ipar))
+        !     case ('vp' )
+        !         do iy=1,m%ny
+        !         do ix=1,m%nx
+        !             x(1:m%itopo(ix,iy)-1,ix,iy,ipar) = (1500. -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+        !         enddo
+        !         enddo
+        !     case ('vs' )
+        !         do iy=1,m%ny
+        !         do ix=1,m%nx
+        !             x(1:m%itopo(ix,iy)-1,ix,iy,ipar) = (0.  -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+        !         enddo
+        !         enddo
+        !     case ('rho')
+        !         do iy=1,m%ny
+        !         do ix=1,m%nx
+        !             x(1:m%itopo(ix,iy)-1,ix,iy,ipar) = (1.  -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+        !         enddo
+        !         enddo
+        !     end select
+        ! enddo
+
+        !arbitrary mask
+        do ipar=1,npar
+            select case (pars(ipar))
+            case ('vp' )
+                do iy=1,m%ny; do ix=1,m%nx
+                do iz=1,m%itopo(ix,iy)-1
+                    x(iz,ix,iy,ipar) = (m%vp_mask(iz,ix,iy) -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+                enddo
+                enddo; enddo
+            case ('vs' )
+                do iy=1,m%ny; do ix=1,m%nx
+                do iz=1,m%itopo(ix,iy)-1
+                    x(iz,ix,iy,ipar) = (m%vs_mask(iz,ix,iy)  -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+                enddo
+                enddo; enddo
+            case ('ip')
+                do iy=1,m%ny; do ix=1,m%nx
+                do iz=1,m%itopo(ix,iy)-1
+                    x(iz,ix,iy,ipar) = (m%vp_mask(iz,ix,iy)*m%rho_mask(iz,ix,iy) -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+                enddo
+                enddo; enddo
+            end select
+        enddo
+
     end subroutine
     
 end module
