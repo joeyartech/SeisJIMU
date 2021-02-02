@@ -9,7 +9,7 @@ use m_separater
 
     real,dimension(:,:),allocatable :: weight
 
-    real,dimension(:,:),allocatable :: sepa_div, sepa_rfl
+    real,dimension(:,:),allocatable :: sepa_div, sepa_rfl, tmp_dres_rfl
 
     contains
 
@@ -40,11 +40,17 @@ use m_separater
             endif
 
             if(o_residual=='rfl') then
-                dres =           sepa_rfl * dres
+                dres =       sepa_rfl*dres
+
+                call alloc(tmp_dres_rfl,shot%rcv(1)%nt,shot%nrcv,initialize=.false.)
+                tmp_dres_rfl=dres
+
             elseif(o_residual=='div-rfl') then
-                dres = (sepa_div-sepa_rfl)* dres
+                dres =       sepa_div*dres
+                dres = dres -sepa_rfl*tmp_dres_rfl
+
             endif
-            
+
         endif
             
         dnorm= 0.

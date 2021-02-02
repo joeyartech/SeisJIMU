@@ -40,7 +40,7 @@ use m_gradient, only: gradient
     
     character(*),parameter :: parameterization='velocities-density'
     character(:),allocatable :: empirical, parlist
-    character(3),dimension(3) :: pars !max 3 active parameters, max 3 letters for each
+    character(3),dimension(3) :: pars=['','',''] !max 3 active parameters, max 3 letters for each
     real,dimension(3) :: pars_min, pars_max
     integer :: npar=0
 

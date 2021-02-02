@@ -27,7 +27,7 @@ use m_arrayop
 
         open(10,file=file_sepa,action='read')
 
-        !sepa_div=0.; sepa_rfl=0.
+        sepa_div=0.; sepa_rfl=0.
 
         !initialize
         xsepa=-99999.

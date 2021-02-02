@@ -29,7 +29,7 @@ use m_gradient, only: gradient
     
     character(*),parameter :: parameterization='velocities-impedance'
     character(:),allocatable :: empirical, parlist
-    character(3),dimension(3) :: pars !max 3 active parameters, max 3 letters for each
+    character(3),dimension(3) :: pars=['','',''] !max 3 active parameters, max 3 letters for each
     real,dimension(3) :: pars_min, pars_max
     integer :: npar=0
 
@@ -158,7 +158,7 @@ use m_gradient, only: gradient
 
         if(text(1:2)=='vs' ) check_par = index(waveeq_info,'elastic')>0
         
-        if(text(1:3)=='ip') check_par = .true.
+        if(text(1:2)=='ip') check_par = .true.
 
         if(.not. check_par) then !ce paramètre n'est plus actif
             if(mpiworld%is_master) write(*,*) 'Parameter ',text(1:3),' will not be active in the inversion..'

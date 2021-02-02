@@ -16,11 +16,13 @@ use m_smoother_laplacian_sparse
     
     real fobjective !objective function value
     real,dimension(:,:,:,:),allocatable :: gradient
+
+    logical :: if_rwi_gradient=.false.
     
     contains
     
-    subroutine gradient_modeling(if_gradient,if_twogradient)
-        logical,optional :: if_gradient,if_twogradient
+    subroutine gradient_modeling(if_gradient)
+        logical,optional :: if_gradient
         
 
         !assign shots to processors
@@ -80,8 +82,12 @@ endif
 
             !fobjective and data residual
             call alloc(dres,shot%rcv(1)%nt,shot%nrcv)
-            call objectivefunc_data_norm_residual(o_residual='rfl')
-            
+            if(.not. if_rwi_gradient) then
+                call objectivefunc_data_norm_residual
+            else
+                call objectivefunc_data_norm_residual(o_residual='rfl')
+            endif
+
             if(mpiworld%is_master) write(*,*) 'Shot# 0001: Data misfit norm', dnorm
             
             fobjective=fobjective+dnorm
@@ -98,8 +104,7 @@ endif
             !*******************************
             
 
-            if(present(if_twogradient)) then
-            if(if_twogradient) then
+            if(if_rwi_gradient) then
                 !2nd gradient for background model
                 call build_computebox(if_background=.true.)
 
@@ -111,7 +116,7 @@ endif
                 call propagator_forward(if_will_backpropagate=.true.)
 
                 !write synthetic data
-                open(12,file='synth_bckg_data_'//shot%cindex,access='stream')
+                open(12,file='synth_data_bckg_'//shot%cindex,access='stream')
                 write(12) dsyn
                 close(12)
 
@@ -137,7 +142,7 @@ endif
                 cb%gradient=cb%gradient+cb%gradient_bckg
 
             endif
-            endif   
+            
 
             !put cb%gradient into global gradient
             gradient(cb%ioz:cb%ioz+cb%mz-1,&

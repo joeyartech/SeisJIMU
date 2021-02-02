@@ -91,26 +91,26 @@ use m_arrayop
         
         !rho
         inquire(file=tmp4//'_rho', exist=alive)
-        if(alive) then
-            call alloc(m%rho,m%nz,m%nx,m%ny)
-            open(12,file=tmp4//'_rho',access='direct',recl=n,action='read',status='old')
-            read(12,rec=1) m%rho
-            close(12)
-            call hud('rho model is read.')
-        else
-            call alloc(m%rho,1,1,1); m%rho=1000. !in [kg/m3]
+        if(.not.alive) then
+            call hud('ERROR: Unable to find rho model!')
+            stop
         endif
-
+        call alloc(m%rho,m%nz,m%nx,m%ny)
+        open(12,file=tmp4//'_rho',access='direct',recl=n,action='read',status='old')
+        read(12,rec=1) m%rho
+        close(12)
+        call hud('rho model is read.')
+        
         inquire(file=tmp4//'_rhobckg', exist=alive)
-        if(alive) then
-            call alloc(m%rho_bckg,m%nz,m%nx,m%ny)
-            open(12,file=tmp4//'_rhobckg',access='direct',recl=n,action='read',status='old')
-            read(12,rec=1) m%rho_bckg
-            close(12)
-            call hud('background rho model is read.')
-        else
-            call alloc(m%rho_bckg,1,1,1); m%rho_bckg=1000. !in [kg/m3]
+        if(.not.alive) then
+            call hud('ERROR: Unable to find background rho model!')
+            stop
         endif
+        call alloc(m%rho_bckg,m%nz,m%nx,m%ny)
+        open(12,file=tmp4//'_rhobckg',access='direct',recl=n,action='read',status='old')
+        read(12,rec=1) m%rho_bckg
+        close(12)
+        call hud('background rho model is read.')
         
         !epsilon
         inquire(file=tmp4//'_eps', exist=alive)
