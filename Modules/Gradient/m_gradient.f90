@@ -19,8 +19,8 @@ use m_smoother_laplacian_sparse
     
     contains
     
-    subroutine gradient_modeling(if_gradient)
-        logical,optional :: if_gradient
+    subroutine gradient_modeling(if_gradient,if_twogradient)
+        logical,optional :: if_gradient,if_twogradient
         
 
         !assign shots to processors
@@ -80,7 +80,7 @@ endif
 
             !fobjective and data residual
             call alloc(dres,shot%rcv(1)%nt,shot%nrcv)
-            call objectivefunc_data_norm_residual
+            call objectivefunc_data_norm_residual(o_residual='rfl')
             
             if(mpiworld%is_master) write(*,*) 'Shot# 0001: Data misfit norm', dnorm
             
@@ -98,32 +98,33 @@ endif
             !*******************************
             
 
+            if(present(if_twogradient)) then
+            if(if_twogradient) then
+                !2nd gradient for background model
+                call build_computebox(if_background=.true.)
 
-            !2nd gradient for background model
-            call build_computebox(if_background=.true.)
+                !call check_model
+                !call check_discretization
 
-            !call check_model
-            !call check_discretization
+                call init_propagator(if_will_do_rfield=.true.)
 
-            call init_propagator(if_will_do_rfield=.true.)
+                call propagator_forward(if_will_backpropagate=.true.)
 
-            call propagator_forward(if_will_backpropagate=.true.)
+                !write synthetic data
+                open(12,file='synth_bckg_data_'//shot%cindex,access='stream')
+                write(12) dsyn
+                close(12)
 
-            !write synthetic data
-            open(12,file='synth_bckg_data_'//shot%cindex,access='stream')
-            write(12) dsyn
-            close(12)
+                !fobjective and data residual
+                call alloc(dres,shot%rcv(1)%nt,shot%nrcv)
+                call objectivefunc_data_norm_residual(o_residual='div-rfl')
 
-            !fobjective and data residual
-            call alloc(dres,shot%rcv(1)%nt,shot%nrcv)
-            call objectivefunc_data_norm_residual(if_background=.true.)
-
-            !adjoint source
-            call alloc(cb%gradient_bckg,cb%mz,cb%mx,cb%my,ncorr) !(:,:,:,1) is glda, (:,:,:,2) is gmu, (:,:,:,3) is grho0
-            !*******************************
-            !intensive computation
-            call propagator_adjoint(gradient=cb%gradient_bckg)
-            !*******************************
+                !adjoint source
+                call alloc(cb%gradient_bckg,cb%mz,cb%mx,cb%my,ncorr) !(:,:,:,1) is glda, (:,:,:,2) is gmu, (:,:,:,3) is grho0
+                !*******************************
+                !intensive computation
+                call propagator_adjoint(gradient=cb%gradient_bckg)
+                !*******************************
 
 if(mpiworld%is_master) then          
 open(12,file='cb%gradient',action='write',access='stream')
@@ -133,7 +134,10 @@ write(12) cb%gradient+cb%gradient_bckg
 close(12)
 endif
 
-            cb%gradient=cb%gradient+cb%gradient_bckg
+                cb%gradient=cb%gradient+cb%gradient_bckg
+
+            endif
+            endif   
 
             !put cb%gradient into global gradient
             gradient(cb%ioz:cb%ioz+cb%mz-1,&

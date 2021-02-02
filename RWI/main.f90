@@ -33,7 +33,7 @@ use m_optimizer
     call init_model
     call field_print_info
     
-    call gradient_modeling(if_gradient=.true.)
+    call gradient_modeling(if_gradient=.true.,if_twogradient=.true.)
     
 
     open(12,file='gradient',action='write',access='stream')

@@ -13,8 +13,8 @@ use m_separater
 
     contains
 
-    subroutine objectivefunc_data_norm_residual(if_background)
-        logical,optional :: if_background
+    subroutine objectivefunc_data_norm_residual(o_residual)
+        character(*),optional :: o_residual
         
         real,save :: ref_modulus
 
@@ -29,18 +29,23 @@ use m_separater
 ! close(33)
         endif
 
-        if(.not. allocated(sepa_div) .or. .not. allocated(sepa_rfl)) then
-            call alloc(sepa_div,shot%rcv(1)%nt,shot%nrcv)
-            call alloc(sepa_rfl,shot%rcv(1)%nt,shot%nrcv)
-            call build_separater(shot%rcv(1)%nt,shot%rcv(1)%dt,shot%nrcv,shot%rcv(:)%aoffset,sepa_div,sepa_rfl)
-        endif
-
         dres = (dsyn-dobs)*weight
 
-            dres =           sepa_rfl * dres
-        if(present(if_background)) then; if(if_background) then
-            dres = (sepa_div-sepa_rfl)* dres
-        endif; endif
+
+        if(present(o_residual)) then
+            if(.not. allocated(sepa_div) .or. .not. allocated(sepa_rfl)) then
+                call alloc(sepa_div,shot%rcv(1)%nt,shot%nrcv)
+                call alloc(sepa_rfl,shot%rcv(1)%nt,shot%nrcv)
+                call build_separater(shot%rcv(1)%nt,shot%rcv(1)%dt,shot%nrcv,shot%rcv(:)%aoffset,sepa_div,sepa_rfl)
+            endif
+
+            if(o_residual=='rfl') then
+                dres =           sepa_rfl * dres
+            elseif(o_residual=='div-rfl') then
+                dres = (sepa_div-sepa_rfl)* dres
+            endif
+            
+        endif
             
         dnorm= 0.
         

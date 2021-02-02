@@ -83,9 +83,9 @@ $(DIR)Modules/Modeling/$(Domain)/$(Solver)/m_propagator.f90
 OBJ_FWD=$(OBJ0) $(modeling:.f90=.o)
 
 
-########
-# IpWI #
-########
+#######
+# FWI #
+#######
 
 Norm=L2
 #Param=velocities-density
@@ -106,7 +106,7 @@ $(DIR)Modules/Optimization/m_preconditioner_$(Preco).f90 \
 $(DIR)Modules/Optimization/m_linesearcher_$(LineS).f90 \
 $(DIR)Modules/Optimization/m_optimizer_$(Optim).f90 \
 
-OBJ_IpWI=$(OBJ_FWD) $(gradient:.f90=.o) $(optimization:.f90=.o)
+OBJ_FWI=$(OBJ_FWD) $(gradient:.f90=.o) $(optimization:.f90=.o)
 
 
 #######
@@ -140,9 +140,9 @@ fwd : $(OBJ_FWD) FWD/main.o $(DIR)mod exe
 	mpif90 $(FLAGF90) $(OBJ_FWD) FWD/main.o $(MOD)  -o exe/fwd_$(WaveEq)_$(Solver)
 	(cd exe; ln -sf fwd_$(WaveEq)_$(Solver) FWD)
 
-ipwi : $(OBJ_IpWI) IpWI/main.o $(DIR)mod exe
-	mpif90 $(FLAGF90) $(OBJ_IpWI) IpWI/main.o $(MOD)  -o exe/ipwi_$(WaveEq)_$(Solver)_$(Norm)_$(Param)_$(Preco)_$(LineS)_$(Optim)
-	(cd exe; ln -sf ipwi_$(WaveEq)_$(Solver)_$(Norm)_$(Param)_$(Preco)_$(LineS)_$(Optim) IpWI)
+fwi : $(OBJ_FWI) FWI/main.o $(DIR)mod exe
+	mpif90 $(FLAGF90) $(OBJ_FWI) FWI/main.o $(MOD)  -o exe/fwi_$(WaveEq)_$(Solver)_$(Norm)_$(Param)_$(Preco)_$(LineS)_$(Optim)
+	(cd exe; ln -sf fwi_$(WaveEq)_$(Solver)_$(Norm)_$(Param)_$(Preco)_$(LineS)_$(Optim) FWI)
 
 rwi : $(OBJ_RWI) RWI/main.o $(DIR)mod exe
 	mpif90 $(FLAGF90) $(OBJ_RWI) RWI/main.o $(MOD)  -o exe/rwi_$(WaveEq)_$(Solver)_$(Norm)_$(Param)_$(Preco)_$(LineS)_$(Optim)

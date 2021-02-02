@@ -300,7 +300,7 @@ use m_gradient, only: gradient
             case ('vs' )
                 do iy=1,m%ny; do ix=1,m%nx
                 do iz=1,m%itopo(ix,iy)-1
-                    x(iz,ix,iy,ipar) = (m%vs_mask(iz,ix,iy)  -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+                    x(iz,ix,iy,ipar) = (m%vs_mask(iz,ix,iy) -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
                 enddo
                 enddo; enddo
             case ('ip')
