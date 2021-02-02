@@ -171,6 +171,8 @@ use m_gradient, only: gradient
         real,dimension(m%nz,m%nx,m%ny,npar) :: x
         real,dimension(m%nz,m%nx,m%ny,npar),optional :: g
 
+        real,dimension(:,:,:),allocatable :: tmp_vp
+
         logical :: if_acoustic, if_elastic
         
         !model
@@ -187,19 +189,23 @@ use m_gradient, only: gradient
             enddo
 
         else !x2m
-            !first run
             do ipar=1,npar
                 select case (pars(ipar))
-                case ('vp' ); m%vp = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)
-                case ('vs' ); m%vs = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)
-                end select
-            enddo
+                case ('vp')
+                    call alloc(tmp_vp,m%nz,m%nx,m%ny,initialize=.false.)
+                    tmp_vp = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)
+                    m%rho      = m%vp*m%rho      / tmp_vp
+                    m%rho_bckg = m%vp*m%rho_bckg / tmp_vp
+                    m%vp = tmp_vp
 
-            !second run
-            do ipar=1,npar
-                if(pars(ipar)=='ip') then
-                    m%rho= (x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)) /m%vp  !m%vp should have been updated in the first run
-                endif
+                case ('vs')
+                    m%vs = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)
+
+                case ('ip')
+                    m%rho= (x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)) /m%vp
+                
+                end select
+
             enddo
 
         endif
@@ -217,7 +223,7 @@ use m_gradient, only: gradient
             if(if_acoustic .and. .not. if_empirical) then
                 do ipar=1,npar
                     select case (pars(ipar))
-                    case ('vp' ); g(:,:,:,ipar) =(gradient(:,:,:,1)-gradient(:,:,:,2))*m%rho*m%vp
+                    case ('vp' ); g(:,:,:,ipar) = (gradient(:,:,:,1)*m%vp -gradient(:,:,:,2)/m%vp)*m%rho
                     case ('ip' ); g(:,:,:,ipar) = gradient(:,:,:,1)*m%vp + gradient(:,:,:,2)/m%vp
                     end select
                 enddo

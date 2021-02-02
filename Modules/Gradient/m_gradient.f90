@@ -88,6 +88,13 @@ endif
                 call objectivefunc_data_norm_residual(o_residual='rfl')
             endif
 
+! !write synthetic data
+! if(mpiworld%is_master) then
+! open(12,file='residual_'//shot%cindex,access='stream')
+! write(12) dres
+! close(12)
+! endif
+
             if(mpiworld%is_master) write(*,*) 'Shot# 0001: Data misfit norm', dnorm
             
             fobjective=fobjective+dnorm

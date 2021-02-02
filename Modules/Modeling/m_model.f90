@@ -101,16 +101,17 @@ use m_arrayop
         close(12)
         call hud('rho model is read.')
         
+        !background rho
         inquire(file=tmp4//'_rhobckg', exist=alive)
-        if(.not.alive) then
-            call hud('ERROR: Unable to find background rho model!')
-            stop
+        if(alive) then
+            call alloc(m%rho_bckg,m%nz,m%nx,m%ny)
+            open(12,file=tmp4//'_rhobckg',access='direct',recl=n,action='read',status='old')
+            read(12,rec=1) m%rho_bckg
+            close(12)
+            call hud('background rho model is read.')
+        else
+            call alloc(m%rho_bckg,1,1,1)
         endif
-        call alloc(m%rho_bckg,m%nz,m%nx,m%ny)
-        open(12,file=tmp4//'_rhobckg',access='direct',recl=n,action='read',status='old')
-        read(12,rec=1) m%rho_bckg
-        close(12)
-        call hud('background rho model is read.')
         
         !epsilon
         inquire(file=tmp4//'_eps', exist=alive)

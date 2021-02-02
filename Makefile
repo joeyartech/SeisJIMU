@@ -96,7 +96,7 @@ LineS=Wolfe
 #Optim=NLCG
 Optim=LBFGS
 
-gradient = \
+fwi_gradient = \
 $(DIR)Modules/Gradient/m_objectivefunc_$(Norm).f90 \
 $(DIR)Modules/Gradient/m_gradient.f90 \
 $(DIR)Modules/Gradient/m_parameterization_$(Param).f90 \
@@ -106,7 +106,7 @@ $(DIR)Modules/Optimization/m_preconditioner_$(Preco).f90 \
 $(DIR)Modules/Optimization/m_linesearcher_$(LineS).f90 \
 $(DIR)Modules/Optimization/m_optimizer_$(Optim).f90 \
 
-OBJ_FWI=$(OBJ_FWD) $(gradient:.f90=.o) $(optimization:.f90=.o)
+OBJ_FWI=$(OBJ_FWD) $(fwi_gradient:.f90=.o) $(optimization:.f90=.o)
 
 
 #######
@@ -114,25 +114,22 @@ OBJ_FWI=$(OBJ_FWD) $(gradient:.f90=.o) $(optimization:.f90=.o)
 #######
 
 Norm=L2
-#Param=velocities-density
-Param=velocities-impedance
-#Param=slowness-density
 Preco=zpower
 LineS=Wolfe
 #Optim=NLCG
 Optim=LBFGS
 
-gradient = \
+rwi_gradient = \
 $(DIR)Modules/Gradient/m_objectivefunc_$(Norm).f90 \
 $(DIR)Modules/Gradient/m_gradient.f90 \
-$(DIR)Modules/Gradient/m_parameterization_$(Param).f90 \
+$(DIR)Modules/Gradient/m_parameterization_velocities-impedance.f90 \
 
 optimization = \
 $(DIR)Modules/Optimization/m_preconditioner_$(Preco).f90 \
 $(DIR)Modules/Optimization/m_linesearcher_$(LineS).f90 \
 $(DIR)Modules/Optimization/m_optimizer_$(Optim).f90 \
 
-OBJ_RWI=$(OBJ_FWD) $(gradient:.f90=.o) $(optimization:.f90=.o)
+OBJ_RWI=$(OBJ_FWD) $(rwi_gradient:.f90=.o) $(optimization:.f90=.o)
 
 ###############################################################################################
 
@@ -145,8 +142,8 @@ fwi : $(OBJ_FWI) FWI/main.o $(DIR)mod exe
 	(cd exe; ln -sf fwi_$(WaveEq)_$(Solver)_$(Norm)_$(Param)_$(Preco)_$(LineS)_$(Optim) FWI)
 
 rwi : $(OBJ_RWI) RWI/main.o $(DIR)mod exe
-	mpif90 $(FLAGF90) $(OBJ_RWI) RWI/main.o $(MOD)  -o exe/rwi_$(WaveEq)_$(Solver)_$(Norm)_$(Param)_$(Preco)_$(LineS)_$(Optim)
-	(cd exe; ln -sf rwi_$(WaveEq)_$(Solver)_$(Norm)_$(Param)_$(Preco)_$(LineS)_$(Optim) RWI)
+	mpif90 $(FLAGF90) $(OBJ_RWI) RWI/main.o $(MOD)  -o exe/rwi_$(WaveEq)_$(Solver)_$(Norm)_$(Preco)_$(LineS)_$(Optim)
+	(cd exe; ln -sf rwi_$(WaveEq)_$(Solver)_$(Norm)_$(Preco)_$(LineS)_$(Optim) RWI)
 
 
 clean :

@@ -30,28 +30,6 @@ use m_separater
         endif
 
         dres = (dsyn-dobs)*weight
-
-
-        if(present(o_residual)) then
-            if(.not. allocated(sepa_div) .or. .not. allocated(sepa_rfl)) then
-                call alloc(sepa_div,shot%rcv(1)%nt,shot%nrcv)
-                call alloc(sepa_rfl,shot%rcv(1)%nt,shot%nrcv)
-                call build_separater(shot%rcv(1)%nt,shot%rcv(1)%dt,shot%nrcv,shot%rcv(:)%aoffset,sepa_div,sepa_rfl)
-            endif
-
-            if(o_residual=='rfl') then
-                dres =       sepa_rfl*dres
-
-                call alloc(tmp_dres_rfl,shot%rcv(1)%nt,shot%nrcv,initialize=.false.)
-                tmp_dres_rfl=dres
-
-            elseif(o_residual=='div-rfl') then
-                dres =       sepa_div*dres
-                dres = dres -sepa_rfl*tmp_dres_rfl
-
-            endif
-
-        endif
             
         dnorm= 0.
         
@@ -78,6 +56,27 @@ use m_separater
 ! close(12)
 ! endif
 
+
+        if(present(o_residual)) then
+            if(.not. allocated(sepa_div) .or. .not. allocated(sepa_rfl)) then
+                call alloc(sepa_div,shot%rcv(1)%nt,shot%nrcv)
+                call alloc(sepa_rfl,shot%rcv(1)%nt,shot%nrcv)
+                call build_separater(shot%rcv(1)%nt,shot%rcv(1)%dt,shot%nrcv,shot%rcv(:)%aoffset,sepa_div,sepa_rfl)
+            endif
+
+            if(o_residual=='rfl') then
+                dres =       sepa_rfl*dres
+
+                call alloc(tmp_dres_rfl,shot%rcv(1)%nt,shot%nrcv,initialize=.false.)
+                tmp_dres_rfl=dres
+
+            elseif(o_residual=='div-rfl') then
+                dres =       sepa_div*dres
+                dres = dres -sepa_rfl*tmp_dres_rfl
+
+            endif
+
+        endif
         
         !compute adjoint source and set proper units
         dres = - dres*weight
