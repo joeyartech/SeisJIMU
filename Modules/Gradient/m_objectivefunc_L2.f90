@@ -20,14 +20,14 @@ use m_separater
 
         ref_modulus=m%ref_vp**2*m%ref_rho
 
-        if(.not. allocated(weight)) then
+        ! if(.not. allocated(weight)) then
             call alloc(weight,shot%rcv(1)%nt,shot%nrcv,initialize=.false.);  weight=1
             call build_weight_polygon(shot%rcv(1)%nt,shot%rcv(1)%dt,shot%nrcv,shot%rcv(:)%aoffset,weight) !so far the weighting is for mono component data only
             call build_weight_table(shot%rcv(1)%nt,shot%rcv(1)%dt,shot%nrcv,shot%rcv(:)%aoffset,weight) !so far the weighting is for mono component data only
 ! open(33,file='weight',access='stream')
 ! write(33) weight
 ! close(33)
-        endif
+        ! endif
 
         dres = (dsyn-dobs)*weight
             
@@ -58,11 +58,11 @@ use m_separater
 
 
         if(present(o_residual)) then
-            if(.not. allocated(sepa_div) .or. .not. allocated(sepa_rfl)) then
+            ! if(.not. allocated(sepa_div) .or. .not. allocated(sepa_rfl)) then
                 call alloc(sepa_div,shot%rcv(1)%nt,shot%nrcv)
                 call alloc(sepa_rfl,shot%rcv(1)%nt,shot%nrcv)
                 call build_separater(shot%rcv(1)%nt,shot%rcv(1)%dt,shot%nrcv,shot%rcv(:)%aoffset,sepa_div,sepa_rfl)
-            endif
+            ! endif
 
             if(o_residual=='rfl') then
                 dres =       sepa_rfl*dres

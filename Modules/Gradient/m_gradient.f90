@@ -131,6 +131,14 @@ endif
                 call alloc(dres,shot%rcv(1)%nt,shot%nrcv)
                 call objectivefunc_data_norm_residual(o_residual='div-rfl')
 
+
+!write synthetic data
+if(mpiworld%is_master) then
+open(12,file='residual_'//shot%cindex,access='stream')
+write(12) dres
+close(12)
+endif
+
                 !adjoint source
                 call alloc(cb%gradient_bckg,cb%mz,cb%mx,cb%my,ncorr) !(:,:,:,1) is glda, (:,:,:,2) is gmu, (:,:,:,3) is grho0
                 !*******************************
