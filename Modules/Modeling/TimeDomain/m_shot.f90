@@ -103,7 +103,7 @@ use m_hicks
         endif
 
         shot2%src%fpeak=get_setup_real('PEAK_FREQUENCY_2',default=shot%src%fpeak)
-        file_wavelet2=get_setup_file('FILE_WAVELET_2',default=file_wavelet)
+        file_wavelet2=get_setup_file('FILE_WAVELET_2')  !,default=file_wavelet)
         if(file_wavelet2=='') then
             if(get_setup_char('WAVELET_TYPE_2',default='sinexp')=='sinexp') then
                 call hud('Use filtered sinexp wavelet')
