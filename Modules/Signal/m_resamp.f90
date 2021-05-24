@@ -4,13 +4,15 @@ module m_resamp
     public :: resamp
     
     integer,parameter :: ltable=8, ntable=513
+    real :: fmax = 0.066+0.265*log(real(ltable))
     real,dimension(0:ltable-1,0:ntable-1) :: table !sinc interpolation coeff
+
+    logical :: if_tabled=.false.
 
     contains
 
 ! A Fortran version of suresamp.c in Seismic Unix
 ! dir: SeisUnix/src/su/main/stretching_moveout_resamp
-! reduced functionality
 !
 ! !! Copyright (c) Colorado School of Mines, 2011.!!
 ! !! All rights reserved.                         !!
@@ -56,24 +58,26 @@ module m_resamp
         real,optional :: o_fin, o_fout
         
         real :: fin, fout
-        real,dimension(:),allocatable :: t
+        real,dimension(:),allocatable :: tout
         
-        fin=0.; fout=0.
+        fin=0.;   if(present(o_fin )) fin =o_fin
+        fout=fin; if(present(o_fout)) fout=o_fout
         
-        if(present(o_fin )) fin =o_fin
-        if(present(o_fout)) fout=o_fout
-        
-        if(allocated(t)) deallocate(t)
-        allocate(t(nout))
-        t=fout+[(i,i=0,nout-1)]*dout
+        if(allocated(tout)) deallocate(tout)
+        allocate(tout(nout))
+        tout=fout+[(i,i=0,nout-1)]*dout
         
         !build sinc interpolation table
-        call build_table
+        if(.not.if_tabled) then
+            call build_table
+            if_tabled=.true.
+        endif
         
-        do i=1,n2
+        do i=1,ntr
             !interpolate using tabulated coefficients
-            call interp(fin,din,nin,   datain(:,i),&
-                                nout,t,dataout(:,i))
+            call interp(fin,din,nin,      datain(:,i),&
+                                0.0,0.0, &
+                                nout,tout,dataout(:,i))
         enddo
         
     end subroutine
@@ -257,14 +261,14 @@ module m_resamp
 ! void intt8r (int ntable, float table[][8],
 ! 	int nxin, float dxin, float fxin, float yin[], float yinl, float yinr,
 ! 	int nxout, float xout[], float yout[])
-    subroutine interp(fxin,dxin,nxin, yin, &
+    subroutine interp(fxin,dxin,nxin,      yin, &
+                      yinl,yinr, &
                                 nxout,xout,yout)
         real,dimension(0:nxin-1)  :: yin
         real,dimension(0:nxout-1) :: xout, yout
         
         real,dimension(0:ltable-1) :: pyin, ptable
         integer,parameter :: ioutb=-3-8
-        real,parameter :: yinl=0., yinr=0.
 
         !compute constants
         xoutf = fxin
@@ -273,7 +277,6 @@ module m_resamp
         fntablem1 = real(ntable-1)
         nxinm8 = nxin-ltable
         yin0 = yin(0)
-        table00 = table(0,0)
 
         !loop over output samples
         do ixout=0,nxout-1
@@ -282,15 +285,15 @@ module m_resamp
             xoutn = xoutb + xout(ixout)*xouts
             ixoutn = int(xoutn)
             kyin = ioutb+ixoutn
-            pyin = yin0+kyin
+            pyin = yin(kyin:kyin+ltable-1)
             frac = xoutn-real(ixoutn)
             if (frac>=0.) then
                 ktable = frac*fntablem1+0.5
             else
                 ktable = (frac+1.0)*fntablem1-0.5
             endif
-            ptable = table00+ktable*8;
-            
+            ptable = table(:,ktable)
+        
             !if totally within input array, use fast method
             if (kyin>=0 .and. kyin<=nxinm8) then
                 yout(ixout) = &
@@ -307,14 +310,14 @@ module m_resamp
                     ! sum over 8 tabulated coefficients
                     sum=0.
                     do itable=0,ltable-1
-                            if (kyin<0) then
-                                yini = yinl
-                            elseif (kyin>=nxin) then
-                                yini = yinr
-                            else
-                                yini = yin(kyin)
-                            endif
-                            sum = sum + yini*ptable(itable)
+                        if (kyin<0) then
+                            yini = yinl
+                        elseif (kyin>=nxin) then
+                            yini = yinr
+                        else
+                            yini = yin(kyin)
+                        endif
+                        sum = sum + yini*ptable(itable)
                         kyin = kyin+1
                     enddo
                     yout(ixout) = sum
@@ -417,11 +420,17 @@ module m_resamp
         real,dimension(0:ltable-1) :: s,a,c,work
         
         !compute auto-correlation and cross-correlation arrays
-        fmax = 0.066+0.265*log(real(ltable))
+        !fmax = 0.066+0.265*log(real(ltable))
         if(fmax>=1.) fmax=1.
 
-        a = r_sinc(fmax*[(j,j=0,ltable-1)])
-        c = r_sinc(fmax*(lsinc/2-[(j,j=0,ltable-1)]-1+d))
+        !a = sinc(fmax*[(j,j=0,ltable-1)])
+        !c = sinc(fmax*(ltable/2-[(j,j=0,ltable-1)]-1+d))
+        do j=0,ltable-1
+            a(j)=sinc(fmax*j)
+        enddo
+        do j=0,ltable-1
+            c(j)=sinc(fmax*(ltable/2-j-1+d))
+        enddo
 
         !solve symmetric Toeplitz system for the sinc approximation
         call stoep(ltable,a,c,s,work)
