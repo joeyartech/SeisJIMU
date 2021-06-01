@@ -10,9 +10,9 @@
 SeisJIMU is a module based seismic modeling and inversion (FWI) code,
 licensed under GNU GENERAL PUBLIC LICENSE Version 3 (see LICENSE).
 
-~Version 1.1.1.1
+~Version 1
  - Authors: 
-	 - Joeyartech  (joeyartech4humain@gmail.com)
+	 - Wei Zhou  (joeywzhou1986@gmail.com)
 	 - David Lumley (david.lumley@utdallas.edu)
  - Language: Fortran
  - Libraries: OpenMP, MPI
@@ -97,4 +97,5 @@ See LICENSE
 References
 ----
 If you publish results using this code, please acknowledge and reference our paper:
-- Wei Zhou and David Lumley, (2020), Central-difference time-lapse 4D seismic full waveform inversion, _Geophysics_ (_submitted_).
+- [Wei Zhou and David Lumley (2021), Central-difference time-lapse 4D seismic full waveform inversion, _Geophysics_.](https://library.seg.org/doi/10.1190/geo2019-0834.1)
+- [Wei Zhou and David Lumley (2021), Non-repeatability Effects on Time-Lapse 4D Seismic Full Waveform Inversion for Ocean-Bottom Node Data, _Geophysics_.](https://library.seg.org/doi/10.1190/geo2020-0577.1)
