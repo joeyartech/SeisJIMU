@@ -23,6 +23,8 @@ use m_smoother_laplacian_sparse
     
     subroutine gradient_modeling(if_gradient)
         logical,optional :: if_gradient
+        real,dimension(:,:,:),allocatable :: tmp_grad_mask
+        logical :: alive
         
 
         !assign shots to processors
@@ -134,7 +136,7 @@ endif
 
 !write synthetic data
 if(mpiworld%is_master) then
-open(12,file='residual_'//shot%cindex,access='stream')
+open(12,file='residual2_'//shot%cindex,access='stream')
 write(12) dres
 close(12)
 endif
@@ -199,6 +201,21 @@ endif
             gradient(1:m%itopo(ix,iy)-1,ix,iy,:) =0.
         enddo
         enddo
+
+!secondary mask gradient
+inquire(file='grad_mask', exist=alive)
+if(alive) then
+    call alloc(tmp_grad_mask,m%nz,m%nx,m%ny)
+    open(12,file='grad_mask',access='direct',recl=4*m%n,action='read',status='old')
+    read(12,rec=1) tmp_grad_mask
+    close(12)
+    call hud('grad_mask is read. gradient is masked in addition to topo.')
+    
+    do i=1,size(gradient,4)
+        gradient(:,:,:,i)=gradient(:,:,:,i)*tmp_grad_mask
+    enddo
+endif
+
     
     end subroutine
     
