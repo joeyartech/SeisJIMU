@@ -1,41 +1,60 @@
-!==========!
-! Preamble !
-!==========!
-!SeisJIMU is licensed under the GNU GENERAL PUBLIC LICENSE Version 3 (GPLv3.0), See LICENSE
-!
-!If you publish results using this code, please acknowledge and reference our paper: 
-!- Wei Zhou and David Lumley, (2020), Central-difference time-lapse 4D seismic full waveform inversion, Geophysics (submitted).
-
 program main
 use m_gradient
 use m_preconditioner
 use m_parameterization
 use m_optimizer
 
-    character(:),allocatable :: job
-    
+    type(t_model) :: m
+    type(t_computebox) :: cb
+    type(t_field) :: sfield, rfield
+    type(t_parameterization) :: param
+    type(t_optimizer) :: optim
 
-    call mpiworld_init
+    character(:),allocatable :: job  
 
-    call hud('======================================'//s_return// &&
-             '       WELCOME TO SeisJIMU FWI        '//s_return// &&
+    !mpiworld lives in t_mpienv
+    call mpiworld%init(name='MPIWorld',communicator=MPI_COMM_WORLD)
+
+    call hud('======================================'//s_return// &
+             '       WELCOME TO SeisJIMU FWI        '//s_return// &
              '======================================')
     
-    call init_setup(istat)
+    call setup%init
     
-    if(istat==0) then !print manual
-        call fwi_print_manual
-        call mpiworld_finalize
+    if(.not. setup%exist) then
+        if(mpiworld%is_master) then
+            call hud('No input setup file given. Print manual..')
+            call print_manual
+            call sfield%print_info
+        endif
+        call mpiworld%finalize
+        stop
+    endif
+
+    !print FD scheme and field info
+    call sfield%print_info
+    call rfield%print_info
+
+    !estimate required memory
+    call m%estim_RAM
+    call cb%estim_RAM
+    call sfield%estim_RAM
+    call rfield%estim_RAM
+
+    job=setup%get('JOB',default='optimization')
+    if(job=='estim RAM') then
+        call mpiworld%finalize
         stop
     endif
     
+    !read model
+    call m%init
+
+    if(.not. status%check('first_gradient')) then !if this shot did not simulated
     
-    !read initial model
-    call init_model
-    call field_print_info
-    
-    call gradient_modeling(if_gradient=.true.)
-    
+        call gradient_modeling(if_gradient=.true.)   
+
+    endif
 
     open(12,file='gradient',action='write',access='stream')
     write(12) gradient
@@ -55,31 +74,32 @@ use m_optimizer
     
     
     !initialize parameterization
-    call init_parameterization
-    
+    call param%init
+
     !initialize optimizer
-    call init_optimizer(m%n*npar)
+    call optim%init(size=m%n*npar)
     
     open(12,file='initial%pg',action='write',access='direct',recl=4*m%n*npar)
     write(12,rec=1) current%pg
     close(12)
 
-    job=get_setup_char('JOB',default='optimization')
+
+    job=setup%get('JOB',default='optimization')
+    
     !if just estimate the wavelet or compute the gradient then this is it.
     if(job/='optimization') then
-        call mpiworld_finalize
+        call mpiworld%finalize
         stop
     endif
     
-    call optimizer
+    call optim%optimize
     
-    
-    call mpiworld_finalize
+    call mpiworld%finalize
     
 end
 
 
-subroutine fwi_print_manual
+subroutine print_manual
 use m_mpienv
 use m_field
 

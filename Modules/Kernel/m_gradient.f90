@@ -19,12 +19,7 @@ use m_smoother_laplacian_sparse
     
     contains
     
-    subroutine gradient_modeling(if_gradient)
-        logical,optional :: if_gradient
-        
-
-        !assign shots to processors
-        if(.not. allocated(shotlist)) call build_shotlist
+    subroutine gradient
 
 !if nshot_per_processor is not same for each processor,
 !update_wavelet='stack' mode will be stuck due to collective communication in m_matchfilter.f90
@@ -33,137 +28,86 @@ if(nshot_per_processor * mpiworld%nproc /= nshots) then
 endif
 
         
-        fobjective=0.
+        call alloc(gradient,m%nz,m%nx,m%ny,ncorr)
         
-        if(present(if_gradient)) then
-        if(if_gradient) then
-            call alloc(gradient,m%nz,m%nx,m%ny,ncorr)
-        endif
-        endif
-       
+        call fobj%init
         
-        call hud('      START LOOP OVER SHOTS          ')
+        call hud('===== START LOOP OVER SHOTS =====')
         
-        do i=1,nshot_per_processor
-        
-            call init_shot(i,'data')
-            
-            call hud('Modeling shot# '//shot%cindex)
-            
-            call build_computebox
-            
-            call check_model
-            call check_discretization !CFL condition, dispersion etc.
-            
-            !init propagator and wavefield
-            call init_propagator(if_will_do_rfield=.true.)
-            
-            !*******************************
-            !intensive computation
-            call propagator_forward(if_will_backpropagate=.true.)
-            !*******************************
+        do ishot=1,shotlist%nshot_per_processor        
 
-!write synthetic data
-if(mpiworld%is_master) then
-open(12,file='synth_raw_'//shot%cindex,access='stream')
-write(12) dsyn
-close(12)
-endif
+            call shot%init
+
+            call hud('Modeling shot# '//shot%sindex)
             
-            !update shot%src%wavelet
-            !while wavelet in m_propagator is un-touched
+            call cb%init
+            call cb%project
+
+            call sfield%add_source
+
+            call sfield%check_model
+            call sfield%check_discretization
+            
+            call sfield%init
+
+            call sfield%forward
+            
+            call shot%acquire(sfield)
+
+            if(mpiworld%is_master) call suformat_write(file='synth_raw_'//shot%sindex,shot%dsyn)
+            
             update_wavelet=setup_get_char('UPDATE_WAVELET',default='per shot')
             if(update_wavelet/='no') then
                 call gradient_matchfilter_data
-                
-                !write wavelet updates for QC
-                if(mpiworld%is_master) then
-                    open(12,file='wavelet_update',access='stream',position='append')
-                    write(12) shot%src%wavelet /shot%src%dt*m%cell_volume !scale to be dt, dx independent, see m_shot.f90 ..
-                    close(12)
-                endif
+                call suformat_write(iproc=0,file='wavelet_update',append=.true.)
             endif
-
-!!mitigate some noise due to matchfilter
-!where(abs(dobs)<1e-6)
-!    dsyn=0.
-!endwhere
             
             !write synthetic data
-            open(12,file='synth_data_'//shot%cindex,access='stream')
-            write(12) dsyn
-            close(12)
-            
-            !fobjective and data residual
-            call alloc(dres,shot%rcv(1)%nt,shot%nrcv)
-            call objectivefunc_data_norm_residual
-            
-            if(mpiworld%is_master) write(*,*) 'Shot# 0001: Data misfit norm', dnorm
-            
-            fobjective=fobjective+dnorm
-            
-            if(present(if_gradient)) then
-            if(if_gradient) then
-                
-                !adjoint source
-                if(update_wavelet/='no') then
-                    call matchfilter_correlate_filter_residual(shot%src%nt,shot%nrcv,dres)
-                endif
-                
-                call alloc(cb%gradient,cb%mz,cb%mx,cb%my,ncorr) !(:,:,:,1) is glda, (:,:,:,2) is gmu, (:,:,:,3) is grho0
-                !*******************************
-                !intensive computation
-                call propagator_adjoint(gradient=cb%gradient)
-                !*******************************
-                
-                !put cb%gradient into global gradient
-                gradient(cb%ioz:cb%ioz+cb%mz-1,&
-                         cb%iox:cb%iox+cb%mx-1,&
-                         cb%ioy:cb%ioy+cb%my-1,:) = &
-                gradient(cb%ioz:cb%ioz+cb%mz-1,&
-                         cb%iox:cb%iox+cb%mx-1,&
-                         cb%ioy:cb%ioy+cb%my-1,:) + cb%gradient(:,:,:,:)
-            
+            call suformat_write(file='synth_data_'//shot%sindex,shot%dsyn)
+                        
+            !objective function
+            call fobj%compute_dnorm(shot)
+        
+            !adjoint source
+            if(update_wavelet/='no') then
+                call matchfilter_correlate_filter_residual(shot%src%nt,shot%nrcv,shot%dres)
             endif
-            endif
+            
+            call alloc(cb%image,cb%mz,cb%mx,cb%my,ncorr) !(:,:,:,1) is glda, (:,:,:,2) is gmu, (:,:,:,3) is grho0
+
+            call rfield%backward(sfield=sfield,gradient=cb%image)
+
+            !put cb%gradient into global gradient
+            call cb%project_back(gradient,cb%gradient)
             
         enddo
         
         call hud('        END LOOP OVER SHOTS        ')
         
-        !call objectivefunc_model_norm ...
-        fobjective=fobjective!+lambda*mnorm
-        
         !collect global objective function value
-        call mpi_barrier(mpiworld%communicator, mpiworld%ierr)
-        call mpi_allreduce(MPI_IN_PLACE, fobjective, 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-        
-        if(present(if_gradient)) then
-        if(if_gradient) then
-        
-            !collect global gradient
-            call mpi_barrier(mpiworld%communicator, mpiworld%ierr)
-            call mpi_allreduce(MPI_IN_PLACE, gradient, m%n*ncorr, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+        call mpiworld%barrier
+        call mpi_allreduce(MPI_IN_PLACE, fobj%dnorm, fobj%n_dnorm, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+        call fobj%print_dnorm
 
-            !smoothing
-            if(setup_get_logical('IF_SMOOTHING',default=.true.)) then
-                call hud('Initialize Laplacian smoothing')
-                call init_smoother_laplacian([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%src%fpeak)
-                do icorr=1,ncorr
-                    call smoother_laplacian_extend_mirror(gradient(:,:,:,icorr),m%itopo)
-                    call smoother_laplacian_pseudo_nonstationary(gradient(:,:,:,icorr),m%vp)
-                enddo
-            endif
-            
-            !mask gradient
-            do iy=1,m%ny
-            do ix=1,m%nx
-                gradient(1:m%itopo(ix,iy)-1,ix,iy,:) =0.
+        !collect global gradient
+        call mpiworld%barrier
+        call mpi_allreduce(MPI_IN_PLACE, gradient, m%n*ncorr, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+
+        !call objectivefunc_model_norm ...
+        call fobj%compute_mnorm(m)
+
+        !smoothing
+        if(setup%get_bool('IF_SMOOTHING',default=.true.)) then
+            call hud('Initialize Laplacian smoothing')
+            call init_smoother_laplacian([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%src%fpeak)
+            do icorr=1,ncorr
+                call smoother_laplacian_extend_mirror(gradient(:,:,:,icorr),m%itopo)
+                call smoother_laplacian_pseudo_nonstationary(gradient(:,:,:,icorr),m%vp)
             enddo
-            enddo
-            
         endif
-        endif
+        
+        !mask gradient
+        call mask_gradient(gradient)
         
     end subroutine
     
@@ -181,6 +125,31 @@ endif
         
         call matchfilter_apply_to_data(shot%src%nt,shot%nrcv,dsyn)
         
+    end subroutine
+
+    subroutine mask_gradient
+
+        !bathymetry as hard mask
+        do iy=1,m%ny
+        do ix=1,m%nx
+            gradient(1:m%itopo(ix,iy)-1,ix,iy,:) =0.
+        enddo
+        enddo
+
+        !soft mask
+        inquire(file='grad_mask', exist=alive)
+        if(alive) then
+            call alloc(tmp_grad_mask,m%nz,m%nx,m%ny)
+            open(12,file='grad_mask',access='direct',recl=4*m%n,action='read',status='old')
+            read(12,rec=1) tmp_grad_mask
+            close(12)
+            call hud('grad_mask is read. gradient is masked in addition to topo.')
+            
+            do i=1,size(gradient,4)
+                gradient(:,:,:,i)=gradient(:,:,:,i)*tmp_grad_mask
+            enddo
+        endif
+
     end subroutine
     
 end

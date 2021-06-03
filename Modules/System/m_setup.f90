@@ -1,330 +1,331 @@
 module m_setup
-use m_const
+use m_global
 use m_message
+use m_string
 
-    character(:),allocatable :: file_setup
+    type t_setup
+        logical :: exist=.true.
+        character(:),allocatable :: file
+        character(:),allocatable :: dir_working
+        character(:),allocatable :: dir_scratch
 
-    character(:),allocatable :: work_dir
-    character(:),allocatable :: scratch_dir
+        contains
+        procedure :: init => init
+        procedure,nopass :: check => check
+
+        procedure,nopass :: get => get
+
+    end type
     
+    type(t_setup) :: setup
+
+
     contains
     
-    subroutine setup_init(istat)
-        integer :: istat
-        logical :: alive
+    subroutine init(self)
+        type(t_setup) :: self
+
         character(i_str_xlen) :: tmp
         
-        !get setup file
-        istat=0
-        
         call getarg(1,tmp)
-        file_setup=trim(adjustl(tmp))
+        self%file=trim(adjustl(tmp))
         
-        if(file_setup=='') then
-            istat=0
-            call hud('No input setup file. Print manual..')
+        if(self%file=='') then
+            self%exist=.false.
             return
         else
-            inquire(file=file_setup, exist=alive)
-            if(.not.alive) then
-                call hud('Setup file '//file_setup//' does NOT exist!')
-                istat=-1
+            inquire(file=self%file, exist=exist)
+            if(.not.exist) then
+                call hud('Setup file '//self%file//' does NOT exist!')
+                self%exist=.false.
                 return
             endif
             
-            call hud('Setup file: '//file_setup)
-            istat=1
+            call hud('Setup file: '//self%file)
 
-            work_dir=setup_get_char('DIR','WORK_DIR',default='./')
-            scratch_dir=setup_get_char('SCRATCH_DIR','TMP_DIR',default=work_dir)
+            self%dir_working=self%read_str('DIR','DIR_WORKING',default='./')
+            self%dir_scratch=self%read_str('DIR_SCRATCH','DIR_TMP',default=dir_working)
 
             return
         endif
 
     end subroutine
+
+
+    function find(key,key2)
+        character(*) :: key,key2
+        character(*) :: find
+
+        character(i_str_len) :: text
+        character(i_str_len+4) :: text2
+        character(i_str_slen) :: tmp_key, tmp_val, tmp_find
+        tmp_find=''
+
+        open(10,file=file_setup,action='read')
+        do
+            read(10,"(a)",iostat=msg) text ! read line into character variable
+            if (msg < 0) exit !end of file
+            if (msg > 0) stop 'Check setup file.  Something is wrong.'
+            if (text=='') cycle !blank line
+            text2=text//'  !!'
+            
+            read(text,*)  tmp_key, tmp_val
+            if(tmp_val=='!!') cycle !missing value
+
+            if(key==lalign(tmp_key)) then
+                tmp_find=tmp_val
+            endif
+
+            if(key2==lalign(tmp_key)) then
+                tmp_find=tmp_val
+            endif
+
+        end do
+        close(10)
+
+        find=lalign(tmp_find)
+
+    end function
+
+    function demand(key) result(res)
+        character(*) :: key
+        character(:),allocatable :: res
+
+        call email()
+
+        if(.not.exist) then
+            open(12,file='tentative')
+            write(12,'(a)') '!!  '//key//'    '
+            close(12)
+        endif
+
+        do
+            sleep(60)
+            inquire(file='tentative', exist=exist)
+            if(.not.exist) then
+                open(12,file='tentative')
+                write(12,'(a)') '!!  '//key//'    '
+                close(12)
+            endif
+
+            open(12,file='tentative')
+            read(12,"(a)",iostat=msg) text ! read line into character variable
+            close(12)
+            if (msg < 0) stop 'tentative file is empty. Something is wrong.'
+            if (msg > 0) stop 'Check tentative file.  Something is wrong.'
+            
+            if (text(1:2)=='!!') then
+                cycle !continue to wait for user input
+            else
+                read(text,*) tmp_val
+                res=lalign(tmp_val)
+                exit
+            endif
+        enddo
+
+        !delete tentative file
+        open(12,file='tentative',status='old')
+        close(12,status='delete')
+
+        !append to setup file
+        open(12,file=setup%file,status='unknown',access='append')
+        write(12,'(a)') key//'  '//res
+        close(12)
+
+    end function
+
+    function check(key,alias) result(exist)
+        character(*) :: key
+        character(*),optional :: alias !alias of inquired key
+
+        exist=.false.
+
+        if(present(alias)) then
+            if(find(key,alias)/='') exist=.true.
+        else
+            if(find(key,key)/='') exist=.true.
+        endif
+        
+    end function
+
+    function get(key,key2,default,compulsory) result(res)
+        character(*) :: key,key2
+        character(*) :: default !default output value
+        logical :: compulsory
+        character(:),allocatable :: res
+
+        character(:),allocatable :: keys
+        keys=key//' ('//key2//') '
+
+        res=find(key,key2)
+
+        if(res/='') then
+            call hud(keys//':'//res)
+        endif
+
+        if(res=='') then
+            if(default/='') then
+                call hud(keys//'is NOT found, take default: '//default)
+                res=default
+            elseif(compulsory==.true.) then
+                call hud(keys//'is NOT found, but is COMPULSORY.'//s_return &
+                    'SeisJIMU has to ask on-the-fly for the value of this key.'//s_return &
+                    'Please open the text file "tentative" in the working directory,'//s_return &
+                    'provide the missing value, remove "!!" in the line,'//s_return &
+                    '(like in the setup file)'//s_return &
+                    'and close the file.'//s_return &
+                    'SeisJIMU checks this file every 1 min'//s_return &
+                    'and will take the new value when no "!!" is leading the line.')
+                res=demand(key)
+            else
+                call hud(keys//"is NOT found, take 0 for number(s), '' for character(s), or .false. for logical type(s)")
+                res=''
+            endif
+        endif
+
+        deallocate(keys)
+        
+    end function
+
+    function get_int(key,alias,default,compulsory) result(res)
+        character(*) :: key
+        character(*),optional :: alias !alias of inquired key
+        integer,optional :: default !default output value
+        logical,optional :: compulsory
+        integer :: res
+
+        character(:),allocatable :: key2,def
+        logical :: if_compulsory
+
+        key2=key; if(present(alias)) key2=alias
+
+        def=''; if(present(default)) def=int2str(default)
+
+        if_compulsory=.false.; if(present(compulsory)) if_compulsory=compulsory
+
+        res=str2int(get(key,key2,sdefault,if_compulsory))
+
+    end function
+
+    function get_ints(key,alias,default,compulsory,seperator) result(res)
+        character(*) :: key
+        character(*),optional :: alias !alias of inquired key
+        integer,dimension(:),optional :: default !default output value
+        logical,optional :: compulsory
+        character(1),optional :: seperator
+        integer,dimension(:) :: res
+
+        character(:),allocatable :: key2,def
+        logical :: if_compulsory
+
+        key2=key; if(present(alias)) key2=alias
+
+        def=''; if(present(default)) def=strcat(ints2strs(default))
+
+        if_compulsory=.false.; if(present(compulsory)) if_compulsory=compulsory
+
+        sep=' '; if(present(seperator)) sep=seperator
+        res=strs2ints(split(get(key,key2,def,if_compulsory),o_sep=sep))
+
+    end function
+
+    function get_real(key,alias,default,compulsory) result(res)
+        character(*) :: key
+        character(*),optional :: alias !alias of inquired key
+        integer,optional :: default !default output value
+        logical,optional :: compulsory
+        real :: res
+
+    end function
+
+    function get_reals(key,alias,default,compulsory) result(res)
+        character(*) :: key
+        character(*),optional :: alias !alias of inquired key
+        integer,optional :: default !default output value
+        logical,optional :: compulsory
+        real,dimension(:),allocatable :: res
+
+    end function
+
+    function get_str(key,alias,default,compulsory) result(res)
+        character(*) :: key
+        character(*),optional :: alias !alias of inquired key
+        integer,optional :: default !default output value
+        logical,optional :: compulsory
+        character(:),allocatable :: res
+
+    end function
     
-    function setup_ask(word,word2,default) result(found)
-        character(*) :: word
-        character(*),optional :: word2 !alias of inquired word
+    function get_file(key,alias,default,compulsory) result(res)
+        character(*) :: key
+        character(*),optional :: alias !alias of inquired key
+        integer,optional :: default !default output value
+        logical,optional :: compulsory
+        character(:),allocatable :: res
+
+        if(present(alias)) then
+            keys=key//' ('//alias//') '
+            res=find(key,alias)
+        else
+            keys=key
+            res=find(key,key)
+        endif
+
+        if(res/='') then
+            inquire(file=res,exist=exist)
+            if (.not. exist) res=''
+        endif
+
+        if(res=='') then
+            call hud(keys//'is NOT found or do NOT exist, take empty filename.')
+            read_file=''
+        else
+            call hud(keys//':'//res)
+            read_file=res
+        endif
+
+        deallocate(keys,res)
+        
+    end function
+
+    function get_files(key,alias,default,compulsory) result(res)
+
+    end function
+        
+    function read_bool(key,alias,default,compulsory) result(res)
+        character(*) :: key
+        character(*),optional :: alias !alias of inquired key
         logical,optional :: default
+
+        character(:),allocatable :: keys, res
         
-        character(i_str_len) :: text
-        character(i_str_len) :: tmp,tmp2,tmp3
-        
-        logical :: found
-        
-        found=.false.
-        if(present(default)) found=default
-        
-        open(10,file=file_setup,action='read')
-        do
-            read (10,"(a)",iostat=msg) text ! read line into character variable
-            if (msg < 0) exit !end of file
-            if (msg > 0) stop 'Check setup file.  Something is wrong.'
-            if (text=='') cycle !blank line
-            
-            read (text,*) tmp
-            if(present(word2)) then
-                if(word2==trim(adjustl(tmp))) then
-                    found=.true.
-                endif
-            endif
-            if(word==trim(adjustl(tmp)) ) then
-                found=.true.
-            endif
-        end do
-        close(10)
-    end function
-    
-    integer function setup_get_int(word,word2,default)
-        character(*) :: word
-        character(*),optional :: word2 !alias of inquired word
-        integer,optional :: default
-        
-        character(i_str_len) :: text
-        character(i_str_len) :: tmp,tmp2,tmp3
-        
-        logical :: found
-        
-        found=.false.
-                
-        open(10,file=file_setup,action='read')
-        do
-            read (10,"(a)",iostat=msg) text ! read line into character variable
-            if (msg < 0) exit !end of file
-            if (msg > 0) stop 'Check setup file.  Something is wrong.'
-            if (text=='') cycle !blank line
-            
-            read (text,*) tmp
-            if(present(word2)) then
-                if(word2==trim(adjustl(tmp))) then
-                    read(text,*) tmp2, setup_get_int
-                    found=.true.
-                endif
-            endif
-            if(word==trim(adjustl(tmp)) ) then
-                read(text,*) tmp2, setup_get_int
-                found=.true.
-            endif
-        end do
-        close(10)
-        
-        if(found) then
-            write(tmp,*) setup_get_int
-            call hud(word//' '//trim(adjustl(tmp)))
+        if(present(alias)) then
+            keys=key//' ('//alias//') '
+            res=find(key,alias)
         else
+            keys=key
+            res=find(key,key)
+        endif
+
+        if(res=='') then
             if(present(default)) then
-                setup_get_int=default
-                write(tmp,*) default
-                call hud(word//' is NOT found, take default: '//trim(adjustl(tmp)))
+                call hud(keys//'is NOT found, take default: '//bool2str(default)
+                read_bool=default
             else
-                setup_get_int=0
-                call hud(word//' is NOT found, take 0')
+                call hud(keys//'is NOT found, take .false.')
+                read_bool=.false.
             endif
-        endif
-        
-    end function
-    
-    real function setup_get_real(word,word2,default)
-        character(*) :: word
-        character(*),optional :: word2
-        real, optional :: default
-        
-        character(i_str_len) :: text
-        character(i_str_len) :: tmp,tmp2,tmp3
-        
-        logical :: found
-        
-        found=.false.
-        
-        open(10,file=file_setup,action='read')
-        do
-            read (10,"(a)",iostat=msg) text ! read line into character variable
-            if (msg < 0) exit !end of file
-            if (msg > 0) stop 'Check setup file.  Something is wrong.'
-            if (text=='') cycle !blank line
-            
-            read (text,*) tmp
-            if(present(word2)) then
-                if(word2==trim(adjustl(tmp))) then
-                    read(text,*) tmp2, setup_get_real
-                    found=.true.
-                endif
-            endif
-            if(word==trim(adjustl(tmp)) ) then
-                read(text,*) tmp2, setup_get_real
-                found=.true.
-            endif
-        end do
-        close(10)
-        
-        if(found) then
-            write(tmp,*) setup_get_real
-            call hud(word//' '//trim(adjustl(tmp)))
         else
-            if(present(default)) then
-                setup_get_real=default
-                write(tmp,*) default
-                call hud(word//' is NOT found, take default: '//trim(adjustl(tmp)))
-                
-            else
-                setup_get_real=0.
-                call hud(word//' is NOT found, take 0.')
-            endif
+            call hud(keys//':'//res)
+            read_bool=str2bool(res)
         endif
-        
+
+        deallocate(keys,res)
+
     end function
-    
-    function setup_get_char(word,word2,default)
-        character(:),allocatable :: setup_get_char
-        character(*) :: word
-        character(*),optional :: word2
-        character(*),optional :: default
-        
-        character(i_str_xlen) :: text
-        character(i_str_xlen) :: tmp,tmp2,tmp3
-        
-        logical :: found
-        
-        found=.false.
-        
-        open(10,file=file_setup,action='read')
-        do
-            read (10,"(a)",iostat=msg) text ! read line into character variable
-            if (msg < 0) exit !end of file
-            if (msg > 0) stop 'Check setup file.  Something is wrong.'
-            if (text=='') cycle !blank line
-            
-            read (text,*) tmp
-            if(present(word2)) then
-                if(word2==trim(adjustl(tmp))) then
-                    read(text,*) tmp2, tmp3
-                    setup_get_char=trim(adjustl(tmp3))
-                    found=.true.
-                endif
-            endif
-            if(word==trim(adjustl(tmp))) then
-                read(text,*) tmp2, tmp3
-                setup_get_char=trim(adjustl(tmp3))
-                found=.true.
-            endif
-        end do
-        close(10)
-        
-        if(found) then
-            if(mpiworld%is_master) write(*,*) word//' '//setup_get_char
-        else
-            if(present(default)) then
-                setup_get_char=default
-                call hud(word//' is NOT found, take default: '//setup_get_char)
-            else
-                setup_get_char=''
-                call hud(word//' is NOT found, take empty string')
-            endif
-        endif
-        
-    end function
-    
-    function setup_get_file(word,word2)
-        character(:),allocatable :: setup_get_file
-        character(*) :: word
-        character(*),optional :: word2
-        
-        character(i_str_len) :: text
-        character(i_str_len) :: tmp,tmp2,tmp3,tmp4
-        
-        logical :: found, alive
-        
-        found=.false.
-        alive=.false.
-        
-        open(10,file=file_setup,action='read')
-        do
-            read (10,"(a)",iostat=msg) text ! read line into character variable
-            if (msg < 0) exit !end of file
-            if (msg > 0) stop 'Check setup file.  Something is wrong.'
-            if (text=='') cycle !blank line
-            
-            read (text,*) tmp
-            
-            if(present(word2)) then
-                if(word2==trim(adjustl(tmp))) then
-                    read(text,*) tmp2, tmp3
-                    tmp4=tmp3
-                    found=.true.
-                endif
-            endif
-            if(word==trim(adjustl(tmp))) then
-                read(text,*) tmp2, tmp3
-                tmp4=tmp3
-                found=.true.
-            endif
-        end do
-        close(10)
-        
-        if(found) inquire(file=trim(adjustl(tmp4)),exist=alive)
-        
-        found=found.and.alive
-        
-        
-        if(found) then
-            setup_get_file=trim(adjustl(tmp4))
-            if(mpiworld%is_master) write(*,*) word//' '//setup_get_file
-        else
-            setup_get_file=''
-            call hud(word//' is NOT found, take empty filename')
-        endif
-        
-    end function
-        
-    logical function setup_get_logical(word,word2,default)
-        character(*) :: word
-        character(*),optional :: word2
-        logical, optional :: default
-        
-        character(i_str_len) :: text
-        character(i_str_len) :: tmp,tmp2,tmp3
-        
-        logical :: found
-        
-        found=.false.
-        
-        open(10,file=file_setup,action='read')
-        do
-            read (10,"(a)",iostat=msg) text ! read line into character variable
-            if (msg < 0) exit !end of file
-            if (msg > 0) stop 'Check setup file.  Something is wrong.'
-            if (text=='') cycle !blank line
-            
-            read (text,*) tmp
-            if(present(word2)) then
-                if(word2==trim(adjustl(tmp))) then
-                    read(text,*) tmp2, setup_get_logical
-                    found=.true.
-                endif
-            endif
-            if(word==trim(adjustl(tmp)) ) then
-                read(text,*) tmp2, setup_get_logical
-                found=.true.
-            endif
-        end do
-        close(10)
-        
-        if(found) then
-            write(tmp,*) setup_get_logical
-            call hud(word//' '//trim(adjustl(tmp)))
-        else
-            if(present(default)) then
-                setup_get_logical=default
-                write(tmp,*) default
-                call hud(word//' is NOT found, take default: '//trim(adjustl(tmp)))
-                
-            else
-                setup_get_logical=.false.
-                call hud(word//' is NOT found, take .false.')
-            endif
-        endif
-        
+
+    function read_bools(key,alias,default,compulsory) result(res)
+
     end function
 
 end

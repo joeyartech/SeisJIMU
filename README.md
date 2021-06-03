@@ -97,5 +97,6 @@ See LICENSE
 References
 ----
 If you publish results using this code, please acknowledge and reference our paper:
-- Wei Zhou and David Lumley, (2020), Central-difference time-lapse 4D seismic full waveform inversion, _Geophysics_ (_submitted_).
+- [Wei Zhou and David Lumley (2021), Central-difference time-lapse 4D seismic full waveform inversion, _Geophysics_](https://library.seg.org/doi/10.1190/geo2019-0834.1)
+- [Wei Zhou and David Lumley (2021), Non-repeatability Effects on Time-Lapse 4D Seismic Full Waveform Inversion for Ocean-Bottom Node Data, _Geophysics_](https://library.seg.org/doi/10.1190/geo2020-0577.1)
 

@@ -3,6 +3,9 @@ use omp_lib
 use mpi
 use m_global
 
+    private :: exe_info, time_stamp
+    private :: init, barrier, write, fin
+
     type t_mpienv
         integer iproc, nproc, communicator
         character(4) :: sproc
@@ -15,63 +18,19 @@ use m_global
         integer :: max_threads
 
         contains
-        procedure :: init   => mpienv_init
-        procedure :: write  => mpienv_file_write
-        ! procedure :: abort  => mpienv_abort
+        procedure :: init   => init
+        procedure :: barrier => barrier
+        procedure :: write  => write
+        procedure :: fin => fin
     end type
     
     type(t_mpienv) :: mpiworld
 
     contains
 
-    !========= module procedures =========
-    
-    subroutine mpiworld_init
-        
-        call mpiworld%init(MPI_COMM_WORLD,MPI_THREAD_SINGLE)
-        
-        if(mpiworld%is_master) then
-            write(*,*) 'MPIWorld info:'
-            write(*,'(a,i2,a,i2)') ' MPI_INIT_THREAD, required level:',thread_level,', provided level:', mpiworld%thread_level
-            write(*,'(a,i5)') ' Number of MPI processors:',mpiworld%nproc
-            write(*,'(a,i5)') ' Max number of OMP threads / processor:',mpiworld%max_threads
-        endif
-
-        !exe info
-        if(mpiworld%is_master) call exe_info
-        
-        !time stamp
-        if(mpiworld%is_master) then
-            write(*,*)  '========================'//s_return// &
-                        '    System Time Stamp   '//s_return// &
-                        '========================'//s_return
-            write(*,*)  time_stamp()
-        endif
-
-        call mpi_barrier(mpiworld%communicator,mpiworld%ierr)
-        
-    end subroutine
-
-    subroutine mpiworld_finalize
-           
-        !time stamp
-        if(mpiworld%is_master) then
-            write(*,*)  '========================'//s_return// &
-                        '    System Time Stamp   '//s_return// &
-                        '========================'//s_return
-            write(*,*)  time_stamp()
-        endif
-        
-        call mpi_barrier(mpiworld%communicator,mpiworld%ierr)
-        call mpi_abort(mpiworld%communicator,ierrcode,mpiworld%ierr)
-        call mpi_finalize(mpiworld%ierr)
-        
-    end subroutine
-
-    !========= mpienv procedures =========
-
-    subroutine mpienv_init(self,communicator,thread_level)
-        class(t_mpienv) :: self
+    subroutine init(self,name,communicator,thread_level)
+        type(t_mpienv) :: self
+        character(*) :: name
         integer communicator, thread_level
         
         self%communicator=communicator
@@ -87,10 +46,30 @@ use m_global
         
         call mpi_get_processor_name(self%node_name, self%node_name_length, self%ierr)
 
+        if(self%is_master) then
+            write(*,*) name//' info:'
+            write(*,'(a,i2,a,i2)') ' MPI_INIT_THREAD, required level:',thread_level,', provided level:', self%thread_level
+            write(*,'(a,i5)') ' Number of MPI processors:',self%nproc
+            write(*,'(a,i5)') ' Max number of OMP threads / processor:',self%max_threads
+        endif
+
+        !exe info
+        if(self%is_master) call exe_info
+        
+        !time stamp
+        if(self%is_master) print*, time_stamp()
+
+        call self%barrier
+
     end subroutine
 
-    subroutine mpienv_file_write(self,filename,string)
-        class(t_mpienv) :: self
+    subroutine barrier(self)
+        type(t_mpienv) :: self
+        call mpi_barrier(self%communicator,self%ierr)
+    end subroutine
+
+    subroutine write(self,filename,string)
+        type(t_mpienv) :: self
         character(*) :: filename, string
 
         integer file_handler
@@ -102,13 +81,13 @@ use m_global
             ' MPI File IO Time Stamp '//s_return// &
             '========================'//s_return//time_stamp()
         
-        if(mpiworld%is_master) then
+        if(self%is_master) then
             open(10,file=filename)
             write(10,'(a)') str
             close(10)
         endif
 
-        call mpi_barrier(self%communicator,self%ierr)
+        call self%barrier
         
         ishift=len(str)
         
@@ -123,13 +102,18 @@ use m_global
 
     end subroutine
     
-    ! subroutine mpienv_abort(self)
-    !     class(t_mpienv),intent(in) :: self
-    !     call mpi_abort(self%communicator,ierrcode,self%ierr)
-    ! end subroutine
+    subroutine fin(self)
+        type(t_mpienv) :: self
 
-    !========= private procedures =========
+        if(self%is_master) print*, time_stamp()
 
+        call self%barrier
+        call mpi_abort(self%communicator,ierrcode,self%ierr)
+        call mpi_finalize(self%ierr)
+        
+    end subroutine
+
+    
     subroutine exe_info
         character(i_str_xlen) :: exe
 
@@ -166,5 +150,4 @@ use m_global
     end function
 
 
-    
 end

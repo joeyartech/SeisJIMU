@@ -63,7 +63,7 @@ use m_shot
 
     contains
     
-    subroutine computebox_build
+    subroutine project_onto
         character(:),allocatable :: tmp
         real :: aperture(4)=0.
         
@@ -217,6 +217,15 @@ use m_shot
         else
             little(1:cb%mz,1:cb%mx,1:cb%my)=large(cb%ioz:cb%ioz+cb%mz-1,cb%iox:cb%iox+cb%mx-1,cb%ioy:cb%ioy+cb%my-1)
         endif
+    end subroutine
+
+    subroutine project_back
+            gradient(cb%ioz:cb%ioz+cb%mz-1,&
+                     cb%iox:cb%iox+cb%mx-1,&
+                     cb%ioy:cb%ioy+cb%my-1,:) = &
+            gradient(cb%ioz:cb%ioz+cb%mz-1,&
+                     cb%iox:cb%iox+cb%mx-1,&
+                     cb%ioy:cb%ioy+cb%my-1,:) + cb%gradient(:,:,:,:)
     end subroutine
     
     !CPML implementation from Komatitsch & Martin, 2007, Geophysics

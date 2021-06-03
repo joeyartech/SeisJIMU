@@ -79,7 +79,7 @@ character(*), parameter :: reset = achar(27)//'[0m' ! Terminates an ANSI code.
             endif
         endif
         
-        call mpienv_abort
+        call mpiworld%fin
         error stop
         
     end subroutine

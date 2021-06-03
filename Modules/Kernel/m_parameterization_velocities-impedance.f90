@@ -24,18 +24,20 @@ use m_gradient, only: gradient
     !gip = (glda*vp^2 + (-2glda+gmu)*vs^2 +grho0) /vp
 
 
-    public  parameterization, npar
-    private 
+    public
+    private empirical, parlist, a,b!, if_empirical
     
-    character(:),parameter :: parameterization='velocities-impedance'
-
+    character(*),parameter :: parameterization='velocities-impedance'
     character(:),allocatable :: empirical, parlist
-    character(3),dimension(3) :: pars !max 3 active parameters, max 3 letters for each
+    character(3),dimension(3) :: pars=['','',''] !max 3 active parameters, max 3 letters for each
     real,dimension(3) :: pars_min, pars_max
     integer :: npar=0
 
+    !if output model
+    logical :: if_write_vp=.false., if_write_vs=.false., if_write_rho=.false.
+
     !real,dimension(3) :: hyper=0. !max 3 hyper-parameters for empirical law
-    !real :: a,b
+    real :: a,b
 
     logical :: if_empirical=.false.
     !logical :: if_gardner=.false., if_castagna=.false.
@@ -45,13 +47,21 @@ use m_gradient, only: gradient
     subroutine init_parameterization
         
         !read in empirical law
-        empirical=setup_get_char('EMPIRICAL_LAW')
+        empirical=get_setup_char('EMPIRICAL_LAW')
         if_empirical = len(empirical)>0
         if(if_empirical) call read_empirical
 
         !read in active parameters and their allowed ranges
-        parlist=setup_get_char('ACTIVE_PARAMETER',default='vp1500:3400')
+        parlist=get_setup_char('ACTIVE_PARAMETER',default='vp1500:3400')
         call read_parlist
+
+        do ipar=1,npar
+            select case (pars(ipar))
+            case ('vp'); if_write_vp=.true.
+            case ('vs'); if_write_vs=.true.
+            case ('ip'); if_write_rho=.true.
+            end select
+        enddo
 
     end subroutine
 
@@ -148,7 +158,7 @@ use m_gradient, only: gradient
 
         if(text(1:2)=='vs' ) check_par = index(waveeq_info,'elastic')>0
         
-        if(text(1:3)=='ip') check_par = .true.
+        if(text(1:2)=='ip') check_par = .true.
 
         if(.not. check_par) then !ce paramètre n'est plus actif
             if(mpiworld%is_master) write(*,*) 'Parameter ',text(1:3),' will not be active in the inversion..'
@@ -160,6 +170,8 @@ use m_gradient, only: gradient
         character(3) :: dir
         real,dimension(m%nz,m%nx,m%ny,npar) :: x
         real,dimension(m%nz,m%nx,m%ny,npar),optional :: g
+
+        real,dimension(:,:,:),allocatable :: tmp_vp
 
         logical :: if_acoustic, if_elastic
         
@@ -177,19 +189,23 @@ use m_gradient, only: gradient
             enddo
 
         else !x2m
-            !first run
             do ipar=1,npar
                 select case (pars(ipar))
-                case ('vp' ); m%vp = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)
-                case ('vs' ); m%vs = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)
-                end select
-            enddo
+                case ('vp')
+                    call alloc(tmp_vp,m%nz,m%nx,m%ny,initialize=.false.)
+                    tmp_vp = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)
+                    m%rho      = m%vp*m%rho      / tmp_vp
+                    m%rho_bckg = m%vp*m%rho_bckg / tmp_vp
+                    m%vp = tmp_vp
 
-            !second run
-            do ipar=1,npar
-                if(pars(ipar)=='ip') then
-                    m%rho= (x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)) /m%vp  !m%vp should have been updated in the first run
-                endif
+                case ('vs')
+                    m%vs = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)
+
+                case ('ip')
+                    m%rho= (x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))+pars_min(ipar)) /m%vp
+                
+                end select
+
             enddo
 
         endif
@@ -207,7 +223,7 @@ use m_gradient, only: gradient
             if(if_acoustic .and. .not. if_empirical) then
                 do ipar=1,npar
                     select case (pars(ipar))
-                    case ('vp' ); g(:,:,:,ipar) =(gradient(:,:,:,1)-gradient(:,:,:,2))*m%rho*m%vp
+                    case ('vp' ); g(:,:,:,ipar) = (gradient(:,:,:,1)*m%vp -gradient(:,:,:,2)/m%vp)*m%rho
                     case ('ip' ); g(:,:,:,ipar) = gradient(:,:,:,1)*m%vp + gradient(:,:,:,2)/m%vp
                     end select
                 enddo
@@ -248,6 +264,60 @@ use m_gradient, only: gradient
         endif
         endif
         
+    end subroutine
+
+
+    subroutine parameterization_applymask(x)
+        real,dimension(m%nz,m%nx,m%ny,npar) :: x
+
+        ! !in water, vp=1500. vs=0. rho=1.
+        ! do ipar=1,npar
+        !     select case (pars(ipar))
+        !     case ('vp' )
+        !         do iy=1,m%ny
+        !         do ix=1,m%nx
+        !             x(1:m%itopo(ix,iy)-1,ix,iy,ipar) = (1500. -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+        !         enddo
+        !         enddo
+        !     case ('vs' )
+        !         do iy=1,m%ny
+        !         do ix=1,m%nx
+        !             x(1:m%itopo(ix,iy)-1,ix,iy,ipar) = (0.  -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+        !         enddo
+        !         enddo
+        !     case ('rho')
+        !         do iy=1,m%ny
+        !         do ix=1,m%nx
+        !             x(1:m%itopo(ix,iy)-1,ix,iy,ipar) = (1.  -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+        !         enddo
+        !         enddo
+        !     end select
+        ! enddo
+
+        !arbitrary mask
+        do ipar=1,npar
+            select case (pars(ipar))
+            case ('vp' )
+                do iy=1,m%ny; do ix=1,m%nx
+                do iz=1,m%itopo(ix,iy)-1
+                    x(iz,ix,iy,ipar) = (m%vp_mask(iz,ix,iy) -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+                enddo
+                enddo; enddo
+            case ('vs' )
+                do iy=1,m%ny; do ix=1,m%nx
+                do iz=1,m%itopo(ix,iy)-1
+                    x(iz,ix,iy,ipar) = (m%vs_mask(iz,ix,iy) -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+                enddo
+                enddo; enddo
+            case ('ip')
+                do iy=1,m%ny; do ix=1,m%nx
+                do iz=1,m%itopo(ix,iy)-1
+                    x(iz,ix,iy,ipar) = (m%vp_mask(iz,ix,iy)*m%rho_mask(iz,ix,iy) -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
+                enddo
+                enddo; enddo
+            end select
+        enddo
+
     end subroutine
     
 end module

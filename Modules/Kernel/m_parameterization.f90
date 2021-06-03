@@ -1,4 +1,4 @@
-module m_parameterization_extension
+module m_parameterization
 use m_sysio
 use m_arrayop
 use m_model
@@ -35,41 +35,56 @@ use m_gradient, only: gradient
     !gvp = (glda*(b+2)/b*vp + (-2glda + gmu)vs^2 + grho0)*ab*vp^(b-1)
     !gvs = (glda*-2 + gmu)*2a*vp^b*vs
 
-    type,extends(t_paramerization) :: t_paramerization_extension
 
+    type t_paramerization
+
+        character(:),allocatable :: parameterization
+        character(:),allocatable :: empirical, list
+        character(3),dimension(3) :: pars !max 3 active parameters, max 3 letters for each
+        real,dimension(3) :: pars_min, pars_max
+        integer :: npar
+
+        !if output model
+        logical :: if_write_vp=.false., if_write_vs=.false., if_write_rho=.false.
+   
         contains
         procedure :: init => init
     end type
-
-    type(t_paramerization_extension) :: param
-
-    character(*),parameter :: parameterization='velocities-density'
-    character(:),allocatable :: empirical, parlist
-    character(3),dimension(3) :: pars !max 3 active parameters, max 3 letters for each
-    real,dimension(3) :: pars_min, pars_max
-    integer :: npar=0
-
-    !if output model
-    logical :: if_write_vp=.false., if_write_vs=.false., if_write_rho=.false.
-
-    !real,dimension(3) :: hyper=0. !max 3 hyper-parameters for empirical law
-    real :: a,b
-
-    logical :: if_empirical=.false.
-    logical :: if_gardner=.false., if_castagna=.false.
 
     contains
     
     subroutine init
         
         !read in empirical law
-        empirical=setup%get_char('EMPIRICAL_LAW')
-        if_empirical = len(empirical)>0
-        if(if_empirical) call read_empirical
+        empirical=setup%get_str('EMPIRICAL_LAW')
+        
+        if(empirical(1)=='Gardner') then
+            !Gardner law rho=a*vp^b
+            !passive rho will be updated according to vp
+            !https://wiki.seg.org/wiki/Dictionary:Gardner%E2%80%99s_equation
+            !http://www.subsurfwiki.org/wiki/Gardner%27s_equation
+            !https://en.wikipedia.org/wiki/Gardner%27s_relation
+            if()
+                a=empirical(2)%as_real
+                b=empirical(3)%as_real
+            else
+                a=310; b=0.25 !modify if you want
+                if(m%unit_rho<1000.) a=0.31
+            endif
+
+        elseif(empirical=='Castagna') then
+            ! !Castagna mudrock line vp=a*vp+b
+            ! !passive vs will be updated according to vp
+            ! !https://en.wikipedia.org/wiki/Mudrock_line
+            ! if_castagna = index(empirical,'castagna')>0
+            ! if(if_castagna) then
+            !     c=1/1.16; d=-1.36/1.16 !modify if you want
+            ! endif
+
+        endif
 
         !read in active parameters and their allowed ranges
-        parlist=setup_get_char('ACTIVE_PARAMETER',default='vp1500:3400')
-        call read_parlist
+        call pars%get_active_parameter
 
         do ipar=1,npar
             select case (pars(ipar))
@@ -80,82 +95,12 @@ use m_gradient, only: gradient
         enddo
 
     end subroutine
-
-    subroutine read_empirical
-        
-        !Gardner law rho=a*vp^b
-        !passive rho will be updated according to vp
-        !https://wiki.seg.org/wiki/Dictionary:Gardner%E2%80%99s_equation
-        !http://www.subsurfwiki.org/wiki/Gardner%27s_equation
-        !https://en.wikipedia.org/wiki/Gardner%27s_relation
-        if_gardner = index(empirical,'gardner')>0
-        if(if_gardner) then
-            a=310; b=0.25 !modify if you want
-            if(m%ref_rho<1000.) a=0.31
-        endif
-
-        ! !Castagna mudrock line vp=a*vp+b
-        ! !passive vs will be updated according to vp
-        ! !https://en.wikipedia.org/wiki/Mudrock_line
-        ! if_castagna = index(empirical,'castagna')>0
-        ! if(if_castagna) then
-        !     c=1/1.16; d=-1.36/1.16 !modify if you want
-        ! endif
-
-    end subroutine
     
     subroutine read_parlist
+
+        pars=setup%get_str('ACTIVE_PARAMETER',default='vp1500:3400')
+
         character(:),allocatable :: text
-        !e.g. text='vp1500:3400', will output:
-        !pars='vp', pars_min=1500, pars_max=3400
-        !  k1=2,    k2=7,   k3=11
-
-        npar=0
-
-        loop: do while (npar<=3) !maximum 3 parameters
-            
-            if(len(parlist)==1) exit loop !no more parameters to read
-
-            k3=index(parlist,' ') !parameters are separated by spaces
-            if(k3==0) k3=len(parlist) !k3 can be 0 when looking at last parameter
-
-            text=parlist(1:k3)
-            if(len(text)==1) exit loop !no more parameters to read
-
-            !ignore parameters depending on parameterization and empirical law
-            if(.not. check_par(text) ) then
-                !truncate parlist
-                parlist=trim(adjustl(parlist(k3:len(parlist))))
-
-                cycle loop
-            endif
-
-            !counter of valid active parameters
-            npar=npar+1
-
-            !read in parameter
-            pars(npar)=text(1:2); k1=2
-            if (text(1:3)=='rho') then
-                pars(npar)=text(1:3); k1=3
-            endif
-        
-            !read in parameter range
-            k2=index(text,':')
-            read(text(k1+1:k2-1),*) pars_min(npar)
-            read(text(k2+1:k3  ),*) pars_max(npar)
-
-            ! if(pars(i)=='vp') then
-            !         par_vp_min=pars_min(i)
-            !         par_vp_max=pars_max(i)
-            ! endif
-
-            !truncate parlist
-            parlist=trim(adjustl(parlist(k3:len(parlist))))
-
-            if(len(parlist)==1) exit loop !fin du parlist
-
-        enddo loop
-
 
         if(mpiworld%is_master) then
             write(*,*) 'Number of inversion parameters:', npar

@@ -1,35 +1,43 @@
-!More procedures for character type,
-!in addition to Fortran instrinsic procedures.
-!could be futher developed for more OOP methods or mimic Python
-!
+!Usual operations on the Fortran character type
+!for more flexible IO purposes (m_setup.f90)
+! 
 !https://www.star.le.ac.uk/%7ecgp/fortran.html
 !https://en.wikibooks.org/wiki/Fortran/strings#CHARACTER_Collating_Sequence
 !https://github.com/szaghi/StringiFor
 
 module m_string
-use m_const, only : i_str_len
+use m_global, only : i_str_len
 
-    public
-    private :: A2a
-
-    integer,parameter :: A2a = ichar('a') - ichar('A')
-    
-    !particularly for partition()
-    type t_string
-        character(:), allocatable :: string
-    end type
+    integer,parameter,private :: A2a = ichar('a') - ichar('A')
+    character(*),parameter,private :: digits='1234567890'
 
     interface num2str
         module procedure int2str
         module procedure real2str
     end interface
 
-!     interface str2num   !can't differentiate str2int & str2real..
-!         module procedure str2int
-!         module procedure str2real
-!     end interface
-    
+    interface nums2strs
+        module procedure ints2strs
+        module procedure reals2strs
+    end interface
+
+    !encapsulate type 'character(len=*)' with methods
+    !enable structures of variable-length strings
+    type t_string
+        character(:), allocatable :: s
+        contains
+        !procedure :: as_real => as_real
+        !procedure :: as_complex => as_complex
+    end type
+
     contains
+
+    function lalign(str)
+        character(*),intent(in) :: str
+        character(:),allocatable :: lalign
+        lalign=trim(adjustl(s))
+
+    end function
 
     function upper(str)
         character(*),intent(in) :: str
@@ -68,107 +76,168 @@ use m_const, only : i_str_len
         
     end function
 
-
-    function int2str(int,o_format) result(str)
-        integer :: int
+    function int2str(num,o_format) result(str)
+        integer :: num
         character(*),optional :: o_format
         character(:),allocatable :: str
         
         character(i_str_len) :: tmp
         
         if(present(o_format)) then
-            write(tmp,o_format) int
+            write(tmp,o_format) num
         else
-            write(tmp,*) int
+            write(tmp,*) num
         endif
         
-        str=trim(adjustl(tmp))
+        str=lalign(tmp)
 
     end function
     
-    function real2str(real,o_format) result(str)
-        real :: real
+    function ints2strs(num,o_format) result(str)
+        integer,dimension(*) :: num
+        character(*),optional :: o_format
+        type(t_string),dimension(:),allocatable :: str
+
+        character(i_str_len) :: tmp
+                
+        n=size(num); allocate(str(n))
+
+        do i=1,n
+            if(present(o_format)) then
+                write(tmp,o_format) num(i)
+            else
+                write(tmp,*) num(i)
+            endif
+            
+            str(i)%s=lalign(tmp)
+        enddo
+
+    end function
+
+    function real2str(num,o_format) result(str)
+        real :: num
         character(*),optional :: o_format
         character(:),allocatable :: str
         
         character(i_str_len) :: tmp
         
         if(present(o_format)) then
-            write(tmp,o_format) real
+            write(tmp,o_format) num
         else
-            write(tmp,*) real
+            write(tmp,*) num
         endif
         
-        str=trim(adjustl(tmp))
+        str=lalign(tmp)
+
+    end function
+
+    function reals2strs(num,o_format) result(str)
+        real,dimension(*) :: num
+        character(*),optional :: o_format
+        type(t_string),dimension(:),allocatable :: str
+        
+        character(i_str_len) :: tmp
+        
+        do i=1,n
+            if(present(o_format)) then
+                write(tmp,o_format) num(i)
+            else
+                write(tmp,*) num(i)
+            endif
+
+            str(i)%s=lalign(tmp)
+        enddo
+        
+    end function
+    
+    function str2int(str,o_format) result(num)
+        character(*) :: str
+        character(*),optional :: o_format
+        integer :: num
+        
+        !in case of no digits
+        if(scan(str,digits)==0) then
+            num=0
+            return
+        endif
+        
+        !convert
+        if(present(o_format)) then
+            read(str,o_format) num
+        else
+            read(str,*) num
+        endif
+        
+    end function
+
+    function strs2ints(str,o_format) result(num)
+        type(t_string),dimension(*) :: str
+        character(*),optional :: o_format
+        integer,dimension(:),allocatable :: num
+        
+        n=size(str)
+
+        do i=1,n
+            !in case of no digits
+            if(scan(str(i),digits)==0) then
+                num(i)=0
+                cycle
+            endif
+            
+            !convert
+            if(present(o_format)) then
+                read(str(i),o_format) num(i)
+            else
+                read(str(i),*) num(i)
+            endif
+        enddo
 
     end function
     
-    function str2int(str,o_format) result(int)
+    function str2real(str,o_format) result(num)
         character(*) :: str
         character(*),optional :: o_format
-        integer :: int
+        real :: num
         
-        character(len(str)) :: tmp
-        
-        n=len(str)
-        tmp=repeat(' ',n)
-        
-        !remove invalid characters in str
-        j=n
-        loop: do i = n,1,-1
-            if('0'<=str(i:i).and.str(i:i)<='9') then
-                tmp(j:j) = str(i:i)
-                j=j-1
-            elseif(str(i:i)=='+'.or.str(i:i)=='-') then
-                tmp(j:j) = str(i:i)
-                exit loop
-            endif
-        enddo loop
+        !in case of no digits
+        if(scan(str,digits)==0) then
+            num=0
+            return
+        endif
         
         !convert
         if(present(o_format)) then
-            read(tmp,o_format) int
+            read(str,o_format) num
         else
-            read(tmp,*) int
+            read(str,*) num
         endif
         
     end function
-    
-    function str2real(str,o_format) result(real)
-        character(*) :: str
+
+    function strs2reals(str,o_format) result(num)
+        type(t_string),dimension(*) :: str
         character(*),optional :: o_format
-        real :: real
+        real,dimension(:),allocatable :: num
         
-        character(len(str)) :: tmp
-        
-        n=len(str)
-        tmp=repeat(' ',n)
-        
-        !remove invalid characters in str
-        j=n
-        loop: do i = n,1,-1
-            if('0'<=str(i:i).and.str(i:i)<='9') then
-                tmp(j:j) = str(i:i)
-                j=j-1
-            elseif(str(i:i)=='.') then
-                tmp(j:j) = str(i:i)
-                j=j-1
-            elseif(str(i:i)=='+'.or.str(i:i)=='-') then
-                tmp(j:j) = str(i:i)
-                exit loop
+        n=size(str)
+
+        do i=1,n
+            !in case of no digits
+            if(scan(str(i),digits)==0) then
+                num(i)=0
+                cycle
             endif
-        enddo loop
-        
-        !convert
-        if(present(o_format)) then
-            read(tmp,o_format) real
-        else
-            read(tmp,*) real
-        endif
+            
+            !convert
+            if(present(o_format)) then
+                read(str(i),o_format) num(i)
+            else
+                read(str(i),*) num(i)
+            endif
+        enddo
         
     end function
-    
-    
+
     !remove continuously repeated char from str_in
     !char is searched in backward order
     function remove_repetition(str_in,char) result(str_out)
@@ -193,62 +262,68 @@ use m_const, only : i_str_len
         
     end function
     
-    !count how many times (n) a char occurs in string
-    function count_occurence(string,char) result(n)
-        character(*) :: string
-        character(1) :: char
-        
-        integer :: n
-        
-        n=0
-        i=index(string,char,back=.true.)
-        
-        do while (i>0)
-            n=n+1
-            i=index(string(1:i-1),char,back=.true.)
-        enddo
-        
-    end function
-    
-    function partition(string,o_separator) result(arr)
-        character(*) :: string
-        character(1),optional :: o_separator !separator must be 1 character
-        type(t_string),dimension(:),allocatable :: arr
+    !split a long string into string arrays separated by o_sep
+    function split(str,o_sep) result(strs)
+        character(*) :: str
+        character(1),optional :: o_sep !separator must be 1 character
+        type(t_string),dimension(:),allocatable :: strs
 
-        character(:),allocatable :: tmp,str
         character(1) :: sep
-
         character(:),allocatable :: text
         
         sep=' '
-
-        if(present(o_separator)) sep = o_separator
+        if(present(o_sep)) sep = o_sep
         
         !regularize input string
-        str = remove_repetition(sep//string//sep , sep)
+        text = remove_repetition(sep//str//sep , sep)
         
         !trivial case
-        if(str==sep) then
-            allocate(arr(1))
-            arr(1)%string=''
+        if(text==sep) then
+            allocate(strs(1)); strs(1)%s=''
+            deallocate(text)
             return
         endif
         
-        !count how many elements
-        n=count_occurence(str,sep)-1
+        !count how many substrings
+        n=count(text==sep)-1
+        allocate(strs(n))
         
-        allocate(arr(n))
-        
-        !partition
+        !split
         i=1
-        j=index(str(i+1:),sep)+i
+        j=index(text(i+1:),sep)+i
         
         do k=1,n
-            arr(k)%string = str(i+1:j-1)
+            strs(k)%s = text(i+1:j-1)
             i=j
-            j=index(str(i+1:),sep)+i
+            j=index(text(i+1:),sep)+i
         enddo
+
+        deallocate(text)
 
     end function
 
+    !flatten a string array into a single long string glued by o_glue
+    function strcat(strs,o_glue) result(str)
+        type(t_string),dimension(*) :: strs
+        character(1),optional :: o_glue
+        character(:),allocatable :: str
+
+        character(1) :: glue
+
+        glue=' '
+        if(present(o_glue)) glue=o_glue
+
+        n=size(strs)
+        text=repeat(' ' , n*maxval(len(strs(:)%s)) )
+
+        i=1
+        do k=1,n
+            j=len(strs(k)%s)+1
+            text(i,j)=str(k)%s//glue
+            i=j
+        enddo
+
+        str=lalign(text)
+
+    end function
 end

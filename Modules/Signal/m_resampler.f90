@@ -420,7 +420,6 @@ module m_resamp
         real,dimension(0:ltable-1) :: s,a,c,work
         
         !compute auto-correlation and cross-correlation arrays
-        !fmax = 0.066+0.265*log(real(ltable))
         if(fmax>=1.) fmax=1.
 
         !a = sinc(fmax*[(j,j=0,ltable-1)])

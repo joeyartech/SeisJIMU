@@ -1,19 +1,22 @@
-!public entities naming convention
-! i : integer
-! r : single precision real number (kind=4)
-! d : double precision real number (kind=8)
-! c : single precision complex number (kind=4)
-! z : double precision complex number (kind=8)
-! s : character, string
-! m : module
-! t : type, class
-! o : optional
-! is, if : logical
+!prefix nomenclature
+! i_ : integer
+! r_ : single precision real number (kind=4)
+! d_ : double precision real number (kind=8)
+! c_ : single precision complex number (kind=4)
+! z_ : double precision complex number (kind=8)
+! s_ : character, string, string array
+! m_ : module
+! t_ : type, class
+! o_ : optional
+! is_,if_ : logical
+! i,j,... : index
+! n,m,... : number of
 
 module m_global
 
     !default string length
-    integer,parameter :: i_str_len  = 80
+    integer,parameter :: i_str_slen  = 64
+    integer,parameter :: i_str_len  = 128
     integer,parameter :: i_str_xlen = 256
     integer,parameter :: i_str_xxlen = 512
     integer,parameter :: i_str_xxxlen = 1024
