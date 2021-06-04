@@ -383,7 +383,37 @@ use m_butterworth
         enddo
 
     end subroutine
+
+
+    subroutine update_wavelet
+            
+        character(:),allocatable :: update_wavelet
+        
+        !if nshot_per_processor is not same for each processor,
+        !update_wavelet='stack' mode will be stuck due to collective communication in m_matchfilter.f90
+        if(nshot_per_processor * mpiworld%nproc /= nshots) then
+            fatal('Unequal shot numbers on processors. If you are using UPDATE_WAVELET=''stack'', the code will be stuck due to collective communication in m_matchfilter')
+        endif
+
+        if(update_wavelet=='stack') then
+            !average wavelet across all processors
+            !note: if more shots than processors, non-assigned shots will not contribute to this averaging
+            call matchfilter_estimate(shot%src%nt,shot%nrcv,dsyn,dobs,shot%index,if_stack=.true.)
+        else
+            call matchfilter_estimate(shot%src%nt,shot%nrcv,dsyn,dobs,shot%index,if_stack=.false.)
+        endif
+        
+        call matchfilter_apply_to_wavelet(shot%src%nt,shot%src%wavelet)
+        
+        call matchfilter_apply_to_data(shot%src%nt,shot%nrcv,dsyn)
+        
+        call suformat_write(iproc=0,file='wavelet_update',append=.true.)
+    end subroutine
     
+    subroutine update_adjsrc
+        call matchfilter_correlate_filter_residual(shot%src%nt,shot%nrcv,shot%dres)
+    end subroutine
+
 !     subroutine shot_check_rcv_ranges(mx,my,mz)
 !         integer :: problem
 !         problem=0

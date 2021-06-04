@@ -52,7 +52,12 @@ use m_optimizer
 
     if(.not. status%check('first_gradient')) then !if this shot did not simulated
     
-        call gradient_modeling(if_gradient=.true.)   
+        call fobj%init
+
+        call gradient_modeling(if_gradient=.true.)
+
+        !call objectivefunc_model_norm ...
+        call fobj%compute_mnorm(m)
 
     endif
 
@@ -97,7 +102,6 @@ use m_optimizer
     call mpiworld%finalize
     
 end
-
 
 subroutine print_manual
 use m_mpienv

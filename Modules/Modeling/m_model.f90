@@ -13,7 +13,7 @@ use m_arrayop
         integer,dimension(:,:),allocatable :: itopo
         real,dimension(:,:,:),allocatable :: mask_vp,mask_vs,mask_rho
                 
-        real ref_vp,ref_vs,ref_rho
+        real ref_vp,ref_vs,ref_rho,ref_modulus
 
         real velmin, velmax
         
@@ -136,7 +136,8 @@ use m_arrayop
         m%ref_vp=m%vp(1,1,1)
         m%ref_vs=m%vs(1,1,1)
         m%ref_rho=m%rho(1,1,1)
-        
+        m%ref_modulus=m%ref_vp**2*m%ref_rho
+
         !refresh isotropicness if user requires
         if(setup_ask('IF_ISOTROPIC')) then
             m%is_isotropic=setup_get_logical('IF_ISOTROPIC')

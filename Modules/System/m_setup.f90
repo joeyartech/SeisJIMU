@@ -91,46 +91,49 @@ use m_string
         character(*) :: key
         character(:),allocatable :: res
 
-        call email()
+        !call email()
 
-        if(.not.exist) then
-            open(12,file='tentative')
-            write(12,'(a)') '!!  '//key//'    '
-            close(12)
-        endif
-
-        do
-            sleep(60)
-            inquire(file='tentative', exist=exist)
+        if(mpiworld%is_master) then
             if(.not.exist) then
                 open(12,file='tentative')
                 write(12,'(a)') '!!  '//key//'    '
                 close(12)
             endif
 
-            open(12,file='tentative')
-            read(12,"(a)",iostat=msg) text ! read line into character variable
+            do
+                sleep(60)
+                inquire(file='tentative', exist=exist)
+                if(.not.exist) then
+                    open(12,file='tentative')
+                    write(12,'(a)') '!!  '//key//'    '
+                    close(12)
+                endif
+
+                open(12,file='tentative')
+                read(12,"(a)",iostat=msg) text ! read line into character variable
+                close(12)
+                if (msg < 0) stop 'tentative file is empty. Something is wrong.'
+                if (msg > 0) stop 'Check tentative file.  Something is wrong.'
+                
+                if (text(1:2)=='!!') then
+                    cycle !continue to wait for user input
+                else
+                    read(text,*) tmp_val
+                    res=lalign(tmp_val)
+                    exit
+                endif
+            enddo
+
+            !delete tentative file
+            open(12,file='tentative',status='old')
+            close(12,status='delete')
+
+            !append to setup file
+            open(12,file=setup%file,status='unknown',access='append')
+            write(12,'(a)') key//'  '//res
             close(12)
-            if (msg < 0) stop 'tentative file is empty. Something is wrong.'
-            if (msg > 0) stop 'Check tentative file.  Something is wrong.'
-            
-            if (text(1:2)=='!!') then
-                cycle !continue to wait for user input
-            else
-                read(text,*) tmp_val
-                res=lalign(tmp_val)
-                exit
-            endif
-        enddo
 
-        !delete tentative file
-        open(12,file='tentative',status='old')
-        close(12,status='delete')
-
-        !append to setup file
-        open(12,file=setup%file,status='unknown',access='append')
-        write(12,'(a)') key//'  '//res
-        close(12)
+        endif
 
     end function
 
@@ -148,10 +151,10 @@ use m_string
         
     end function
 
-    function get(key,key2,default,compulsory) result(res)
+    function get(key,key2,default,mandatory,iproc) result(res)
         character(*) :: key,key2
         character(*) :: default !default output value
-        logical :: compulsory
+        logical :: mandatory
         character(:),allocatable :: res
 
         character(:),allocatable :: keys
@@ -167,9 +170,9 @@ use m_string
             if(default/='') then
                 call hud(keys//'is NOT found, take default: '//default)
                 res=default
-            elseif(compulsory==.true.) then
-                call hud(keys//'is NOT found, but is COMPULSORY.'//s_return &
-                    'SeisJIMU has to ask on-the-fly for the value of this key.'//s_return &
+            elseif(mandatory==.true.) then
+                call hud(keys//'is NOT found, but is MANDATORY.'//s_return &
+                    'SeisJIMU has to ask for the value of this key before running further.'//s_return &
                     'Please open the text file "tentative" in the working directory,'//s_return &
                     'provide the missing value, remove "!!" in the line,'//s_return &
                     '(like in the setup file)'//s_return &
@@ -187,80 +190,80 @@ use m_string
         
     end function
 
-    function get_int(key,alias,default,compulsory) result(res)
+    function get_int(key,alias,default,mandatory,iproc) result(res)
         character(*) :: key
         character(*),optional :: alias !alias of inquired key
         integer,optional :: default !default output value
-        logical,optional :: compulsory
+        logical,optional :: mandatory
         integer :: res
 
         character(:),allocatable :: key2,def
-        logical :: if_compulsory
+        logical :: if_mandatory
 
         key2=key; if(present(alias)) key2=alias
 
         def=''; if(present(default)) def=int2str(default)
 
-        if_compulsory=.false.; if(present(compulsory)) if_compulsory=compulsory
+        if_mandatory=.false.; if(present(mandatory)) if_mandatory=mandatory
 
-        res=str2int(get(key,key2,sdefault,if_compulsory))
+        res=str2int(get(key,key2,sdefault,if_mandatory))
 
     end function
 
-    function get_ints(key,alias,default,compulsory,seperator) result(res)
+    function get_ints(key,alias,default,mandatory,seperator,iproc) result(res)
         character(*) :: key
         character(*),optional :: alias !alias of inquired key
         integer,dimension(:),optional :: default !default output value
-        logical,optional :: compulsory
+        logical,optional :: mandatory
         character(1),optional :: seperator
         integer,dimension(:) :: res
 
         character(:),allocatable :: key2,def
-        logical :: if_compulsory
+        logical :: if_mandatory
 
         key2=key; if(present(alias)) key2=alias
 
         def=''; if(present(default)) def=strcat(ints2strs(default))
 
-        if_compulsory=.false.; if(present(compulsory)) if_compulsory=compulsory
+        if_mandatory=.false.; if(present(mandatory)) if_mandatory=mandatory
 
         sep=' '; if(present(seperator)) sep=seperator
-        res=strs2ints(split(get(key,key2,def,if_compulsory),o_sep=sep))
+        res=strs2ints(split(get(key,key2,def,if_mandatory),o_sep=sep))
 
     end function
 
-    function get_real(key,alias,default,compulsory) result(res)
+    function get_real(key,alias,default,mandatory,iproc) result(res)
         character(*) :: key
         character(*),optional :: alias !alias of inquired key
         integer,optional :: default !default output value
-        logical,optional :: compulsory
+        logical,optional :: mandatory
         real :: res
 
     end function
 
-    function get_reals(key,alias,default,compulsory) result(res)
+    function get_reals(key,alias,default,mandatory,iproc) result(res)
         character(*) :: key
         character(*),optional :: alias !alias of inquired key
         integer,optional :: default !default output value
-        logical,optional :: compulsory
+        logical,optional :: mandatory
         real,dimension(:),allocatable :: res
 
     end function
 
-    function get_str(key,alias,default,compulsory) result(res)
+    function get_str(key,alias,default,mandatory,iproc) result(res)
         character(*) :: key
         character(*),optional :: alias !alias of inquired key
         integer,optional :: default !default output value
-        logical,optional :: compulsory
+        logical,optional :: mandatory
         character(:),allocatable :: res
 
     end function
     
-    function get_file(key,alias,default,compulsory) result(res)
+    function get_file(key,alias,default,mandatory,iproc) result(res)
         character(*) :: key
         character(*),optional :: alias !alias of inquired key
         integer,optional :: default !default output value
-        logical,optional :: compulsory
+        logical,optional :: mandatory
         character(:),allocatable :: res
 
         if(present(alias)) then
@@ -288,11 +291,11 @@ use m_string
         
     end function
 
-    function get_files(key,alias,default,compulsory) result(res)
+    function get_files(key,alias,default,mandatory,iproc) result(res)
 
     end function
         
-    function read_bool(key,alias,default,compulsory) result(res)
+    function read_bool(key,alias,default,mandatory,iproc) result(res)
         character(*) :: key
         character(*),optional :: alias !alias of inquired key
         logical,optional :: default
@@ -324,7 +327,7 @@ use m_string
 
     end function
 
-    function read_bools(key,alias,default,compulsory) result(res)
+    function read_bools(key,alias,default,mandatory,iproc) result(res)
 
     end function
 
