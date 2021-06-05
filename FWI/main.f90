@@ -54,7 +54,7 @@ use m_optimizer
     
         call fobj%init
 
-        call gradient_modeling(if_gradient=.true.)
+        call gradient_modeling(fobj)
 
         !call objectivefunc_model_norm ...
         call fobj%compute_mnorm(m)

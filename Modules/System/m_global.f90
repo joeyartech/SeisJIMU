@@ -1,5 +1,5 @@
 !prefix nomenclature
-! i_ : integer
+! i_ : integer,index
 ! r_ : single precision real number (kind=4)
 ! d_ : double precision real number (kind=8)
 ! c_ : single precision complex number (kind=4)
@@ -9,8 +9,8 @@
 ! t_ : type, class
 ! o_ : optional
 ! is_,if_ : logical
-! i,j,... : index
-! n,m,... : number of
+! i-l: index
+! n,m : number of
 
 module m_global
 

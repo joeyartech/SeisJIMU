@@ -1,4 +1,4 @@
-module m_gradient
+module m_gradient_modeling
 use m_model
 use m_shotlist
 use m_shot
@@ -62,7 +62,7 @@ use m_smoother_laplacian_sparse
             call rfield%backward(sfield=sfield,xcorr=cb%kernel,dt_Nyquist=shot%dt_Nyquist)
 
             !put cb%kernel into global gradient
-            call cb%project_back(gradient,cb%kernel)
+            call cb%project_back(fobj%gradient,cb%kernel)
             
         enddo
         
@@ -75,8 +75,12 @@ use m_smoother_laplacian_sparse
 
         !collect global gradient
         call mpiworld%barrier
-        call mpi_allreduce(MPI_IN_PLACE, gradient, m%n*ncorr, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+        call mpi_allreduce(MPI_IN_PLACE, fobj%gradient, m%n*ncorr, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
 
+    end subroutine
+
+
+    subroutine gradient_modeling_approximate
     end subroutine
 
 end

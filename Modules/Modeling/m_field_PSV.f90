@@ -29,6 +29,13 @@ use, intrinsic :: ieee_arithmetic
     !local models in computebox
     type t_localmodel
         sequence
+        !shorthand for greek letters
+        !alp bta gma  del(dta) eps zta 
+        !eta tht iota kpa lda mu
+        !nu xi omi pi rho sgm
+        !tau ups phi chi psi oga
+        !etc:
+        !buo=buoyancy
         real,dimension(:,:),allocatable :: buox, buoz, ldap2mu, lda, mu
         real,dimension(:,:),allocatable :: two_ldapmu,inv_ldapmu_4mu
     end type

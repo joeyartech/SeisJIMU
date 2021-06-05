@@ -39,6 +39,14 @@ use, intrinsic :: ieee_arithmetic
     !fields
     type t_field
         sequence
+        !shorthand for greek letters
+        !alp bta gma  del(dta) eps zta 
+        !eta tht iota kpa lda mu
+        !nu xi omi pi rho sgm
+        !tau ups phi chi psi oga
+        !etc:
+        !buo=buoyancy
+        !vx,vy=horizontal velocities
         !physical components
         real,dimension(:,:,:),allocatable :: vx,vy,vz,p
 

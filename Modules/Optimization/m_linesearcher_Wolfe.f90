@@ -30,41 +30,43 @@ use m_preconditioner
     !Bracketting parameter (Gilbert value)
     integer,parameter :: multiplyfactor=10
     
-    !steplength
+    !default
     real,parameter :: alpha0=1.
-    real :: alpha=alpha0  !very initial steplength
-    real :: alphaL=0., alphaR=0.
-    
-    logical :: if_reinitialize_alpha=.false.
-    
-    !counter
-    integer :: isearch=0 !number of linesearch performed
-    integer :: imodeling=1 !number of modeling performed
-    !integer,parameter :: max_search=20 !max number of linesearch allowed
-integer,parameter :: max_search=12
+    integer,parameter :: max_search=12  !20  !max number of linesearch allowed
     integer :: max_modeling  !max number of modeling allowed
-    
+
     !projection
-    logical :: if_project_x=.true.
     real,parameter :: threshold=0.
+        
+    type t_linesearcher
+        real :: alpha=alpha0 !steplength initializd to alpha0
+        real :: alphaL=0., alphaR=0.
+        logical :: if_reinitialize_alpha=.false.
+        
+        real :: scaler
+
+        !counter
+        integer :: isearch=0 !number of linesearch performed
+        integer :: imodeling=1 !number of modeling performed
     
-    !scaling
-    logical :: if_scaling=.true.
-    
-    type t_forwardmap
-        real,dimension(:),allocatable :: x !point
-        real,dimension(:),allocatable :: g !gradient
-        real,dimension(:),allocatable :: pg !preconditioned gradient
-        real,dimension(:),allocatable :: d !descent direction
-        real :: f
-        real :: gdotd  !dot product of g and d
+        logical :: if_scaled=.true.
+        
     end type
-    
-    integer n !problem size
-    
+
+    type(t_linesearcher) :: ls
+
     contains
+
+    subroutine init
+
+        !reinitialize alpha in each iterate
+        if_reinitialize_alpha=setup_get_logical('IF_REINITIALIZE_ALPHA',default=.false.)
+        
+        max_modeling=setup_get_int('MAX_MODELING',default=60)
+
+    end subroutine
     
-    subroutine linesearcher(iterate,current,perturb,gradient_history,result)
+    subroutine search(iterate,current,perturb,gradient_history,result)
         integer,intent(in) :: iterate
         type(t_forwardmap),intent(inout) :: current, perturb
         real,dimension(:,:),intent(inout),optional :: gradient_history
@@ -95,7 +97,7 @@ integer,parameter :: max_search=12
             if(mpiworld%is_master) write(*,'(a,3(2x,i5))') '  Iteration.Linesearch.Modeling#',iterate,isearch,imodeling
             
             call hud('Modeling with perturbed parameters')
-            if(if_project_x) call linesearcher_project(perturb%x)
+            call linesearcher_project(perturb%x)
             call parameterization_transform('x2m',perturb%x)
             call gradient_modeling(if_gradient=.true.)
             perturb%f=fobjective
@@ -198,39 +200,36 @@ integer,parameter :: max_search=12
 
     
     
-    subroutine linesearcher_project(x)
+    subroutine project(x)
         real,dimension(n) :: x
 
         !x should be inside [0,1] due to scaling
         where (x<0.) x=threshold
         where (x>1.) x=1.-threshold
 
-        !x should be fixed in the mask area (e.g. water)
-        call parameterization_applymask(x)
-
     end subroutine
     
     
     !scale problem
-    subroutine linesearch_scaling(fm)
+    subroutine scaling(fm)
         type(t_forwardmap) :: fm
         
-        real,save :: scaling=1.
-        logical,save :: if_computed_scale=.false.
+        real :: self%scaler=1.
+        logical :: self%is_scaled=.false.
         
-        if(.not.if_computed_scale) then
+        if(.not.self%is_scaled) then
         
-            !scaling=1e3* 1e-2*m%n/ (sum(abs(fm%g(1:m%n)))) / (par_vp_max -par_vp_min)  !=1e3* |gp1|_L1 / |gvp|_L1 / (vpmax-vpmin)
+            !self%scaler=1e3* 1e-2*m%n/ (sum(abs(fm%g(1:m%n)))) / (par_vp_max -par_vp_min)  !=1e3* |gp1|_L1 / |gvp|_L1 / (vpmax-vpmin)
 
-            scaling=1e3* 1e-2*m%n/ (sum(abs(fm%g(1:m%n)))) / (pars_max(1)-pars_min(1))  !=1e3* |gpar1|_L1 / |gpar|_L1 / par1_range
+            self%scaler=1e3* 1e-2*m%n/ (sum(abs(fm%g(1:m%n)))) / (pars_max(1)-pars_min(1))  !=1e3* |gpar1|_L1 / |gpar|_L1 / par1_range
 
             if(mpiworld%is_master) write(*,*) 'Linesearch Scaling Factor:', scaling
 
-            if_computed_scale=.true.
+            self%is_scaled=.true.
         endif
         
-        fm%f=fm%f*scaling
-        fm%g=fm%g*scaling
+        fm%f=fm%f*self%scaler
+        fm%g=fm%g*self%scaler
         
         
     end subroutine

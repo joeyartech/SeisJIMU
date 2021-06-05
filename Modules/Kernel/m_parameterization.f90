@@ -35,142 +35,132 @@ use m_gradient, only: gradient
     !gvp = (glda*(b+2)/b*vp + (-2glda + gmu)vs^2 + grho0)*ab*vp^(b-1)
     !gvs = (glda*-2 + gmu)*2a*vp^b*vs
 
+    type t_parameter
+        character(:),allocatable :: name
+        real :: min, max, range
+    end type
 
     type t_paramerization
 
         character(:),allocatable :: parameterization
-        character(:),allocatable :: empirical, list
-        character(3),dimension(3) :: pars !max 3 active parameters, max 3 letters for each
-        real,dimension(3) :: pars_min, pars_max
+        type(t_parameter),dimension(:),allocatable :: pars
         integer :: npar
-
-        !if output model
-        logical :: if_write_vp=.false., if_write_vs=.false., if_write_rho=.false.
-   
+        type(t_string),dimension(:),allocatable :: empirical        
+        
         contains
         procedure :: init => init
     end type
 
+    logical :: is_ac, is_el
+    logical :: is_empirical,is_gardner,is_castagna
+
     contains
     
     subroutine init
-        
+        type(t_string),dimension(:),allocatable :: list,tmp
+
         !read in empirical law
-        empirical=setup%get_str('EMPIRICAL_LAW')
-        
-        if(empirical(1)=='Gardner') then
-            !Gardner law rho=a*vp^b
-            !passive rho will be updated according to vp
-            !https://wiki.seg.org/wiki/Dictionary:Gardner%E2%80%99s_equation
-            !http://www.subsurfwiki.org/wiki/Gardner%27s_equation
-            !https://en.wikipedia.org/wiki/Gardner%27s_relation
-            if()
-                a=empirical(2)%as_real
-                b=empirical(3)%as_real
-            else
-                a=310; b=0.25 !modify if you want
-                if(m%unit_rho<1000.) a=0.31
+        is_empirical=setup%check('EMPIRICAL_LAW')
+
+        if(is_empirical) then
+            if(empirical(1)%s=='Gardner') then
+                !Gardner law rho=a*vp^b
+                !passive rho will be updated according to vp
+                !https://wiki.seg.org/wiki/Dictionary:Gardner%E2%80%99s_equation
+                !http://www.subsurfwiki.org/wiki/Gardner%27s_equation
+                !https://en.wikipedia.org/wiki/Gardner%27s_relation
+                is_gardner=.true.
+                if(size(empirical)>1) then
+                    a=str2real(empirical(2)%s)
+                    b=str2real(empirical(3)%s)
+                else
+                    a=310; b=0.25
+                    if(m%ref_rho<1000.) a=0.31
+                endif
+
+                call hud('Gardner law is enabled. Parameter rho will not be active in the inversion.')
+
+            elseif(empirical(1)%s=='Castagna') then
+                ! !Castagna mudrock line vp=a*vp+b
+                ! !passive vs will be updated according to vp
+                ! !https://en.wikipedia.org/wiki/Mudrock_line
+                ! if(if_castagna) then
+                !     c=1/1.16; d=-1.36/1.16
+                ! endif
+
             endif
 
-        elseif(empirical=='Castagna') then
-            ! !Castagna mudrock line vp=a*vp+b
-            ! !passive vs will be updated according to vp
-            ! !https://en.wikipedia.org/wiki/Mudrock_line
-            ! if_castagna = index(empirical,'castagna')>0
-            ! if(if_castagna) then
-            !     c=1/1.16; d=-1.36/1.16 !modify if you want
-            ! endif
-
         endif
+        
+        !pde info
+        is_ac = index(field%pde_info,'acoustic')>0
+        is_el = index(field%pde_info,'elastic')>0
 
         !read in active parameters and their allowed ranges
-        call pars%get_active_parameter
+        list=setup%get_strs('ACTIVE_PARAMETER',default='vp:1500:3400')
 
-        do ipar=1,npar
-            select case (pars(ipar))
-            case ('vp' ); if_write_vp=.true.
-            case ('vs' ); if_write_vs=.true.
-            case ('rho'); if_write_rho=.true.
+        self%npar=size(list)
+        call alloc(self%pars(npar))
+
+        do i=1,npar
+            tmp=split(list(i),o_sep=':') !=[name, min, max]
+
+            select case (tmp(1)%s)
+            case ('vp' )
+                self%pars(i)%name='vp'
+            case ('vs' )
+                if(is_el) then
+                    self%pars(i)%name='vs'
+                else
+                    call hud('vs parameter from ACTIVE_PARAMETER is neglected since the PDE is acoustic')
+                endif
+            case ('rho')
+                if(.not. is_empirical) then
+                    self%pars(i)%name='rho'
+                else
+                    call hud('rho parameter from ACTIVE_PARAMETER is neglected since EMPIRICAL_LAW is read')
+                endif
             end select
+
+            self%pars(i)%min=str2real(tmp(2)%s)
+            self%pars(i)%max=str2real(tmp(3)%s)
+            self%pars(i)%range=self%pars(i)%max-self%pars(i)%min
+
         enddo
 
-    end subroutine
-    
-    subroutine read_parlist
-
-        pars=setup%get_str('ACTIVE_PARAMETER',default='vp1500:3400')
-
-        character(:),allocatable :: text
-
-        if(mpiworld%is_master) then
-            write(*,*) 'Number of inversion parameters:', npar
-            write(*,*) 'Read parameters:',(pars(i),i=1,npar)
-        endif
-
-        if(npar==0) then
-            stop 'ERROR: npar=0'
-        endif
+        !check vp,vs,rho [min,max] is in the same range as m%ref_vp,ref_vs,ref_rho
+        !
 
     end subroutine
-
-    function check_par(text)
-        character(*) :: text
-        logical :: check_par
         
-        check_par=.false.
-        
-        if(text(1:2)=='vp' ) check_par = .true.
-
-        if(text(1:2)=='vs' ) check_par = index(waveeq_info,'elastic')>0
-        
-        if(text(1:3)=='rho') check_par = .not. if_gardner
-
-        if(.not. check_par) then !ce paramètre n'est plus actif
-            if(mpiworld%is_master) write(*,*) 'Parameter ',text(1:3),' will not be active in the inversion..'
-        endif
-        
-    end function
-    
-    subroutine parameterization_transform(dir,x,g)
+    subroutine transform(dir,x,g)
         character(3) :: dir
         real,dimension(m%nz,m%nx,m%ny,npar) :: x
         real,dimension(m%nz,m%nx,m%ny,npar),optional :: g
 
-        logical :: if_acoustic, if_elastic
-
-        if_acoustic = index(waveeq_info,'acoustic')>0
-        if_elastic  = index(waveeq_info,'elastic')>0
-        
         !model
         if(dir=='m2x') then
-            do ipar=1,npar
-                select case (pars(ipar))
-                case ('vp' ); x(:,:,:,ipar) = m%vp
-                case ('vs' ); x(:,:,:,ipar) = m%vs
-                case ('rho'); x(:,:,:,ipar) = m%rho
+            do i=1,npar
+                select case (self%pars(i)%name)
+                case ('vp' ); x(:,:,:,i) = (m%vp -self%pars(i)%min))/self%pars(i)%range
+                case ('vs' ); x(:,:,:,i) = (m%vs -self%pars(i)%min))/self%pars(i)%range
+                case ('rho'); x(:,:,:,i) = (m%rho-self%pars(i)%min))/self%pars(i)%range
                 end select
-
-                !normalize x to be unitless
-                x(:,:,:,ipar)=(x(:,:,:,ipar)-pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
             enddo
 
         else !x2m
-            do ipar=1,npar
-                select case (pars(ipar))
-                case ('vp' ); m%vp = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar)
-                case ('vs' ); m%vs = x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar)
-                case ('rho'); m%rho= x(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar)) +pars_min(ipar)
+            do i=1,npar
+                select case (self%pars(i)%name)
+                case ('vp' ); m%vp = x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
+                case ('vs' ); m%vs = x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
+                case ('rho'); m%rho= x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
                 end select
             enddo
 
             ! + gardner
-            if(if_gardner) then
-                do iy=1,m%ny; do ix=1,m%nx
-                do iz=m%itopo(ix,iy),m%nz
-                    m%rho(iz,ix,iy) = a*m%vp(iz,ix,iy)**b
-                enddo
-                enddo; enddo
-            endif
+            if(if_gardner) m%rho = a*m%vp**b
+
+            call m%apply_freeze_zone
 
         endif
 
@@ -178,110 +168,52 @@ use m_gradient, only: gradient
         !!for units of gradient and g, see m_field*.f90
         if(present(g)) then
         if(dir=='m2x') then
-
+            
             !acoustic
-            if(if_acoustic .and. .not. if_empirical) then
-                do ipar=1,npar
-                    select case (pars(ipar))
-                    case ('vp' ); g(:,:,:,ipar) = gradient(:,:,:,1)*2*m%rho*m%vp
-                    case ('rho'); g(:,:,:,ipar) = gradient(:,:,:,1)*m%vp**2 + gradient(:,:,:,2)
+            if(is_ac .and. .not. is_empirical) then
+                do i=1,self%npar
+                    select case (self%pars(i))
+                    case ('vp' ); g(:,:,:,ipar) = fobj%gradient(:,:,:,1)*2*m%rho*m%vp
+                    case ('rho'); g(:,:,:,ipar) = fobj%gradient(:,:,:,1)*m%vp**2 + fobj%gradient(:,:,:,2)
                     end select
                 enddo
             endif
 
             !acoustic + gardner
-            if(if_acoustic .and. if_gardner) then
-                g(:,:,:,1) =(gradient(:,:,:,1)*(b+2)/b*m%vp**2 + gradient(:,:,:,2))*a*b*m%vp**(b-1)
+            if(is_ac .and. is_gardner) then
+                g(:,:,:,1) =(fobj%gradient(:,:,:,1)*(b+2)/b*m%vp**2 + fobj%gradient(:,:,:,2))*a*b*m%vp**(b-1)
             endif
 
             !elastic
-            if(if_elastic .and. .not. if_empirical) then
-                do ipar=1,npar
-                    select case (pars(ipar))
-                    case ('vp' ); g(:,:,:,ipar) = gradient(:,:,:,1)*2*m%rho*m%vp
-                    case ('vs' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*(-2) + gradient(:,:,:,2))*2*m%rho*m%vs
-                    case ('rho'); g(:,:,:,ipar) = gradient(:,:,:,1)*m%vp**2 + (-2*gradient(:,:,:,1)+gradient(:,:,:,2))*m%vs**2 + gradient(:,:,:,3)
+            if(is_el .and. .not. is_empirical) then
+                do i=1,self%npar
+                    select case (self%pars(i))
+                    case ('vp' ); g(:,:,:,ipar) = fobj%gradient(:,:,:,1)*2*m%rho*m%vp
+                    case ('vs' ); g(:,:,:,ipar) =(fobj%gradient(:,:,:,1)*(-2) + fobj%gradient(:,:,:,2))*2*m%rho*m%vs
+                    case ('rho'); g(:,:,:,ipar) = fobj%gradient(:,:,:,1)*m%vp**2 + (-2*fobj%gradient(:,:,:,1)+fobj%gradient(:,:,:,2))*m%vs**2 + fobj%gradient(:,:,:,3)
                     end select
                 enddo
             endif
 
             !elastic + gardner
-            if(if_elastic .and. if_gardner) then
-                do ipar=1,npar
-                    select case (pars(ipar))
-                    case ('vp' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*(b+2)/b*m%vp + (-2*gradient(:,:,:,1)+gradient(:,:,:,2))*m%vs**2 + gradient(:,:,:,3))*a*b*m%vp**(b-1)
-                    case ('vs' ); g(:,:,:,ipar) =(gradient(:,:,:,1)*(-2) + gradient(:,:,:,2))*2*a*m%vp**b*m%vs
+            if(is_el .and. is_gardner) then
+                do i=1,self%npar
+                    select case (self%pars(i))
+                    case ('vp' ); g(:,:,:,i) =(fobj%gradient(:,:,:,1)*(b+2)/b*m%vp + (-2*fobj%gradient(:,:,:,1)+fobj%gradient(:,:,:,2))*m%vs**2 + fobj%gradient(:,:,:,3))*a*b*m%vp**(b-1)
+                    case ('vs' ); g(:,:,:,i) =(fobj%gradient(:,:,:,1)*(-2) + fobj%gradient(:,:,:,2))*2*a*m%vp**b*m%vs
                     end select
                 enddo
             endif
 
 
             !normaliz g to be unitless
-            do ipar=1,npar
-                g(:,:,:,ipar)=g(:,:,:,ipar)*(pars_max(ipar)-pars_min(ipar))
+            do i=1,self%npar
+                g(:,:,:,i)=g(:,:,:,i)*self%pars(i)%range
             enddo
-
-!open(88,file='gvpvs',access='stream')
-!write(88) g
-!close(88)
 
         endif
         endif
         
-    end subroutine
-    
-
-    subroutine parameterization_applymask(x)
-        real,dimension(m%nz,m%nx,m%ny,npar) :: x
-
-        ! !in water, vp=1500. vs=0. rho=1.
-        ! do ipar=1,npar
-        !     select case (pars(ipar))
-        !     case ('vp' )
-        !         do iy=1,m%ny
-        !         do ix=1,m%nx
-        !             x(1:m%itopo(ix,iy)-1,ix,iy,ipar) = (1500. -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
-        !         enddo
-        !         enddo
-        !     case ('vs' )
-        !         do iy=1,m%ny
-        !         do ix=1,m%nx
-        !             x(1:m%itopo(ix,iy)-1,ix,iy,ipar) = (0.  -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
-        !         enddo
-        !         enddo
-        !     case ('rho')
-        !         do iy=1,m%ny
-        !         do ix=1,m%nx
-        !             x(1:m%itopo(ix,iy)-1,ix,iy,ipar) = (1.  -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
-        !         enddo
-        !         enddo
-        !     end select
-        ! enddo
-
-        !arbitrary mask
-        do ipar=1,npar
-            select case (pars(ipar))
-            case ('vp' )
-                do iy=1,m%ny; do ix=1,m%nx
-                do iz=1,m%itopo(ix,iy)-1
-                    x(iz,ix,iy,ipar) = (m%vp_mask(iz,ix,iy) -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
-                enddo
-                enddo; enddo
-            case ('vs' )
-                do iy=1,m%ny; do ix=1,m%nx
-                do iz=1,m%itopo(ix,iy)-1
-                    x(iz,ix,iy,ipar) = (m%vs_mask(iz,ix,iy)  -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
-                enddo
-                enddo; enddo
-            case ('rho')
-                do iy=1,m%ny; do ix=1,m%nx
-                do iz=1,m%itopo(ix,iy)-1
-                    x(iz,ix,iy,ipar) = (m%rho_mask(iz,ix,iy) -pars_min(ipar))/(pars_max(ipar)-pars_min(ipar))
-                enddo
-                enddo; enddo
-            end select
-        enddo
-
     end subroutine
 
 end module

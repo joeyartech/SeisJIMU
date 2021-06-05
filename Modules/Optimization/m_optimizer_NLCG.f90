@@ -44,6 +44,16 @@ use m_linesearcher
     
     real min_update !minimum par update allowed
     
+    type t_forwardmap
+        integer :: n !model dimension
+        real,dimension(:),allocatable :: x !point
+        real,dimension(:),allocatable :: g !gradient
+        real,dimension(:),allocatable :: pg !preconditioned gradient
+        real,dimension(:),allocatable :: d !descent direction
+        real :: f
+        real :: gdotd  !dot product of g and d
+    end type
+
     type(t_forwardmap) :: current
     type(t_forwardmap) :: perturb
     type(t_forwardmap) :: previous
@@ -56,7 +66,7 @@ use m_linesearcher
     
     contains
     
-    subroutine init_optimizer(nproblem)
+    subroutine init(nproblem)
     
         !problem size
         n=nproblem
@@ -64,7 +74,6 @@ use m_linesearcher
         !read setup
         min_update=setup_get_real('MIN_UPDATE',default=1e-8)
         max_iterate=setup_get_int('MAX_ITERATE',default=30)
-        max_modeling=setup_get_int('MAX_MODELING',default=60)
         
         !initialize current point
         call alloc(current%x, n,initialize=.false.) !quiry point
@@ -74,18 +83,15 @@ use m_linesearcher
         call alloc(current%d, n,initialize=.false.) !descent direction
         
         !transform by parameterization
-        call parameterization_transform('m2x',current%x,current%g)
+        call parameterization%transform('m2x',current%x,current%g)
         
         !scale problem
-        if(if_scaling) call linesearch_scaling(current)
+        call ls%scaling(current)
         f0=current%f
         
-        !reinitialize alpha in each iterate
-        if_reinitialize_alpha=setup_get_logical('IF_REINITIALIZE_ALPHA',default=.false.)
-        
         !initialize preconditioner and apply
-        call init_preconditioner
-        call preconditioner_apply(current%g,current%pg)
+        call preconditioner%init
+        call preconditioner%apply(current%g,current%pg)
         g0norm=norm2(current%g)
         
         !current descent direction
@@ -127,7 +133,7 @@ use m_linesearcher
             endif
             
             !linesearcher finds steplength
-            call linesearcher(iterate,current,perturb,gradient_history,result=result)
+            call ls%search(iterate,current,perturb,gradient_history,result=result)
             
             select case(result)
                 case('success')
@@ -158,14 +164,14 @@ use m_linesearcher
                 !inner product of g and d for Wolfe condition
                 current%gdotd=sum(current%g*current%d)
                 
-                call optimizer_print_info('update')
+                call print_info('update')
                 
                 case('failure')
-                call optimizer_print_info('failure')
+                call print_info('failure')
                 exit loop
                 
                 case('maximum')
-                call optimizer_print_info('maximum')
+                call print_info('maximum')
                 exit loop
                 
             end select
@@ -173,11 +179,11 @@ use m_linesearcher
         end do loop
         
         call hud('-------- FINALIZE OPTIMIZATON --------')
-        call optimizer_print_info('finalize')
+        call print_info('finalize')
         
     end subroutine
 
-    subroutine optimizer_print_info(task)
+    subroutine print_info(task)
         character(*) :: task
         
         if(mpiworld%is_master) then
@@ -198,14 +204,12 @@ use m_linesearcher
                     write(16,'(a)'      ) '  Iter#      f         f/f0    ||g||/||g0||    alpha     nls  Modeling#'
                                    !e.g.  !    0    1.00E+00    1.00E+00    1.00E+00    1.00E+00      0       1
                     write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, current%f, current%f/f0, norm2(current%g)/g0norm, alpha, isearch, imodeling
-                    open(18,file='model_update',access='stream')
+                    
                 case('update')
                     write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, current%f, current%f/f0, norm2(current%g)/g0norm, alpha, isearch, imodeling
                     
-                    call parameterization_transform('x2m',current%x)
-                    if(if_write_vp)  write(18) m%vp
-                    if(if_write_vs)  write(18) m%vs
-                    if(if_write_rho) write(18) m%rho
+                    call parameterization%transform('x2m',current%x)
+                    call model%write(suffix='Iter'//int2str(iterate))
                 case('maximum')
                     write(16,'(a)'      ) ' **********************************************************************'
                     write(16,'(a)'      ) '     STOP: MAXIMUM MODELING NUMBER REACHED                             '
@@ -219,20 +223,16 @@ use m_linesearcher
                     write(16,'(a)'      ) '     STOP: LINE SEARCH FAILURE                                         '
                     write(16,'(a)'      ) ' **********************************************************************'
                 case('finalize')
+                    write(16,'(a)'      ) ' **********************************************************************'
+                    write(16,'(a)'      ) '     STOP: LINE SEARCH FINISHED                                         '
+                    write(16,'(a)'      ) ' **********************************************************************'
                     close(16)
                     
-                    call parameterization_transform('x2m',perturb%x)
-                    if(if_write_vp)  write(18) m%vp
-                    if(if_write_vs)  write(18) m%vs
-                    if(if_write_rho) write(18) m%rho
-                    close(18)
+                    call parameterization%transform('x2m',perturb%x)
+                    call model%write(suffix='Iter'//int2str(iterate))
                     
-                    open(18,file='model_final',access='stream')
-                    call parameterization_transform('x2m',current%x)
-                    if(if_write_vp)  write(18) m%vp
-                    if(if_write_vs)  write(18) m%vs
-                    if(if_write_rho) write(18) m%rho
-                    close(18)
+                    call parameterization%transform('x2m',current%x)
+                    call model%write(suffix='final')
                     
                     write(*,'(a,i0.4)') 'ximage < model_final n1=',m%nz
                     write(*,'(a,i0.4,a,i0.4)') 'xmovie < model_update loop=1 title=%g n1=',m%nz,' n2=',m%nx

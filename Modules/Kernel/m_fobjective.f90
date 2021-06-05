@@ -103,6 +103,8 @@ use m_weighter_table
 
     subroutine compute_gradient
 
+        call gradient_modeling(fobj)
+
         !postprocessing
 
         !smoothing
@@ -110,15 +112,15 @@ use m_weighter_table
             call hud('Initialize Laplacian smoothing')
             call init_smoother_laplacian([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%fpeak)
             do icorr=1,ncorr
-                call smoother_laplacian_extend_mirror(gradient(:,:,:,icorr),m%itopo)
-                call smoother_laplacian_pseudo_nonstationary(gradient(:,:,:,icorr),m%vp)
+                call smoother_laplacian_extend_mirror(fobj%gradient(:,:,:,icorr),m%itopo)
+                call smoother_laplacian_pseudo_nonstationary(fobj%gradient(:,:,:,icorr),m%vp)
             enddo
         endif
         
         !bathymetry as hard mask
         do iy=1,m%ny
         do ix=1,m%nx
-            gradient(1:m%itopo(ix,iy)-1,ix,iy,:) =0.
+            fobj%gradient(1:m%itopo(ix,iy)-1,ix,iy,:) =0.
         enddo
         enddo
 
@@ -130,7 +132,7 @@ use m_weighter_table
             close(12)
             
             do i=1,size(gradient,4)
-                gradient(:,:,:,i)=gradient(:,:,:,i)*mask
+                fobj%gradient(:,:,:,i)=fobj%gradient(:,:,:,i)*mask
             enddo
         endif
 
