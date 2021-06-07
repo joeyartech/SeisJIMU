@@ -12,6 +12,7 @@ use m_arrayop
         
         real cell_volume, cell_diagonal, cell_inv_diagonal
         
+        character(:),allocatable :: file
         type(t_string),dimension(:),allocatable :: attributes_read, attributes_write
 
         logical :: is_cubic, is_freesurface
@@ -20,10 +21,10 @@ use m_arrayop
         real,dimension(:,:,:),allocatable :: eps,del,eta
         real,dimension(:,:,:),allocatable :: qp,qs
 
+        real :: ref_vel, ref_rho, ref_kpa
+
         logical,dimension(:,:,:),allocatable :: is_freeze_zone
 
-        real ref_vp,ref_vs,ref_rho,ref_modulus
-        
     end type
     
     type(t_model) :: m
@@ -53,7 +54,7 @@ use m_arrayop
             m%is_cubic=.true.
         endif
 
-        rtmp=setup_get_char('MODEL_SPACING','DZXY',mandatory=.true.)
+        rtmp=setup%get_reals('MODEL_SPACING','DZXY',mandatory=.true.)
         m%dz=rtmp(1); m%dx=rtmp(2); m%dy=rtmp(3)
 
         m%cell_volume = m%dx*m%dy*m%dz
@@ -65,9 +66,11 @@ use m_arrayop
             m%cell_inv_diagonal=sqrt(m%dx**(-2) + m%dy**(-2) + m%dz**(-2))
         endif
 
-        rtmp=setup_get_char('MODEL_ORIGIN','OZXY',default=[0.,0.,0.])
+        rtmp=setup%get_reals('MODEL_ORIGIN','OZXY',default=[0.,0.,0.])
         m%oz=rtmp(1); m%ox=rtmp(2); m%oy=rtmp(3)
         
+        m%file=setup%get_file('FILE_MODEL',mandatory=.true.) 
+
         self%attributes_read =setup%get_strs('MODEL_ATTRIBUTES',default='vp rho')
         self%attributes_write=setup%get_strs('WRITE_MODEL_ATTRIBUTES',default='vp')
         
@@ -76,8 +79,7 @@ use m_arrayop
     subroutine read
         real,dimension(:,:,:),allocatable :: tmp
 
-        open(12,file=setup%get_file('FILE_MODEL',mandatory=.true.) &
-            access='direct',recl=4*m%n,action='read',status='old')
+        open(12,file=m%file,access='direct',recl=4*m%n,action='read',status='old')
         
         do i=1,size(self%attributes_read)
             select case(self%attributes_read%s)
@@ -85,6 +87,7 @@ use m_arrayop
                 call alloc(m%vp,m%nz,m%nx,m%ny)
                 read(12,rec=i) m%vp
                 call hud('vp model is read.')
+                m%ref_vel=m%vp(1,1,1)
 
             case ('vs')
                 call alloc(m%vs,m%nz,m%nx,m%ny)
@@ -95,6 +98,8 @@ use m_arrayop
                 call alloc(m%rho,m%nz,m%nx,m%ny)
                 read(12,rec=i) m%rho
                 call hud('rho model is read.')
+                m%ref_rho=m%rho(1,1,1)
+                m%ref_kpa=m%ref_rho*m%ref_vel**2
 
             case ('eps')
                 call alloc(m%eps,m%nz,m%nx,m%ny)
@@ -129,13 +134,7 @@ use m_arrayop
 
         !freesurface
         m%is_freesurface=setup_get_logical('IF_FREESURFACE',default=.true.)
-        
-        !reference values                
-        m%ref_vp=m%vp(1,1,1)
-        m%ref_vs=m%vs(1,1,1)
-        m%ref_rho=m%rho(1,1,1)
-        m%ref_modulus=m%ref_vp**2*m%ref_rho
-        
+                
         !freeze zone
         call alloc(m%is_freeze_zone(m%nz,m%nx,m%ny),initialize=.false.)
         m%is_freeze_zone=.false.
@@ -196,9 +195,8 @@ use m_arrayop
 
         call alloc(tmp(m%nz,m%nx,m%ny))
 
-        open(12,file=setup%get_file('FILE_MODEL',mandatory=.true.) &
-            access='direct',recl=4*m%n,action='read',status='old')
-        
+        open(12,file=m%file,access='direct',recl=4*m%n,action='read',status='old')
+
         do i=1,size(self%attributes_read)
             select case(self%attributes_read%s)
             case ('vp')        
@@ -256,7 +254,7 @@ use m_arrayop
         open(13,file=setup%dir_working//'model'//suffix,access='direct',recl=4*m%n,action='write')
         
         do i=1,size(self%attributes_write)
-            select case(self%attributes_read%s)
+            select case(self%attributes_write%s)
             case ('vp')
                 if(allocated(m%vp)) then
                     write(13,rec=i) m%vp

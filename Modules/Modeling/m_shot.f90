@@ -66,6 +66,7 @@ use m_butterworth
             call from_data
         endif
 
+        self%if_hicks=setup_get_logical('IF_HICKS',default=.true.)
         
         !! time !!
 

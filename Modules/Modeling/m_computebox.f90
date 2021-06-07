@@ -49,12 +49,10 @@ use m_shot
     contains
 
     subroutine init
-        character(:),allocatable :: tmp
-        real :: aperture(4)=0.
+        real :: aperture(4)
         
         !shot aperture, default is whole model
-        tmp=setup_get_char('APERTURE',default='-99999 99999 -99999 99999')
-        read(tmp,*) aperture
+        cb%aperture=setup%get_reals('APERTURE',default='-99999 99999 -99999 99999')
         
     end subroutine
     
@@ -147,7 +145,8 @@ use m_shot
        
         call alloc(small, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
-        !values inside
+        !values inside..
+        !resample z axis? Maybe interesting for elastic modeling..
         small(1:cb%mz,1:cb%mx,1:cb%my)=big(cb%ioz:cb%ioz+cb%mz-1,cb%iox:cb%iox+cb%mx-1,cb%ioy:cb%ioy+cb%my-1)
 
         !values in boundary layers

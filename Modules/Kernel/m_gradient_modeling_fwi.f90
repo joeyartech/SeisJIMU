@@ -26,16 +26,15 @@ use m_smoother_laplacian_sparse
             call cb%init
             call cb%project
 
-            call sfield%add_source(shot%source)
+            call sfield%add_RHS(shot%source)
 
             call sfield%check_model
             call sfield%check_discretization
             
             call sfield%init
 
-            call sfield%forward
-            
-            call shot%acquire(sfield)
+            call sfield%propagate(dsyn=shot%dsyn)
+            !call shot%acquire(sfield)
 
             if(mpiworld%is_master) call suformat_write(file='synth_raw_'//shot%sindex,shot%dsyn)
             
@@ -55,11 +54,11 @@ use m_smoother_laplacian_sparse
                 call shot%adjsource_update
             endif
 
-            call rfield%add_source(shot%adjsource)
+            call rfield%add_RHS(shot%adjsource)
             
             call alloc(cb%kernel,cb%mz,cb%mx,cb%my,ncorr) !(:,:,:,1) is glda, (:,:,:,2) is gmu, (:,:,:,3) is grho0
 
-            call rfield%backward(sfield=sfield,xcorr=cb%kernel,dt_Nyquist=shot%dt_Nyquist)
+            call rfield%propagate_reverse(o_sfield=sfield,o_grad=cb%kernel,o_rdt=shot%dt_Nyquist)
 
             !put cb%kernel into global gradient
             call cb%project_back(fobj%gradient,cb%kernel)

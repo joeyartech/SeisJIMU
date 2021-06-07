@@ -1,4 +1,4 @@
-module m_absorbinglayer
+module m_cpml
 use m_sysio
 use m_arrayop
 use m_model
@@ -30,7 +30,7 @@ use m_shot
                                     !(make in/outside PML reflection more separate..)
                                     !decrease this number if grid dispersion is not satisfactory
 
-    type t_absorbinglayer
+    type t_cpml
         real,dimension(:),allocatable :: b_x,b_x_half,a_x,a_x_half
         real,dimension(:),allocatable :: b_y,b_y_half,a_y,a_y_half
         real,dimension(:),allocatable :: b_z,b_z_half,a_z,a_z_half
@@ -42,7 +42,7 @@ use m_shot
         integer :: nlayer
     end type
         
-    type(t_absorbinglayer) :: cpml
+    type(t_cpml) :: cpml
 
     contains
 
