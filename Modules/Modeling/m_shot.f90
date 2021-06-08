@@ -5,7 +5,17 @@ use m_suformat
 use m_hicks
 use m_butterworth
 
-    private t_source, t_receiver, t_shot, file_wavelet
+    !abbreviation:
+    ! s,src : source
+    ! r,rcv : receiver
+    ! o : origin
+    ! d : increment, spacing
+    ! n : number of
+    ! z : depth
+    ! x : inline
+    ! y : crossline
+    ! pos : position
+    ! comp : component
     
     type t_source
         real    :: x,y,z
@@ -13,8 +23,6 @@ use m_butterworth
         integer :: ifz,ilz,ifx,ilx,ify,ily
         character(4) :: comp
         real,dimension(:,:,:),allocatable :: interp_coeff
-        integer :: nt
-        real :: dt, fpeak
     end type
 
     type t_receiver
@@ -23,19 +31,21 @@ use m_butterworth
         integer :: ifz,ilz,ifx,ilx,ify,ily
         character(4) :: comp
         real,dimension(:,:,:),allocatable :: interp_coeff
-        integer :: nt
-        real :: dt
     end type
     
     type t_shot
         integer :: index
         character(4) :: sindex
+        
+        real,dimension(:),allocatable :: wavelet
+        integer :: nt
+        real :: dt, fmin, fmax, fpeak
+
+        logical :: if_hicks=.true.
+
         type(t_source) :: src
         type(t_receiver),dimension(:),allocatable :: rcv
         integer :: nrcv   !=size(rcv)
-
-        real,dimension(:),allocatable :: wavelet
-        character(:),allocatable :: file_wavelet
 
         real,dimension(:,:),allocatable :: dobs !observed seismogram
         real,dimension(:,:),allocatable :: dsyn !synthetic seismogram
@@ -45,132 +55,291 @@ use m_butterworth
     end type
     
     type(t_shot) :: shot
-
-    logical :: if_staggered_grid=.false.
     
     contains
     
-    subroutine shot_init(ishot,from)
+    subroutine init(ishot)
         integer ishot
-        character(*) :: from
-        
-        character(:),allocatable :: scale_wavelet
 
-        shot%index=shotlist(ishot)
-        shot%sindex=num2str(shot%index,'(i0.4)')
-        
-        !read geometry, nt and dt
-        if(from=='gen_acqui') then
-            call from_gen_acqui
-        elseif(from=='data') then
-            call from_data
+        self%index=shotlist(ishot)
+        self%sindex=num2str(shot%index,'(i0.4)')
+    
+    end subroutine
+
+    subroutine read_from_setup
+        logical,save :: first_in=.true.
+
+        if(first_in) then
+            shot%nt=setup%get_int('TIME_STEP','NT')
+            shot%dt=setup%get_int('TIME_INTERVAL','DT')
+            shot%src%comp=setup%get_str( 'SOURCE_COMPONENT',  'SCOMP',default='p'))
         endif
 
-        self%if_hicks=setup_get_logical('IF_HICKS',default=.true.)
-        
-        !! time !!
+        first_in=.false.
 
-        shot%src%fpeak=setup_get_real('PEAK_FREQUENCY','FPEAK')
+        select case (setup%get_char('ACQUI_GEOMETRY',default='spread'))
+        case ('spread')
+            call geometry_spread(self)
+        case ('streamer')
+            call geometry_streamer(self)
+        case ('irregularOBN')
+        case ('spread3D')
+        end select
+
+        call check_setup_positions
+
+    end subroutine
+
+    subroutine read_from_data
+        type(t_format_su) :: data
         
-        !read wavelet
-        shot%file_wavelet=setup_get_file('FILE_WAVELET')
-        if(file_wavelet=='') then
-            if(setup_get_char('WAVELET_TYPE',default='sinexp')=='sinexp') then
+        file=setup%get_file('FILE_DATA',mandatory=.true.)
+
+        call data%read(file//shot%sindex,shot%sindex)
+        
+        !source & receiver geometry
+        shot%src%x=data%hdr(1)%sx
+        shot%src%y=data%hdr(1)%sy
+        shot%src%z=data%hdr(1)%sdepth
+        
+        shot%src%icomp=1 !don't know which su header tells this info..
+        
+        shot%nt=data%ns  !assume all traces have same ns
+        shot%dt=data%hdr(1)%dt*1e-6 !assume all traces have same dt
+        
+        shot%nrcv=data%ntr
+        if(allocated(shot%rcv))deallocate(shot%rcv)
+        allocate(shot%rcv(shot%nrcv))
+
+        do ir=1,shot%nrcv
+            shot%rcv(ir)%x= data%hdr(ir)%gx
+            shot%rcv(ir)%y= data%hdr(ir)%gy
+            shot%rcv(ir)%z=-data%hdr(ir)%gelev
+            
+            select case (data%hdr(ir)%trid)
+                case (11)
+                shot%rcv(ir)%comp='p'  !pressure
+                case (12)
+                shot%rcv(ir)%comp='vz' !vertical velocity
+                case (13)
+                shot%rcv(ir)%comp='vy' !horizontal velocity
+                case (14)
+                shot%rcv(ir)%comp='vx'
+                
+                case default
+                shot%rcv(ir)%comp='p'
+            end select
+            
+        enddo
+        
+
+        !scale back elevation
+        if(data%hdr(1)%scalel > 0) then
+            shot%src%z    = shot%src%z    * data(1)%hdr%scalel
+            shot%rcv(:)%z = shot%rcv(:)%z * data(1)%hdr%scalel
+        elseif(data%hdr(1)%scalel < 0) then
+            shot%src%z    = shot%src%z    / (-data(1)%hdr%scalel)
+            shot%rcv(:)%z = shot%rcv(:)%z / (-data(1)%hdr%scalel)
+        endif
+        
+        !scale back coordinates
+        if(data%hdr(1)%scalco > 0) then
+            shot%src%x    = shot%src%x    * data(1)%hdr%scalco
+            shot%src%y    = shot%src%y    * data(1)%hdr%scalco
+            shot%rcv(:)%x = shot%rcv(:)%x * data(1)%hdr%scalco
+            shot%rcv(:)%y = shot%rcv(:)%y * data(1)%hdr%scalco
+        elseif(data%hdr(1)%scalco < 0) then
+            shot%src%x    = shot%src%x    / (-data(1)%hdr%scalco)
+            shot%src%y    = shot%src%y    / (-data(1)%hdr%scalco)
+            shot%rcv(:)%x = shot%rcv(:)%x / (-data(1)%hdr%scalco)
+            shot%rcv(:)%y = shot%rcv(:)%y / (-data(1)%hdr%scalco)
+        endif
+        
+        !load obs traces
+        call alloc(self%dobs,shot%nt,shot%nrcv)
+        self%dobs=data%trace
+        
+        call check_setup_positions
+
+    end subroutine
+
+    subroutine set_time
+
+        type(t_format_su)::wavelet
+
+        shot%fpeak=setup%get_real('PEAK_FREQUENCY','FPEAK')
+        shot%fmax=setup%get_real('MAX_FREQUENCY','FMAX',default=shot%fpeak*2.5)
+
+        !wavelet
+        file=setup%get_file('FILE_SOURCE_WAVELET')
+
+        if(file=='') then !not given
+            if(setup%get_str('WAVELET_TYPE',default='sinexp')=='sinexp') then
                 call hud('Use filtered sinexp wavelet')
-                call source_wavelet_sinexp
+                shot%wavelet=sinexp(shot%nt,shot%dt,shot%fpeak)
             else
                 call hud('Use Ricker wavelet')
-                call source_wavelet_ricker
+                shot%wavelet=ricker(shot%nt,shot%dt,shot%fpeak)
             endif
+            shot%wavelet=shot%wavelet *shot%dt/m%cell_volume
+
         else !wavelet file exists
-            call alloc(shot%src%wavelet,shot%src%nt)
-            open(11,file=file_wavelet,access='direct',recl=4*shot%src%nt)
-            read(11,rec=1) shot%src%wavelet
-            close(11)
+            call wavelet%read(file)
+            call resample(wavelet%trs(:,1),shot%wavelet,shot%nt,shot%dt)
+
         endif
 
-        scale_wavelet=setup_get_char('SCALE_WAVELET',default='by dtdx')
+        if(mpiworld%is_master) then
+            open(12,file='source_wavelet',access='direct',recl=4*shot%nt)
+            write(12,rec=1) shot%wavelet
+            close(12)
+        endif
+
+    end subroutine
+
+    subroutine update_wavelet
+
+        call matchfilter_estimate(shot%nt,shot%nrcv,shot%dsyn,shot%dobs,shot%sindex)
         
-        if(scale_wavelet/='no') then
-            if(scale_wavelet=='by dtdx' .or. scale_wavelet=='by dxdt') then
-                !scale wavelet to be dt, dx independent
-                shot%src%wavelet = shot%src%wavelet* shot%src%dt/m%cell_volume
-            else
-                !user defined scaler
-                read(scale_wavelet,*) scaler
-                shot%src%wavelet = shot%src%wavelet* scaler
-            endif
+        call matchfilter_apply_to_wavelet(shot%nt,shot%wavelet)
+        
+        call matchfilter_apply_to_data(shot%nt,shot%nrcv,shot%dsyn)
+
+        !call suformat_write(iproc=0,file='wavelet_update',append=.true.)        
+        if(mpiworld%is_master) then
+            open(12,file='source_wavelet',access='stream',recl=4*shot%nt,position='append')
+            write(12) shot%wavelet
+            close(12)
         endif
 
-        open(12,file='source_wavelet',access='direct',recl=4*shot%src%nt)
-        write(12,rec=1) shot%src%wavelet
-        close(12)
+    end subroutine
+    
+    subroutine update_residuals
+
+        call matchfilter_correlate_filter_residual(shot%nt,shot%nrcv,shot%dres)
+
+    end subroutine
+
+    subroutine acquire(self)
+        type(t_shot) :: self
+
+        call alloc(self%dsyn,self%nt,self%nrcv)
+        do i=1,self%nrcv
+            select case (self%rcv(i)%comp)
+            case ('p')
+                call resample(f%seismo%p(i,:), self%dsyn(:,i))
+            case ('vx')
+                call resample(f%seismo%vx(i,:),self%dsyn(:,i))
+            case ('vy')
+                call resample(f%seismo%vy(i,:),self%dsyn(:,i))
+            case ('vz')
+                call resample(f%seismo%vz(i,:),self%dsyn(:,i))
+            end select
+        enddo
+
+    end subroutine
 
 
-        !! space !!
+    subroutine set_space
 
-        !shift position to be 0-based
-        shot%src%x=shot%src%x - m%ox
-        shot%src%y=shot%src%y - m%oy
-        shot%src%z=shot%src%z - m%oz
+        !shift positions to be 0-based
+        shot%src%x   =shot%src%x    - m%ox
+        shot%src%y   =shot%src%y    - m%oy
+        shot%src%z   =shot%src%z    - m%oz
         shot%rcv(:)%x=shot%rcv(:)%x - m%ox
         shot%rcv(:)%y=shot%rcv(:)%y - m%oy
         shot%rcv(:)%z=shot%rcv(:)%z - m%oz
 
-        !Hicks interpolation
-        call hicks_init([m%dx,m%dy,m%dz],m%is_cubic, m%if_freesurface)
+        !absolute offset
+        do ir=1,shot%nrcv
+            shot%rcv(ir)%aoffset=sqrt( (shot%src%x-shot%rcv(ir)%x)**2 &
+                                      +(shot%src%y-shot%rcv(ir)%y)**2 &
+                                      +(shot%src%z-shot%rcv(ir)%z)**2 )
+        enddo
+
+        !shift velocity components in case of staggered grid
+        if_fdsg=index(projector%info,'FDSG')>0
+
+        if(if_fdsg) then
+            !source side
+            if(self%src%comp(1:1)=='v') then
+                shot%src%x=shot%src%x-(1-1)*m%dx !?
+                shot%src%y=shot%src%y-(1-1)*m%dy
+                shot%src%z=shot%src%z-(1-1)*m%dz
+            endif
+            
+            !receiver side
+            do i=1,shot%nrcv
+                if(self%rcv%comp(1:1)=='v') then
+                    shot%rcv(i)%x=shot%rcv(i)%x-(1-1)*m%dx !?
+                    shot%rcv(i)%y=shot%rcv(i)%y-(1-1)*m%dy
+                    shot%rcv(i)%z=shot%rcv(i)%z-(1-1)*m%dz
+                endif
+            enddo
+            
+            call hud('For velocity components, src & rcv positions have been shifted one grid point due to staggered grid stencils.')
+        endif
+
+        self%if_hicks=setup_get_logical('IF_HICKS',default=.true.)
         
-        !hicks coeff for source point
-        if(if_staggered_grid) then
-            !for vx,vy,vz components, hicks%x,y,z should be added by m%dx/2,dy/2,dz/2, respectively,
-            !because v(1) is actually v[0.5], v(2) is v[1.5] etc.
-            if(shot%src%comp=='vx') call hicks_init_position([shot%src%x+m%dx/2.,shot%src%y,        shot%src%z        ])
-            if(shot%src%comp=='vy') call hicks_init_position([shot%src%x        ,shot%src%y+m%dy/2.,shot%src%z        ])
-            if(shot%src%comp=='vz') call hicks_init_position([shot%src%x        ,shot%src%y,        shot%src%z+m%dz/2.])
-        else
-            call hicks_init_position([shot%src%x,shot%src%y,shot%src%z])
-        endif
+        if(self%if_hicks) then
 
-        if(shot%src%comp(1)=='P') then !explosive source or non-vertical force
-            call hicks_build_coeff('antisymm', shot%src%interp_coeff)
-        elseif(shot%src%comp=='vz') then !vertical force
-            shot%src%interp_coeff=hicks%build_coeff('symmetric')
-            call hicks_build_coeff('symmetric',shot%src%interp_coeff)
-        else
-            shot%src%interp_coeff=hicks%build_coeff('truncate')
-            call hicks_build_coeff('truncate', shot%src%interp_coeff)
-        endif
-
-        call hicks_get_position([shot%src%ifx, shot%src%ify, shot%src%ifz], &
-                                [shot%src%ix,  shot%src%iy,  shot%src%iz ], &
-                                [shot%src%ilx, shot%src%ily, shot%src%ilz]  )
-
-        !hicks coeff for receivers
-        do i=1,shot%nrcv
-
-            if(if_staggered_grid) then
+            !Hicks interpolation
+            call hicks_init([m%dx,m%dy,m%dz],m%is_cubic, m%if_freesurface)
+            
+            !hicks coeff for source point
+            if(if_fdsg) then
                 !for vx,vy,vz components, hicks%x,y,z should be added by m%dx/2,dy/2,dz/2, respectively,
                 !because v(1) is actually v[0.5], v(2) is v[1.5] etc.
-                if(shot%rcv(i)%comp=='vx') call hicks_init_position([shot%rcv(i)%x+m%dx/2.,shot%rcv(i)%y,        shot%rcv(i)%        ])
-                if(shot%rcv(i)%comp=='vy') call hicks_init_position([shot%rcv(i)%x        ,shot%rcv(i)%y+m%dy/2.,shot%rcv(i)%        ])
-                if(shot%rcv(i)%comp=='vz') call hicks_init_position([shot%rcv(i)%x        ,shot%rcv(i)%y,        shot%rcv(i)%+m%dz/2.])
+                if(shot%src%comp=='vx') call hicks_init_position([shot%src%x+m%dx/2.,shot%src%y,        shot%src%z        ])
+                if(shot%src%comp=='vy') call hicks_init_position([shot%src%x        ,shot%src%y+m%dy/2.,shot%src%z        ])
+                if(shot%src%comp=='vz') call hicks_init_position([shot%src%x        ,shot%src%y,        shot%src%z+m%dz/2.])
             else
-                call hicks_init_position([shot%rcv(i)%,shot%rcv(i)%y,shot%rcv(i)%z])
+                call hicks_init_position([shot%src%x,shot%src%y,shot%src%z])
             endif
 
-            if(shot%rcv(i)%comp(1)=='P') then !explosive source or non-vertical force
-                call hicks_build_coeff('antisymm', shot%rcv(i)%interp_coeff)
+            if(shot%src%comp(1)=='p') then !explosive source or non-vertical force
+                call hicks_build_coeff('antisymm', shot%src%interp_coeff)
             elseif(shot%src%comp=='vz') then !vertical force
-                call hicks_build_coeff('symmetric',shot%rcv(i)%interp_coeff)
+                shot%src%interp_coeff=hicks%build_coeff('symmetric')
+                call hicks_build_coeff('symmetric',shot%src%interp_coeff)
             else
-                call hicks_build_coeff('truncate', shot%rcv(i)%interp_coeff)
+                shot%src%interp_coeff=hicks%build_coeff('truncate')
+                call hicks_build_coeff('truncate', shot%src%interp_coeff)
             endif
 
-            call hicks_get_position([shot%rcv(i)%ifx, shot%rcv(i)%ify, shot%rcv(i)%ifz], &
-                                    [shot%rcv(i)%ix,  shot%rcv(i)%iy,  shot%rcv(i)%iz ], &
-                                    [shot%rcv(i)%ilx, shot%rcv(i)%ily, shot%rcv(i)%ilz]  )
+            call hicks_get_position([shot%src%ifx, shot%src%ify, shot%src%ifz], &
+                                    [shot%src%ix,  shot%src%iy,  shot%src%iz ], &
+                                    [shot%src%ilx, shot%src%ily, shot%src%ilz]  )
 
-        enddo
+            !hicks coeff for receivers
+            do i=1,shot%nrcv
+
+                if(if_fdsg) then
+                    !for vx,vy,vz components, hicks%x,y,z should be added by m%dx/2,dy/2,dz/2, respectively,
+                    !because v(1) is actually v[0.5], v(2) is v[1.5] etc.
+                    if(shot%rcv(i)%comp=='vx') call hicks_init_position([shot%rcv(i)%x+m%dx/2.,shot%rcv(i)%y,        shot%rcv(i)%        ])
+                    if(shot%rcv(i)%comp=='vy') call hicks_init_position([shot%rcv(i)%x        ,shot%rcv(i)%y+m%dy/2.,shot%rcv(i)%        ])
+                    if(shot%rcv(i)%comp=='vz') call hicks_init_position([shot%rcv(i)%x        ,shot%rcv(i)%y,        shot%rcv(i)%+m%dz/2.])
+                else
+                    call hicks_init_position([shot%rcv(i)%,shot%rcv(i)%y,shot%rcv(i)%z])
+                endif
+
+                if(shot%rcv(i)%comp(1)=='p') then !explosive source or non-vertical force
+                    call hicks_build_coeff('antisymm', shot%rcv(i)%interp_coeff)
+                elseif(shot%src%comp=='vz') then !vertical force
+                    call hicks_build_coeff('symmetric',shot%rcv(i)%interp_coeff)
+                else
+                    call hicks_build_coeff('truncate', shot%rcv(i)%interp_coeff)
+                endif
+
+                call hicks_get_position([shot%rcv(i)%ifx, shot%rcv(i)%ify, shot%rcv(i)%ifz], &
+                                        [shot%rcv(i)%ix,  shot%rcv(i)%iy,  shot%rcv(i)%iz ], &
+                                        [shot%rcv(i)%ilx, shot%rcv(i)%ily, shot%rcv(i)%ilz]  )
+
+            enddo
+
+        endif
                 
         if(mpiworld%is_master) then
             write(*,*)'================================='
@@ -196,254 +365,339 @@ use m_butterworth
         endif
 
     end subroutine
-    
-    subroutine shot_shift_by_computebox(iox,ioy,ioz)
+        
+    subroutine geometry_spread(shot)
+        type(t_shot) :: shot
+        logical :: first_in=.true.
+        real,dimension(3),save :: os,or, ds,dr
+        real,save :: nr
+        type(t_string),dimension(:),allocatable,save :: rcomp
+
+        if(first_in) then
+            os=setup%get_reals('SOURCE_ORIGIN',  'OS')
+            or=setup%get_reals('RECEIVER_ORIGIN','OR')
+
+            ds=setup%get_reals('SOURCE_SPACING', 'DS')
+            dr=setup%get_reals('RECEIVER_SPACING','DR')
+
+            nr=setup%get_int('NUMBER_RECEIVER','NR')
+            rcomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',default='p'))
+        endif
+
+        first_in=.false.
+
+        if(.not.m%is_cubic) then
+            os(3)=0.; or(3)=0.
+            ds(3)=0.; dr(3)=0.
+        endif
+
         !source side
-        shot%src%ix=shot%src%ix-iox+1
-        shot%src%iy=shot%src%iy-ioy+1
-        shot%src%iz=shot%src%iz-ioz+1
-        shot%src%ifx=shot%src%ifx-iox+1; shot%src%ilx=shot%src%ilx-iox+1
-        shot%src%ify=shot%src%ify-ioy+1; shot%src%ily=shot%src%ily-ioy+1
-        shot%src%ifz=shot%src%ifz-ioz+1; shot%src%ilz=shot%src%ilz-ioz+1
-        shot%src%x=shot%src%x-(iox-1)*m%dx
-        shot%src%y=shot%src%y-(ioy-1)*m%dy
-        shot%src%z=shot%src%z-(ioz-1)*m%dz
-        
+        shot%src%z=os(1)+(shot%index-1)*ds(1)
+        shot%src%x=os(2)+(shot%index-1)*ds(2)
+        shot%src%y=os(3)+(shot%index-1)*ds(3)
+
         !receiver side
-        do ir=1,shot%nrcv
-            shot%rcv(ir)%ix=shot%rcv(ir)%ix-iox+1
-            shot%rcv(ir)%iy=shot%rcv(ir)%iy-ioy+1
-            shot%rcv(ir)%iz=shot%rcv(ir)%iz-ioz+1
-            shot%rcv(ir)%ifx=shot%rcv(ir)%ifx-iox+1; shot%rcv(ir)%ilx=shot%rcv(ir)%ilx-iox+1
-            shot%rcv(ir)%ify=shot%rcv(ir)%ify-ioy+1; shot%rcv(ir)%ily=shot%rcv(ir)%ily-ioy+1
-            shot%rcv(ir)%ifz=shot%rcv(ir)%ifz-ioz+1; shot%rcv(ir)%ilz=shot%rcv(ir)%ilz-ioz+1
-            shot%rcv(ir)%x=shot%rcv(ir)%x-(iox-1)*m%dx
-            shot%rcv(ir)%y=shot%rcv(ir)%y-(ioy-1)*m%dy
-            shot%rcv(ir)%z=shot%rcv(ir)%z-(ioz-1)*m%dz
-        enddo
-        
-        call hud('If forces, shot''s source & receiver positions have been shifted according to computebox ox,oy,oz')
-    end subroutine
+        shot%nrcv=nr*size(rcomp)
 
-    !======= private procedures =======
+        if(allocated(self%rcv)) deallocate(self%rcv)
+        allocate(self%rcv(shot%nrcv))
 
-    subroutine from_gen_acqui
-        character(4),dimension(gen_acqui_ntr)   :: rc !rcv comp
-        real,dimension(gen_acqui_ntr)           :: rz,rx,ry !rcv pos
-
-
-        call gen_acqui_shotgather(shot%index, &&
-                                shot%src%comp,shot%src%z,shot%src%x,shot%src%y, &&
-                                rc,rz,rx,ry, &&
-                                shot%nt, shot%dt)
-        
-        shot%nrcv=gen_acqui_ntr
-        if(allocated(shot%rcv))deallocate(shot%rcv)
-        allocate(shot%rcv(gen_acqui_ntr))
-        
-        do i=1,shot%nrcv
-            shot%rcv(i)%comp=rc(i)
-            shot%rcv(i)%z=acqui%src(shot%index)%rcv(ir)%z
-            shot%rcv(i)%x=acqui%src(shot%index)%rcv(ir)%x
-            shot%rcv(i)%y=acqui%src(shot%index)%rcv(ir)%y
-            shot%rcv(i)%aoffset=sqrt( (shot%src%x-shot%rcv(ir)%x)**2 &
-                                      +(shot%src%y-shot%rcv(ir)%y)**2 )
+        do j=1,size(rcomp)
+            do i=0,nr-1
+                self%rcv(1+i+j*nr)%comp = rcomp(j)%s
+                self%rcv(1+i+j*nr)%rz = or(1) + (i-1)*dr(1)
+                self%rcv(1+i+j*nr)%rx = or(2) + (i-1)*dr(2)
+                self%rcv(1+i+j*nr)%ry = or(3) + (i-1)*dr(3)
+            enddo
         enddo
 
-        shot%rcv(:)%nt=shot%nt
-        shot%rcv(:)%dt=shot%dt
-        
     end subroutine
-    
-    subroutine from_data
-        type(t_suformat),dimension(:),allocatable :: sudata
-        
-        call read_sudata(shot%cindex,sudata)
-        
-        !source & receiver geometry
-        shot%src%x=sudata(1)%hdr%sx
-        shot%src%y=sudata(1)%hdr%sy
-        shot%src%z=sudata(1)%hdr%sdepth
-        
-        shot%src%icomp=1 !I don't know which su header tells this info..
-        
-        shot%src%nt=sudata(1)%hdr%ns     !let's assume source's nt is same as receiver's nt
-        shot%src%dt=sudata(1)%hdr%dt*1e-6 !let's assume source's dt is same as receiver's dt
-        
-        shot%nrcv=sudata(1)%hdr%ntr
-        if(allocated(shot%rcv))deallocate(shot%rcv)
+
+    subroutine geometry_streamer(shot)
+        type(t_shot) :: shot
+        logical :: first_in=.true.
+        real,dimension(3),save :: os,ooff, ds,doff
+        real,save :: noff
+        type(t_string),dimension(:),allocatable,save :: rcomp
+
+        if(first_in) then
+            os  =setup%get_reals('SOURCE_ORIGIN','OS')
+            ooff=setup%get_reals('OFFSET_ORIGIN','OOFF')
+
+            ds  =setup%get_reals('SOURCE_SPACING', 'DS')
+            doff=setup%get_reals('OFFSET_SPACING', 'DOFF')
+
+            noff=setup%get_int('NUMBER_OFFSET','NOFF')
+            rcomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',default='p'))
+        endif
+
+        first_in=.false.
+
+        if(.not.m%is_cubic) then
+            os(3)=0.; ooff(3)=0.
+            ds(3)=0.; doff(3)=0.
+        endif
+
+        !source side
+        shot%src%z=os(1)+(shot%index-1)*ds(1)
+        shot%src%x=os(2)+(shot%index-1)*ds(2)
+        shot%src%y=os(3)+(shot%index-1)*ds(3)
+
+        !receiver side
+        shot%nrcv=nr*size(rcomp)
+
+        if(allocated(self%rcv)) deallocate(self%rcv)
+        allocate(self%rcv(shot%nrcv))
+
+        do j=1,size(rcomp)
+            do i=0,nr-1
+                self%rcv(1+i+j*nr)%comp = rcomp(j)%s
+                self%rcv(1+i+j*nr)%rz = self%src%z + off(1) + (i-1)*doff(1)
+                self%rcv(1+i+j*nr)%rx = self%src%x + off(2) + (i-1)*doff(2)
+                self%rcv(1+i+j*nr)%ry = self%src%y + off(3) + (i-1)*doff(3)
+            enddo
+        enddo
+
+    end subroutine
+
+    subroutine geometry_irregularOBN(shot)
+        type(t_shot) :: shot
+        logical :: first_in=.true.
+        character(:),allocatable,save :: spos, rpos
+        integer, save :: nr
+        type(t_string),dimension(:),allocatable,save :: rcomp
+
+        if(first_in) then            
+            spos=setup%get_file('FILE_SOURCE_POSITION','SPOS',mandatory=.true.)
+            rpos=setup%get_file('FILE_RECEIVER_POSITION','RPOS',mandatory=.true.)
+
+            rcomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',default='p'))
+        endif
+
+        !read source
+        open(13,file=spos,action='read')
+
+        k=0
+        do
+            read (13,*,iostat=msg) shot%src%z,shot%src%x,shot%src%y
+            if(msg/=0) exit
+            k=k+1
+            if(k==shot%index) exit
+        enddo
+
+        close(13)
+
+
+        !read receivers
+        open(15,file=rcv_pos,action='read')
+        !count number of receivers
+        nr=0
+        do
+            read (15,*,iostat=msg) z,x,y
+            if(msg/=0) exit
+            nr=nr+1
+        end do
+        if(mpiworld%is_master) write(*,*) 'Will read',nr,'receiver positions.'
+
+        shot%nrcv=nr*size(rcomp)
+
+        if(allocated(shot%rcv)) deallocate(shot%rcv)
         allocate(shot%rcv(shot%nrcv))
-        do ir=1,shot%nrcv
-            shot%rcv(ir)%x= sudata(ir)%hdr%gx
-            shot%rcv(ir)%y= sudata(ir)%hdr%gy
-            shot%rcv(ir)%z=-sudata(ir)%hdr%gelev
+        
+        i=0
+
+        do l=1,size(rcomp)
+            rewind(15)
+
+            do
+                i=i+1
+                read (15,*,iostat=msg) shot%rcv(i)%z,shot%rcv(i)%x,shot%rcv(i)%y
+                shot%rcv(i)%comp=rcomp(l)%s
+                if(msg/=0) exit
+            end do
+
+        enddo
+
+        close(15)
+
+        first_in=.false.
+
+    end subroutine
+
+    ! subroutine gen_acqui_3Dspread
+    !     !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !     !  Quadrilateral Geometry  !
+    !     !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !     !
+    !     !  IL direction ->
+    !     ! XL  P1---------------P2
+    !     ! dir -------------------
+    !     ! |   -------------------
+    !     ! v   P3---------------P4
+    !     !
+    !     !4 anchor points, P1-4, and number of points in IL and XL directions
+    !     !should be read from setup (SOURCE_POSITION, RECEIVER_POSITION)
+    !     !other points are interpolated from P1-4 and nil, nxl
+
+    !     real :: fsx,fsy,fsz, frx,fry,frz
+    !     real :: lsx,lsy,lsz, lrx,lry,lrz
+        
+    !     read(src_pos,*)  sz1,sx1,sy1, sz2,sx2,sy2, sz3,sx3,sy3, sz4,sx4,sy4, nsil, nsxl
+    !     read(rcv_pos,*)  rz1,rx1,ry1, rz2,rx2,ry2, rz3,rx3,ry3, rz4,rx4,ry4, nril, nrxl
+        
+    !     if(.not.m%is_cubic) then
+    !         sx3=sx1; sy3=sy1; sz3=sz1;
+    !         sx4=sx2; sy4=sy2; sz4=sz2;  nsxl=1
+
+    !         rx3=rx1; ry3=ry1; rz3=rz1;
+    !         rx4=rx2; ry4=ry2; rz4=rz2;  nrxl=1
+    !     endif
+
+    !     ns=nsil*nsxl
+    !     nr=nril*nrxl
+
+    !     acqui%nsrc=ns*nscomp
+    !     if(allocated(acqui%src))deallocate(acqui%src)
+    !     allocate(acqui%src(acqui%nsrc))
+
+    !     do ixl=1,nsxl
+
+    !         fsx = ( sx1*(nsxl-ixl) + sx3*(ixl-1) )/(nsxl-1)
+    !         fsy = ( sy1*(nsxl-ixl) + sy3*(ixl-1) )/(nsxl-1)
+    !         fsz = ( sz1*(nsxl-ixl) + sz3*(ixl-1) )/(nsxl-1)
+
+    !         lsx = ( sx2*(nsxl-ixl) + sx4*(ixl-1) )/(nsxl-1)
+    !         lsy = ( sy2*(nsxl-ixl) + sy4*(ixl-1) )/(nsxl-1)
+    !         lsz = ( sz2*(nsxl-ixl) + sz4*(ixl-1) )/(nsxl-1)
+
+    !     do iil=1,nsil
+
+    !         sx  = ( fsx*(nsil-iil) + lsx*(iil-1) )/(nsil-1)
+    !         sy  = ( fsy*(nsil-iil) + lsy*(iil-1) )/(nsil-1)
+    !         sz  = ( fsz*(nsil-iil) + lsz*(iil-1) )/(nsil-1)
+
+    !         i   = iil + (ixl-1)*nsil
+
+    !         acqui%src(i)%x=sx
+    !         acqui%src(i)%y=sy
+    !         acqui%src(i)%z=sz
+    !         acqui%src(i)%comp=src_comp(1)
             
-            select case (sudata(ir)%hdr%trid)
-                case (11)
-                shot%rcv(ir)%comp='P'  !pressure
-                case (12)
-                shot%rcv(ir)%comp='vz' !vertical velocity
-                case (13)
-                shot%rcv(ir)%comp='vy' !horizontal velocity
-                case (14)
-                shot%rcv(ir)%comp='vx'
+
+    !         acqui%src(i)%nrcv=nr*nrcomp
+    !         if(allocated(acqui%src(i)%rcv))deallocate(acqui%src(i)%rcv)
+    !         allocate(acqui%src(i)%rcv(acqui%src(i)%nrcv))
+            
+    !         do jxl=1,nrxl
+
+    !             frx = ( rx1*(nrxl-jxl) + rx3*(jxl-1) )/(nrxl-1)
+    !             fry = ( ry1*(nrxl-jxl) + ry3*(jxl-1) )/(nrxl-1)
+    !             frz = ( rz1*(nrxl-jxl) + rz3*(jxl-1) )/(nrxl-1)
+
+    !             lrx = ( rx2*(nrxl-jxl) + rx4*(jxl-1) )/(nrxl-1)
+    !             lry = ( ry2*(nrxl-jxl) + ry4*(jxl-1) )/(nrxl-1)
+    !             lrz = ( rz2*(nrxl-jxl) + rz4*(jxl-1) )/(nrxl-1)
+
+    !         do jil=1,nril
+
+    !             rx  = ( frx*(nril-jil) + lrx*(jil-1) )/(nril-1)
+    !             ry  = ( fry*(nril-jil) + lry*(jil-1) )/(nril-1)
+    !             rz  = ( frz*(nril-jil) + lrz*(jil-1) )/(nril-1)
+
+    !             j   = jil + (jxl-1)*nril
+
+    !             acqui%src(i)%rcv(j)%x=rx
+    !             acqui%src(i)%rcv(j)%y=ry
+    !             acqui%src(i)%rcv(j)%z=rz
+    !             acqui%src(i)%rcv(j)%z=rcv_comp(1)
                 
-                case (1)
-                shot%rcv(ir)%comp='P'
-                case default
-                shot%rcv(ir)%comp='P'
-            end select
-            
-            shot%rcv(ir)%nt=sudata(ir)%hdr%ns
-            shot%rcv(ir)%dt=sudata(ir)%hdr%dt*1e-6
-        enddo
-        
-        
-        !scaling elevation
-        if(sudata(1)%hdr%scalel > 0) then
-            shot%src%z    = shot%src%z    * sudata(1)%hdr%scalel
-            shot%rcv(:)%z = shot%rcv(:)%z * sudata(1)%hdr%scalel
-        elseif(sudata(1)%hdr%scalel < 0) then
-            shot%src%z    = shot%src%z    / (-sudata(1)%hdr%scalel)
-            shot%rcv(:)%z = shot%rcv(:)%z / (-sudata(1)%hdr%scalel)
-        endif
-        
-        !scaling coordinates
-        if(sudata(1)%hdr%scalco > 0) then
-            shot%src%x    = shot%src%x    * sudata(1)%hdr%scalco
-            shot%src%y    = shot%src%y    * sudata(1)%hdr%scalco
-            shot%rcv(:)%x = shot%rcv(:)%x * sudata(1)%hdr%scalco
-            shot%rcv(:)%y = shot%rcv(:)%y * sudata(1)%hdr%scalco
-        elseif(sudata(1)%hdr%scalco < 0) then
-            shot%src%x    = shot%src%x    / (-sudata(1)%hdr%scalco)
-            shot%src%y    = shot%src%y    / (-sudata(1)%hdr%scalco)
-            shot%rcv(:)%x = shot%rcv(:)%x / (-sudata(1)%hdr%scalco)
-            shot%rcv(:)%y = shot%rcv(:)%y / (-sudata(1)%hdr%scalco)
-        endif
-        
-        do ir=1,shot%nrcv
-!            shot%rcv(ir)%aoffset=sqrt( (shot%src%x-shot%rcv(ir)%x)**2 &
-!                                      +(shot%src%y-shot%rcv(ir)%y)**2 &
-!                                      +(shot%src%z-shot%rcv(ir)%z)**2 )
-            shot%rcv(ir)%aoffset=sqrt( (shot%src%x-shot%rcv(ir)%x)**2 &
-                                      +(shot%src%y-shot%rcv(ir)%y)**2 )
-        enddo
-        
-        !load obs traces
-        call alloc(dobs,shot%rcv(1)%nt,shot%nrcv)
-        do ir=1,shot%nrcv
-            dobs(:,ir)=sudata(ir)%trace
-        enddo
-        
-        !clean su data
-        do ir=1,shot%nrcv
-            deallocate(sudata(ir)%trace)
-        enddo
-        deallocate(sudata)
-        
-    end subroutine
-    
-    subroutine source_wavelet_sinexp
+    !         enddo
 
-        a=-3.3333333*shot%src%fpeak
-        
-        call alloc(shot%src%wavelet,shot%src%nt)
-        
-        do it=1,shot%src%nt
-            t=(it-1)*shot%src%dt
-            
-            shot%src%wavelet(it)=sin(2.*r_pi*shot%src%fpeak*t)*exp(a*t)
-        enddo
-        
-        !butterworth filtering to mitigate spectrum high-end tail
-        call butterworth(1,shot%src%nt, shot%src%dt, shot%src_wavelet,&
-        o_zerophase=.false.,o_locut=.false.,&
-        o_fpasshi=fpeak,o_fstophi=2.*fpeak,&
-                        o_astophi=0.1)
-        
-    end subroutine
-    
-    subroutine source_wavelet_ricker
+    !         enddo
 
-        t0=setup_get_real('RICKER_DELAYTIME','T0',default=1./shot%src%fpeak)
-        
-        if (shot%src%fpeak*2.5 > 1./shot%src%dt) then
-            call hud('Ricker wavelet peak frequency too high (fpeak*2.5 > 1/dt). Reduce it.')
+    !     enddo
+
+    !     enddo
+
+    !     !duplicate positions for other components
+    !     do l=2,nrcomp
+    !         do j=1,nr
+    !             jj=j+(l-1)*nr
+    !             acqui%src(1)%rcv(jj)%z=acqui%src(1)%rcv(j)%z
+    !             acqui%src(1)%rcv(jj)%x=acqui%src(1)%rcv(j)%x
+    !             acqui%src(1)%rcv(jj)%y=acqui%src(1)%rcv(j)%y
+    !         enddo
+    !     enddo
+
+    !     do k=2,nscomp
+    !         do i=1,ns
+    !             ii=i+(k-1)*ns
+    !             acqui%src(ii)%rcv(:)%z=acqui%src(i)%rcv(:)%z
+    !             acqui%src(ii)%rcv(:)%x=acqui%src(i)%rcv(:)%x
+    !             acqui%src(ii)%rcv(:)%y=acqui%src(i)%rcv(:)%y
+    !         enddo
+    !     enddo
+
+    ! end subroutin
+
+    subroutine check_setup_positions(shot)
+        type(t_shot) :: shot
+
+        character(:),allocatable :: str
+
+        !check source positions
+        str='Shot# '//shot%sindex//' : '
+        if(shot%src%z<0.) then
+            shot%src%z = m%dz
+            call hud(str//'sz above top bnd of model! Set sz = dz.',mpiworld%iproc)
+        endif
+        if(shot%src%z>(m%nz-1)*m%dz) then
+            shot%src%z = (m%nz-2)*m%dz
+            call hud(str//'sz below bottom bnd of model! Set sz = (nz-2)*dz.',mpiworld%iproc)
+        endif
+        if(shot%src%x<0.) then
+            shot%src%x = m%dx
+            call hud(str//'sx beyond left bnd of model! Set sx = dx.',mpiworld%iproc)
+        endif
+        if(shot%src%x>(m%nx-1)*m%dx) then
+            shot%src%x = (m%nx-2)*m%dx
+            call hud(str//'sx beyond right bnd of model! Set sx = (nx-2)*dx.',mpiworld%iproc)
+        endif
+        if(shot%src%y<0.) then
+            shot%src%y = m%dy
+            call hud(str//'sy beyond front bnd of model! Set sy = dy.',mpiworld%iproc)
+        endif
+        if(shot%src%y>(m%ny-1)*m%dy) then
+            shot%src%y = (m%ny-2)*m%dy
+            call hud(str//'sy beyond rear bnd of model! Set sy = (ny-2)*dy.',mpiworld%iproc)
         endif
 
-        call alloc(shot%src%wavelet,shot%src%nt)
-
-        do it=1,shot%src%nt
-
-            t=(it-1)*shot%src%dt-t0
-
-            x=r_pi*shot%src%fpeak*t
-            x=-x*x
-            shot%src%wl(it)=(1.+2.*x)*exp(x)
-
-        enddo
-
-    end subroutine
-
-
-    subroutine update_wavelet
-            
-        character(:),allocatable :: update_wavelet
-        
-        !if nshot_per_processor is not same for each processor,
-        !update_wavelet='stack' mode will be stuck due to collective communication in m_matchfilter.f90
-        if(nshot_per_processor * mpiworld%nproc /= nshots) then
-            fatal('Unequal shot numbers on processors. If you are using UPDATE_WAVELET=''stack'', the code will be stuck due to collective communication in m_matchfilter')
+        !check receiver positions
+        str='Shot# '//shot%sindex//' has receiver(s) '
+        if(any(shot%rcv(:)%z<0.)) then
+            where(shot%rcv(:)<0.) shot%rcv(:)=m%dz
+            call hud(str//'rz above top of model! Set rz = dz.',mpiworld%iproc)
         endif
-
-        if(update_wavelet=='stack') then
-            !average wavelet across all processors
-            !note: if more shots than processors, non-assigned shots will not contribute to this averaging
-            call matchfilter_estimate(shot%src%nt,shot%nrcv,dsyn,dobs,shot%index,if_stack=.true.)
-        else
-            call matchfilter_estimate(shot%src%nt,shot%nrcv,dsyn,dobs,shot%index,if_stack=.false.)
+        if(any(shot%rcv(:)%z>(m%nz-1)*m%dz)) then
+            where(shot%rcv(:)%z>(m%nz-1)*m%dz) shot%rcv(:)%z=(m%nz-2)*dz
+            call hud(str//'rz below bottom of model! Set rz = (nz-2)*dz.',mpiworld%iproc)
         endif
-        
-        call matchfilter_apply_to_wavelet(shot%src%nt,shot%src%wavelet)
-        
-        call matchfilter_apply_to_data(shot%src%nt,shot%nrcv,dsyn)
-        
-        call suformat_write(iproc=0,file='wavelet_update',append=.true.)
-    end subroutine
-    
-    subroutine update_adjsrc
-        call matchfilter_correlate_filter_residual(shot%src%nt,shot%nrcv,shot%dres)
+        if(any(shot%rcv(:)%x<0.)) then
+            where(shot%rcv(:)%x<0.) shot%rcv(:)%x=m%dx
+            call hud(str//'rx beyond left bnd of model! Set rx = dx.',mpiworld%iproc)
+        endif
+        if(any(shot%rcv(:)%x>(m%nx-1)*m%dx)) then
+            where(shot%rcv(:)%x>(m%nx-1)*m%dx) shot%rcv(:)%x=(m%nx-2)*m%dx
+            call hud(str//'rx beyond right bnd of model! Set rx = (nx-2)*dx.',mpiworld%iproc)
+        endif
+        if(any(shot%rcv(:)%y<0.)) then
+            where(shot%rcv(:)%y<0.) shot%rcv(:)%y=m%dy
+            call hud(str//'ry outside front end of model! Set ry = dy.',mpiworld%iproc)
+        endif
+        if(any(shot%rcv(:)%y>(m%ny-1)*m%dy)) then
+            where(shot%rcv(:)%y>(m%ny-1)*m%dy) shot%rcv(:)%y=(m%ny-2)*m%dy
+            call hud(str//'ry beyond rear end of model! Set sy = (ny-2)*dy.',mpiworld%iproc)
+        endif
     end subroutine
 
-!     subroutine shot_check_rcv_ranges(mx,my,mz)
-!         integer :: problem
-!         problem=0
-!         
-!         do ir=1,shot%nrcv
-!             if(shot%rcv(ir)%ix>mx .or. shot%rcv(ir)%iy>my .or. shot%rcv(ir)%iz>mz) then
-!                 problem=problem+1
-!             endif
-!         enddo
-!         
-!         if(problem>0) then
-!             call hud('WARNING: some receivers are outside the computebox! They will be truncated.')
-!         endif
-!     end subroutine
-    
-!     subroutine read_shot_wavelet
-!         logical alive
-!         inquire(file=setup%file_wavelet, exist=alive)
-!         if(alive) then
-!             open(12,file=setup%file_wavelet,access='direct',recl=4*setup%nt,action='read',status='old')
-!             call alloc(shot%src%wavelet(setup%nt))
-!                 read(12,rec=1) shot%src%wavelet
-!             enddo
-!             close(12)
-!         else
-!             stop 'FILE_WAVELET doesn''t exist.'
-!         endif
-!        
-!    end subroutine
-
-    
 end

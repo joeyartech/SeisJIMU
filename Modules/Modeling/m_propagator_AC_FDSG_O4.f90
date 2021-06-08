@@ -5,29 +5,64 @@ use m_shot
 use m_field
 use m_boundarystore
 
-    !info
-    character(*),parameter :: info = &
-    'Time-domain Isotropic 2D/3D ACoustic system'//s_return// &
-    '1st-order Velocity-Stress formulation'//s_return// &
-    'Staggered-Grid Finite-Difference (FDSG) method'//s_return// &
-    'Cartesian O(x4,t2) stencil'//s_return// &
-    'gradients for: kpa rho'
-    integer,parameter :: ngrad=2
+    type t_propagator
+        !info
+        character(*),parameter :: info = &
+        'Time-domain Isotropic 2D/3D ACoustic system'//s_return// &
+        '1st-order Velocity-Stress formulation'//s_return// &
+        'Required model components: vp, rho'//s_return// &
+        'Required field components: vx, vy, vz, p'//s_return// &
+        'Staggered-Grid Finite-Difference (FDSG) method'//s_return// &
+        'Cartesian O(x4,t2) stencil'//s_return// &
+        'gradients wrt: kpa rho'
+        integer,parameter :: ngrad=2
 
-    !FD coeff
-    real,dimension(2),parameter :: coef = [1.125,      -1./24.]
-    
-    real :: c1x, c1y, c1z
-    real :: c2x, c2y, c2z
+        !shorthand for greek letters
+        !alp bta gma  del(dta) eps zta 
+        !eta tht iota kpa lda mu
+        !nu xi omi pi rho sgm
+        !tau ups phi chi psi oga
+        !
+        !buo : buoyancy
+        !vx,vy : horizontal velocities
+        !leading _ : inverse
 
-    !blooming
-    integer,dimension(:,:),allocatable :: bloom
-    integer,parameter :: initial_half_bloomwidth=5 !half bloom width at ift, should involve hicks points
-    
+        !local models shared between fields
+        real,dimension(:,:,:),allocatable :: buox, buoy, buoz, kpa, _kpa
+
+        !FD coeff
+        real,dimension(2),parameter :: coef = [1.125,      -1./24.]
+        
+        real :: c1x, c1y, c1z
+        real :: c2x, c2y, c2z
+
+        !time frames
+        ift=1
+        ilt=shot%src%nt
+        nt=ilt-ift+1
+        dt=shot%src%dt
+
+        contains
+        procedure :: print_info => print_info
+        procedure :: estim_RAM => estim_RAM
+        procedure :: check_model => check_model
+        procedure :: check_discretization => check_discretization
+        procedure :: init  => init
+        procedure :: init_field => init_field
+        procedure :: check_value => check_value
+        procedure :: reinit_boundary => reinit_boundary
+        procedure :: write => write
+        procedure :: add_source => add_source
+
+        procedure :: propagate => propagate
+        procedure :: propagate_reverse => propagate_reverse
+
+    end type
+
     contains
     
-    subroutine init(orig,if_will_restore)
-        logical,optional :: if_will_restore
+    subroutine init(self)
+        type(t_propagator) :: self
 
         !propagator - local model
         call alloc(self%buox,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily],initialize=.false.)
@@ -55,49 +90,34 @@ use m_boundarystore
             self%buoy(:,:,iy)=0.5/cb%rho(:,:,iy)+0.5/cb%rho(:,:,iy-1)
         enddo
 
+    end subroutine
+
+    subroutine init_field(name,o_if_will_reconstruct)
+        character(:),allocatable :: name
+        logical,optional :: o_if_will_reconstruct
+
+        call f%init(name)
+
         call alloc(f%vx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%vy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%vz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%p, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
-        call alloc(f%cpml_dvx_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%cpml_dvy_dy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%cpml_dvz_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%cpml_dp_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%cpml_dp_dy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%cpml_dp_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        
+        call alloc(f%cpml%dvx_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%cpml%dvy_dy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%cpml%dvz_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%cpml%dp_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%cpml%dp_dy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%cpml%dp_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
-        !blooming
-        call alloc(bloom,6,nt) !sfield blooming
-        
-        !directional maximum propagation distance per time step
-        distz = cb%velmax * dt / m%dz
-        distx = cb%velmax * dt / m%dx
-        disty = cb%velmax * dt / m%dy
-        
-        bloom(1,nt)=minval(orig(:)%iz) -initial_half_bloomwidth !shot%rcv(:)%iz
-        bloom(2,nt)=maxval(orig(:)%iz) +initial_half_bloomwidth
-        bloom(3,nt)=minval(orig(:)%ix) -initial_half_bloomwidth
-        bloom(4,nt)=maxval(orig(:)%ix) +initial_half_bloomwidth
-        bloom(5,nt)=minval(orig(:)%iy) -initial_half_bloomwidth
-        bloom(6,nt)=maxval(orig(:)%iy) +initial_half_bloomwidth
-        do it=nt-1,1,-1
-            it_fwd=nt-it+1
-            bloom(1,it)=max(nint(bloom(1,nt)-it_fwd*distz),cb%ifz) !bloombox ifz
-            bloom(2,it)=min(nint(bloom(2,nt)+it_fwd*distz),cb%ilz) !bloombox ilz
-            bloom(3,it)=max(nint(bloom(3,nt)-it_fwd*distx),cb%ifx) !bloombox ifx
-            bloom(4,it)=min(nint(bloom(4,nt)+it_fwd*distx),cb%ilx) !bloombox ilx
-            bloom(5,it)=max(nint(bloom(5,nt)-it_fwd*disty),cb%ify) !bloombox ify
-            bloom(6,it)=min(nint(bloom(6,nt)+it_fwd*disty),cb%ily) !bloombox ily
-        enddo
-        
-        if(.not.m%is_cubic) bloom(5:6,:)=1
+        call alloc(f%seismo(shot%nrcv*shot%ncomp,nt))
 
+        if(setup%get_logical('IF_BLOOM',default=.true.)) call f%init_bloom(nt)
 
-        !boundarystore
-        if(if_will_restore) then
-            call init_boundarystore
+        if(present(o_if_will_reconstruct)) then
+        if(o_if_will_reconstruct) then
+            call f%init_boundary
+        endif
         endif
 
     end subroutine
@@ -115,6 +135,40 @@ use m_boundarystore
         
     end subroutine
     
+    subroutine estim_RAM
+    end subroutine
+    
+    subroutine check_model
+        if(index(propagator%info,'vp')>0  .and. .not. allocated(m%vp)) 
+            allocate(m%vp(m%nz,m%nx,m%ny));  m%vp=2000.
+            call hud('Constant vp model is allocated by propagator.')
+        endif
+
+        if(index(propagator%info,'rho')>0 .and. .not. allocated(m%rho)) 
+            allocate(m%rho(m%nz,m%nx,m%ny)); m%rho=1000.
+            call hud('Constant rho model is allocated by propagator.')
+        endif
+    end subroutine
+    
+    subroutine check_discretization
+        !grid dispersion condition
+        if (5.*m%cell_diagonal > cb%velmin/shot%src%fpeak/2.) then  !FDTDo4 rule
+            call warn('WARNING: Shot# '//shot%cindex//' can have grid dispersion!')
+            if(mpiworld%is_master) write(*,*) 'Shot# '//shot%cindex//' 5*dx, velmin, fpeak:',5.*m%cell_diagonal, cb%velmin,shot%src%fpeak
+        endif
+        
+        !CFL condition
+        cfl = cb%velmax*shot%src%dt*m%cell_inv_diagonal*sum(abs(fdcoeff_o4))! ~0.494 (3D); ~0.606 (2D)
+        if(mpiworld%is_master) write(*,*) 'CFL value:',CFL
+        
+        if(cfl>1.) then
+            if(mpiworld%is_master) write(*,*) 'Shot# '//shot%cindex//' velmax, dt, 1/dx:',cb%velmax,shot%src%dt,m%cell_inv_diagonal
+            call error('CFL > 1 on shot# '//shot%cindex//'!')
+            stop
+        endif
+        
+    end subroutine
+
     !========= forward propagation =================
     !WE: du_dt = MDu
     !u=[vx vy vz p]^T, p=(sxx+syy+szz)/3=sxx+syy+szz
@@ -133,15 +187,11 @@ use m_boundarystore
     subroutine propagate(self)
         type(t_field) :: self
 
-        real,dimension(:,:),allocatable :: seismo
-        
         integer,parameter :: time_dir=1 !time direction
         
         call alloc(self%seismo,shot%nrcv,nt,initialize=.false.)
         
         tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.
-
-        if(if_snapshot) open(16,file='snapshot_field%vz',access='stream')
         
         do it=ift,ilt
             if(mod(it,500)==0 .and. mpiworld%is_master) write(*,*) 'it----',it
@@ -150,40 +200,37 @@ use m_boundarystore
             !do forward time stepping (step# conforms with backward & adjoint time stepping)
             !step 1: add forces to v^it
             call cpu_time(tic)
-            call field%inject_velocities(time_dir,it,wavelet(it))
+            call self%inject_velocities(time_dir,it,wavelet(it))
             call cpu_time(toc)
             tt1=tt1+tic-toc
                         
             !step 2: from v^it to v^it+1 by differences of s^it+0.5
             call cpu_time(tic)
-            call field%update_velocities(time_dir,it,sbloom(:,it))
+            call self%update_velocities(time_dir,it,sbloom(:,it))
             call cpu_time(toc)
             tt2=tt2+tic-toc
             
             !step 3: add pressure to s^it+0.5
             call cpu_time(tic)
-            call field%inject_stresses(time_dir,it,wavelet(it))
+            call self%inject_stresses(time_dir,it,wavelet(it))
             call cpu_time(toc)
             tt3=tt3+tic-toc
             
             !step 4: from s^it+0.5 to s^it+1.5 by differences of v^it+1
             call cpu_time(tic)
-            call field%update_stresses(time_dir,it,bloom(:,it))
+            call self%update_stresses(time_dir,it,bloom(:,it))
             call cpu_time(toc)
             tt4=tt4+tic-toc
             
             !step 5: sample v^it+1 or s^it+1.5 at receivers
             call cpu_time(tic)
-            call field%extract_field(self%seismo(:,it))
+            call self%extract_field(self%seismo(:,it))
             call cpu_time(toc)
             tt5=tt5+tic-toc
             
             !snapshot
-            if(if_snapshot) then
-            if(mod(it-1,it_delta_snapshot)==0 .or. it==ilt) then
-                call field%write(16)
-            endif
-            endif
+            if (mod(it-1,field%it_delta_snapshot)==0 .or. it==ilt) then
+            call field%snapshot
             
             !step 6: save v^it+1 in boundary layers
             if(field%if_will_restore) then
@@ -195,8 +242,7 @@ use m_boundarystore
             
         enddo
         
-        if(if_snapshot) then
-            close(16)
+        if(field%if_snapshot) then
             write(*,'(a,i0.5,a)') 'ximage < snapshot_sfield%vz  n1=',cb%nz,' perc=99'
             write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snapshot_sfield%vz  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'
         endif
@@ -210,14 +256,6 @@ use m_boundarystore
             write(*,*) 'time save boundary        ',tt6/mpiworld%max_threads
         endif
         
-        !synthetic data
-        call alloc(dsyn,shot%rcv(1)%nt,shot%nrcv,shot%ncomp)
-        do i=1,shot%ncomp
-            dsyn()=transpose(seismo())
-        enddo
-        
-        deallocate(seismo)
-
     end subroutine
 
     !add RHS to v^it

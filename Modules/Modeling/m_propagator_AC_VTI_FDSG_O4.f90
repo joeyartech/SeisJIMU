@@ -20,14 +20,7 @@ use, intrinsic :: ieee_arithmetic
     real :: c2x, c2y, c2z
     real :: c3x, c3y, c3z
     real :: c4x, c4y, c4z
-    
-    !CPML
-    real,parameter :: k_x = 1.
-    real,parameter :: k_y = 1.
-    real,parameter :: k_z = 1.
-    real,parameter :: npower=2.
-    real,parameter :: rcoef=0.001
-    
+        
     !local models in computebox
     type t_localmodel
         sequence

@@ -1,7 +1,7 @@
 module m_wavelets
 
     
-    subroutine source_wavelet_sinexp
+    function sinexp(nt,dt)
 
         a=-3.3333333*shot%src%fpeak
         
@@ -21,7 +21,7 @@ module m_wavelets
         
     end subroutine
     
-    subroutine source_wavelet_ricker
+    function ricker(nt,dt,t0)
 
         t0=setup_get_real('RICKER_DELAYTIME','T0',default=1./shot%src%fpeak)
         

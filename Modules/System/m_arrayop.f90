@@ -14,6 +14,14 @@ use m_setup
         module procedure alloc_real2
         module procedure alloc_real3
     end interface
+
+    interface add
+        module procedure add_int1
+    end interface
+
+    interface rm
+        module procedure rm_int1
+    end interface
     
     contains
     
@@ -331,5 +339,27 @@ use m_setup
         real,intent(in),dimension(n1(1):n1(2),n2(1):n2(2),n3(1):n3(2)),target :: a
         real,intent(out),dimension(:,:,:),pointer :: p
         p=>a
+    end subroutine
+
+    subroutine add_int1(a,n,item)
+        integer,dimension(n) :: a
+        integer,dimension(:),allocatable :: tmp
+        allocate(tmp(n+1)); tmp(1:n)=a; tmp(n+1)=item
+        deallocate(a); allocate(a(n+1))
+        a=tmp; deallocate(tmp)
+    end subroutine
+
+    subroutine rm_int1(a,n,item)
+        integer,dimension(n) :: a
+        integer,dimension(:),allocatable :: tmp
+        allocate(tmp(1))
+        do i=1,n
+            if(a(i)/=item) call add_int1(tmp,size(tmp),item)
+        enddo
+        deallocate(a); allocate(a(size(tmp)))
+        a=tmp; deallocate(tmp)
+    end subroutine
+
+    subroutine unify_int1
     end subroutine
 end
