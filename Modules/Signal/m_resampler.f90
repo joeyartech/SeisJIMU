@@ -1,8 +1,5 @@
-module m_resamp
+module m_resampler
 
-    private
-    public :: resamp
-    
     integer,parameter :: ltable=8, ntable=513
     real :: fmax = 0.066+0.265*log(real(ltable))
     real,dimension(0:ltable-1,0:ntable-1) :: table !sinc interpolation coeff
@@ -51,8 +48,9 @@ module m_resamp
 !  *
 !  */
 ! /************************ end self doc ***************************/
-    subroutine resamp(ntr,o_fin, din, nin, datain,&
-                         o_fout,dout,nout,dataout)
+    subroutine resampler(datain, dataout, ntr,  &
+                        o_fin, din, nin, &
+                        o_fout,dout,nout)
         real,dimension(nin,ntr)  :: datain
         real,dimension(nout,ntr) :: dataout
         real,optional :: o_fin, o_fout

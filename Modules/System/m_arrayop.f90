@@ -1,4 +1,5 @@
 module m_arrayop
+use m_mpienv
 use m_setup
 
     integer,parameter :: max_array_size=2147483647  !=huge(integer(kind=4))
@@ -327,39 +328,51 @@ use m_setup
         
     end
     
-    subroutine flatten_alias(a,n1,p)
-        integer,intent(in),dimension(2) :: n1
-        real,intent(in),dimension(n1(1):n1(2)),target :: a
-        real,intent(out),dimension(:),pointer :: p
-        p=>a(1:)
-    end subroutine
+    ! subroutine flatten_alias(a,n1,p)
+    !     integer,intent(in),dimension(2) :: n1
+    !     real,intent(in),dimension(n1(1):n1(2)),target :: a
+    !     real,intent(out),dimension(:),pointer :: p
+    !     p=>a(1:)
+    ! end subroutine
     
-    subroutine inflate_alias(a,n1,n2,n3,p)
-        integer,intent(in),dimension(2) :: n1,n2,n3
-        real,intent(in),dimension(n1(1):n1(2),n2(1):n2(2),n3(1):n3(2)),target :: a
-        real,intent(out),dimension(:,:,:),pointer :: p
-        p=>a
-    end subroutine
+    ! subroutine inflate_alias(a,n1,n2,n3,p)
+    !     integer,intent(in),dimension(2) :: n1,n2,n3
+    !     real,intent(in),dimension(n1(1):n1(2),n2(1):n2(2),n3(1):n3(2)),target :: a
+    !     real,intent(out),dimension(:,:,:),pointer :: p
+    !     p=>a
+    ! end subroutine
 
-    subroutine add_int1(a,n,item)
-        integer,dimension(n) :: a
-        integer,dimension(:),allocatable :: tmp
-        allocate(tmp(n+1)); tmp(1:n)=a; tmp(n+1)=item
-        deallocate(a); allocate(a(n+1))
-        a=tmp; deallocate(tmp)
-    end subroutine
+    function add_int1(a,n,item) result(b)
+        integer,dimension(*),intent(in) :: a
+        integer item
+        integer,dimension(:),allocatable :: b
+        
+        allocate(b(n+1)); b(1:n)=a(1:n)
+        b(n+1)=item
+        
+    end function
 
-    subroutine rm_int1(a,n,item)
-        integer,dimension(n) :: a
-        integer,dimension(:),allocatable :: tmp
-        allocate(tmp(1))
+    function rm_int1(a,n,item) result(b)
+        integer,dimension(*) :: a
+        integer,optional :: item
+        integer,dimension(:),allocatable :: b,tmp
+
+        allocate(tmp(n))
+
+        j=0
         do i=1,n
-            if(a(i)/=item) call add_int1(tmp,size(tmp),item)
+            if(a(i)/=item) then
+                j=j+1
+                tmp(j)=a(i)
+            endif
         enddo
-        deallocate(a); allocate(a(size(tmp)))
-        a=tmp; deallocate(tmp)
-    end subroutine
+        allocate(b(j)); b(:)=tmp(1:j)
+        
+        deallocate(tmp)
 
-    subroutine unify_int1
-    end subroutine
+    end function
+
+    ! function unify_int1
+    ! end function
+
 end

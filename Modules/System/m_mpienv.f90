@@ -29,7 +29,7 @@ use m_global
     contains
 
     subroutine init(self,name,communicator,thread_level)
-        type(t_mpienv) :: self
+        class(t_mpienv) :: self
         character(*) :: name
         integer communicator, thread_level
         
@@ -64,12 +64,12 @@ use m_global
     end subroutine
 
     subroutine barrier(self)
-        type(t_mpienv) :: self
+        class(t_mpienv) :: self
         call mpi_barrier(self%communicator,self%ierr)
     end subroutine
 
     subroutine write(self,filename,string)
-        type(t_mpienv) :: self
+        class(t_mpienv) :: self
         character(*) :: filename, string
 
         integer file_handler
@@ -103,7 +103,7 @@ use m_global
     end subroutine
     
     subroutine fin(self)
-        type(t_mpienv) :: self
+        class(t_mpienv) :: self
 
         if(self%is_master) print*, time_stamp()
 

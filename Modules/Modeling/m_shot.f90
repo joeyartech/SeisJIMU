@@ -68,11 +68,15 @@ use m_butterworth
 
     subroutine read_from_setup
         logical,save :: first_in=.true.
+        type(t_string),dimension(:),allocatable :: scomp
 
         if(first_in) then
             shot%nt=setup%get_int('TIME_STEP','NT')
             shot%dt=setup%get_int('TIME_INTERVAL','DT')
-            shot%src%comp=setup%get_str( 'SOURCE_COMPONENT',  'SCOMP',default='p'))
+            
+            scomp=setup%get_strs( 'SOURCE_COMPONENT',  'SCOMP',default='p'))
+            if(size(scomp)>1) call hud('SeisJIMU only considers the 1st component from SOURCE_COMPONENT.')
+            shot%src%comp=scomp(1)
         endif
 
         first_in=.false.
@@ -105,7 +109,7 @@ use m_butterworth
         shot%src%icomp=1 !don't know which su header tells this info..
         
         shot%nt=data%ns  !assume all traces have same ns
-        shot%dt=data%hdr(1)%dt*1e-6 !assume all traces have same dt
+        shot%dt=data%dt  !assume all traces have same dt
         
         shot%nrcv=data%ntr
         if(allocated(shot%rcv))deallocate(shot%rcv)
@@ -185,7 +189,9 @@ use m_butterworth
 
         else !wavelet file exists
             call wavelet%read(file)
-            call resample(wavelet%trs(:,1),shot%wavelet,shot%nt,shot%dt)
+            call resampler(wavelet%trs(:,1),shot%wavelet,1,&
+                            din=wavelet%dt,nin=wavelet%ns, &
+                            dout=shot%dt,  nout=shot%nt)
 
         endif
 
@@ -227,13 +233,13 @@ use m_butterworth
         do i=1,self%nrcv
             select case (self%rcv(i)%comp)
             case ('p')
-                call resample(f%seismo%p(i,:), self%dsyn(:,i))
+                call resampler(f%seismo%p(i,:), self%dsyn(:,i),1,din=propagator%dt,nin=propagator%nt,dout=shot%dt,nout=shot%nt)
             case ('vx')
-                call resample(f%seismo%vx(i,:),self%dsyn(:,i))
+                call resampler(f%seismo%vx(i,:),self%dsyn(:,i),1,din=propagator%dt,nin=propagator%nt,dout=shot%dt,nout=shot%nt)
             case ('vy')
-                call resample(f%seismo%vy(i,:),self%dsyn(:,i))
+                call resampler(f%seismo%vy(i,:),self%dsyn(:,i),1,din=propagator%dt,nin=propagator%nt,dout=shot%dt,nout=shot%nt)
             case ('vz')
-                call resample(f%seismo%vz(i,:),self%dsyn(:,i))
+                call resampler(f%seismo%vz(i,:),self%dsyn(:,i),1,din=propagator%dt,nin=propagator%nt,dout=shot%dt,nout=shot%nt)
             end select
         enddo
 

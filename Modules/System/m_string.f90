@@ -35,7 +35,7 @@ use m_global, only : i_str_len
     function lalign(str)
         character(*),intent(in) :: str
         character(:),allocatable :: lalign
-        lalign=trim(adjustl(s))
+        lalign=trim(adjustl(str))
 
     end function
 
@@ -93,14 +93,14 @@ use m_global, only : i_str_len
 
     end function
     
-    function ints2strs(num,o_format) result(str)
-        integer,dimension(*) :: num
+    function ints2strs(num,n,o_format) result(str)
+        integer,dimension(n) :: num
         character(*),optional :: o_format
         type(t_string),dimension(:),allocatable :: str
 
         character(i_str_len) :: tmp
                 
-        n=size(num); allocate(str(n))
+        allocate(str(n))
 
         do i=1,n
             if(present(o_format)) then
@@ -131,12 +131,14 @@ use m_global, only : i_str_len
 
     end function
 
-    function reals2strs(num,o_format) result(str)
-        real,dimension(*) :: num
+    function reals2strs(num,n,o_format) result(str)
+        real,dimension(n) :: num
         character(*),optional :: o_format
         type(t_string),dimension(:),allocatable :: str
         
         character(i_str_len) :: tmp
+
+        allocate(str(n))
         
         do i=1,n
             if(present(o_format)) then
@@ -148,6 +150,17 @@ use m_global, only : i_str_len
             str(i)%s=lalign(tmp)
         enddo
         
+    end function
+
+    function bool2str(bool) result(str)
+        logical :: bool
+        character(1) :: str
+
+        if(bool) then
+            str='T'
+        else
+            str='F'
+        endif
     end function
     
     function str2int(str,o_format) result(num)
@@ -170,25 +183,23 @@ use m_global, only : i_str_len
         
     end function
 
-    function strs2ints(str,o_format) result(num)
-        type(t_string),dimension(*) :: str
+    function strs2ints(str,n,o_format) result(num)
+        type(t_string),dimension(n) :: str
         character(*),optional :: o_format
         integer,dimension(:),allocatable :: num
         
-        n=size(str)
-
         do i=1,n
             !in case of no digits
-            if(scan(str(i),digits)==0) then
+            if(scan(str(i)%s,digits)==0) then
                 num(i)=0
                 cycle
             endif
             
             !convert
             if(present(o_format)) then
-                read(str(i),o_format) num(i)
+                read(str(i)%s,o_format) num(i)
             else
-                read(str(i),*) num(i)
+                read(str(i)%s,*) num(i)
             endif
         enddo
 
@@ -214,28 +225,37 @@ use m_global, only : i_str_len
         
     end function
 
-    function strs2reals(str,o_format) result(num)
-        type(t_string),dimension(*) :: str
+    function strs2reals(str,n,o_format) result(num)
+        type(t_string),dimension(n) :: str
         character(*),optional :: o_format
         real,dimension(:),allocatable :: num
         
-        n=size(str)
-
         do i=1,n
             !in case of no digits
-            if(scan(str(i),digits)==0) then
+            if(scan(str(i)%s,digits)==0) then
                 num(i)=0
                 cycle
             endif
             
             !convert
             if(present(o_format)) then
-                read(str(i),o_format) num(i)
+                read(str(i)%s,o_format) num(i)
             else
-                read(str(i),*) num(i)
+                read(str(i)%s,*) num(i)
             endif
         enddo
         
+    end function
+
+    function str2bool(str) result(bool)
+        character(*) :: str
+        logical :: bool
+
+        if(str(1:1)=='T'.or.str(1:1)=='t') then
+            bool=.true.
+        else
+            bool=.false.
+        endif
     end function
 
     !remove continuously repeated char from str_in
@@ -271,8 +291,7 @@ use m_global, only : i_str_len
         character(1) :: sep
         character(:),allocatable :: text
         
-        sep=' '
-        if(present(o_sep)) sep = o_sep
+        sep=' '; if(present(o_sep)) sep = o_sep
         
         !regularize input string
         text = remove_repetition(sep//str//sep , sep)
@@ -285,7 +304,11 @@ use m_global, only : i_str_len
         endif
         
         !count how many substrings
-        n=count(text==sep)-1
+        n=0
+        do k=1,len(text)
+            if(text(k:k)==sep) n=n+1
+        enddo
+        n=n-1
         allocate(strs(n))
         
         !split
@@ -303,27 +326,35 @@ use m_global, only : i_str_len
     end function
 
     !flatten a string array into a single long string glued by o_glue
-    function strcat(strs,o_glue) result(str)
-        type(t_string),dimension(*) :: strs
+    function strcat(strs,n,o_glue) result(str)
+        type(t_string),dimension(n) :: strs
         character(1),optional :: o_glue
         character(:),allocatable :: str
 
         character(1) :: glue
+        character(:),allocatable :: text
+        integer :: totlen
 
-        glue=' '
-        if(present(o_glue)) glue=o_glue
+        glue=' '; if(present(o_glue)) glue=o_glue
 
-        n=size(strs)
-        text=repeat(' ' , n*maxval(len(strs(:)%s)) )
+        totlen=len(strs(1)%s)+1
+        if(n>1) then
+            do k=2,n
+                totlen=totlen+len(strs(k)%s)+1
+            enddo
+        endif
+        text=repeat(' ' ,totlen)
 
         i=1
         do k=1,n
             j=len(strs(k)%s)+1
-            text(i,j)=str(k)%s//glue
+            text(i:j)=strs(k)%s//glue
             i=j
         enddo
 
         str=lalign(text)
+
+        deallocate(text)
 
     end function
 end

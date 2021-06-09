@@ -1,0 +1,20 @@
+#GIT_COMMIT:=$(shell git rev-parse HEAD)
+GIT_COMMIT:=$(shell git rev-parse --short HEAD)
+GIT_BRANCH:=$(shell git rev-parse --abbrev-ref HEAD)
+
+FLAGF77= -Ofast -fopenmp                         -fbacktrace  #-flto
+FLAGF90= -Ofast -fopenmp -ffree-line-length-none -fbacktrace  -fno-unsafe-math-optimizations -frounding-math -fsignaling-nans
+# FLAGF77= -g -Wall -fopenmp -fcheck=all                         -fbacktrace
+# FLAGF90= -g -Wall -fopenmp -fcheck=all -ffree-line-length-none -fbacktrace
+
+MOD=-J ../../mod
+FPP=-cpp -DGNU -D"commit='$(GIT_COMMIT)'" -D"branch='$(GIT_BRANCH)'"
+
+
+.SUFFIX : %.f %.f90 %.o
+
+%.o : %.f90
+	mpif90 $(FPP) $(FLAGF90) $(MOD) -c $^ -o $@
+
+%.o : %.f
+	mpif77        $(FLAGF77)        -c $^ -o $@
