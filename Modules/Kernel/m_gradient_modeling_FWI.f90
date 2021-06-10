@@ -20,6 +20,9 @@ use m_smoother_laplacian_sparse
         do ishot=1,shotlist%nshot_per_processor        
 
             call shot%init
+            call shot%read_from_data
+            call shot%set_time
+            call shot%set_space(index(propagator%info,'FDSG')>0)
 
             call hud('Modeling shot# '//shot%sindex)
             
@@ -35,8 +38,8 @@ use m_smoother_laplacian_sparse
 
             call sfield%add_RHS(shot%source)
             
-            call propagator%forward(sfield,dsyn=shot%dsyn)
-            !call shot%acquire(sfield)
+            call propagator%forward(sfield)
+            call sfield%acquire(shot%dsyn)
 
             if(mpiworld%is_master) call suformat_write(file='synth_raw_'//shot%sindex,shot%dsyn)
             

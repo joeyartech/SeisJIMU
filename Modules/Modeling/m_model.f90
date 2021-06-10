@@ -1,17 +1,14 @@
 module m_model
-use m_mpienv
+use m_string
 use m_setup
-use m_arrayop
 
-    real,dimension(:,:),allocatable :: topo
+    private
 
-    type t_model
+    type,public :: t_model
         integer :: nx,ny,nz, n
         real    :: dx,dy,dz
         real    :: ox,oy,oz
-        
-        real cell_volume, cell_diagonal, cell_inv_diagonal
-        
+                
         character(:),allocatable :: file
         type(t_string),dimension(:),allocatable :: attributes_read, attributes_write
 
@@ -25,106 +22,108 @@ use m_arrayop
 
         logical,dimension(:,:,:),allocatable :: is_freeze_zone
 
+        contains
+        procedure :: init => init
+        procedure :: estim_RAM => estim_RAM
+        procedure :: read => read
+        procedure :: write => write
+        procedure :: apply_freeze_zone => apply_freeze_zone
+
     end type
     
-    type(t_model) :: m
+    type(t_model),public :: m
 
     contains
 
-    subroutine estim_RAM
-        character(:),allocatable :: tmp
-
-        ! tmp=setup_get_char('MODEL_SIZE','NZXY')
-        ! read(tmp1,*) m%nz, m%nx, m%ny
-        ! m%n=m%nx*m%ny*m%nz
+    subroutine estim_RAM(self)
+        class(t_model) :: self
 
     end subroutine
 
-    subroutine init        
-        itmp=setup%get_ints('MODEL_SIZE','NZXY',mandatory=.true.)
-        m%nz=itmp(1); m%nx=itmp(2); m%ny=itmp(3)
-        m%n=m%nx*m%ny*m%nz
+    subroutine init(self)
+        class(t_model) :: self
 
-        if(m%ny==1) then
+        integer,dimension(3) :: itmp=[1,1,1]
+        real,dimension(3) :: rtmp=[1.,1.,1.]
+
+        itmp=setup%get_ints('MODEL_SIZE','NZXY',o_mandatory=.true.)
+        self%nz=itmp(1); self%nx=itmp(2); self%ny=itmp(3)
+        self%n=self%nx*self%ny*self%nz
+
+        if(self%ny==1) then
             call hud('2D geometry')
-            m%is_cubic=.false.
-            m%dy=1.
+            self%is_cubic=.false.
+            self%dy=1.
         else
             call hud('3D geometry')
-            m%is_cubic=.true.
+            self%is_cubic=.true.
         endif
 
-        rtmp=setup%get_reals('MODEL_SPACING','DZXY',mandatory=.true.)
-        m%dz=rtmp(1); m%dx=rtmp(2); m%dy=rtmp(3)
+        rtmp=setup%get_reals('MODEL_SPACING','DZXY',o_mandatory=.true.)
+        self%dz=rtmp(1); self%dx=rtmp(2); self%dy=rtmp(3)
 
-        m%cell_volume = m%dx*m%dy*m%dz
-        m%cell_diagonal=sqrt(m%dx**2+m%dz**2)
-        m%cell_inv_diagonal=sqrt(m%dx**(-2) + m%dz**(-2))
-
-        if(m%is_cubic) then
-            m%cell_diagonal=sqrt(m%dx**2+m%dy**2+m%dz**2)
-            m%cell_inv_diagonal=sqrt(m%dx**(-2) + m%dy**(-2) + m%dz**(-2))
-        endif
-
-        rtmp=setup%get_reals('MODEL_ORIGIN','OZXY',default=[0.,0.,0.])
-        m%oz=rtmp(1); m%ox=rtmp(2); m%oy=rtmp(3)
+        rtmp=setup%get_reals('MODEL_ORIGIN','OZXY',o_default='0. 0. 0.')
+        self%oz=rtmp(1); self%ox=rtmp(2); self%oy=rtmp(3)
         
-        m%file=setup%get_file('FILE_MODEL',mandatory=.true.) 
+        self%file=setup%get_file('FILE_MODEL',o_mandatory=.true.) 
 
-        self%attributes_read =setup%get_strs('MODEL_ATTRIBUTES',default='vp rho')
-        self%attributes_write=setup%get_strs('WRITE_MODEL_ATTRIBUTES',default='vp')
+        self%attributes_read =setup%get_strs('MODEL_ATTRIBUTES',o_default='vp rho')
+        self%attributes_write=setup%get_strs('MODEL_ATTRIBUTES_WRITE',o_default='vp')
         
     end subroutine
 
-    subroutine read
+    subroutine read(self)
+        class(t_model) :: self
+
         real,dimension(:,:,:),allocatable :: tmp
 
-        open(12,file=m%file,access='direct',recl=4*m%n,action='read',status='old')
+        open(12,file=self%file,access='direct',recl=4*self%n,action='read',status='old')
         
         do i=1,size(self%attributes_read)
-            select case(self%attributes_read%s)
+            select case(self%attributes_read(i)%s)
             case ('vp')
-                call alloc(m%vp,m%nz,m%nx,m%ny)
-                read(12,rec=i) m%vp
+                call alloc(self%vp,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%vp
                 call hud('vp model is read.')
-                m%ref_vel=m%vp(1,1,1)
+                self%ref_vel=self%vp(1,1,1)
 
             case ('vs')
-                call alloc(m%vs,m%nz,m%nx,m%ny)
-                read(12,rec=i) m%vs
+                call alloc(self%vs,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%vs
                 call hud('vs model is read.')
 
             case ('rho')
-                call alloc(m%rho,m%nz,m%nx,m%ny)
-                read(12,rec=i) m%rho
+                call alloc(self%rho,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%rho
                 call hud('rho model is read.')
-                m%ref_rho=m%rho(1,1,1)
-                m%ref_kpa=m%ref_rho*m%ref_vel**2
+                self%ref_rho=self%rho(1,1,1)
+                self%ref_kpa=self%ref_rho*self%ref_vel**2
 
             case ('eps')
-                call alloc(m%eps,m%nz,m%nx,m%ny)
-                read(12,rec=i) m%eps
+                call alloc(self%eps,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%eps
                 call hud('eps model is read.')
 
             case ('del')
-                call alloc(m%del,m%nz,m%nx,m%ny)
-                read(12,rec=i) m%del
+                call alloc(self%del,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%del
                 call hud('del model is read.')
 
             case ('eta')
-                call alloc(m%eta,m%nz,m%nx,m%ny)
-                read(12,rec=i) m%eta
+                call alloc(self%eta,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%eta
                 call hud('eta model is read.')
 
             case ('qp')
-                call alloc(m%qp,m%nz,m%nx,m%ny)
-                read(12,rec=i) m%qp
+                call alloc(self%qp,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%qp
                 call hud('qp model is read.')
 
             case ('qs')
-                call alloc(m%qs,m%nz,m%nx,m%ny)
-                read(12,rec=i) m%qs
+                call alloc(self%qs,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%qs
                 call hud('qs model is read.')
+
             end select
 
         enddo
@@ -133,40 +132,39 @@ use m_arrayop
 
 
         !freesurface
-        m%is_freesurface=setup_get_logical('IF_FREESURFACE',default=.true.)
+        self%is_freesurface=setup%get_bool('IF_FREESURFACE',o_default='T')
                 
         !freeze zone
-        call alloc(m%is_freeze_zone(m%nz,m%nx,m%ny),initialize=.false.)
-        m%is_freeze_zone=.false.
+        allocate(self%is_freeze_zone(self%nz,self%nx,self%ny)); self%is_freeze_zone=.false.
 
         !check file topo
         associate(file=>setup%get_file('FILE_TOPO'))
             if(file/='') then
-                call alloc(tmp,m%nx,m%ny,1)
-                open(12,file=file,access='direct',recl=4*m%n,action='read')
+                call alloc(tmp,self%nx,self%ny,1)
+                open(12,file=file,access='direct',recl=4*self%n,action='read')
                 read(12,rec=1) tmp
                 close(12)
-                if(mpiworld%is_master) write(*,*) 'topo minmax value:', minval(topo), maxval(topo)
+                call hud('topo minmax value:'//num2str(minval(tmp))//num2str(maxval(tmp)))
 
-                do iy=1,m%ny; do ix=1,m%nx
-                    m%is_freeze_zone(1:nint(tmp(ix,iy,1)/dz)+1,ix,iy)=.true.
+                do iy=1,self%ny; do ix=1,self%nx
+                    self%is_freeze_zone(1:nint(tmp(ix,iy,1)/self%dz)+1,ix,iy)=.true.
                 enddo; enddo
                 call hud('Freeze zone is set from FILE_TOPO.')
             endif
         end associate
 
         !2nd check vs model
-        if(allocated(m%vs)>1) then
-            if(setup_get_logical('IF_TOPO_FROM_VS',default=.true.)) then
-                !m%itopo = maxloc(m%vs, dim=1, mask=(m%vs<10), back=.true.)+1 !the "back" argument isn't implemented in gfortran until version 9 ..
-                do iy=1,m%ny; do ix=1,m%nx
-                    loopz: do iz=1,m%nz
-                        if(m%vs(iz,ix,iy)<10.) then
-                            m%is_freeze_zone(iz,ix,iy) = .true.
+        if(allocated(self%vs)) then
+            if(setup%get_bool('IF_TOPO_FROM_VS',o_default='T')) then
+                !self%itopo = maxloc(self%vs, dim=1, mask=(self%vs<10), back=.true.)+1 !the "back" argument isn't implemented in gfortran until version 9 ..
+                do iy=1,self%ny; do ix=1,self%nx
+                    loopz: do iz=1,self%nz
+                        if(self%vs(iz,ix,iy)<10.) then
+                            self%is_freeze_zone(iz,ix,iy) = .true.
                         else
                             exit loopz
                         endif
-                    enddo
+                    enddo loopz
                 enddo; enddo
                 call hud('Freeze zone is additionally set from vs model.')
             endif
@@ -175,61 +173,62 @@ use m_arrayop
         !3rd check if file freeze is given
         associate(file=>setup%get_file('FILE_FREEZE_ZONE'))
             if(file/='') then
-                call alloc(tmp,m%nz,m%nx,m%ny)
-                open(12,file=file,access='direct',recl=4*m%n,action='read')
+                call alloc(tmp,self%nz,self%nx,self%ny)
+                open(12,file=file,access='direct',recl=4*self%n,action='read')
                 read(12,rec=1) tmp
                 close(12)
                 
-                where(tmp==0.) m%is_freeze_zone=.true.
+                where(tmp==0.) self%is_freeze_zone=.true.
                 call hud('Freeze zone is additionally set from FILE_FREEZE_ZONE.')
             endif
         end associate
 
-        if(allocated(deallocated(tmp)))
-        
-        
+        if(allocated(tmp)) deallocate(tmp)
+                
     end subroutine
 
-    subroutine apply_freeze_zone
+    subroutine apply_freeze_zone(self)
+        class(t_model) :: self
+
         real,dimension(:,:,:),allocatable :: tmp
 
-        call alloc(tmp(m%nz,m%nx,m%ny))
+        call alloc(tmp(self%nz,self%nx,self%ny))
 
-        open(12,file=m%file,access='direct',recl=4*m%n,action='read',status='old')
+        open(12,file=self%file,access='direct',recl=4*self%n,action='read',status='old')
 
         do i=1,size(self%attributes_read)
-            select case(self%attributes_read%s)
+            select case(self%attributes_read(i)%s)
             case ('vp')        
                 read(12,rec=i) tmp
-                where(m%is_freeze_zone) m%vp=tmp
+                where(self%is_freeze_zone) self%vp=tmp
 
             case ('vs')
                 read(12,rec=i) tmp
-                where(m%is_freeze_zone) m%vs=tmp
+                where(self%is_freeze_zone) self%vs=tmp
 
             case ('rho')
                 read(12,rec=i) tmp
-                where(m%is_freeze_zone) m%rho=tmp
+                where(self%is_freeze_zone) self%rho=tmp
 
             case ('eps')
                 read(12,rec=i) tmp
-                where(m%is_freeze_zone) m%eps=tmp
+                where(self%is_freeze_zone) self%eps=tmp
 
             case ('del')
                 read(12,rec=i) tmp
-                where(m%is_freeze_zone) m%del=tmp
+                where(self%is_freeze_zone) self%del=tmp
 
             case ('eta')
                 read(12,rec=i) tmp
-                where(m%is_freeze_zone) m%eta=tmp
+                where(self%is_freeze_zone) self%eta=tmp
 
             case ('qp')
                 read(12,rec=i) tmp
-                where(m%is_freeze_zone) m%qp=tmp
+                where(self%is_freeze_zone) self%qp=tmp
 
             case ('qs')
                 read(12,rec=i) tmp
-                where(m%is_freeze_zone) m%qs=tmp
+                where(self%is_freeze_zone) self%qs=tmp
 
             end select
 
@@ -241,77 +240,78 @@ use m_arrayop
 
     end subroutine
 
-    subroutine write(o_suffix)
-        character(*),optional :: o_suffix
-        character(:),allocatable :: suffix
+    subroutine write(self)
+        class(t_model) :: self
+        ! character(*),optional :: o_suffix
+        ! character(:),allocatable :: suffix
 
-        if(present(o_suffix)) then
-            suffix=o_suffix
-        else
-            suffix=''
-        endif
+        ! if(present(o_suffix)) then
+        !     suffix=o_suffix
+        ! else
+        !     suffix=''
+        ! endif
 
-        open(13,file=setup%dir_working//'model'//suffix,access='direct',recl=4*m%n,action='write')
+        open(13,file=setup%dir_working//'model',access='direct',recl=4*self%n,action='write')
         
         do i=1,size(self%attributes_write)
-            select case(self%attributes_write%s)
+            select case(self%attributes_write(i)%s)
             case ('vp')
-                if(allocated(m%vp)) then
-                    write(13,rec=i) m%vp
+                if(allocated(self%vp)) then
+                    write(13,rec=i) self%vp
                     call hud('vp model is written.')
                 endif
 
             case ('vs')
-                if(allocated(m%vp)) then
-                    write(13,rec=i) m%vs
+                if(allocated(self%vp)) then
+                    write(13,rec=i) self%vs
                     call hud('vs model is written.')
                 endif
 
             case ('rho')
-                if(allocated(m%rho)) then
-                    write(13,rec=i) m%rho
+                if(allocated(self%rho)) then
+                    write(13,rec=i) self%rho
                     call hud('rho model is written.')
                 endif
 
             case ('ip')
-                if(allocated(m%vp).and.allocated(m%rho)) then
-                    write(13,rec=i) m%vp*m%rho
+                if(allocated(self%vp).and.allocated(self%rho)) then
+                    write(13,rec=i) self%vp*self%rho
                     call hud('ip model is written.')
                 endif
 
             case ('is')
-                if(allocated(m%vs).and.allocated(m%rho)) then
-                    write(13,rec=i) m%vs*m%rho
+                if(allocated(self%vs).and.allocated(self%rho)) then
+                    write(13,rec=i) self%vs*self%rho
                     call hud('is model is written.')
                 endif
 
             case ('eps')
-                if(allocated(m%eps)) then
-                    write(13,rec=i) m%eps
+                if(allocated(self%eps)) then
+                    write(13,rec=i) self%eps
                     call hud('eps model is written.')
                 endif
 
             case ('del')
-                if(allocated(m%del)) then
-                    write(13,rec=i) m%del
+                if(allocated(self%del)) then
+                    write(13,rec=i) self%del
                     call hud('del model is written.')
                 endif
 
             case ('eta')
-                if(allocated(m%eta)) then
-                    write(13,rec=i) m%eta
+                if(allocated(self%eta)) then
+                    write(13,rec=i) self%eta
                     call hud('eta model is written.')
                 endif
 
             case ('qp')
-                if(allocated(m%qp)) then
-                    write(13,rec=i) m%qp
+                if(allocated(self%qp)) then
+                    write(13,rec=i) self%qp
                     call hud('qp model is written.')
                 endif
 
             case ('qs')
-                if(allocated(m%qs)) then
-                    write(13,rec=i) m%qs
+                if(allocated(self%qs)) then
+                    write(13,rec=i) self%qs
                     call hud('qs model is written.')
                 endif
 

@@ -1,15 +1,14 @@
 include ../../make.inc
 
 
-srcfwd = \
+src = \
 m_hicks.f90 \
 m_butterworth.f90 \
-m_resampler.f90
-
-srcfwi = \
+m_resampler.f90 \
+m_wavelets.f90 \
 m_matchfilter.f90 \
-m_smoother_laplacian_sparse.f90 \
-m_separator.f90
+m_smoother_laplacian_sparse.f90
+
 
 all : $(src:.f90=.o)
 

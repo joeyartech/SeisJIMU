@@ -40,8 +40,9 @@ use m_string
 !  * $Revision: 1.33 $ ; $Date: 2011/11/11 23:56:14 $
 !  !! 
 
+    private
 
-    type t_header
+    type,public :: t_header
         sequence
         !BYTE# 1-4
         integer(4) :: tracl=0   !! Trace sequence number within line
@@ -366,7 +367,7 @@ use m_string
         
     end type
         
-    type t_format_su
+    type,public :: t_format_su
         type(t_header),dimension(:),allocatable :: hdrs
         real(4),dimension(:,:),allocatable :: trs
         integer :: ntr !number of traces

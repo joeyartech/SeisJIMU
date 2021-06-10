@@ -342,35 +342,43 @@ use m_setup
     !     p=>a
     ! end subroutine
 
-    function add_int1(a,n,item) result(b)
-        integer,dimension(*),intent(in) :: a
+    subroutine add_int1(a,n,item)
+        integer,dimension(:),allocatable :: a
         integer item
+
         integer,dimension(:),allocatable :: b
         
         allocate(b(n+1)); b(1:n)=a(1:n)
         b(n+1)=item
         
-    end function
+        deallocate(a)
+        a=b
+        deallocate(b)
 
-    function rm_int1(a,n,item) result(b)
-        integer,dimension(*) :: a
-        integer,optional :: item
-        integer,dimension(:),allocatable :: b,tmp
+    end subroutine
 
-        allocate(tmp(n))
+    subroutine rm_int1(a,n,item)
+        integer,dimension(:),allocatable :: a
+        integer :: item
+
+        integer,dimension(:),allocatable :: b
+
+        allocate(b(n))
 
         j=0
         do i=1,n
             if(a(i)/=item) then
                 j=j+1
-                tmp(j)=a(i)
+                b(j)=a(i)
             endif
         enddo
-        allocate(b(j)); b(:)=tmp(1:j)
-        
-        deallocate(tmp)
 
-    end function
+        deallocate(a)
+        allocate(a(j)); a(:)=b(1:j)
+
+        deallocate(b)
+
+    end subroutine
 
     ! function unify_int1
     ! end function

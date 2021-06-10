@@ -12,10 +12,10 @@
 !
 module m_hicks
 use m_arrayop
+use m_math
 
-    private 
-    public :: hicks_init, hicks_init_position, hicks_build_coeff, hicks_get_position
-    
+    private
+
     !Optimum Kaiser windowing parameter b for monopole point source
     !half window width r=1~10, kmax=pi/2 or 2pi/3
     real,dimension(2,10),parameter :: b_monopole = reshape([ &
@@ -40,133 +40,112 @@ use m_arrayop
         2.07e-0, 5.07e-1, 1.46e-1, 4.36e-2, 1.35e-2, 4.40e-3, 1.55e-3, 4.95e-4, 1.63e-4, 6.00e-5  & !kmax=2pi/3
         ],[2,10])
     
-    
     !choose r, kmax, b
     integer,parameter :: r=4
     real,parameter :: b=b_monopole(1,r) !kmax=pi/2.
-    
-    !threshold for small number
-    real,parameter :: epsilon=1e-3
-    
+
     !intent(in)
-    real :: x,y,z  !source point location
-    real :: dx,dy,dz
-    logical :: is_cubic,if_freesurface
+    real :: z,x,y  !point location
+    real :: dz,dx,dy
+    logical :: is_cubic,is_freesurface
+
     !intent(out)
     !range of interpolation points
-    integer :: ifx,ify,ifz
-    integer :: ix,iy,iz
-    integer :: ilx,ily,ilz
+    integer :: ifz,ifx,ify
+    integer :: iz,ix,iy
+    integer :: ilz,ilx,ily
 
     contains
 
-    !========= public procedures =========
-
-    subroutine hicks_init(o_dxyz,o_is_cubic,o_if_freesurface)
-        real,dimension(3),optional :: o_dxyz
-        logical,optional :: o_is_cubic, o_if_freesurface
-
-        dx=1.; dy=1.; dz=1.
-        is_cubic=.true.
-        if_freesurface=.true.
-
-        if(present(o_dxyz)) then
-            dx=o_dxyz(1)
-            dy=o_dxyz(2)
-            dz=o_dxyz(3)
-        endif
-        if(present(o_is_cubic))       is_cubic=o_is_cubic
-        if(present(o_if_freesurface)) if_freesurface=o_if_freesurface
+    subroutine hicks_init(dz_,dx_,dy_,is_cubic_,is_freesurface_)
+        logical :: is_cubic_,is_freesurface_
+        dz=dz_; dx=dx_; dy=dy_
+        is_cubic=is_cubic_; is_freesurface=is_freesurface_
     end subroutine
 
-    subroutine hicks_init_position(xyz)
-        real,dimension(3) :: xyz
-        x=xyz(1)
-        y=xyz(2)
-        z=xyz(3)
+    subroutine hikcs_init_position(z_,x_,y_)
+        z=z_;x=x_;y=y_
     end subroutine
 
-    subroutine hicks_build_coeff(fold_type,interp_coeff)
+    subroutine hicks_get_coef(fold_type,interp_coef)
         character(*),intent(in) :: fold_type
-        real,dimension(:,:,:),allocatable,intent(out) :: interp_coeff
+        real,dimension(:,:,:),allocatable,intent(out) :: interp_coef
         
-        real,dimension(-r:r) :: x_interp_coeff,y_interp_coeff,z_interp_coeff
+        real,dimension(-r:r) :: z_interp_coef,x_interp_coef,y_interp_coef
+
+        z_interp_coef=0.
+        x_interp_coef=0.
+        y_interp_coef=0.
         
-        x_interp_coeff=0.
-        y_interp_coeff=0.
-        z_interp_coeff=0.
-        
-        !x axis
-        call build_1d_hicks(x,dx,ifx,ix,ilx,x_interp_coeff)
-        !y axis
-        call build_1d_hicks(y,dy,ify,iy,ily,y_interp_coeff)
         !z axis
-        call build_1d_hicks(z,dz,ifz,iz,ilz,z_interp_coeff)
+        call build_1d_coef(z,dz,ifz,iz,ilz,z_interp_coef)
+        !x axis
+        call build_1d_coef(x,dx,ifx,ix,ilx,x_interp_coef)
+        !y axis
+        call build_1d_coef(y,dy,ify,iy,ily,y_interp_coef)
         
         !For free surface condition,
         !fold z_interp_coeff wrt inquiry point, which is
         !* freesurface point (at q(1)) in pressure case, or
         !* grid point that has global index=1 in velocity case (as freesurface is midway between vz(1) and vz(2))
-        if(if_freesurface .and. ifz<1) then
+        if(is_freesurface .and. ifz<1) then
             n=1-ifz   !compute the number of layers above the inquiry point
             iquiry=-r+n !compute the projected index of the inquiry point
             
             if(fold_type=='antisymm') then
                 !antisymmetric folding (pressure case): subtract points at and below inquiry point by points at and above inquiry point
                 !this includes the inquiry point such that coeff=0. at the inquiry point
-                z_interp_coeff(iquiry:iquiry+n) = z_interp_coeff(iquiry:iquiry+n) - z_interp_coeff(iquiry:-r:-1)
+                z_interp_coef(iquiry:iquiry+n) = z_interp_coef(iquiry:iquiry+n) - z_interp_coef(iquiry:-r:-1)
                 
             elseif(fold_type=='symmetric') then
                 !symmetric folding (velocity case): add points above and at and 1point below inquiry point to points below and at inquiry point
                 !such that coeff(iquiry)=coeff(iquiry+1)
-                z_interp_coeff(iquiry:iquiry+n+1) = z_interp_coeff(iquiry:iquiry+n+1) + z_interp_coeff(iquiry+1:-r:-1)
+                z_interp_coef(iquiry:iquiry+n+1) = z_interp_coef(iquiry:iquiry+n+1) + z_interp_coef(iquiry+1:-r:-1)
                 
             endif
             
             !clean above inquiry point
             !!note that no antisym or symmetric condition required for vx & vz
             !!so just truncate the coeff above inquiry point (ie. freesurface as they are at same depth levels of q)
-            z_interp_coeff(iquiry-1:-r:-1)=0.
+            z_interp_coef(iquiry-1:-r:-1)=0.
             
         endif
         
         !tensor product to generate 3D tensor
         if(is_cubic) then
-            call alloc(interp_coeff,[-r,r],[-r,r],[-r,r])
+            call alloc(interp_coef,[-r,r],[-r,r],[-r,r])
             do k=-r,r
             do j=-r,r
             do i=-r,r
-                interp_coeff(i,j,k)=z_interp_coeff(i)*x_interp_coeff(j)*y_interp_coeff(k)
+                interp_coef(i,j,k)=z_interp_coef(i)*x_interp_coef(j)*y_interp_coef(k)
             enddo
             enddo
             enddo
         else
-            call alloc(interp_coeff,[-r,r],[-r,r],[1,1])
+            call alloc(interp_coef,[-r,r],[-r,r],[1,1])
             do j=-r,r
             do i=-r,r
-                interp_coeff(i,j,1)=z_interp_coeff(i)*x_interp_coeff(j)
+                interp_coef(i,j,1)=z_interp_coef(i)*x_interp_coef(j)
             enddo
             enddo
         endif
         
     end subroutine
 
-    subroutine hicks_get_position(ifxyz,ixyz,ilxyz)
-        real,dimension(3),intent(out) :: ifxyz, ixyz, ilxyz
-
-        !index starts from 1 outside scope of build_1d_hicks
-        ifxyz(1)=ifx+1; ixyz(1)=ix+1; ilxyz(1)=ilx+1
-        if(.not.is_cubic) then
-            ifxyz(2)=1; ixyz(2)=1; ilxyz(2)=1
+    subroutine hicks_get_position(ifz_,ifx_,ify_,iz_,ix_,iy_,ilz_,ilx_,ily_)
+        !index starts from 1 outside scope of build_1d
+        ifz_=ifz+1; iz_=iz+1; ilz_=ilz+1
+        ifx_=ifx+1; ix_=ix+1; ilx_=ilx+1
+        if(is_cubic) then
+            ify_=ify+1; iy_=iy+1; ily_=ily+1
+        else
+            ify_=1;     iy_=1;    ily_=1
         endif
-        ifxyz(3)=ifz+1; ixyz(3)=iz+1; ilxyz(3)=ilz+1
 
     end subroutine
 
-    !========= private procedures =========
-
-    subroutine build_1d_hicks(x,dx,ifx,ix,ilx,x_interp_coeff)
-        real,dimension(-r:r) :: x_interp_coeff, xx
+    subroutine build_1d_coef(x,dx,ifx,ix,ilx,x_interp_coef)
+        real,dimension(-r:r) :: x_interp_coef, xx
         
         !---------------------------------------->
         !-4   -3   -2   -1   0   1   2   3   4     source local index (r=4)
@@ -190,19 +169,14 @@ use m_arrayop
         ifx=ix-r  !must > me%ixmin
         ilx=ix+r  !must < me%ixmax
         
-        if(abs(alpha)<epsilon) then !no need to interpolate
-            x_interp_coeff(0)=1.
+        if(abs(alpha)<r_epsilon) then !no need to interpolate
+            x_interp_coef(0)=1.
         else
             xx=[(i,i=-r,r)]+alpha
-            x_interp_coeff=W(xx)*sinc(xx)
+            x_interp_coef=W(xx)*sinc(xx)
         endif
 
     end subroutine
-
-    
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!! elemental functions !!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     elemental real function W(x)
         real, intent(in) :: x

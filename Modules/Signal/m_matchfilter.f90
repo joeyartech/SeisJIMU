@@ -11,12 +11,12 @@ use singleton
     
     contains
     
-    subroutine matchfilter_estimate(nt,nd,dsyn,dobs,index,if_stack)
-        integer nt,nd
-        real,dimension(nt,nd) :: dsyn,dobs
-        logical if_stack
+    subroutine matchfilter_estimate(dsyn,dobs,nt,ntr,o_index,oif_stack)
+        real,dimension(nt,ntr) :: dsyn,dobs
+        integer,optional :: o_index
+        logical,optional :: oif_stack
         
-        complex(fftkind),dimension(nt,nd) :: dsynfft,dobsfft   !fftkind=double precision
+        complex(fftkind),dimension(nt,ntr) :: dsynfft,dobsfft   !fftkind=double precision
         complex(fftkind),dimension(nt)    :: nom, denom
         
         dsynfft = fft(dcmplx(dsyn),dim=[1])  !maybe this array is so large that require "ulimit -s unlimited"
@@ -30,22 +30,25 @@ use singleton
         
         filter = nom/(denom+eps)
         
-        open(12,file='matchfilters_amp',access='direct',recl=4*nt) !for purpose of quality control of results
-        write(12,rec=index) real(abs(filter),kind=4)
-        close(12)
-        open(12,file='matchfilters_phase',access='direct',recl=4*nt) !for purpose of quality control of results
-        write(12,rec=index) real(atan(filter),kind=4)
-        close(12)
+        if(present(o_index)) then
+            open(12,file='matchfilters_amp',access='direct',recl=4*nt) !for purpose of quality control of results
+            write(12,rec=index) real(abs(filter),kind=4)
+            close(12)
+            open(12,file='matchfilters_phase',access='direct',recl=4*nt) !for purpose of quality control of results
+            write(12,rec=index) real(atan(filter),kind=4)
+            close(12)
+        endif
         
-        if(if_stack) then
+        if(present(oif_stack)) then
+        if(oif_stack) then
             call mpi_allreduce(MPI_IN_PLACE, filter, nt, MPI_DOUBLE_COMPLEX, MPI_SUM, mpiworld%communicator, mpiworld%ierr)
             filter =filter /mpiworld%nproc
+        endif
         endif
         
     end subroutine
     
-    subroutine matchfilter_apply_to_wavelet(nt,wavelet)
-        integer nt
+    subroutine matchfilter_apply_to_wavelet(wavelet,nt)
         real,dimension(nt) :: wavelet
         
         complex(fftkind),dimension(nt) :: wlfft
@@ -58,15 +61,14 @@ use singleton
         
     end subroutine
     
-    subroutine matchfilter_apply_to_data(nt,nd,dsyn)
-        integer nt,nd
-        real,dimension(nt,nd) :: dsyn
+    subroutine matchfilter_apply_to_data(dsyn,nt,ntr)
+        real,dimension(nt,ntr) :: dsyn
         
-        complex(fftkind),dimension(nt,nd) :: dsynfft
+        complex(fftkind),dimension(nt,ntr) :: dsynfft
         
         dsynfft = fft(dcmplx(dsyn),dim=[1])
         
-        do i=1,nd
+        do i=1,ntr
             dsynfft(:,i)=dsynfft(:,i)*filter(:)
         enddo
         
@@ -74,15 +76,14 @@ use singleton
         
     end subroutine
     
-    subroutine matchfilter_correlate_filter_residual(nt,nd,dres)
-        integer nt,nd
-        real,dimension(nt,nd) :: dres
+    subroutine matchfilter_correlate_filter_residual(dres,nt,ntr)
+        real,dimension(nt,ntr) :: dres
         
-        complex(fftkind),dimension(nt,nd) :: dresfft
+        complex(fftkind),dimension(nt,ntr) :: dresfft
         
         dresfft=fft(dcmplx(dres),dim=[1])
         
-        do i=1,nd
+        do i=1,ntr
             dresfft(:,i)=conjg(filter)*dresfft(:,i) !crosscorrelation
         enddo
         

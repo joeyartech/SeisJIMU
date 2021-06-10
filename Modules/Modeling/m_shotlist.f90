@@ -1,22 +1,33 @@
 module m_shotlist
+use m_global
 use m_string
 use m_mpienv
 use m_message
 use m_arrayop
 
-    type t_shotlist
+    private
+
+    type,public :: t_shotlist
         integer,dimension(:),allocatable :: list, list_per_processor
         integer :: nshot, nshot_per_processor
+
+        contains
+        procedure :: read_from_setup => read_from_setup
+        procedure :: read_from_data  => read_from_data
+        procedure :: assign => assign
+        procedure :: assign_random => assign_random
+        procedure :: print => print
     end type
 
     contains
 
-    subroutine read_from_setup
+    subroutine read_from_setup(self)
+        class(t_shotlist) :: self
 
-        select case (setup%get_char('ACQUI_GEOMETRY',default='spread'))
+        select case (setup%get_str('ACQUI_GEOMETRY',o_default='spread'))
 
         case ('irregularOBN')
-            open(13,file=setup%get_file('FILE_SOURCE_POSITION','SPOS',mandatory=.true.),action='read')
+            open(13,file=setup%get_file('FILE_SOURCE_POSITION','SPOS',o_mandatory=.true.),action='read')
             !count number of sources
             self%nshot=0
             do
@@ -25,40 +36,44 @@ use m_arrayop
                 self%nshot=self%nshot+1
             enddo
             close(13)
-            call hud('Will read'//num2str(self%nshot)//'source positions.')
+            call hud('Will read '//num2str(self%nshot)//' source positions.')
 
         case default
-            self%nshot=setup%get_int('NUMBER_SOURCE','NS',mandatory=.true.)
+            self%nshot=setup%get_int('NUMBER_SOURCE','NS',o_mandatory=.true.)
             
         end select        
 
-        call alloc(self%list(self%nshot)); self%list=[(i,1,self%nshot)]
+        call alloc(self%list,self%nshot); self%list=[(i,i=1,self%nshot)]
 
         call hud('Will compute '//num2str(self%nshot)//' synthetic shots.')
 
     end subroutine
     
-    subroutine read_from_data
-        integer file_size
+    subroutine read_from_data(self)
+        class(t_shotlist) :: self
+
         type(t_string),dimension(:),allocatable :: shots, subshots
+        character(:),allocatable :: file
+        logical :: exist
+        integer file_size
         
-        shots=setup%get_strs('SHOT_INDEX','ISHOT'))
+        shots=setup%get_strs('SHOT_INDEX','ISHOT')
         
         if(size(shots)==0) then !not given
             call hud('SHOT_INDEX is not given. Now count how many data files exist in the directory..')
-            file=setup%get_char('FILE_DATA')
+            file=setup%get_file('FILE_DATA')
 
             i=0; exist=.true.
             do
                 i=i+1
-                inquire(file=self%file//num2str(i,'(i0.4)')//'.su', size=file_size, exist=exist)
+                inquire(file=file//num2str(i,'(i0.4)')//'.su', size=file_size, exist=exist)
                 if(file_size==0) exist=.false.
                 if(.not.exist) exit
             enddo
 
             self%nshot=i
 
-            call alloc(self%list(self%nshot)); self%list=[(i,1,self%nshot)]
+            call alloc(self%list,self%nshot); self%list=[(i,i=1,self%nshot)]
         
             call hud('Found '//num2str(self%nshot)//' sequential shots.')
 
@@ -66,14 +81,14 @@ use m_arrayop
 
         if(size(shots)>0) then !given
             
-            call alloc(self%list(1))
+            allocate(self%list(1))
             
             do i=1,size(shots)
 
-                subshots=partition(shots(i)%s,o_sep=':')
-            
+                subshots=split(shots(i)%s,o_sep=':')
+
                 if(size(subshots)==1) then !add/rm
-                    if(subshots(1)%s(1:1)='-') !rm
+                    if(subshots(1)%s(1:1)=='-'.or.subshots(1)%s(1:1)=='!') then !rm
                         call rm(self%list,size(self%list),str2int(subshots(1)%s(2:)))
                     else
                         call add(self%list,size(self%list),str2int(subshots(1)%s))
@@ -88,13 +103,13 @@ use m_arrayop
                     do j=str2int(subshots(1)%s),str2int(subshots(3)%s),str2int(subshots(2)%s)
                         call add(self%list,size(self%list),j)
                     enddo
-                endif               
+                endif
 
             enddo
 
             self%nshot=size(self%list)
 
-            call hud('Total number of shots: '//num2str(nshot)//'')
+            call hud('Total number of shots: '//num2str(self%nshot)//'')
             
         endif
 
@@ -102,16 +117,17 @@ use m_arrayop
 
     end subroutine
 
-    subroutine assign
+    subroutine assign(self)
+        class(t_shotlist) :: self
 
-        if(self%nshot<mpiworld%nproc) then
-            call warn('No. of processors: '//num2str(mpiworld%nproc)//s_return// &
-                    'No. of shots: '//num2str(self%nshot)//s_return// &
-                    'Shot number < Processor number. Some processors will be always idle..')
-        endif
+        integer,dimension(:),allocatable :: list_
 
-        call alloc(self%list_per_processor, ceiling(self%nshot*1./mpiworld%nproc) )
+        call hud('No. of processors: '//num2str(mpiworld%nproc)//s_return// &
+                'No. of shots: '//num2str(self%nshot))
 
+        if(self%nshot<mpiworld%nproc) call warn('Shot number < Processor number. Some processors will be always idle..')
+
+        call alloc(list_, ceiling(self%nshot*1./mpiworld%nproc) )
 
         k=1 !shotlist's index
         j=0 !modulo shot#/processor#
@@ -122,27 +138,36 @@ use m_arrayop
                 k=k+1
             endif
             if (mpiworld%iproc==j) then
-                self%list_per_processor(k)=i
+                list_(k)=self%list(i)
             endif
             j=j+1
         enddo
 
-        self%nshot_per_processor=count(self%list_per_processor>=0)
+        self%nshot_per_processor=count(list_>=0)
+
+        call alloc(self%list_per_processor,self%nshot_per_processor)
+
+        self%list_per_processor=list_(1:self%nshot_per_processor)
+
+        deallocate(list_)
         
     end subroutine
 
-    subroutine assign_random
+    subroutine assign_random(self)
+        class(t_shotlist) :: self
+
     end subroutine
 
-    subroutine print
+    subroutine print(self)
+        class(t_shotlist) :: self
                 
         !message
-        write(*,'(a,i2,a)') ' Proc# '//mpiworld%sproc//' has ',self%nshot_per_processor,' assigned shots.'
+        write(*,*) ' Proc# '//mpiworld%sproc//' has '//num2str(self%nshot_per_processor)//' assigned shots.'
         call hud('See file "shotlist" for details.')
 
         !write shotlist to disk
-        write(tmp, *)  shotlist
-        call mpiworld_file_write('shotlist', 'Proc# '//mpiworld%sproc//' has '//int2str(self%nshot_per_processor,'(i4)')//' assigned shots:'//trim(tmp))
+        call mpiworld%write(setup%dir_working//'shotlist', 'Proc# '//mpiworld%sproc//' has '//num2str(self%nshot_per_processor)//' assigned shots:'// &
+            strcat(ints2strs(self%list_per_processor,self%nshot_per_processor),self%nshot_per_processor))
         
     end subroutine
 

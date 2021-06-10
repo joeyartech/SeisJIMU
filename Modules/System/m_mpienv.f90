@@ -3,10 +3,9 @@ use omp_lib
 use mpi
 use m_global
 
-    private :: exe_info, time_stamp
-    private :: init, barrier, write, fin
+    private
 
-    type t_mpienv
+    type,public :: t_mpienv
         integer iproc, nproc, communicator
         character(4) :: sproc
         logical :: is_master=.false.
@@ -24,7 +23,7 @@ use m_global
         procedure :: fin => fin
     end type
     
-    type(t_mpienv) :: mpiworld
+    type(t_mpienv),public :: mpiworld
 
     contains
 
@@ -72,12 +71,12 @@ use m_global
         class(t_mpienv) :: self
         character(*) :: filename, string
 
-        integer file_handler
+        integer fhandle
         integer(kind=mpi_offset_kind) disp, offset
-        character(:),allocatable :: str
+        character(:),allocatable :: stamp, str
 
         !time stamp
-        str='========================'//s_return// &
+        stamp='========================'//s_return// &
             ' MPI File IO Time Stamp '//s_return// &
             '========================'//s_return//time_stamp()
         
@@ -89,16 +88,16 @@ use m_global
 
         call self%barrier
         
-        ishift=len(str)
+        ishift=len(stamp)
         
         !mpi write only + append
         str=string//s_return
         disp=ishift+len(str)*self%iproc
         
-        call mpi_file_open(self%communicator, filename, mpi_mode_append+mpi_mode_wronly, mpi_info_null, file_handler, self%ierr)
-        call mpi_file_set_view(file_handler, disp, mpi_char, mpi_char, 'native', mpi_info_null, self%ierr)
-        call mpi_file_write(file_handler, str, len(str), mpi_char, mpi_status_ignore, self%ierr)        
-        call mpi_file_close(file_handler, self%ierr)
+        call mpi_file_open(self%communicator, filename, mpi_mode_append+mpi_mode_wronly, mpi_info_null, fhandle, self%ierr)
+        call mpi_file_set_view(fhandle, disp, mpi_char, mpi_char, 'native', mpi_info_null, self%ierr)
+        call mpi_file_write(fhandle, str, len(str), mpi_char, mpi_status_ignore, self%ierr)        
+        call mpi_file_close(fhandle, self%ierr)
 
     end subroutine
     

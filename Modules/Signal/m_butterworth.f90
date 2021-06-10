@@ -1,5 +1,8 @@
 module m_butterworth
-use m_global, only:r_pi
+use m_global
+
+    private
+    public :: butterworth
 
     contains
 

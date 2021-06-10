@@ -7,7 +7,7 @@ use m_string
 
     character(:),allocatable :: file
 
-    type t_setup
+    type,public :: t_setup
         logical :: exist=.true.
         character(:),allocatable :: dir_working
         character(:),allocatable :: dir_scratch
@@ -43,22 +43,27 @@ use m_string
         if(file=='') then
             self%exist=.false.
             return
-        else
-            inquire(file=file, exist=self%exist)
-            if(.not.self%exist) then
-                call hud('Setup file '//file//' does NOT exist!')
-                self%exist=.false.
-                return
-            endif
-            
-            call hud('Setup file: '//file)
-
-            self%dir_working=self%get_str('DIR','DIR_WORKING',o_default='./')
-            self%dir_scratch=self%get_str('DIR_SCRATCH','DIR_TMP',o_default=self%dir_working)
-
-            return
-
         endif
+
+        inquire(file=file, exist=self%exist)
+        if(.not.self%exist) then
+            call hud('Setup file '//file//' does NOT exist!')
+            self%exist=.false.
+            return
+        endif
+        
+        call hud('Setup file: '//file)
+
+        self%dir_working=self%get_str('DIR','DIR_WORKING',o_default='./results')
+        self%dir_scratch=self%get_str('DIR_SCRATCH','DIR_TMP',o_default=self%dir_working)
+
+        call hud('Working directory:'//self%dir_working)
+        call hud('Scratch directory:'//self%dir_scratch)
+        
+        call execute_command_line('mkdir -p '//self%dir_working, wait=.true.)
+        call execute_command_line('mkdir -p '//self%dir_scratch, wait=.true.)
+        
+        return
 
     end subroutine
 

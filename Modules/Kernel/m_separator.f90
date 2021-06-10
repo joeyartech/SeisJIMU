@@ -8,7 +8,6 @@ use m_arrayop
     contains
     
     subroutine build_separater(nt,dt,ntr,aoffset,sepa_div,sepa_rfl)
-        integer nt,ntr
         real    dt,aoffset(ntr)
         real,dimension(nt,ntr) :: sepa_div,sepa_rfl
         
@@ -18,10 +17,9 @@ use m_arrayop
         real,dimension(max_sepa_length) :: xsepa,tsepa
         
 
-        file_sepa=get_setup_file('FILE_SEPARATER')
+        file_sepa=get%setup_file('FILE_SEPARATER')
         if(file_sepa=='') then
-            if(mpiworld%is_master) write(*,*) 'ERROR: FILE_SEPARATER does NOT exist!'
-            error stop
+            call error('ERROR: FILE_SEPARATER does NOT exist!')
         endif
 
 
@@ -41,9 +39,8 @@ use m_arrayop
             i=index(text,"!"); if(i>0) text=text(1:i-1) !remove comments after !
 
             if (msg < 0) then !end of file
-                call hud('ERROR: FILE_SEPARATER is missing xsepa points.')
-                call hud('Code stop now!')
-                stop
+                call error('ERROR: FILE_SEPARATER is missing xsepa points.'//s_return &
+                    'Code stop now!')
             endif
             if (msg > 0) stop 'Check FILE_SEPARATER.  Something is wrong..'
             if (text=='') then !blank line
@@ -60,9 +57,8 @@ use m_arrayop
         !xsepa should be increasing
         do i=1,mx-1
             if(xsepa(i+1)<xsepa(i)) then
-                call hud('ERROR: xsepa from FILE_SEPARATER is NOT increasing!')
-                call hud('Code stop now!')
-                stop
+                call error('ERROR: xsepa from FILE_SEPARATER is NOT increasing!'//s_return &
+                    'Code stop now!')
             end if
         end do
 
@@ -75,9 +71,8 @@ use m_arrayop
             i=index(text,"!"); if(i>0) text=text(1:i-1) !remove comments after !
 
             if (msg < 0) then !end of file
-                call hud('ERROR: FILE_SEPARATER is missing tsepa points.')
-                call hud('Code stop now!')
-                stop
+                call error('ERROR: FILE_SEPARATER is missing tsepa points.'//s_return &
+                    'Code stop now!')
             endif
             if (msg > 0) stop 'Check FILE_SEPARATER.  Something is wrong..'
             if (text=='') then !blank line
@@ -91,9 +86,8 @@ use m_arrayop
         read(text,*,iostat=msg) tsepa(1:mx)
 
         if (any(tsepa(1:mx)<0.)) then
-            call hud('ERROR: FILE_SEPARATER has unequal tsepa & xsepa pairs.')
-            call hud('Code stop now!')
-            stop
+            call error('ERROR: FILE_SEPARATER has unequal tsepa & xsepa pairs.'//s_return &
+                'Code stop now!')
         endif
 
 

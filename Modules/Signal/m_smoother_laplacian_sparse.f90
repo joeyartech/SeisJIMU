@@ -1,10 +1,8 @@
 module m_smoother_laplacian_sparse
-use m_sysio
+use m_setup
 
-    private pi,nz,nx,ny,iaddmirror,dz,dx,dy,freq,frac_z,frac_x,frac_y,is_cubic,preserve
-    public
-    
-    real,parameter :: pi=3.1415927
+    private
+    public :: smoother_laplacian_init, smoother_laplacian_extend_mirror, smoother_laplacian_pseudo_stationary, smoother_laplacian_pseudo_nonstationary
     
     integer :: nz,nx,ny, iaddmirror
     real    :: dz,dx,dy
@@ -95,7 +93,7 @@ use m_sysio
     end subroutine
     
     
-    subroutine init_smoother_laplacian(n,d,frequency,o_addmirror,o_frac,o_preserve)
+    subroutine smoother_laplacian_init(n,d,freq_,o_addmirror,o_frac,o_preserve)
         integer,dimension(3) :: n
         real,dimension(3) :: d
         
@@ -103,7 +101,7 @@ use m_sysio
         real,dimension(3),optional :: o_frac
         character(6),optional :: o_preserve
         
-        character(:),allocatable :: tmp
+        real,dimension(3) :: tmp
         
         nz=n(1); dz=d(1)
         nx=n(2); dx=d(2)
@@ -115,12 +113,12 @@ use m_sysio
             is_cubic=.true.
         endif
         
-        freq=frequency
+        freq=freq_
         
         if(present(o_addmirror)) then
             iaddmirror=nint(o_addmirror/dz)+1
         else
-            iaddmirror=nint( setup_get_real('SMOOTHING_ADDMIRROR',default=dz) /dz ) +1
+            iaddmirror=nint( setup%get_real('SMOOTHING_ADDMIRROR',o_default='dz') /dz ) +1
         endif
         
         if(present(o_frac)) then
@@ -128,14 +126,16 @@ use m_sysio
             frac_x=o_frac(2)
             frac_y=o_frac(3)
         else
-            tmp=setup_get_char('SMOOTH_GRADIENT_WAVELENGTH_FRACTION',default='1 1 1')
-            read(tmp,*)frac_z,frac_x,frac_y
+            tmp=setup%get_reals('SMOOTH_GRADIENT_WAVELENGTH_FRACTION',o_default='1 1 1')
+            frac_z=tmp(1)
+            frac_x=tmp(2)
+            frac_y=tmp(3)
         endif
         
         if(present(o_preserve)) then
             preserve=o_preserve
         else
-            preserve=setup_get_char('SMOOTH_GRADIENT_PRESERVE_MAGNITUDE',default='nopreserve')
+            preserve=setup%get_str('SMOOTH_GRADIENT_PRESERVE_MAGNITUDE',o_default='nopreserve')
         endif
         
     end subroutine

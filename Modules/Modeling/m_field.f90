@@ -216,6 +216,27 @@ use, intrinsic :: ieee_arithmetic
         self%wavelet=>wavelet
     end subroutine
     
+
+    subroutine acquire(self)
+        type(t_shot) :: self
+
+        call alloc(self%dsyn,self%nt,self%nrcv)
+        do i=1,self%nrcv
+            select case (self%rcv(i)%comp)
+            case ('p')
+                call resampler(f%seismo%p(i,:), self%dsyn(:,i),1,din=propagator%dt,nin=propagator%nt,dout=shot%dt,nout=shot%nt)
+            case ('vx')
+                call resampler(f%seismo%vx(i,:),self%dsyn(:,i),1,din=propagator%dt,nin=propagator%nt,dout=shot%dt,nout=shot%nt)
+            case ('vy')
+                call resampler(f%seismo%vy(i,:),self%dsyn(:,i),1,din=propagator%dt,nin=propagator%nt,dout=shot%dt,nout=shot%nt)
+            case ('vz')
+                call resampler(f%seismo%vz(i,:),self%dsyn(:,i),1,din=propagator%dt,nin=propagator%nt,dout=shot%dt,nout=shot%nt)
+            end select
+        enddo
+
+    end subroutine
+
+
     subroutine acquire(f,seismo)
         class(t_field), intent(in) :: f
         real,dimension(*) :: seismo

@@ -1,9 +1,10 @@
-module m_cpml
+module m_absorbinglayer
 use m_sysio
 use m_arrayop
 use m_model
 use m_shot
 
+    private
 
 !geometry of model & computebox
 !                                      ifx<---- nx --->ilx
@@ -30,7 +31,7 @@ use m_shot
                                     !(make in/outside PML reflection more separate..)
                                     !decrease this number if grid dispersion is not satisfactory
 
-    type t_cpml
+    type,public :: t_absorbinglayer
         real,dimension(:),allocatable :: b_x,b_x_half,a_x,a_x_half
         real,dimension(:),allocatable :: b_y,b_y_half,a_y,a_y_half
         real,dimension(:),allocatable :: b_z,b_z_half,a_z,a_z_half
@@ -40,29 +41,23 @@ use m_shot
         real,dimension(:),allocatable :: kappa_z,kappa_z_half
 
         integer :: nlayer
+
+        contains
+        procedure :: init => init
     end type
         
-    type(t_cpml) :: cpml
+    type(t_absorbinglayer),public :: abl
 
     contains
-
-    subroutine init
-        character(:),allocatable :: tmp
-        real :: aperture(4)=0.
-        
-        !shot aperture, default is whole model
-        tmp=setup_get_char('APERTURE',default='-99999 99999 -99999 99999')
-        read(tmp,*) aperture
-        
-    end subroutine
     
     !CPML implementation from Komatitsch & Martin, 2007, Geophysics
     !code from Geodynamics or Komatitsch's GitHub site:
     !https://github.com/geodynamics/seismic_cpml
-    subroutine absorbinglayer_init
+    subroutine init(self)
+        class(t_absorbinglayer) :: abl
 
-        cpml%nlayer=setup_get_int('CPML_SIZE','NCPML')+2  !for FDTDo4 and hicks interpolation of radius=2
-        !cpml%nlayer=setup_get_int('CPML_SIZE','NCPML')+4  !for FDTDo8
+        self%nlayer=setup%get_int('CPML_SIZE','NCPML',o_default='20')+2  !for FDTDo4 and hicks interpolation of radius=2
+        !self%nlayer=setup_get_int('CPML_SIZE','NCPML')+4  !for FDTDo8
         
         real,dimension(:),allocatable   :: alpha_x,alpha_x_half
         real,dimension(:),allocatable   :: alpha_y,alpha_y_half
@@ -73,9 +68,9 @@ use m_shot
                 
         alpha_max = r_pi*shot%src%fpeak
 
-        thickness_pml_x = cpml%nlayer * m%dx
-        thickness_pml_y = cpml%nlayer * m%dy
-        thickness_pml_z = cpml%nlayer * m%dz
+        thickness_pml_x = self%nlayer * m%dx
+        thickness_pml_y = self%nlayer * m%dy
+        thickness_pml_z = self%nlayer * m%dz
         
         d0_x = -(npower+1)/(2.*thickness_pml_x) * cb%velmax * log(Rcoeff)
         d0_y = -(npower+1)/(2.*thickness_pml_y) * cb%velmax * log(Rcoeff) 
@@ -89,20 +84,20 @@ use m_shot
         call alloc(d_y,[cb%ify,cb%ily]); call alloc(d_y_half,[cb%ify,cb%ily])
         call alloc(d_z,[cb%ifz,cb%ilz]); call alloc(d_z_half,[cb%ifz,cb%ilz])
 
-        call alloc(cpml%b_x,[cb%ifx,cb%ilx]); call alloc(cpml%b_x_half,[cb%ifx,cb%ilx])
-        call alloc(cpml%a_x,[cb%ifx,cb%ilx]); call alloc(cpml%a_x_half,[cb%ifx,cb%ilx])
-        call alloc(cpml%b_y,[cb%ify,cb%ily]); call alloc(cpml%b_y_half,[cb%ify,cb%ily])
-        call alloc(cpml%a_y,[cb%ify,cb%ily]); call alloc(cpml%a_y_half,[cb%ify,cb%ily])
-        call alloc(cpml%b_z,[cb%ifz,cb%ilz]); call alloc(cpml%b_z_half,[cb%ifz,cb%ilz])
-        call alloc(cpml%a_z,[cb%ifz,cb%ilz]); call alloc(cpml%a_z_half,[cb%ifz,cb%ilz])
+        call alloc(self%b_x,[cb%ifx,cb%ilx]); call alloc(self%b_x_half,[cb%ifx,cb%ilx])
+        call alloc(self%a_x,[cb%ifx,cb%ilx]); call alloc(self%a_x_half,[cb%ifx,cb%ilx])
+        call alloc(self%b_y,[cb%ify,cb%ily]); call alloc(self%b_y_half,[cb%ify,cb%ily])
+        call alloc(self%a_y,[cb%ify,cb%ily]); call alloc(self%a_y_half,[cb%ify,cb%ily])
+        call alloc(self%b_z,[cb%ifz,cb%ilz]); call alloc(self%b_z_half,[cb%ifz,cb%ilz])
+        call alloc(self%a_z,[cb%ifz,cb%ilz]); call alloc(self%a_z_half,[cb%ifz,cb%ilz])
 
-        call alloc(cpml%kappa_x,[cb%ifx,cb%ilx],initialize=.false.); call alloc(cpml%kappa_x_half,[cb%ifx,cb%ilx],initialize=.false.)
-        call alloc(cpml%kappa_y,[cb%ify,cb%ily],initialize=.false.); call alloc(cpml%kappa_y_half,[cb%ify,cb%ily],initialize=.false.)
-        call alloc(cpml%kappa_z,[cb%ifz,cb%ilz],initialize=.false.); call alloc(cpml%kappa_z_half,[cb%ifz,cb%ilz],initialize=.false.)
+        call alloc(self%kappa_x,[cb%ifx,cb%ilx],initialize=.false.); call alloc(self%kappa_x_half,[cb%ifx,cb%ilx],initialize=.false.)
+        call alloc(self%kappa_y,[cb%ify,cb%ily],initialize=.false.); call alloc(self%kappa_y_half,[cb%ify,cb%ily],initialize=.false.)
+        call alloc(self%kappa_z,[cb%ifz,cb%ilz],initialize=.false.); call alloc(self%kappa_z_half,[cb%ifz,cb%ilz],initialize=.false.)
 
-        cpml%kappa_x=1.; cpml%kappa_x_half=1.
-        cpml%kappa_y=1.; cpml%kappa_y_half=1.
-        cpml%kappa_z=1.; cpml%kappa_z_half=1.
+        self%kappa_x=1.; self%kappa_x_half=1.
+        self%kappa_y=1.; self%kappa_y_half=1.
+        self%kappa_z=1.; self%kappa_z_half=1.
 
 
         !x dir
@@ -113,7 +108,7 @@ use m_shot
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_x
                 d_x(i)          = d0_x * abscissa_normalized**npower
-                cpml%kappa_x(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
+                self%kappa_x(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_x(i)      = alpha_max * (1. - abscissa_normalized)
             endif
 
@@ -122,7 +117,7 @@ use m_shot
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_x
                 d_x_half(i)     = d0_x * abscissa_normalized**npower
-                cpml%kappa_x_half(i) = 1. + (kappa_max-1.)*abscissa_normalized**npower
+                self%kappa_x_half(i) = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_x_half(i) = alpha_max * (1. - abscissa_normalized)
             endif
 
@@ -131,7 +126,7 @@ use m_shot
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_x
                 d_x(i)          = d0_x * abscissa_normalized**npower
-                cpml%kappa_x(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
+                self%kappa_x(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_x(i)      = alpha_max * (1.- abscissa_normalized)
             endif
 
@@ -140,7 +135,7 @@ use m_shot
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_x
                 d_x_half(i)     = d0_x * abscissa_normalized**npower
-                cpml%kappa_x_half(i) = 1. + (kappa_max-1.)*abscissa_normalized**npower
+                self%kappa_x_half(i) = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_x_half(i) = alpha_max * (1.- abscissa_normalized)
             endif
 
@@ -148,16 +143,16 @@ use m_shot
             if(alpha_x(i)     <0.) alpha_x(i)=0.
             if(alpha_x_half(i)<0.) alpha_x_half(i)=0.
 
-            cpml%b_x(i)      = exp(-(d_x(i)     /cpml%kappa_x(i)     +alpha_x(i)     )*shot%src%dt)
-            cpml%b_x_half(i) = exp(-(d_x_half(i)/cpml%kappa_x_half(i)+alpha_x_half(i))*shot%src%dt)
+            self%b_x(i)      = exp(-(d_x(i)     /self%kappa_x(i)     +alpha_x(i)     )*shot%src%dt)
+            self%b_x_half(i) = exp(-(d_x_half(i)/self%kappa_x_half(i)+alpha_x_half(i))*shot%src%dt)
 
-            if(abs(d_x(i)     )>1e-6) cpml%a_x(i)     =d_x(i)     *(cpml%b_x(i)     -1.)/(cpml%kappa_x(i)     *(d_x(i)     +cpml%kappa_x(i)     *alpha_x(i)     ))
-            if(abs(d_x_half(i))>1e-6) cpml%a_x_half(i)=d_x_half(i)*(cpml%b_x_half(i)-1.)/(cpml%kappa_x_half(i)*(d_x_half(i)+cpml%kappa_x_half(i)*alpha_x_half(i)))
+            if(abs(d_x(i)     )>1e-6) self%a_x(i)     =d_x(i)     *(self%b_x(i)     -1.)/(self%kappa_x(i)     *(d_x(i)     +self%kappa_x(i)     *alpha_x(i)     ))
+            if(abs(d_x_half(i))>1e-6) self%a_x_half(i)=d_x_half(i)*(self%b_x_half(i)-1.)/(self%kappa_x_half(i)*(d_x_half(i)+self%kappa_x_half(i)*alpha_x_half(i)))
 
         enddo
 
-        cpml%kappa_x     =1./cpml%kappa_x
-        cpml%kappa_x_half=1./cpml%kappa_x_half
+        self%kappa_x     =1./self%kappa_x
+        self%kappa_x_half=1./self%kappa_x_half
 
 
         !y dir
@@ -168,7 +163,7 @@ use m_shot
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_y
                 d_y(i)          = d0_y * abscissa_normalized**npower
-                cpml%kappa_y(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
+                self%kappa_y(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_y(i)      = alpha_max * (1. - abscissa_normalized)
             endif
 
@@ -177,7 +172,7 @@ use m_shot
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_y
                 d_y_half(i)     = d0_y * abscissa_normalized**npower
-                cpml%kappa_y_half(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
+                self%kappa_y_half(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_y_half(i) = alpha_max * (1. - abscissa_normalized)
             endif
 
@@ -186,7 +181,7 @@ use m_shot
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_y
                 d_y(i)          = d0_y * abscissa_normalized**npower
-                cpml%kappa_y(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
+                self%kappa_y(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_y(i)      = alpha_max * (1.- abscissa_normalized)
             endif
 
@@ -195,7 +190,7 @@ use m_shot
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_y
                 d_y_half(i)     = d0_y * abscissa_normalized**npower
-                cpml%kappa_y_half(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
+                self%kappa_y_half(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_y_half(i) = alpha_max * (1.- abscissa_normalized)
             endif
 
@@ -203,16 +198,16 @@ use m_shot
             if(alpha_y(i)     <0.) alpha_y(i)=0.
             if(alpha_y_half(i)<0.) alpha_y_half(i)=0.
 
-            cpml%b_y(i)      = exp(-(d_y(i)     /cpml%kappa_y(i)     +alpha_y(i)     )*shot%src%dt)
-            cpml%b_y_half(i) = exp(-(d_y_half(i)/cpml%kappa_y_half(i)+alpha_y_half(i))*shot%src%dt)
+            self%b_y(i)      = exp(-(d_y(i)     /self%kappa_y(i)     +alpha_y(i)     )*shot%src%dt)
+            self%b_y_half(i) = exp(-(d_y_half(i)/self%kappa_y_half(i)+alpha_y_half(i))*shot%src%dt)
 
-            if(abs(d_y(i)     )>1e-6) cpml%a_y(i)     =d_y(i)     *(cpml%b_y(i)     -1.)/(cpml%kappa_y(i)     *(d_y(i)     +cpml%kappa_y(i)     *alpha_y(i)     ))
-            if(abs(d_y_half(i))>1e-6) cpml%a_y_half(i)=d_y_half(i)*(cpml%b_y_half(i)-1.)/(cpml%kappa_y_half(i)*(d_y_half(i)+cpml%kappa_y_half(i)*alpha_y_half(i)))
+            if(abs(d_y(i)     )>1e-6) self%a_y(i)     =d_y(i)     *(self%b_y(i)     -1.)/(self%kappa_y(i)     *(d_y(i)     +self%kappa_y(i)     *alpha_y(i)     ))
+            if(abs(d_y_half(i))>1e-6) self%a_y_half(i)=d_y_half(i)*(self%b_y_half(i)-1.)/(self%kappa_y_half(i)*(d_y_half(i)+self%kappa_y_half(i)*alpha_y_half(i)))
 
         enddo
 
-        cpml%kappa_y     =1./cpml%kappa_y
-        cpml%kappa_y_half=1./cpml%kappa_y_half
+        self%kappa_y     =1./self%kappa_y
+        self%kappa_y_half=1./self%kappa_y_half
 
         !z dir
         do i = cb%ifz,cb%ilz
@@ -222,7 +217,7 @@ use m_shot
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_z
                 d_z(i)          = d0_z * abscissa_normalized**npower
-                cpml%kappa_z(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
+                self%kappa_z(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_z(i)      = alpha_max * (1. - abscissa_normalized)
             endif
 
@@ -231,7 +226,7 @@ use m_shot
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_z
                 d_z_half(i)     = d0_z * abscissa_normalized**npower
-                cpml%kappa_z_half(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
+                self%kappa_z_half(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_z_half(i) = alpha_max * (1. - abscissa_normalized)
             endif
 
@@ -240,7 +235,7 @@ use m_shot
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_z
                 d_z(i)          = d0_z * abscissa_normalized**npower
-                cpml%kappa_z(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
+                self%kappa_z(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_z(i)      = alpha_max * (1.- abscissa_normalized)
             endif
 
@@ -249,7 +244,7 @@ use m_shot
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_z
                 d_z_half(i)     = d0_z * abscissa_normalized**npower
-                cpml%kappa_z_half(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
+                self%kappa_z_half(i)   = 1. + (kappa_max-1.)*abscissa_normalized**npower
                 alpha_z_half(i) = alpha_max * (1.- abscissa_normalized)
             endif
 
@@ -257,16 +252,16 @@ use m_shot
             if(alpha_z(i)     <0.) alpha_z(i)=0.
             if(alpha_z_half(i)<0.) alpha_z_half(i)=0.
 
-            cpml%b_z(i)      = exp(-(d_z(i)     /cpml%kappa_z(i)     +alpha_z(i)     )*shot%src%dt)
-            cpml%b_z_half(i) = exp(-(d_z_half(i)/cpml%kappa_z_half(i)+alpha_z_half(i))*shot%src%dt)
+            self%b_z(i)      = exp(-(d_z(i)     /self%kappa_z(i)     +alpha_z(i)     )*shot%src%dt)
+            self%b_z_half(i) = exp(-(d_z_half(i)/self%kappa_z_half(i)+alpha_z_half(i))*shot%src%dt)
 
-            if(abs(d_z(i)     )>1e-6) cpml%a_z(i)     =d_z(i)     *(cpml%b_z(i)     -1.)/(cpml%kappa_z(i)     *(d_z(i)     +cpml%kappa_z(i)     *alpha_z(i)     ))
-            if(abs(d_z_half(i))>1e-6) cpml%a_z_half(i)=d_z_half(i)*(cpml%b_z_half(i)-1.)/(cpml%kappa_z_half(i)*(d_z_half(i)+cpml%kappa_z_half(i)*alpha_z_half(i)))
+            if(abs(d_z(i)     )>1e-6) self%a_z(i)     =d_z(i)     *(self%b_z(i)     -1.)/(self%kappa_z(i)     *(d_z(i)     +self%kappa_z(i)     *alpha_z(i)     ))
+            if(abs(d_z_half(i))>1e-6) self%a_z_half(i)=d_z_half(i)*(self%b_z_half(i)-1.)/(self%kappa_z_half(i)*(d_z_half(i)+self%kappa_z_half(i)*alpha_z_half(i)))
 
         enddo
 
-        cpml%kappa_z     =1./cpml%kappa_z
-        cpml%kappa_z_half=1./cpml%kappa_z_half
+        self%kappa_z     =1./self%kappa_z
+        self%kappa_z_half=1./self%kappa_z_half
 
         
         !no more need these variables

@@ -1,9 +1,13 @@
 module m_shot
-use m_shotlist
-use m_gen_acqui
-use m_suformat
+use m_string
+use m_mpienv
+use m_setup
+use m_format_su
 use m_hicks
-use m_butterworth
+use m_resampler
+use m_model
+
+    private
 
     !abbreviation:
     ! s,src : source
@@ -17,23 +21,23 @@ use m_butterworth
     ! pos : position
     ! comp : component
     
-    type t_source
-        real    :: x,y,z
-        integer :: ix,iy,iz
+    type,public :: t_source
+        real    :: z,x,y
+        integer :: iz,ix,iy
         integer :: ifz,ilz,ifx,ilx,ify,ily
         character(4) :: comp
-        real,dimension(:,:,:),allocatable :: interp_coeff
+        real,dimension(:,:,:),allocatable :: interp_coef
     end type
 
-    type t_receiver
-        real    :: x,y,z, aoffset
-        integer :: ix,iy,iz
+    type,public :: t_receiver
+        real    :: z,x,y, aoffset
+        integer :: iz,ix,iy
         integer :: ifz,ilz,ifx,ilx,ify,ily
         character(4) :: comp
-        real,dimension(:,:,:),allocatable :: interp_coeff
+        real,dimension(:,:,:),allocatable :: interp_coef
     end type
     
-    type t_shot
+    type,public :: t_shot
         integer :: index
         character(4) :: sindex
         
@@ -52,36 +56,48 @@ use m_butterworth
         real,dimension(:,:),allocatable :: dres !residual seismogram
         !real,dimension(:,:),allocatable :: dadj !adjoint seismogram
         
+        contains
+        procedure :: init => init
+        procedure :: read_from_setup => read_from_setup
+        procedure :: read_from_data  => read_from_data
+        procedure :: set_time  => set_time
+        procedure :: set_space => set_space
+        procedure :: update_wavelet => update_wavelet
+        procedure :: update_residuals => update_residuals
+        
     end type
     
-    type(t_shot) :: shot
+    type(t_shot),public :: shot
     
     contains
     
-    subroutine init(ishot)
-        integer ishot
+    subroutine init(self,index)
+        class(t_shot) :: self
+        integer index
 
-        self%index=shotlist(ishot)
-        self%sindex=num2str(shot%index,'(i0.4)')
+        self%index=index
+        self%sindex=num2str(index,'(i0.4)')
     
     end subroutine
 
-    subroutine read_from_setup
+    subroutine read_from_setup(self)
+        class(t_shot) :: self
+
         logical,save :: first_in=.true.
         type(t_string),dimension(:),allocatable :: scomp
 
         if(first_in) then
-            shot%nt=setup%get_int('TIME_STEP','NT')
-            shot%dt=setup%get_int('TIME_INTERVAL','DT')
+            self%nt=setup%get_int('TIME_STEP','NT')
+            self%dt=setup%get_real('TIME_INTERVAL','DT')
             
-            scomp=setup%get_strs( 'SOURCE_COMPONENT',  'SCOMP',default='p'))
+            scomp=setup%get_strs('SOURCE_COMPONENT','SCOMP',o_default='p')
             if(size(scomp)>1) call hud('SeisJIMU only considers the 1st component from SOURCE_COMPONENT.')
-            shot%src%comp=scomp(1)
+            self%src%comp=scomp(1)%s
         endif
 
         first_in=.false.
 
-        select case (setup%get_char('ACQUI_GEOMETRY',default='spread'))
+        select case (setup%get_str('ACQUI_GEOMETRY',o_default='spread'))
         case ('spread')
             call geometry_spread(self)
         case ('streamer')
@@ -90,258 +106,194 @@ use m_butterworth
         case ('spread3D')
         end select
 
-        call check_setup_positions
+        call check_range(self)
 
     end subroutine
 
-    subroutine read_from_data
+    subroutine read_from_data(self)
+        class(t_shot) :: self
+
         type(t_format_su) :: data
         
-        file=setup%get_file('FILE_DATA',mandatory=.true.)
+        call data%read(setup%get_file('FILE_DATA',o_mandatory=.true.),self%sindex)
 
-        call data%read(file//shot%sindex,shot%sindex)
-        
         !source & receiver geometry
-        shot%src%x=data%hdr(1)%sx
-        shot%src%y=data%hdr(1)%sy
-        shot%src%z=data%hdr(1)%sdepth
+        self%src%x=data%hdrs(1)%sx
+        self%src%y=data%hdrs(1)%sy
+        self%src%z=data%hdrs(1)%sdepth
         
-        shot%src%icomp=1 !don't know which su header tells this info..
+        self%src%comp='p' !don't know which su header tells this info..
         
-        shot%nt=data%ns  !assume all traces have same ns
-        shot%dt=data%dt  !assume all traces have same dt
+        self%nt=data%ns  !assume all traces have same ns
+        self%dt=data%dt  !assume all traces have same dt
         
-        shot%nrcv=data%ntr
-        if(allocated(shot%rcv))deallocate(shot%rcv)
-        allocate(shot%rcv(shot%nrcv))
+        self%nrcv=data%ntr
+        if(allocated(self%rcv))deallocate(self%rcv)
+        allocate(self%rcv(self%nrcv))
 
-        do ir=1,shot%nrcv
-            shot%rcv(ir)%x= data%hdr(ir)%gx
-            shot%rcv(ir)%y= data%hdr(ir)%gy
-            shot%rcv(ir)%z=-data%hdr(ir)%gelev
+        do ir=1,self%nrcv
+            self%rcv(ir)%x= data%hdrs(ir)%gx
+            self%rcv(ir)%y= data%hdrs(ir)%gy
+            self%rcv(ir)%z=-data%hdrs(ir)%gelev
             
-            select case (data%hdr(ir)%trid)
+            select case (data%hdrs(ir)%trid)
                 case (11)
-                shot%rcv(ir)%comp='p'  !pressure
+                self%rcv(ir)%comp='p'  !pressure
                 case (12)
-                shot%rcv(ir)%comp='vz' !vertical velocity
+                self%rcv(ir)%comp='vz' !vertical velocity
                 case (13)
-                shot%rcv(ir)%comp='vy' !horizontal velocity
+                self%rcv(ir)%comp='vy' !horizontal velocity
                 case (14)
-                shot%rcv(ir)%comp='vx'
+                self%rcv(ir)%comp='vx'
                 
                 case default
-                shot%rcv(ir)%comp='p'
+                self%rcv(ir)%comp='p'
             end select
             
         enddo
         
 
         !scale back elevation
-        if(data%hdr(1)%scalel > 0) then
-            shot%src%z    = shot%src%z    * data(1)%hdr%scalel
-            shot%rcv(:)%z = shot%rcv(:)%z * data(1)%hdr%scalel
-        elseif(data%hdr(1)%scalel < 0) then
-            shot%src%z    = shot%src%z    / (-data(1)%hdr%scalel)
-            shot%rcv(:)%z = shot%rcv(:)%z / (-data(1)%hdr%scalel)
+        if(data%hdrs(1)%scalel > 0) then
+            self%src%z    = self%src%z    * data%hdrs(1)%scalel
+            self%rcv(:)%z = self%rcv(:)%z * data%hdrs(1)%scalel
+        elseif(data%hdrs(1)%scalel < 0) then
+            self%src%z    = self%src%z    / (-data%hdrs(1)%scalel)
+            self%rcv(:)%z = self%rcv(:)%z / (-data%hdrs(1)%scalel)
         endif
         
         !scale back coordinates
-        if(data%hdr(1)%scalco > 0) then
-            shot%src%x    = shot%src%x    * data(1)%hdr%scalco
-            shot%src%y    = shot%src%y    * data(1)%hdr%scalco
-            shot%rcv(:)%x = shot%rcv(:)%x * data(1)%hdr%scalco
-            shot%rcv(:)%y = shot%rcv(:)%y * data(1)%hdr%scalco
-        elseif(data%hdr(1)%scalco < 0) then
-            shot%src%x    = shot%src%x    / (-data(1)%hdr%scalco)
-            shot%src%y    = shot%src%y    / (-data(1)%hdr%scalco)
-            shot%rcv(:)%x = shot%rcv(:)%x / (-data(1)%hdr%scalco)
-            shot%rcv(:)%y = shot%rcv(:)%y / (-data(1)%hdr%scalco)
+        if(data%hdrs(1)%scalco > 0) then
+            self%src%x    = self%src%x    * data%hdrs(1)%scalco
+            self%src%y    = self%src%y    * data%hdrs(1)%scalco
+            self%rcv(:)%x = self%rcv(:)%x * data%hdrs(1)%scalco
+            self%rcv(:)%y = self%rcv(:)%y * data%hdrs(1)%scalco
+        elseif(data%hdrs(1)%scalco < 0) then
+            self%src%x    = self%src%x    / (-data%hdrs(1)%scalco)
+            self%src%y    = self%src%y    / (-data%hdrs(1)%scalco)
+            self%rcv(:)%x = self%rcv(:)%x / (-data%hdrs(1)%scalco)
+            self%rcv(:)%y = self%rcv(:)%y / (-data%hdrs(1)%scalco)
         endif
         
         !load obs traces
-        call alloc(self%dobs,shot%nt,shot%nrcv)
-        self%dobs=data%trace
+        call alloc(self%dobs,self%nt,self%nrcv)
+        self%dobs=data%trs
         
         call check_setup_positions
 
     end subroutine
 
-    subroutine set_time
+    subroutine set_time(self)
+        class(t_shot) :: self
 
+        character(:),allocatable :: file
         type(t_format_su)::wavelet
 
-        shot%fpeak=setup%get_real('PEAK_FREQUENCY','FPEAK')
-        shot%fmax=setup%get_real('MAX_FREQUENCY','FMAX',default=shot%fpeak*2.5)
+        self%fpeak=setup%get_real('PEAK_FREQUENCY','FPEAK')
+        self%fmax=setup%get_real('MAX_FREQUENCY','FMAX',o_default=num2str(self%fpeak*2.5))
 
         !wavelet
         file=setup%get_file('FILE_SOURCE_WAVELET')
 
         if(file=='') then !not given
-            if(setup%get_str('WAVELET_TYPE',default='sinexp')=='sinexp') then
+            if(setup%get_str('WAVELET_TYPE',o_default='sinexp')=='sinexp') then
                 call hud('Use filtered sinexp wavelet')
-                shot%wavelet=sinexp(shot%nt,shot%dt,shot%fpeak)
+                self%wavelet=sinexp(self%nt,self%dt,self%fpeak)
             else
                 call hud('Use Ricker wavelet')
-                shot%wavelet=ricker(shot%nt,shot%dt,shot%fpeak)
+                self%wavelet=ricker(self%nt,self%dt,self%fpeak)
             endif
-            shot%wavelet=shot%wavelet *shot%dt/m%cell_volume
 
         else !wavelet file exists
             call wavelet%read(file)
-            call resampler(wavelet%trs(:,1),shot%wavelet,1,&
+            call resampler(wavelet%trs(:,1),self%wavelet,1,&
                             din=wavelet%dt,nin=wavelet%ns, &
-                            dout=shot%dt,  nout=shot%nt)
+                            dout=self%dt,  nout=self%nt)
 
         endif
 
         if(mpiworld%is_master) then
-            open(12,file='source_wavelet',access='direct',recl=4*shot%nt)
-            write(12,rec=1) shot%wavelet
+            open(12,file='source_wavelet',access='direct',recl=4*self%nt)
+            write(12,rec=1) self%wavelet
             close(12)
         endif
 
     end subroutine
 
-    subroutine update_wavelet
-
-        call matchfilter_estimate(shot%nt,shot%nrcv,shot%dsyn,shot%dobs,shot%sindex)
-        
-        call matchfilter_apply_to_wavelet(shot%nt,shot%wavelet)
-        
-        call matchfilter_apply_to_data(shot%nt,shot%nrcv,shot%dsyn)
-
-        !call suformat_write(iproc=0,file='wavelet_update',append=.true.)        
-        if(mpiworld%is_master) then
-            open(12,file='source_wavelet',access='stream',recl=4*shot%nt,position='append')
-            write(12) shot%wavelet
-            close(12)
-        endif
-
-    end subroutine
-    
-    subroutine update_residuals
-
-        call matchfilter_correlate_filter_residual(shot%nt,shot%nrcv,shot%dres)
-
-    end subroutine
-
-    subroutine acquire(self)
-        type(t_shot) :: self
-
-        call alloc(self%dsyn,self%nt,self%nrcv)
-        do i=1,self%nrcv
-            select case (self%rcv(i)%comp)
-            case ('p')
-                call resampler(f%seismo%p(i,:), self%dsyn(:,i),1,din=propagator%dt,nin=propagator%nt,dout=shot%dt,nout=shot%nt)
-            case ('vx')
-                call resampler(f%seismo%vx(i,:),self%dsyn(:,i),1,din=propagator%dt,nin=propagator%nt,dout=shot%dt,nout=shot%nt)
-            case ('vy')
-                call resampler(f%seismo%vy(i,:),self%dsyn(:,i),1,din=propagator%dt,nin=propagator%nt,dout=shot%dt,nout=shot%nt)
-            case ('vz')
-                call resampler(f%seismo%vz(i,:),self%dsyn(:,i),1,din=propagator%dt,nin=propagator%nt,dout=shot%dt,nout=shot%nt)
-            end select
-        enddo
-
-    end subroutine
-
-
-    subroutine set_space
+    subroutine set_space(self,is_fdsg)
+        class(t_shot) :: self
+        logical :: is_fdsg
 
         !shift positions to be 0-based
-        shot%src%x   =shot%src%x    - m%ox
-        shot%src%y   =shot%src%y    - m%oy
-        shot%src%z   =shot%src%z    - m%oz
-        shot%rcv(:)%x=shot%rcv(:)%x - m%ox
-        shot%rcv(:)%y=shot%rcv(:)%y - m%oy
-        shot%rcv(:)%z=shot%rcv(:)%z - m%oz
+        !then m%oz,ox,oy is no longer of use
+        self%src%z   =self%src%z    - m%oz
+        self%src%x   =self%src%x    - m%ox
+        self%src%y   =self%src%y    - m%oy
+        self%rcv(:)%z=self%rcv(:)%z - m%oz
+        self%rcv(:)%x=self%rcv(:)%x - m%ox
+        self%rcv(:)%y=self%rcv(:)%y - m%oy
 
         !absolute offset
-        do ir=1,shot%nrcv
-            shot%rcv(ir)%aoffset=sqrt( (shot%src%x-shot%rcv(ir)%x)**2 &
-                                      +(shot%src%y-shot%rcv(ir)%y)**2 &
-                                      +(shot%src%z-shot%rcv(ir)%z)**2 )
+        do ir=1,self%nrcv
+            self%rcv(ir)%aoffset=sqrt( (self%src%z-self%rcv(ir)%z)**2 &
+                                      +(self%src%x-self%rcv(ir)%x)**2 &
+                                      +(self%src%y-self%rcv(ir)%y)**2 )
         enddo
 
-        !shift velocity components in case of staggered grid
-        if_fdsg=index(projector%info,'FDSG')>0
-
-        if(if_fdsg) then
-            !source side
-            if(self%src%comp(1:1)=='v') then
-                shot%src%x=shot%src%x-(1-1)*m%dx !?
-                shot%src%y=shot%src%y-(1-1)*m%dy
-                shot%src%z=shot%src%z-(1-1)*m%dz
-            endif
-            
-            !receiver side
-            do i=1,shot%nrcv
-                if(self%rcv%comp(1:1)=='v') then
-                    shot%rcv(i)%x=shot%rcv(i)%x-(1-1)*m%dx !?
-                    shot%rcv(i)%y=shot%rcv(i)%y-(1-1)*m%dy
-                    shot%rcv(i)%z=shot%rcv(i)%z-(1-1)*m%dz
-                endif
-            enddo
-            
-            call hud('For velocity components, src & rcv positions have been shifted one grid point due to staggered grid stencils.')
-        endif
-
-        self%if_hicks=setup_get_logical('IF_HICKS',default=.true.)
+        self%if_hicks=setup%get_bool('IF_HICKS',o_default='T')
         
         if(self%if_hicks) then
 
             !Hicks interpolation
-            call hicks_init([m%dx,m%dy,m%dz],m%is_cubic, m%if_freesurface)
+            call hicks_init(m%dz,m%dx,m%dy,m%is_cubic,m%is_freesurface)
             
             !hicks coeff for source point
-            if(if_fdsg) then
+            if(is_fdsg) then
                 !for vx,vy,vz components, hicks%x,y,z should be added by m%dx/2,dy/2,dz/2, respectively,
                 !because v(1) is actually v[0.5], v(2) is v[1.5] etc.
-                if(shot%src%comp=='vx') call hicks_init_position([shot%src%x+m%dx/2.,shot%src%y,        shot%src%z        ])
-                if(shot%src%comp=='vy') call hicks_init_position([shot%src%x        ,shot%src%y+m%dy/2.,shot%src%z        ])
-                if(shot%src%comp=='vz') call hicks_init_position([shot%src%x        ,shot%src%y,        shot%src%z+m%dz/2.])
+                if(self%src%comp=='vz') call hicks_init_position(self%src%z+m%dz/2.,self%src%x        ,self%src%y        )
+                if(self%src%comp=='vx') call hicks_init_position(self%src%z        ,self%src%x+m%dx/2.,self%src%y        )
+                if(self%src%comp=='vy') call hicks_init_position(self%src%z        ,self%src%x        ,self%src%y+m%dy/2.)
             else
-                call hicks_init_position([shot%src%x,shot%src%y,shot%src%z])
+                call hicks_init_position(self%src%z,self%src%x,self%src%y)
             endif
 
-            if(shot%src%comp(1)=='p') then !explosive source or non-vertical force
-                call hicks_build_coeff('antisymm', shot%src%interp_coeff)
-            elseif(shot%src%comp=='vz') then !vertical force
-                shot%src%interp_coeff=hicks%build_coeff('symmetric')
-                call hicks_build_coeff('symmetric',shot%src%interp_coeff)
+            if(self%src%comp=='p') then !explosive source or non-vertical force
+                call hicks_get_coef('antisymm', self%src%interp_coef)
+            elseif(self%src%comp=='vz') then !vertical force
+                call hicks_get_coef('symmetric',self%src%interp_coef)
             else
-                shot%src%interp_coeff=hicks%build_coeff('truncate')
-                call hicks_build_coeff('truncate', shot%src%interp_coeff)
+                call hicks_get_coef('truncate', self%src%interp_coef)
             endif
 
-            call hicks_get_position([shot%src%ifx, shot%src%ify, shot%src%ifz], &
-                                    [shot%src%ix,  shot%src%iy,  shot%src%iz ], &
-                                    [shot%src%ilx, shot%src%ily, shot%src%ilz]  )
+            call hicks_get_position(self%src%ifz, self%src%ifx, self%src%ify, &
+                                    self%src%iz,  self%src%ix,  self%src%iy , &
+                                    self%src%ilz, self%src%ilx, self%src%ily  )
 
             !hicks coeff for receivers
-            do i=1,shot%nrcv
+            do i=1,self%nrcv
 
-                if(if_fdsg) then
+                if(is_fdsg) then
                     !for vx,vy,vz components, hicks%x,y,z should be added by m%dx/2,dy/2,dz/2, respectively,
                     !because v(1) is actually v[0.5], v(2) is v[1.5] etc.
-                    if(shot%rcv(i)%comp=='vx') call hicks_init_position([shot%rcv(i)%x+m%dx/2.,shot%rcv(i)%y,        shot%rcv(i)%        ])
-                    if(shot%rcv(i)%comp=='vy') call hicks_init_position([shot%rcv(i)%x        ,shot%rcv(i)%y+m%dy/2.,shot%rcv(i)%        ])
-                    if(shot%rcv(i)%comp=='vz') call hicks_init_position([shot%rcv(i)%x        ,shot%rcv(i)%y,        shot%rcv(i)%+m%dz/2.])
+                    if(self%rcv(i)%comp=='vz') call hicks_init_position(self%rcv(i)%z+m%dz/2.,self%rcv(i)%x        ,self%rcv(i)%y        )
+                    if(self%rcv(i)%comp=='vx') call hicks_init_position(self%rcv(i)%z        ,self%rcv(i)%x+m%dx/2.,self%rcv(i)%y        )
+                    if(self%rcv(i)%comp=='vy') call hicks_init_position(self%rcv(i)%z        ,self%rcv(i)%x        ,self%rcv(i)%y+m%dy/2.)
                 else
-                    call hicks_init_position([shot%rcv(i)%,shot%rcv(i)%y,shot%rcv(i)%z])
+                    call hicks_init_position(self%rcv(i)%z,self%rcv(i)%x,self%rcv(i)%y)
                 endif
 
-                if(shot%rcv(i)%comp(1)=='p') then !explosive source or non-vertical force
-                    call hicks_build_coeff('antisymm', shot%rcv(i)%interp_coeff)
-                elseif(shot%src%comp=='vz') then !vertical force
-                    call hicks_build_coeff('symmetric',shot%rcv(i)%interp_coeff)
+                if(self%rcv(i)%comp=='p') then !explosive source or non-vertical force
+                    call hicks_get_coef('antisymm', self%rcv(i)%interp_coef)
+                elseif(self%src%comp=='vz') then !vertical force
+                    call hicks_get_coef('symmetric',self%rcv(i)%interp_coef)
                 else
-                    call hicks_build_coeff('truncate', shot%rcv(i)%interp_coeff)
+                    call hicks_get_coef('truncate', self%rcv(i)%interp_coef)
                 endif
 
-                call hicks_get_position([shot%rcv(i)%ifx, shot%rcv(i)%ify, shot%rcv(i)%ifz], &
-                                        [shot%rcv(i)%ix,  shot%rcv(i)%iy,  shot%rcv(i)%iz ], &
-                                        [shot%rcv(i)%ilx, shot%rcv(i)%ily, shot%rcv(i)%ilz]  )
+                call hicks_get_position(self%rcv(i)%ifz, self%rcv(i)%ifx, self%rcv(i)%ify, &
+                                        self%rcv(i)%iz , self%rcv(i)%ix , self%rcv(i)%iy , &
+                                        self%rcv(i)%ilz, self%rcv(i)%ilx, self%rcv(i)%ily  )
 
             enddo
 
@@ -349,34 +301,59 @@ use m_butterworth
                 
         if(mpiworld%is_master) then
             write(*,*)'================================='
-            write(*,*)'Shot# '//shot%sindex//' info:'
+            write(*,*)'Shot# '//self%sindex//' info:'
             write(*,*)'================================='
-            write(*,*)'  nt,dt:',shot%src%nt,shot%src%dt
+            write(*,*)'  nt,dt:',self%nt,self%dt
             write(*,*)'---------------------------------'
-            write(*,*)'  sz,isz:',shot%src%z,shot%src%iz
-            write(*,*)'  sx,isx:',shot%src%x,shot%src%ix
-            write(*,*)'  sy,isy:',shot%src%y,shot%src%iy
-            write(*,*)'  ifz,ilz:',shot%src%ifz,shot%src%ilz
-            write(*,*)'  ifx,ilx:',shot%src%ifx,shot%src%ilx
-            write(*,*)'  ify,ily:',shot%src%ify,shot%src%ily
+            write(*,*)'  sz,isz:',self%src%z,self%src%iz
+            write(*,*)'  sx,isx:',self%src%x,self%src%ix
+            write(*,*)'  sy,isy:',self%src%y,self%src%iy
+            write(*,*)'  ifz,ilz:',self%src%ifz,self%src%ilz
+            write(*,*)'  ifx,ilx:',self%src%ifx,self%src%ilx
+            write(*,*)'  ify,ily:',self%src%ify,self%src%ily
             write(*,*)'---------------------------------'
-            write(*,*)'  minmax rz,irz:',minval(shot%rcv(:)%z),maxval(shot%rcv(:)%z),minval(shot%rcv(:)%iz),maxval(shot%rcv(:)%iz)
-            write(*,*)'  minmax rx,irx:',minval(shot%rcv(:)%x),maxval(shot%rcv(:)%x),minval(shot%rcv(:)%ix),maxval(shot%rcv(:)%ix)
-            write(*,*)'  minmax ry,iry:',minval(shot%rcv(:)%y),maxval(shot%rcv(:)%y),minval(shot%rcv(:)%iy),maxval(shot%rcv(:)%iy)
-            write(*,*)'  minmax ifz,ilz:',minval(shot%rcv(:)%ifz),maxval(shot%rcv(:)%ifz),minval(shot%rcv(:)%ilz),maxval(shot%rcv(:)%ilz)
-            write(*,*)'  minmax ifx,ilx:',minval(shot%rcv(:)%ifx),maxval(shot%rcv(:)%ifx),minval(shot%rcv(:)%ilx),maxval(shot%rcv(:)%ilx)
-            write(*,*)'  minmax ify,ily:',minval(shot%rcv(:)%ify),maxval(shot%rcv(:)%ify),minval(shot%rcv(:)%ily),maxval(shot%rcv(:)%ily)
-            write(*,*)'  nrcv:',shot%nrcv
+            write(*,*)'  minmax rz,irz:',minval(self%rcv(:)%z),maxval(self%rcv(:)%z),minval(self%rcv(:)%iz),maxval(self%rcv(:)%iz)
+            write(*,*)'  minmax rx,irx:',minval(self%rcv(:)%x),maxval(self%rcv(:)%x),minval(self%rcv(:)%ix),maxval(self%rcv(:)%ix)
+            write(*,*)'  minmax ry,iry:',minval(self%rcv(:)%y),maxval(self%rcv(:)%y),minval(self%rcv(:)%iy),maxval(self%rcv(:)%iy)
+            write(*,*)'  minmax ifz,ilz:',minval(self%rcv(:)%ifz),maxval(self%rcv(:)%ifz),minval(self%rcv(:)%ilz),maxval(self%rcv(:)%ilz)
+            write(*,*)'  minmax ifx,ilx:',minval(self%rcv(:)%ifx),maxval(self%rcv(:)%ifx),minval(self%rcv(:)%ilx),maxval(self%rcv(:)%ilx)
+            write(*,*)'  minmax ify,ily:',minval(self%rcv(:)%ify),maxval(self%rcv(:)%ify),minval(self%rcv(:)%ily),maxval(self%rcv(:)%ily)
+            write(*,*)'  nrcv:',self%nrcv
             write(*,*)'---------------------------------'
         endif
 
     end subroutine
+
+    subroutine update_wavelet(self)
+        class(t_shot) :: self
+
+        call matchfilter_estimate(self%nt,self%nrcv,self%dsyn,self%dobs,self%sindex)
         
+        call matchfilter_apply_to_wavelet(self%nt,self%wavelet)
+        
+        call matchfilter_apply_to_data(self%nt,self%nrcv,self%dsyn)
+
+        !call suformat_write(iproc=0,file='wavelet_update',append=.true.)        
+        if(mpiworld%is_master) then
+            open(12,file='source_wavelet',access='stream',position='append')
+            write(12) self%wavelet
+            close(12)
+        endif
+
+    end subroutine
+    
+    subroutine update_residuals(self)
+        class(t_shot) :: self
+
+        call matchfilter_correlate_filter_residual(self%nt,self%nrcv,self%dres)
+
+    end subroutine
+
     subroutine geometry_spread(shot)
         type(t_shot) :: shot
         logical :: first_in=.true.
         real,dimension(3),save :: os,or, ds,dr
-        real,save :: nr
+        integer,save :: nr
         type(t_string),dimension(:),allocatable,save :: rcomp
 
         if(first_in) then
@@ -387,7 +364,7 @@ use m_butterworth
             dr=setup%get_reals('RECEIVER_SPACING','DR')
 
             nr=setup%get_int('NUMBER_RECEIVER','NR')
-            rcomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',default='p'))
+            rcomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',o_default='p')
         endif
 
         first_in=.false.
@@ -405,15 +382,15 @@ use m_butterworth
         !receiver side
         shot%nrcv=nr*size(rcomp)
 
-        if(allocated(self%rcv)) deallocate(self%rcv)
-        allocate(self%rcv(shot%nrcv))
+        if(allocated(shot%rcv)) deallocate(shot%rcv)
+        allocate(shot%rcv(shot%nrcv))
 
         do j=1,size(rcomp)
             do i=0,nr-1
-                self%rcv(1+i+j*nr)%comp = rcomp(j)%s
-                self%rcv(1+i+j*nr)%rz = or(1) + (i-1)*dr(1)
-                self%rcv(1+i+j*nr)%rx = or(2) + (i-1)*dr(2)
-                self%rcv(1+i+j*nr)%ry = or(3) + (i-1)*dr(3)
+                shot%rcv(1+i+j*nr)%comp = rcomp(j)%s
+                shot%rcv(1+i+j*nr)%z = or(1) + (i-1)*dr(1)
+                shot%rcv(1+i+j*nr)%x = or(2) + (i-1)*dr(2)
+                shot%rcv(1+i+j*nr)%y = or(3) + (i-1)*dr(3)
             enddo
         enddo
 
@@ -423,7 +400,7 @@ use m_butterworth
         type(t_shot) :: shot
         logical :: first_in=.true.
         real,dimension(3),save :: os,ooff, ds,doff
-        real,save :: noff
+        integer,save :: noff
         type(t_string),dimension(:),allocatable,save :: rcomp
 
         if(first_in) then
@@ -434,7 +411,7 @@ use m_butterworth
             doff=setup%get_reals('OFFSET_SPACING', 'DOFF')
 
             noff=setup%get_int('NUMBER_OFFSET','NOFF')
-            rcomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',default='p'))
+            rcomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',o_default='p')
         endif
 
         first_in=.false.
@@ -452,15 +429,15 @@ use m_butterworth
         !receiver side
         shot%nrcv=nr*size(rcomp)
 
-        if(allocated(self%rcv)) deallocate(self%rcv)
-        allocate(self%rcv(shot%nrcv))
+        if(allocated(shot%rcv)) deallocate(shot%rcv)
+        allocate(shot%rcv(shot%nrcv))
 
         do j=1,size(rcomp)
             do i=0,nr-1
-                self%rcv(1+i+j*nr)%comp = rcomp(j)%s
-                self%rcv(1+i+j*nr)%rz = self%src%z + off(1) + (i-1)*doff(1)
-                self%rcv(1+i+j*nr)%rx = self%src%x + off(2) + (i-1)*doff(2)
-                self%rcv(1+i+j*nr)%ry = self%src%y + off(3) + (i-1)*doff(3)
+                shot%rcv(1+i+j*nr)%comp = rcomp(j)%s
+                shot%rcv(1+i+j*nr)%z = shot%src%z + off(1) + (i-1)*doff(1)
+                shot%rcv(1+i+j*nr)%x = shot%src%x + off(2) + (i-1)*doff(2)
+                shot%rcv(1+i+j*nr)%y = shot%src%y + off(3) + (i-1)*doff(3)
             enddo
         enddo
 
@@ -474,11 +451,13 @@ use m_butterworth
         type(t_string),dimension(:),allocatable,save :: rcomp
 
         if(first_in) then            
-            spos=setup%get_file('FILE_SOURCE_POSITION','SPOS',mandatory=.true.)
-            rpos=setup%get_file('FILE_RECEIVER_POSITION','RPOS',mandatory=.true.)
+            spos=setup%get_file('FILE_SOURCE_POSITION','SPOS',o_mandatory=.true.)
+            rpos=setup%get_file('FILE_RECEIVER_POSITION','RPOS',o_mandatory=.true.)
 
-            rcomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',default='p'))
+            rcomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',o_default='p')
         endif
+
+        first_in=.false.
 
         !read source
         open(13,file=spos,action='read')
@@ -495,7 +474,7 @@ use m_butterworth
 
 
         !read receivers
-        open(15,file=rcv_pos,action='read')
+        open(15,file=rpos,action='read')
         !count number of receivers
         nr=0
         do
@@ -526,11 +505,9 @@ use m_butterworth
 
         close(15)
 
-        first_in=.false.
-
     end subroutine
 
-    ! subroutine gen_acqui_3Dspread
+    ! subroutine geometry_3Dspread
     !     !!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !     !  Quadrilateral Geometry  !
     !     !!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -646,7 +623,7 @@ use m_butterworth
 
     ! end subroutin
 
-    subroutine check_setup_positions(shot)
+    subroutine check_range(shot)
         type(t_shot) :: shot
 
         character(:),allocatable :: str
@@ -681,7 +658,7 @@ use m_butterworth
         !check receiver positions
         str='Shot# '//shot%sindex//' has receiver(s) '
         if(any(shot%rcv(:)%z<0.)) then
-            where(shot%rcv(:)<0.) shot%rcv(:)=m%dz
+            where(shot%rcv(:)%z<0.) shot%rcv(:)%z=m%dz
             call hud(str//'rz above top of model! Set rz = dz.',mpiworld%iproc)
         endif
         if(any(shot%rcv(:)%z>(m%nz-1)*m%dz)) then
