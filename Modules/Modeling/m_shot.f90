@@ -102,7 +102,8 @@ use m_model
             call geometry_spread(self)
         case ('streamer')
             call geometry_streamer(self)
-        case ('irregularOBN')
+        case ('spread_irregular')
+            call geometry_spread_irregular(self)
         case ('spread3D')
         end select
 
@@ -191,6 +192,7 @@ use m_model
 
         self%fpeak=setup%get_real('PEAK_FREQUENCY','FPEAK')
         self%fmax=setup%get_real('MAX_FREQUENCY','FMAX',o_default=num2str(self%fpeak*2.5))
+        !self%fmin=setup%get_real('MIN_FREQUENCY','FMIN',o_default='1')
 
         !wavelet
         file=setup%get_file('FILE_SOURCE_WAVELET')
@@ -285,7 +287,7 @@ use m_model
 
                 if(self%rcv(i)%comp=='p') then !explosive source or non-vertical force
                     call hicks_get_coef('antisymm', self%rcv(i)%interp_coef)
-                elseif(self%src%comp=='vz') then !vertical force
+                elseif(self%rcv(i)%comp=='vz') then !vertical force
                     call hicks_get_coef('symmetric',self%rcv(i)%interp_coef)
                 else
                     call hicks_get_coef('truncate', self%rcv(i)%interp_coef)
@@ -443,7 +445,7 @@ use m_model
 
     end subroutine
 
-    subroutine geometry_irregularOBN(shot)
+    subroutine geometry_spread_irregular(shot)
         type(t_shot) :: shot
         logical :: first_in=.true.
         character(:),allocatable,save :: spos, rpos

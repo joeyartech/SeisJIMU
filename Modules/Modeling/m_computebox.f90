@@ -35,7 +35,7 @@ use m_shot
         integer :: ilz,ilx,ily
         integer :: nz,nx,ny,n
         
-        real :: cell_volume, cell_diagonal, cell_inv_diagonal
+        ! real :: cell_volume, cell_diagonal, cell_inv_diagonal
 
         real velmin, velmax
 
@@ -60,19 +60,19 @@ use m_shot
         !shot aperture, default to whole model
         aperture=setup%get_reals('APERTURE',o_default='-99999 99999 -99999 99999')
 
-        self%cell_volume = m%dz*m%dx*m%dy
+        ! self%cell_volume = m%dz*m%dx*m%dy
 
-        if(m%is_cubic) then
-            self%cell_diagonal=sqrt(m%dz**2+m%dx**2+m%dy**2)
-            self%cell_inv_diagonal=sqrt(m%dz**(-2) + m%dx**(-2) + m%dy**(-2))
-        else
-            self%cell_diagonal=sqrt(m%dz**2+m%dx**2)
-            self%cell_inv_diagonal=sqrt(m%dz**(-2) + m%dx**(-2))
-        endif
+        ! if(m%is_cubic) then
+        !     self%cell_diagonal=sqrt(m%dz**2+m%dx**2+m%dy**2)
+        !     self%cell_inv_diagonal=sqrt(m%dz**(-2) + m%dx**(-2) + m%dy**(-2))
+        ! else
+        !     self%cell_diagonal=sqrt(m%dz**2+m%dx**2)
+        !     self%cell_inv_diagonal=sqrt(m%dz**(-2) + m%dx**(-2))
+        ! endif
 
     end subroutine
     
-    subroutine project(self,is_fdsg,layer_width)
+    subroutine project(self,is_fdsg,abslayer_width)
         class(t_computebox) :: self
         logical :: is_fdsg
 
@@ -95,12 +95,12 @@ use m_shot
         self%my=min(m%ny,nint(y/m%dy)+1) +1 -self%ioy
         
         !C+D's index
-        self%ifx = 1       - layer_width
-        self%ilx = self%mx + layer_width
-        self%ify = 1       - layer_width
-        self%ily = self%my + layer_width
-        self%ifz = 1       - layer_width
-        self%ilz = self%mz + layer_width
+        self%ifx = 1       - abslayer_width
+        self%ilx = self%mx + abslayer_width
+        self%ify = 1       - abslayer_width
+        self%ily = self%my + abslayer_width
+        self%ifz = 1       - abslayer_width
+        self%ilz = self%mz + abslayer_width
         
         !take care of y
         if(.not.m%is_cubic) then

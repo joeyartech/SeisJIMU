@@ -8,6 +8,8 @@ use m_setup
         integer :: nx,ny,nz, n
         real    :: dx,dy,dz
         real    :: ox,oy,oz
+
+        real :: cell_volume, cell_diagonal, cell_inv_diagonal
                 
         character(:),allocatable :: file
         type(t_string),dimension(:),allocatable :: attributes_read, attributes_write
@@ -64,6 +66,15 @@ use m_setup
 
         rtmp=setup%get_reals('MODEL_ORIGIN','OZXY',o_default='0. 0. 0.')
         self%oz=rtmp(1); self%ox=rtmp(2); self%oy=rtmp(3)
+
+        self%cell_volume = self%dz*self%dx*self%dy
+        if(self%is_cubic) then
+            self%cell_diagonal=sqrt(self%dz**2+self%dx**2+self%dy**2)
+            self%cell_inv_diagonal=sqrt(self%dz**(-2) + self%dx**(-2) + self%dy**(-2))
+        else
+            self%cell_diagonal=sqrt(self%dz**2+self%dx**2)
+            self%cell_inv_diagonal=sqrt(self%dz**(-2) + self%dx**(-2))
+        endif
         
         self%file=setup%get_file('FILE_MODEL',o_mandatory=.true.) 
 

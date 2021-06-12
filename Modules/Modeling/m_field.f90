@@ -1,14 +1,16 @@
 module m_field
+use m_string
 use m_mpienv
 use m_arrayop
-use m_sysio
-use m_model, only:m
-use m_shot, only:shot
-use m_computebox, only: cb
-use m_FDSG
+use m_setup
+use m_resampler
+use m_model
+use m_shot
+use m_computebox
 
 use, intrinsic :: ieee_arithmetic
 
+    private
     
     !boundary components for wavefield recontruction
     type t_boundary
@@ -19,307 +21,255 @@ use, intrinsic :: ieee_arithmetic
 
     end type
 
-    !cpml components for absorbing boundary wavefield
-    type t_cpml
-        real,dimension(:,:,:),allocatable :: dvx_dx,dvx_dy,dvx_dz
-        real,dimension(:,:,:),allocatable :: dvy_dx,dvy_dy,dvy_dz
-        real,dimension(:,:,:),allocatable :: dvz_dx,dvz_dy,dvz_dz
-        
-        real,dimension(:,:,:),allocatable :: dsxx_dx
-        real,dimension(:,:,:),allocatable :: dsxz_dx,        dsxz_dz
-        real,dimension(:,:,:),allocatable ::                 dszz_dz
-        real,dimension(:,:,:),allocatable :: dshh_dx,dshh_dy,dshh_dz
-        real,dimension(:,:,:),allocatable :: dp_dx,  dp_dy,  dp_dz
-
-    end type
-
-    !seismogram components
-    type t_seismo
-        real,dimension(:,:,:),allocatable :: vx,vy,vz !velocities
-        real,dimension(:,:,:),allocatable :: sxx,sxy,sxz !stress tensor
-        real,dimension(:,:,:),allocatable :: syx,syy,syz
-        real,dimension(:,:,:),allocatable :: szx,szy,szz
-        real,dimension(:,:,:),allocatable :: shh,p
-    end type
-
     !fields
-    type t_field
+    type,public :: t_field
 
         character(:),allocatable :: name
 
         !wavefield components in computation domain
-        real,dimension(:,:,:),allocatable :: vx,vy,vz !velocities
-        real,dimension(:,:,:),allocatable :: sxx,sxy,sxz !stress tensor
-        real,dimension(:,:,:),allocatable :: syx,syy,syz
-        real,dimension(:,:,:),allocatable :: szx,szy,szz
+        real,dimension(:,:,:),allocatable :: vz,vx,vy !velocities
+        real,dimension(:,:,:),allocatable :: szz,szx,szy !stress tensor
+        real,dimension(:,:,:),allocatable ::     sxx,sxy
+        real,dimension(:,:,:),allocatable ::         syy
         real,dimension(:,:,:),allocatable :: shh,p
-        
-        !RHS (source terms)
-        real,dimension(:,:),allocatable :: fx,fy,fx !forces
-        real,dimension(:,:),allocatable :: mxx,mxy,mxz !moments
-        real,dimension(:,:),allocatable :: myx,myy,myz
-        real,dimension(:,:),allocatable :: mzx,mzy,mzz
-        real,dimension(:,:),allocatable :: mhh,p
 
         !boundary components for wavefield recontruction
         type(t_boundary) :: bnd
 
         !cpml components for absorbing boundary wavefield
-        type(t_cpml) :: cpml
-
-        !synthetic seismogram components
-        type(t_seismo) :: seismo
+        real,dimension(:,:,:),allocatable :: dvz_dz,dvz_dx,dvz_dy
+        real,dimension(:,:,:),allocatable :: dvx_dz,dvx_dx,dvx_dy
+        real,dimension(:,:,:),allocatable :: dvy_dz,dvy_dx,dvy_dy
         
-        !source function
-        real,dimension(:),allocatable :: source
+        real,dimension(:,:,:),allocatable :: dszz_dz,dszx_dz
+        real,dimension(:,:,:),allocatable :: dszx_dx,dsxx_dx        
+        real,dimension(:,:,:),allocatable :: dshh_dz,dshh_dx,dshh_dy
+        real,dimension(:,:,:),allocatable :: dp_dz,dp_dx,dp_dy
 
+        !RHS (source terms)
+        ! real,dimension(:,:),allocatable :: fz,fx,fy !forces
+        ! real,dimension(:,:),allocatable :: mzz,mzx,mzy !moments
+        ! real,dimension(:,:),allocatable ::     mxx,mxy
+        ! real,dimension(:,:),allocatable ::         myy
+        ! real,dimension(:,:),allocatable :: mhh,p
+        real,dimension(:,:),allocatable :: wavelet
+
+        !synthetic seismograms (receiver terms)
+        real,dimension(:,:),allocatable :: seismo
+        
         !blooming
         integer,dimension(:,:),allocatable :: bloom
-        integer,parameter :: initial_half_bloomwidth=5 !half bloom width at ift, should involve hicks points
         
         !snapshot
-        type(t_string),dimension(:),allocatable :: snapshot
-        integer :: it_delta_snapshot
 
         contains
         procedure :: init  => init
         procedure :: init_bloom    => init_bloom
         procedure :: init_boundary => init_boundary
         procedure :: check_value => check_value
-        procedure :: reinit_boundary => reinit_boundary
+        procedure :: acquire => acquire
         procedure :: write => write
-        procedure :: add_source => add_source
-
-        procedure :: propagate => propagate
-        procedure :: propagate_reverse => propagate_reverse
+        procedure :: boundary_transport => boundary_transport
 
     end type
-    
 
+    !info shared by all t_field instances
+    integer nt
+    real dt
+
+    logical :: is_shear
+
+    logical :: if_bloom
+    integer,parameter :: initial_half_bloomwidth=5 !half bloom width at ift, should involve hicks points
+
+    logical :: if_snapshot
+    type(t_string),dimension(:),allocatable :: snapshot
+    integer :: i_snapshot
+    
     contains
         
-    subroutine init(name)
-        logical :: if_snapshot
+    subroutine init(self,name,nt_in,dt_in,is_shear_in)
+        class(t_field) :: self
+        character(:),allocatable :: name
+        logical is_shear_in
 
         self%name=name
         
+        nt=nt_in
+        dt=dt_in
+        is_shear=is_shear_in
+
         !snapshot
-        self%snapshot=setup%get_strs('SNAPSHOT',default='')
-        self%if_snapshot=size(snapshot)>0 .and. mpiworld%is_master
-        if(self%if_snapshot) it_snapshot=setup%get_int('SNAPSHOT_DELTA_IT',default=50)
+        snapshot=setup%get_strs('SNAPSHOT',o_default='')
+        if_snapshot=size(snapshot)>0 .and. mpiworld%is_master
+        if(if_snapshot) then
+            n_snapshot=setup%get_real('REF_NUMBER_SNAPSHOT','NSNAPSHOT',o_default='50')
+            if(n_snapshot==0) n_snapshot=50
+            i_snapshot=ceiling(nt*1./n_snapshot)
+        endif
 
     end subroutine
 
-    subroutine init_bloom(nt)
+    subroutine init_bloom(self,origin)
+        class(t_field) :: self
+        character(3) :: origin
 
         !blooming
         call alloc(self%bloom,6,nt)
-        
-        !directional maximum propagation distance per time step
-        distz = cb%velmax * dt / m%dz
-        distx = cb%velmax * dt / m%dx
-        disty = cb%velmax * dt / m%dy
 
-        if(field%name=='sfield') then
-            bloom(1,1)=max(shot%src%iz -initial_half_bloomwidth, cb%ifz)
-            bloom(2,1)=min(shot%src%iz +initial_half_bloomwidth, cb%ilz)
-            bloom(3,1)=max(shot%src%ix -initial_half_bloomwidth, cb%ifx)
-            bloom(4,1)=min(shot%src%ix +initial_half_bloomwidth, cb%ilx)
-            bloom(5,1)=max(shot%src%iy -initial_half_bloomwidth, cb%ify)
-            bloom(6,1)=min(shot%src%iy +initial_half_bloomwidth, cb%ily)
-            do it=2,nt
-                bloom(1,it)=max(nint(bloom(1,1)-it*distz),cb%ifz) !bloombox ifz
-                bloom(2,it)=min(nint(bloom(2,1)+it*distz),cb%ilz) !bloombox ilz
-                bloom(3,it)=max(nint(bloom(3,1)-it*distx),cb%ifx) !bloombox ifx
-                bloom(4,it)=min(nint(bloom(4,1)+it*distx),cb%ilx) !bloombox ilx
-                bloom(5,it)=max(nint(bloom(5,1)-it*disty),cb%ify) !bloombox ify
-                bloom(6,it)=min(nint(bloom(6,1)+it*disty),cb%ily) !bloombox ily
-            enddo
-        
+        if_bloom=setup%get_bool('IF_BLOOM',o_default='T')      
+
+        if(if_bloom) then
+            !directional maximum propagation distance per time step
+            distz = cb%velmax * dt / m%dz
+            distx = cb%velmax * dt / m%dx
+            disty = cb%velmax * dt / m%dy
+
+            if(origin=='src') then
+                self%bloom(1,1)=max(shot%src%iz -initial_half_bloomwidth, cb%ifz)
+                self%bloom(2,1)=min(shot%src%iz +initial_half_bloomwidth, cb%ilz)
+                self%bloom(3,1)=max(shot%src%ix -initial_half_bloomwidth, cb%ifx)
+                self%bloom(4,1)=min(shot%src%ix +initial_half_bloomwidth, cb%ilx)
+                self%bloom(5,1)=max(shot%src%iy -initial_half_bloomwidth, cb%ify)
+                self%bloom(6,1)=min(shot%src%iy +initial_half_bloomwidth, cb%ily)
+                do it=2,nt
+                    self%bloom(1,it)=max(nint(self%bloom(1,1)-it*distz),cb%ifz) !bloombox ifz
+                    self%bloom(2,it)=min(nint(self%bloom(2,1)+it*distz),cb%ilz) !bloombox ilz
+                    self%bloom(3,it)=max(nint(self%bloom(3,1)-it*distx),cb%ifx) !bloombox ifx
+                    self%bloom(4,it)=min(nint(self%bloom(4,1)+it*distx),cb%ilx) !bloombox ilx
+                    self%bloom(5,it)=max(nint(self%bloom(5,1)-it*disty),cb%ify) !bloombox ify
+                    self%bloom(6,it)=min(nint(self%bloom(6,1)+it*disty),cb%ily) !bloombox ily
+                enddo
+            
+            else
+                self%bloom(1,nt)=max(minval(shot%rcv(:)%iz) -initial_half_bloomwidth, cb%ifz)
+                self%bloom(2,nt)=min(maxval(shot%rcv(:)%iz) +initial_half_bloomwidth, cb%ilz)
+                self%bloom(3,nt)=max(minval(shot%rcv(:)%ix) -initial_half_bloomwidth, cb%ifx)
+                self%bloom(4,nt)=min(maxval(shot%rcv(:)%ix) +initial_half_bloomwidth, cb%ilx)
+                self%bloom(5,nt)=max(minval(shot%rcv(:)%iy) -initial_half_bloomwidth, cb%ify)
+                self%bloom(6,nt)=min(maxval(shot%rcv(:)%iy) +initial_half_bloomwidth, cb%ily)
+                do it=nt-1,1,-1
+                    it_fwd=nt-it+1
+                    self%bloom(1,it)=max(nint(self%bloom(1,nt)-it_fwd*distz),cb%ifz) !bloombox ifz
+                    self%bloom(2,it)=min(nint(self%bloom(2,nt)+it_fwd*distz),cb%ilz) !bloombox ilz
+                    self%bloom(3,it)=max(nint(self%bloom(3,nt)-it_fwd*distx),cb%ifx) !bloombox ifx
+                    self%bloom(4,it)=min(nint(self%bloom(4,nt)+it_fwd*distx),cb%ilx) !bloombox ilx
+                    self%bloom(5,it)=max(nint(self%bloom(5,nt)-it_fwd*disty),cb%ify) !bloombox ify
+                    self%bloom(6,it)=min(nint(self%bloom(6,nt)+it_fwd*disty),cb%ily) !bloombox ily
+                enddo
+
+            endif
+
         else
-            bloom(1,nt)=max(minval(shot%rcv(:)%iz) -initial_half_bloomwidth, cb%ifz)
-            bloom(2,nt)=min(maxval(shot%rcv(:)%iz) +initial_half_bloomwidth, cb%ilz)
-            bloom(3,nt)=max(minval(shot%rcv(:)%ix) -initial_half_bloomwidth, cb%ifx)
-            bloom(4,nt)=min(maxval(shot%rcv(:)%ix) +initial_half_bloomwidth, cb%ilx)
-            bloom(5,nt)=max(minval(shot%rcv(:)%iy) -initial_half_bloomwidth, cb%ify)
-            bloom(6,nt)=min(maxval(shot%rcv(:)%iy) +initial_half_bloomwidth, cb%ily)
-            do it=nt-1,1,-1
-                it_fwd=nt-it+1
-                bloom(1,it)=max(nint(bloom(1,nt)-it_fwd*distz),cb%ifz) !bloombox ifz
-                bloom(2,it)=min(nint(bloom(2,nt)+it_fwd*distz),cb%ilz) !bloombox ilz
-                bloom(3,it)=max(nint(bloom(3,nt)-it_fwd*distx),cb%ifx) !bloombox ifx
-                bloom(4,it)=min(nint(bloom(4,nt)+it_fwd*distx),cb%ilx) !bloombox ilx
-                bloom(5,it)=max(nint(bloom(5,nt)-it_fwd*disty),cb%ify) !bloombox ify
-                bloom(6,it)=min(nint(bloom(6,nt)+it_fwd*disty),cb%ily) !bloombox ily
-            enddo
+            self%bloom(1,:)=cb%ifz
+            self%bloom(2,:)=cb%ilz
+            self%bloom(3,:)=cb%ifx
+            self%bloom(4,:)=cb%ilx
+            self%bloom(5,:)=cb%ify
+            self%bloom(6,:)=cb%ily
 
         endif
 
-        if(.not.m%is_cubic) bloom(5:6,:)=1
+        if(.not.m%is_cubic) self%bloom(5:6,:)=1
 
     end subroutine
 
-    subroutine init_boundary
+    subroutine init_boundary(self)
+        class(t_field) :: self
         !save 3 grid points, for 4th order FD only
         !different indexing
         n=3*cb%mx*cb%my
-        call alloc(bnd%vz_top,n,nt)
-        call alloc(bnd%vz_bot,n,nt)
-        call alloc(bnd%vx_top,n,nt)
-        call alloc(bnd%vx_bot,n,nt)
+        call alloc(self%bnd%vz_top,n,nt)
+        call alloc(self%bnd%vz_bot,n,nt)
+        if(is_shear) then
+            call alloc(self%bnd%vx_top,n,nt)
+            call alloc(self%bnd%vx_bot,n,nt)
+        endif
         
         n=cb%mz*3*cb%my
-        call alloc(bnd%vx_left, n,nt)
-        call alloc(bnd%vx_right,n,nt)
-        call alloc(bnd%vz_left, n,nt)
-        call alloc(bnd%vz_right,n,nt)
+        call alloc(self%bnd%vx_left, n,nt)
+        call alloc(self%bnd%vx_right,n,nt)
+        if(is_shear) then
+            call alloc(self%bnd%vz_left, n,nt)
+            call alloc(self%bnd%vz_right,n,nt)
+        endif
 
         if(m%is_cubic) then
             n=cb%mz*cb%mx*3
-            call alloc(bnd%vy_front,n,nt)
-            call alloc(bnd%vy_rear, n,nt)
+            call alloc(self%bnd%vy_front,n,nt)
+            call alloc(self%bnd%vy_rear, n,nt)
         endif
 
     end subroutine
     
-    subroutine check_value(f,name)
-        class(t_field), intent(in) :: f
-        character(*) :: name
+    subroutine check_value(self)
+        class(t_field) :: self
         
-        if(mpiworld%is_master) write(*,*) name//' sample values:',minval(f%p),maxval(f%p)
+        if(mpiworld%is_master) write(*,*) self%name//' sample values:',minval(self%vz),maxval(self%vz)
         
-        if(any(.not. ieee_is_finite(f%vz))) then
-            error(name//' values become Infinity on Shot# '//shot%sindex//' !!')
+        if(any(.not. ieee_is_finite(self%vz))) then
+            call error(self%name//' values become Infinity on Shot# '//shot%sindex//' !!')
         endif
-        if(any(ieee_is_nan(f%vz))) then
-            error(name//' values become NaN on Shot# '//shot%sindex//' !!')
+        if(any(ieee_is_nan(self%vz))) then
+            call error(self%name//' values become NaN on Shot# '//shot%sindex//' !!')
         endif
         
     end subroutine
         
-    subroutine snapshot(self)
-        do i=1,size(self%snapshot)
-            select case (self%snapshot(i)%s)
-            case ('vz')
-                open(12,file='snap_'//self%name//'_vz',access='stream',position='append')
-                write(12) self%vz
-                close(12)
-            case ('p')
-                open(12,file='snap_'//self%name//'_p',access='stream',position='append')
-                write(12) self%p
-                close(12)
-            end select
-        enddo
+    subroutine write(self,it,o_suffix)
+        class(t_field) :: self
+        character(*),optional :: o_suffix
+
+        character(:),allocatable :: suf
+
+        if(present(o_suffix)) then
+            suf=o_suffix
+        else
+            suf=''
+        endif
+
+        if(if_snapshot) then
+
+            if(mod(it,i_snapshot)==0) then
+                do i=1,size(snapshot)
+                    select case (snapshot(i)%s)
+                    case ('vz')
+                        open(12,file='snap_'//self%name//'%vz'//suf,access='stream',position='append')
+                        write(12) self%vz
+                        close(12)
+                    case ('p')
+                        open(12,file='snap_'//self%name//'%p'//suf,access='stream',position='append')
+                        write(12) self%p
+                        close(12)
+                    end select
+                enddo
+            endif
+
+            if(it==1) then
+                call hud('Viewing the snapshots with ximage/xmovie:')
+                write(*,'(a,i0.5,a)') 'ximage < snap_*  n1=',cb%nz,' perc=99'
+                write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'                
+                write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%mz,' n2=',cb%mx,' clip=?e-?? loop=2 title=%g'
+                write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%mz,' n2=',cb%mx,' clip=?e-?? loop=2 title=%g'
+            endif
+
+        endif
+
     end subroutine
  
-    subroutine add_RHS(wavelet)
-        self%wavelet=>wavelet
-    end subroutine
-    
+    subroutine acquire(self,shot)
+        class(t_field) :: self
+        type(t_shot) :: shot
 
-    subroutine acquire(self)
-        type(t_shot) :: self
-
-        call alloc(self%dsyn,self%nt,self%nrcv)
-        do i=1,self%nrcv
-            select case (self%rcv(i)%comp)
-            case ('p')
-                call resampler(f%seismo%p(i,:), self%dsyn(:,i),1,din=propagator%dt,nin=propagator%nt,dout=shot%dt,nout=shot%nt)
-            case ('vx')
-                call resampler(f%seismo%vx(i,:),self%dsyn(:,i),1,din=propagator%dt,nin=propagator%nt,dout=shot%dt,nout=shot%nt)
-            case ('vy')
-                call resampler(f%seismo%vy(i,:),self%dsyn(:,i),1,din=propagator%dt,nin=propagator%nt,dout=shot%dt,nout=shot%nt)
-            case ('vz')
-                call resampler(f%seismo%vz(i,:),self%dsyn(:,i),1,din=propagator%dt,nin=propagator%nt,dout=shot%dt,nout=shot%nt)
-            end select
+        call alloc(shot%dsyn,shot%nt,shot%nrcv)
+        do i=1,shot%nrcv
+            call resampler(self%seismo(i,:), shot%dsyn(:,i),1,din=dt,nin=nt,dout=shot%dt,nout=shot%nt)
         enddo
 
     end subroutine
-
-
-    subroutine acquire(f,seismo)
-        class(t_field), intent(in) :: f
-        real,dimension(*) :: seismo
         
-        do ircv=1,shot%nrcv
-            ifz=shot%rcv(ircv)%ifz; iz=shot%rcv(ircv)%iz; ilz=shot%rcv(ircv)%ilz
-            ifx=shot%rcv(ircv)%ifx; ix=shot%rcv(ircv)%ix; ilx=shot%rcv(ircv)%ilx
-            ify=shot%rcv(ircv)%ify; iy=shot%rcv(ircv)%iy; ily=shot%rcv(ircv)%ily
-            
-            if(if_hicks) then
-                select case (shot%rcv(ircv)%icomp)
-                    case (1)
-                    seismo(ircv)=sum(  f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff )
-                    case (2)
-                    seismo(ircv)=sum( f%vx(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff )
-                    case (3)
-                    seismo(ircv)=sum( f%vy(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff )
-                    case (4)
-                    seismo(ircv)=sum( f%vz(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff )
-                end select
-                
-            else
-                select case (shot%rcv(ircv)%icomp)
-                    case (1) !p[iz,ix,iy]
-                    seismo(ircv)= f%p(iz,ix,iy)
-                    case (2) !vx[iz,ix-0.5,iy]
-                    seismo(ircv)=f%vx(iz,ix,iy)
-                    case (3) !vy[iz,ix,iy-0.5]
-                    seismo(ircv)=f%vy(iz,ix,iy)
-                    case (4) !vz[iz-0.5,ix,iy]
-                    seismo(ircv)=f%vz(iz,ix,iy)
-                end select
-                
-            endif
-            
-        enddo
-        
-    end subroutine
-    
-    subroutine acquire_reverse(f,w)
-        class(t_field), intent(in) :: f
-        real w
-        
-        ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
-        ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
-        ify=shot%src%ify; iy=shot%src%iy; ily=shot%src%ily
-        
-        if(if_hicks) then
-            select case (shot%src%icomp)
-                case (1)
-                w = sum(lm%invkpa(ifz:ilz,ifx:ilx,ify:ily)*f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff )
-                
-                case (2)
-                w = sum(     f%vx(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff )
-                
-                case (3)
-                w = sum(     f%vy(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff )
-                
-                case (4)
-                w = sum(     f%vz(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff )
-                
-            end select
-            
-        else
-            select case (shot%src%icomp)
-                case (1) !p[iz,ix,iy]
-                w=lm%invkpa(iz,ix,iy)*f%p(iz,ix,iy)
-                
-                case (2) !vx[iz,ix-0.5,iy]
-                w=f%vx(iz,ix,iy)
-                
-                case (3) !vy[iz,ix,iy-0.5]
-                w=f%vy(iz,ix,iy)
-                
-                case (4) !vz[iz-0.5,ix,iy]
-                w=f%vz(iz,ix,iy)
-            end select
-            
-        endif
-        
-    end subroutine
-    
-    subroutine boundary_transport(action,it,f)
+    subroutine boundary_transport(self,action,it)
+        class(t_field) :: self
         character(4) :: action
         integer :: it
         type(t_field) :: f
@@ -329,48 +279,46 @@ use, intrinsic :: ieee_arithmetic
         ny=cb%my
         if(m%is_cubic) then
             !top
-            call bndcpy(action,f%vz,bnd%vz_top(:,it),[1,3],    [1,nx],[1,ny])  !old version: [0,2],[1,nx],[1,nx]
+            call copy(action,self%vz,self%bnd%vz_top(:,it),  [1,3],    [1,nx],[1,ny])  !old version: [0,2],[1,nx],[1,nx]
             !bottom
-            call bndcpy(action,f%vz,bnd%vz_bot(:,it),[nz-1,nz+1],[1,nx],[1,ny])  !old version: [nz,nz+2],[1,nx],[1,nx]
+            call copy(action,self%vz,self%bnd%vz_bot(:,it),  [nz-1,nz+1],[1,nx],[1,ny])  !old version: [nz,nz+2],[1,nx],[1,nx]
             !left
-            call bndcpy(action,f%vx,bnd%vx_left(:,it), [1,nz],[1,3],    [1,ny])
+            call copy(action,self%vx,self%bnd%vx_left(:,it), [1,nz],[1,3],    [1,ny])
             !right
-            call bndcpy(action,f%vx,bnd%vx_right(:,it),[1,nz],[nx-1,nx+1],[1,ny])
+            call copy(action,self%vx,self%bnd%vx_right(:,it),[1,nz],[nx-1,nx+1],[1,ny])
             !front
-            call bndcpy(action,f%vy,bnd%vy_front(:,it),[1,nz],[1,nx],[1,3])
+            call copy(action,self%vy,self%bnd%vy_front(:,it),[1,nz],[1,nx],[1,3])
             !rear
-            call bndcpy(action,f%vy,bnd%vy_rear(:,it), [1,nz],[1,nx],[ny-1,ny+1])
+            call copy(action,self%vy,self%bnd%vy_rear(:,it), [1,nz],[1,nx],[ny-1,ny+1])
         else
             !top
-            call bndcpy(action,f%vz,bnd%vz_top(:,it),[1,3],    [1,nx],[1,1])
+            call copy(action,self%vz,self%bnd%vz_top(:,it),[1,3],    [1,nx],[1,1])
             !bottom
-            call bndcpy(action,f%vz,bnd%vz_bot(:,it),[nz-1,nz+1],[1,nx],[1,1])
+            call copy(action,self%vz,self%bnd%vz_bot(:,it),[nz-1,nz+1],[1,nx],[1,1])
             !left
-            call bndcpy(action,f%vx,bnd%vx_left(:,it), [1,nz],[1,3],    [1,1])
+            call copy(action,self%vx,self%bnd%vx_left(:,it), [1,nz],[1,3],    [1,1])
             !right
-            call bndcpy(action,f%vx,bnd%vx_right(:,it),[1,nz],[nx-1,nx+1],[1,1])
+            call copy(action,self%vx,self%bnd%vx_right(:,it),[1,nz],[nx-1,nx+1],[1,1])
         endif
 
         !shear part
-        if(present(if_shear)) then
-        if(if_shear) then
+        if(is_shear) then
             if(m%is_cubic) then
             else
                 !top
-                call bndcpy(action,f%vx,bnd%vx_top(:,it),[1,3],    [1,nx],[1,1])
+                call copy(action,self%vx,self%bnd%vx_top(:,it),[1,3],    [1,nx],[1,1])
                 !bottom
-                call bndcpy(action,f%vx,bnd%vx_bot(:,it),[nz-2,nz  ],[1,nx],[1,1])
+                call copy(action,self%vx,self%bnd%vx_bot(:,it),[nz-2,nz  ],[1,nx],[1,1])
                 !left
-                call bndcpy(action,f%vz,bnd%vz_left(:,it), [1,nz],[1,3],    [1,1])
+                call copy(action,self%vz,self%bnd%vz_left(:,it), [1,nz],[1,3],    [1,1])
                 !right
-                call bndcpy(action,f%vz,bnd%vz_right(:,it),[1,nz],[nx-2,nx  ],[1,1])
+                call copy(action,self%vz,self%bnd%vz_right(:,it),[1,nz],[nx-2,nx  ],[1,1])
             endif
-        endif
         endif
         
     end subroutine
     
-    subroutine bndcpy(action,v,bv,iiz,iix,iiy)
+    subroutine copy(action,v,bv,iiz,iix,iiy)
         character(4) :: action
         real,dimension(cb%n) :: v
         real,dimension(*) :: bv

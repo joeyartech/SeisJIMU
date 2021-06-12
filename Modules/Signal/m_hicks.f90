@@ -181,12 +181,12 @@ use m_math
     elemental real function W(x)
         real, intent(in) :: x
         real y
-         if (x<-r .or. x>r) then
-             W=0.
-         else
+        if (x<-r .or. x>r) then
+            W=0.
+        else
             y=x/r
             W=bessi0(b*sqrt(1.-y*y)) / bessi0(b)
-         endif
+        endif
     end function
 
 end

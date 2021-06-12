@@ -26,7 +26,7 @@ use m_arrayop
 
         select case (setup%get_str('ACQUI_GEOMETRY',o_default='spread'))
 
-        case ('irregularOBN')
+        case ('spread_irregular')
             open(13,file=setup%get_file('FILE_SOURCE_POSITION','SPOS',o_mandatory=.true.),action='read')
             !count number of sources
             self%nshot=0
