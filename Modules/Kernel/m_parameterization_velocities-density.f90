@@ -3,7 +3,6 @@ use m_global
 use m_string
 use m_setup
 use m_mpienv
-use m_format_su
 use m_model
 use m_propagator
 use m_fobjective

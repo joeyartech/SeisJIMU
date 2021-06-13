@@ -16,10 +16,10 @@ use m_shot
         contains
 
         procedure :: init => init
-        procedure :: build_by_aoffset => build_by_aoffset
-        procedure :: build_by_polygon => build_by_polygon
-        procedure :: build_by_table => build_by_table
-        procedure :: build_by_custom => build_by_custom
+        procedure :: by_aoffset => by_aoffset
+        procedure :: by_polygon => by_polygon
+        procedure :: by_table   => by_table
+        procedure :: by_custom  => by_custom
 
     end type
 
@@ -32,7 +32,7 @@ use m_shot
         integer,optional :: o_nt_in, o_ntr_in
         real,optional :: o_dt_in
 
-        type(t_string),dimension(:),allocatable :: weightings,stmp
+        type(t_string),dimension(:),allocatable :: list,sublist
         character(:),allocatable :: file
 
         self%nt =shot%nt  ; if(present(o_nt_in )) self%nt =nt_in
@@ -41,60 +41,60 @@ use m_shot
 
         call alloc(self%weight,self%nt,self%ntr,o_init=1.)
 
-        weightings=setup%get_strs('WEIGHTING','WEI',o_default='aoffset^0.5')
+        list=setup%get_strs('WEIGHTING','WEI',o_default='aoffset^0.5')
 
-        do i=1,size(weightings)
+        do i=1,size(list)
             !weight traces based on power of aoffset
-            if(weightings(i)%s(1:8)=='aoffset^') then
-                stmp=split(weightings(i)%s,o_sep='^')
-                call hud('Will weight traces by aoffset^'//stmp(2)%s)
-                call self%build_by_aoffset(o_power=str2real(stmp(2)%s))
+            if(list(i)%s(1:8)=='aoffset^') then
+                sublist=split(list(i)%s,o_sep='^')
+                call hud('Will weight traces by aoffset^'//sublist(2)%s)
+                call self%by_aoffset(o_power=str2real(sublist(2)%s))
             endif
 
             !use aoffset to multiply on traces
-            if(weightings(i)%s(1:8)=='aoffset*') then
-                stmp=split(weightings(i)%s,o_sep='*')
-                call hud('Will weight traces by aoffset*'//stmp(2)%s)
-                call self%build_by_aoffset(o_factor=str2real(stmp(2)%s))
+            if(list(i)%s(1:8)=='aoffset*') then
+                sublist=split(list(i)%s,o_sep='*')
+                call hud('Will weight traces by aoffset*'//sublist(2)%s)
+                call self%by_aoffset(o_factor=str2real(sublist(2)%s))
             endif
 
             !polygon defined weights to multiply on traces
-            if(weightings(i)%s(1:7)=='polygon') then
-                stmp=split(weightings(i)%s,o_sep=':')
-                if(size(stmp)==1) then !filename is not attached, ask for it
+            if(list(i)%s(1:7)=='polygon') then
+                sublist=split(list(i)%s,o_sep=':')
+                if(size(sublist)==1) then !filename is not attached, ask for it
                     file=setup%get_file('FILE_WEIGHT_POLYGON',o_mandatory=.true.)
                 else !filename is attached
-                    file=stmp(2)%s
+                    file=sublist(2)%s
                 endif
 
                 call hud('Will weight traces with polygons defined in '//file)
-                call self%build_by_polygon(file)
+                call self%by_polygon(file)
             endif
 
             !table defined weights to multiply on traces
-            if(weightings(i)%s(1:5)=='table') then
-                stmp=split(weightings(i)%s,o_sep=':')
-                if(size(stmp)==1) then !filename is not attached, ask for it
+            if(list(i)%s(1:5)=='table') then
+                sublist=split(list(i)%s,o_sep=':')
+                if(size(sublist)==1) then !filename is not attached, ask for it
                     file=setup%get_file('FILE_WEIGHT_TABLE',o_mandatory=.true.)
                 else !filename is attached
-                    file=stmp(2)%s
+                    file=sublist(2)%s
                 endif
 
                 call hud('Will weight traces with tables defined in '//file)
-                call self%build_by_table(file)
+                call self%by_table(file)
 
             endif
 
-            if(weightings(i)%s(1:6)=='custom') then
-                stmp=split(weightings(i)%s,o_sep=':')
-                if(size(stmp)==1) then !filename is not attached, ask for it
+            if(list(i)%s(1:6)=='custom') then
+                sublist=split(list(i)%s,o_sep=':')
+                if(size(sublist)==1) then !filename is not attached, ask for it
                     file=setup%get_file('FILE_WEIGHT_CUSTOM',o_mandatory=.true.)
                 else !filename is attached
-                    file=stmp(2)%s
+                    file=sublist(2)%s
                 endif
 
                 call hud('Will weight traces in a custom way defined in '//file)
-                call self%build_by_custom(file)
+                call self%by_custom(file)
 
             endif
 
@@ -104,7 +104,7 @@ use m_shot
         
     end subroutine
 
-    subroutine build_by_aoffset(self,o_power,o_factor)
+    subroutine by_aoffset(self,o_power,o_factor)
         class(t_weighter) :: self
         real,optional :: o_power, o_factor
 
@@ -124,11 +124,11 @@ use m_shot
 
     ! Modified from sumute.c in Seismic Unix
     ! dir: SeisUnix/src/su/main/windowing_sorting_muting
-    subroutine build_by_polygon(self,file)
+    subroutine by_polygon(self,file)
         class(t_weighter) :: self
         character(*) :: file
 
-        character(80) :: text
+        character(i_str_slen) :: text
         integer,parameter :: max_gain_length=20 !maximum number of points
         real,dimension(max_gain_length) :: xgain,tgain
         
@@ -270,11 +270,11 @@ use m_shot
 
     end subroutine
 
-    subroutine build_by_table(self,file)
+    subroutine by_table(self,file)
         class(t_weighter) :: self
         character(*) :: file
         
-        character(80) :: text
+        character(i_str_slen) :: text
         character(1)  :: delim
         integer,parameter :: max_gain_length=20 !maximum number of points per line
         real,dimension(max_gain_length) :: xgain, tgain, gain
@@ -424,7 +424,7 @@ use m_shot
 
     end subroutine
 
-    subroutine build_by_custom(self,file)
+    subroutine by_custom(self,file)
         class(t_weighter) :: self
         character(*) :: file
 
@@ -432,17 +432,18 @@ use m_shot
         real,dimension(:,:),allocatable :: tmp
 
         inquire(file=file,size=file_size)
-        n2=floor(file_size/4./self%nt)
+        if(file_size<4*self%nt*self%ntr) call warn('FILE_WEIGHT_CUSTOM has size '//num2str(file_size/4)//' < nt*ntr. Some traces will not be weighted.')
 
-        allocate(tmp(self%nt,n2))
+        call alloc(tmp,self%nt,self%ntr,o_init=1.)
 
-        open(10,file=file,access='direct',action='read')
+        open(10,file=file,access='stream',action='read')
         read(10,rec=1) tmp
         close(10)
 
-        self%weight(:,1:n2)=self%weight(:,1:n2)*tmp
+        self%weight=self%weight*tmp
 
         deallocate(tmp)
 
     end subroutine
+
 end
