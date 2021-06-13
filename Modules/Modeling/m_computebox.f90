@@ -48,6 +48,8 @@ use m_shot
         contains
         procedure :: init => init
         procedure :: project => project
+        procedure :: project_back => project_back
+        final :: fin
     end type
 
     type(t_computebox),public :: cb
@@ -75,6 +77,7 @@ use m_shot
     subroutine project(self,is_fdsg,abslayer_width)
         class(t_computebox) :: self
         logical :: is_fdsg
+        integer :: abslayer_width
 
         !C's origin index in model
         self%ioz=1 !always from top of model
@@ -209,14 +212,33 @@ use m_shot
 
     end subroutine
 
-    subroutine project_back(self)
+    subroutine project_back(self,big,small,n)
         class(t_computebox) :: self
-            ! gradient(self%ioz:self%ioz+self%mz-1,&
-            !          self%iox:self%iox+self%mx-1,&
-            !          self%ioy:self%ioy+self%my-1,:) = &
-            ! gradient(self%ioz:self%ioz+self%mz-1,&
-            !          self%iox:self%iox+self%mx-1,&
-            !          self%ioy:self%ioy+self%my-1,:) + self%kernel(:,:,:,:)
+        real,dimension(m%nz,m%nx,m%ny,n) :: big
+        real,dimension(cb%mz,cb%mx,cb%my, n) :: small
+
+            big(self%ioz:self%ioz+self%mz-1,&
+                self%iox:self%iox+self%mx-1,&
+                self%ioy:self%ioy+self%my-1,:) = &
+            big(self%ioz:self%ioz+self%mz-1,&
+                self%iox:self%iox+self%mx-1,&
+                self%ioy:self%ioy+self%my-1,:) + small(:,:,:,:)
+
     end subroutine
     
+    subroutine fin(self)
+        type(t_computebox) :: self
+
+        if(allocated(self%vp )) deallocate(self%vp )
+        if(allocated(self%vs )) deallocate(self%vs )
+        if(allocated(self%rho)) deallocate(self%rho)
+        if(allocated(self%eps)) deallocate(self%eps)
+        if(allocated(self%del)) deallocate(self%del)
+        if(allocated(self%eta)) deallocate(self%eta)
+        if(allocated(self%qp )) deallocate(self%qp )
+        if(allocated(self%qs )) deallocate(self%qs )
+        if(allocated(self%kernel)) deallocate(self%kernel)
+
+    end subroutine
+
 end

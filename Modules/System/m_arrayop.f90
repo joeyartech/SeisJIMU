@@ -26,11 +26,11 @@ use m_setup
     
     contains
     
-    subroutine alloc_int1_ubound(a,n1,old,initialize)
+    subroutine alloc_int1_ubound(a,n1,old2,o_init)
         integer n1
         integer,dimension(:),allocatable :: a
-        integer,dimension(:),optional :: old
-        logical,optional :: initialize
+        integer,dimension(:),optional :: old2
+        integer,optional :: o_init
         
         if(n1<1.or.n1>max_array_size) then
             if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n1=',n1
@@ -38,27 +38,26 @@ use m_setup
         endif
         
         if (allocated(a)) then
-            if(present(old)) then
-                old=a
+            if(present(old2)) then
+                old2=a
             endif
             deallocate(a)
         endif
         allocate(a(n1))
         
-        if(present(initialize)) then
-            if(initialize.eqv..false.) then
-                return
-            endif
+        if(present(o_init)) then
+            a=o_init
+        else
+            a=0
         endif
-        a=0
         
     end
     
-    subroutine alloc_int2_ubound(a,n1,n2,old,initialize)
+    subroutine alloc_int2_ubound(a,n1,n2,old2,o_init)
         integer n1,n2
         integer,dimension(:,:),allocatable :: a
-        integer,dimension(:,:),optional :: old
-        logical,optional :: initialize
+        integer,dimension(:,:),optional :: old2
+        integer,optional :: o_init
 
         if(n1<1.or.n1>max_array_size) then
             if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n1=',n1
@@ -71,27 +70,26 @@ use m_setup
         endif
         
         if (allocated(a)) then
-            if(present(old)) then
-                old=a
+            if(present(old2)) then
+                old2=a
             endif
             deallocate(a)
         endif
         allocate(a(n1,n2))
         
-        if(present(initialize)) then
-            if(initialize.eqv..false.) then
-                return
-            endif
+        if(present(o_init)) then
+            a=o_init
+        else
+            a=0
         endif
-        a=0
         
     end
     
-    subroutine alloc_real1_ubound(a,n1,old,initialize)
+    subroutine alloc_real1_ubound(a,n1,old2,o_init)
         integer n1
         real,dimension(:),allocatable :: a
-        real,dimension(:),optional :: old
-        logical,optional :: initialize
+        real,dimension(:),optional :: old2
+        real,optional :: o_init
         
         if(n1<1.or.n1>max_array_size) then
             if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n1=',n1
@@ -99,27 +97,26 @@ use m_setup
         endif
          
         if (allocated(a)) then
-            if(present(old)) then
-                old=a
+            if(present(old2)) then
+                old2=a
             endif
             deallocate(a)
         endif
         allocate(a(n1))
         
-        if(present(initialize)) then
-            if(initialize.eqv..false.) then
-                return
-            endif
+        if(present(o_init)) then
+            a=o_init
+        else
+            a=0.
         endif
-        a=0.
         
     end
     
-    subroutine alloc_real2_ubound(a,n1,n2,old,initialize)
+    subroutine alloc_real2_ubound(a,n1,n2,old2,o_init)
         integer n1,n2
         real,dimension(:,:),allocatable :: a
-        real,dimension(:,:),optional :: old
-        logical,optional :: initialize
+        real,dimension(:,:),optional :: old2
+        real,optional :: o_init
         
         if(n1<1.or.n1>max_array_size) then
             if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n1=',n1
@@ -132,27 +129,26 @@ use m_setup
         endif
         
         if (allocated(a)) then
-            if(present(old)) then
-                old=a
+            if(present(old2)) then
+                old2=a
             endif
             deallocate(a)
         endif
         allocate(a(n1,n2))
         
-        if(present(initialize)) then
-            if(initialize.eqv..false.) then
-                return
-            endif
+        if(present(o_init)) then
+            a=o_init
+        else
+            a=0.
         endif
-        a=0.
         
     end
     
-    subroutine alloc_real3_ubound(a,n1,n2,n3,old,initialize)
+    subroutine alloc_real3_ubound(a,n1,n2,n3,old2,o_init)
         integer n1,n2,n3
         real,dimension(:,:,:),allocatable :: a
-        real,dimension(:,:,:),optional :: old
-        logical,optional :: initialize
+        real,dimension(:,:,:),optional :: old2
+        real,optional :: o_init
         
         if(n1<1.or.n1>max_array_size) then
             if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n1=',n1
@@ -170,27 +166,26 @@ use m_setup
         endif
 
         if (allocated(a)) then
-            if(present(old)) then
-                old=a
+            if(present(old2)) then
+                old2=a
             endif
             deallocate(a)
         endif
         allocate(a(n1,n2,n3))
         
-        if(present(initialize)) then
-            if(initialize.eqv..false.) then
-                return
-            endif
+        if(present(o_init)) then
+            a=o_init
+        else
+            a=0.
         endif
-        a=0.
         
     end
     
-    subroutine alloc_real4_ubound(a,n1,n2,n3,n4,old,initialize)
+    subroutine alloc_real4_ubound(a,n1,n2,n3,n4,old2,o_init)
         integer n1,n2,n3,n4
         real,dimension(:,:,:,:),allocatable :: a
-        real,dimension(:,:,:,:),optional :: old
-        logical,optional :: initialize
+        real,dimension(:,:,:,:),optional :: old2
+        real,optional :: o_init
         
         if(n1<1.or.n1>max_array_size) then
             if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n1=',n1
@@ -213,27 +208,26 @@ use m_setup
         endif
 
         if (allocated(a)) then
-            if(present(old)) then
-                old=a
+            if(present(old2)) then
+                old2=a
             endif
             deallocate(a)
         endif
         allocate(a(n1,n2,n3,n4))
         
-        if(present(initialize)) then
-            if(initialize.eqv..false.) then
-                return
-            endif
+        if(present(o_init)) then
+            a=o_init
+        else
+            a=0.
         endif
-        a=0.
         
     end
 
-    subroutine alloc_real1(a,n1,old,initialize)
+    subroutine alloc_real1(a,n1,old2,o_init)
         integer,dimension(2) :: n1
         real,dimension(:),allocatable :: a
-        real,dimension(:),optional :: old
-        logical,optional :: initialize
+        real,dimension(:),optional :: old2
+        real,optional :: o_init
         
         if(n1(1)>n1(2)) then
             if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n1=',n1
@@ -241,27 +235,26 @@ use m_setup
         endif
         
         if (allocated(a)) then
-            if(present(old)) then
-                old=a
+            if(present(old2)) then
+                old2=a
             endif
             deallocate(a)
         endif
         allocate(a(n1(1):n1(2)))
         
-        if(present(initialize)) then
-            if(initialize.eqv..false.) then
-                return
-            endif
+        if(present(o_init)) then
+            a=o_init
+        else
+            a=0.
         endif
-        a=0.
         
     end
     
-    subroutine alloc_real2(a,n1,n2,old,initialize)
+    subroutine alloc_real2(a,n1,n2,old2,o_init)
         integer,dimension(2) :: n1,n2
         real,dimension(:,:),allocatable :: a
-        real,dimension(:,:),optional :: old
-        logical,optional :: initialize
+        real,dimension(:,:),optional :: old2
+        real,optional :: o_init
         
         if(n1(1)>n1(2)) then
             if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n1=',n1
@@ -274,27 +267,26 @@ use m_setup
         endif
 
         if (allocated(a)) then
-            if(present(old)) then
-                old=a
+            if(present(old2)) then
+                old2=a
             endif
             deallocate(a)
         endif
         allocate(a(n1(1):n1(2),n2(1):n2(2)))
         
-        if(present(initialize)) then
-            if(initialize.eqv..false.) then
-                return
-            endif
+        if(present(o_init)) then
+            a=o_init
+        else
+            a=0.
         endif
-        a=0.
         
     end
     
-    subroutine alloc_real3(a,n1,n2,n3,old,initialize)
+    subroutine alloc_real3(a,n1,n2,n3,old2,o_init)
         integer,dimension(2) :: n1,n2,n3
         real,dimension(:,:,:),allocatable :: a
-        real,dimension(:,:,:),optional :: old
-        logical,optional :: initialize
+        real,dimension(:,:,:),optional :: old2
+        real,optional :: o_init
         
         if(n1(1)>n1(2)) then
             if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n1=',n1
@@ -312,19 +304,18 @@ use m_setup
         endif
         
         if (allocated(a)) then
-            if(present(old)) then
-                old=a
+            if(present(old2)) then
+                old2=a
             endif
             deallocate(a)
         endif
         allocate(a(n1(1):n1(2),n2(1):n2(2),n3(1):n3(2)))
         
-        if(present(initialize)) then
-            if(initialize.eqv..false.) then
-                return
-            endif
+        if(present(o_init)) then
+            a=o_init
+        else
+            a=0.
         endif
-        a=0.
         
     end
     

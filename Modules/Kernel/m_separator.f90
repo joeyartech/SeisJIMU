@@ -1,8 +1,8 @@
 ! Modified from sumute.c in Seismic Unix
 ! dir: SeisUnix/src/su/main/windowing_sorting_muting
 
-module m_separater
-use m_sysio
+module m_separator
+use m_setup
 use m_arrayop
 
     contains

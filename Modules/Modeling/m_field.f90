@@ -67,9 +67,11 @@ use, intrinsic :: ieee_arithmetic
         procedure :: init_bloom    => init_bloom
         procedure :: init_boundary => init_boundary
         procedure :: check_value => check_value
+        procedure :: add_RHS => add_RHS
         procedure :: acquire => acquire
         procedure :: write => write
         procedure :: boundary_transport => boundary_transport
+        final :: fin
 
     end type
 
@@ -90,7 +92,7 @@ use, intrinsic :: ieee_arithmetic
         
     subroutine init(self,name,nt_in,dt_in,is_shear_in)
         class(t_field) :: self
-        character(:),allocatable :: name
+        character(*) :: name
         logical is_shear_in
 
         self%name=name
@@ -257,13 +259,37 @@ use, intrinsic :: ieee_arithmetic
 
     end subroutine
  
-    subroutine acquire(self,shot)
+    subroutine add_RHS(self,ois_adjoint)
         class(t_field) :: self
-        type(t_shot) :: shot
+        logical,optional :: ois_adjoint
+
+        !add adjoint source
+        if(present(ois_adjoint)) then
+        if(ois_adjoint) then
+            call alloc(self%wavelet,shot%nrcv,nt)
+            do i=1,shot%nrcv
+                call resampler(shot%dadj(:,i),self%wavelet(i,:),shot%nrcv,&
+                    din=shot%dt,nin=shot%nt,dout=dt,nout=nt)
+            enddo
+
+            return
+        endif
+        endif
+
+        !add source
+        call alloc(self%wavelet,1,shot%nt)
+        call resampler(shot%wavelet,self%wavelet(1,:),1,&
+            din=shot%dt,nin=shot%nt,dout=dt,nout=nt)
+        
+    end subroutine
+
+    subroutine acquire(self)
+        class(t_field) :: self
 
         call alloc(shot%dsyn,shot%nt,shot%nrcv)
         do i=1,shot%nrcv
-            call resampler(self%seismo(i,:), shot%dsyn(:,i),1,din=dt,nin=nt,dout=shot%dt,nout=shot%nt)
+            call resampler(self%seismo(i,:), shot%dsyn(:,i),shot%nrcv,&
+                din=dt,nin=nt,dout=shot%dt,nout=shot%nt)
         enddo
 
     end subroutine
@@ -359,4 +385,49 @@ use, intrinsic :: ieee_arithmetic
         
     end subroutine
     
+    subroutine fin(self)
+        type(t_field) :: self
+
+        deallocate(self%name)
+
+        if(allocated(self%vz))  deallocate(self%vz)
+        if(allocated(self%vx))  deallocate(self%vx)
+        if(allocated(self%vy))  deallocate(self%vy)
+        if(allocated(self%szz)) deallocate(self%szz)
+        if(allocated(self%szx)) deallocate(self%szx)
+        if(allocated(self%szy)) deallocate(self%szy)
+        if(allocated(self%sxx)) deallocate(self%sxx)
+        if(allocated(self%sxy)) deallocate(self%sxy)
+        if(allocated(self%shh)) deallocate(self%shh)
+        if(allocated(self%p))   deallocate(self%p)
+
+        if(allocated(self%bnd%vz_top))   deallocate(self%bnd%vz_top) 
+        if(allocated(self%bnd%vz_bot))   deallocate(self%bnd%vz_bot) 
+        if(allocated(self%bnd%vx_left))  deallocate(self%bnd%vx_left)
+        if(allocated(self%bnd%vx_right)) deallocate(self%bnd%vx_right)
+        if(allocated(self%bnd%vy_front)) deallocate(self%bnd%vy_front)
+        if(allocated(self%bnd%vy_rear))  deallocate(self%bnd%vy_rear)
+        if(allocated(self%bnd%vx_top))   deallocate(self%bnd%vx_top) 
+        if(allocated(self%bnd%vx_bot))   deallocate(self%bnd%vx_bot) 
+        if(allocated(self%bnd%vz_left))  deallocate(self%bnd%vz_left)
+        if(allocated(self%bnd%vz_right)) deallocate(self%bnd%vz_right)
+
+        !too many..
+        ! if(allocate(self%dvz_dz))  deallocate(self%dvz)
+        ! if(allocate(self%dvz_dx))  deallocate(self%dvx)
+        ! if(allocate(self%dvz_dy))  deallocate(self%dvy)
+        ! if(allocate(self%dvx_dz))  deallocate(self%dvz)
+        ! if(allocate(self%dvx_dx))  deallocate(self%dvx)
+        ! if(allocate(self%dv))  deallocate(self%dvy)
+        ! if(allocate(self%dvz))  deallocate(self%dvz)
+        ! if(allocate(self%dvz))  deallocate(self%dvx)
+        ! if(allocate(self%dvy))  deallocate(self%dvy)
+        
+        if(allocated(self%wavelet)) deallocate(self%wavelet)
+        if(allocated(self%seismo)) deallocate(self%seismo)
+        if(allocated(self%bloom)) deallocate(self%bloom)
+
+        !snapshot
+    end subroutine
+
 end

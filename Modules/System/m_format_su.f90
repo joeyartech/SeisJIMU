@@ -41,6 +41,7 @@ use m_string
 !  !! 
 
     private
+    public :: suformat_write
 
     type,public :: t_header
         sequence
@@ -374,13 +375,36 @@ use m_string
         integer :: ns !assume all traces have same number of samples
         real    :: dt !assume all traces have same time sampling interval
         contains
+        procedure :: init => init
         procedure :: read => read
         procedure :: write => write
-        final     :: finalize
+        final     :: fin
     end type  
 
     contains
     
+    subroutine init(self,ns,ntr,o_dt,o_trs)
+        class(t_format_su) :: self
+        real,optional :: o_dt
+        real,dimension(ns,ntr),optional :: o_trs
+
+        allocate(self%hdrs(ntr))
+        allocate(self%trs(ns,ntr))
+
+        self%hdrs(:)%ns=ns
+
+        self%hdrs(:)%tracl=[(i,i=1,ntr)]
+        
+        if(present(o_dt)) then
+            self%hdrs(:)%dt=o_dt*1e6
+        endif
+
+        if(present(o_trs)) then
+            self%trs=o_trs
+        endif
+
+    end subroutine
+
     subroutine read(self,file,o_sindex)
         class(t_format_su) :: self
         character(*) :: file
@@ -417,7 +441,7 @@ use m_string
         read(11) (self%hdrs(i),self%trs(:,i), i=1,self%ntr)
         close(11)
         
-        call hud('Data read success.')
+        call hud('SU data read success.')
         
     end subroutine
     
@@ -432,11 +456,33 @@ use m_string
         write(12) (self%hdrs(i),self%trs(:,i), i=1,self%ntr)
         close(12)
         
-        call hud('Data write success.')
+        call hud('SU data write success.')
+
+    end subroutine
+
+    subroutine suformat_write(file,data,ns,ntr,o_dt,o_sindex)
+        character(*) :: file
+        real,dimension(ns,ntr) :: data
+        real,optional :: o_dt
+        character(*),optional :: o_sindex
+
+        type(t_format_su) :: sudata
+
+        if(present(o_dt)) then
+            call sudata%init(ns,ntr,o_trs=data,o_dt=o_dt)
+        else
+            call sudata%init(ns,ntr,o_trs=data)
+        endif
+
+        if(present(o_sindex)) then
+            call sudata%write(file,o_sindex)
+        else
+            call sudata%write(file)
+        endif
 
     end subroutine
     
-    subroutine finalize(self)
+    subroutine fin(self)
         type(t_format_su) :: self
         deallocate(self%hdrs,self%trs)
     end subroutine

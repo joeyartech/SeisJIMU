@@ -19,4 +19,4 @@ all : $(src:.f90=.o)
 
 clean :
 	-rm $(src:.f90=.o) 
-	-rm $(src:%.f90=../../mod/%.mod)
+	-rm $(src:%.f90=../../mod/%.mod) ../../mod/m_cpml.mod ../../mod/m_propagator.mod

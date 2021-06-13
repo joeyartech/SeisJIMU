@@ -20,7 +20,7 @@ use m_setup
         real,dimension(:,:,:),allocatable :: eps,del,eta
         real,dimension(:,:,:),allocatable :: qp,qs
 
-        real :: ref_vel, ref_rho, ref_kpa
+        real :: ref_vel=1500., ref_rho=1000., ref_kpa=1000.*1500.**2
 
         logical,dimension(:,:,:),allocatable :: is_freeze_zone
 
@@ -97,6 +97,7 @@ use m_setup
                 read(12,rec=i) self%vp
                 call hud('vp model is read.')
                 self%ref_vel=self%vp(1,1,1)
+                self%ref_kpa=self%ref_rho*self%ref_vel**2
 
             case ('vs')
                 call alloc(self%vs,self%nz,self%nx,self%ny)
@@ -143,7 +144,7 @@ use m_setup
 
 
         !freesurface
-        self%is_freesurface=setup%get_bool('IF_FREESURFACE',o_default='T')
+        self%is_freesurface=setup%get_bool('IS_FREESURFACE',o_default='T')
                 
         !freeze zone
         allocate(self%is_freeze_zone(self%nz,self%nx,self%ny)); self%is_freeze_zone=.false.

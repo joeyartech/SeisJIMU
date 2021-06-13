@@ -19,6 +19,8 @@ use m_arrayop
         procedure :: print => print
     end type
 
+    type(t_shotlist),public :: sl
+    
     contains
 
     subroutine read_from_setup(self)

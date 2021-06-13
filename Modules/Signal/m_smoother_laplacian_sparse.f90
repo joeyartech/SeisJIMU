@@ -1,4 +1,7 @@
 module m_smoother_laplacian_sparse
+use m_string
+use m_mpienv
+use m_message
 use m_setup
 
     private
@@ -36,13 +39,11 @@ use m_setup
         call sgtsv( n, 1, dl(2:n), d(:), du(1:n-1), vector, n, info )
         
         if(info /= 0 ) then
-            !call hud('Laplacian smoothing has a problem')
             if(info<0) then
-                write(*,*) '-i=',info, ': The i-th argument had an illegal value'
+                call error('Laplacian smoothing has a problem: -i='//num2str(info)//', The i-th argument had an illegal value')
             else
-                write(*,*) 'i=',info, ': U(i,i) is exactly zero, and the solution has not been computed. The factorization has not been completed unless i = N.'
+                call error('Laplacian smoothing has a problem: i='//num2str(info)//', U(i,i) is exactly zero, and the solution has not been computed. The factorization has not been completed unless i = N.')
             endif
-            stop 'stopped now'
         endif
         
         !normalization
@@ -77,11 +78,10 @@ use m_setup
         
         if(info /= 0 ) then
             if(info<0) then
-                write(*,*) '-i=',info, ': The i-th argument had an illegal value'
+                call error('Laplacian smoothing has a problem: -i='//num2str(info)//', The i-th argument had an illegal value')
             else
-                write(*,*) 'i=',info, ': U(i,i) is exactly zero, and the solution has not been computed. The factorization has not been completed unless i = N.'
+                call error('Laplacian smoothing has a problem: i='//num2str(info)//', U(i,i) is exactly zero, and the solution has not been computed. The factorization has not been completed unless i = N.')
             endif
-            stop 'stopped now'
         endif
         
         !normalization
@@ -118,7 +118,7 @@ use m_setup
         if(present(o_addmirror)) then
             iaddmirror=nint(o_addmirror/dz)+1
         else
-            iaddmirror=nint( setup%get_real('SMOOTHING_ADDMIRROR',o_default='dz') /dz ) +1
+            iaddmirror=nint( setup%get_real('SMTH_ADDMIRROR',o_default='dz') /dz ) +1
         endif
         
         if(present(o_frac)) then
@@ -126,7 +126,7 @@ use m_setup
             frac_x=o_frac(2)
             frac_y=o_frac(3)
         else
-            tmp=setup%get_reals('SMOOTH_GRADIENT_WAVELENGTH_FRACTION',o_default='1 1 1')
+            tmp=setup%get_reals('LAPLACIAN_SMTH_FRACTION_WAVELENGTH','LAP_FRAC',o_default='1 1 1')
             frac_z=tmp(1)
             frac_x=tmp(2)
             frac_y=tmp(3)
@@ -135,22 +135,22 @@ use m_setup
         if(present(o_preserve)) then
             preserve=o_preserve
         else
-            preserve=setup%get_str('SMOOTH_GRADIENT_PRESERVE_MAGNITUDE',o_default='nopreserve')
+            preserve=setup%get_str('LAPLACIAN_SMTH_PRESERVE_GRAD_NORM','LAP_PRESERVE',o_default='nopreserve')
         endif
         
     end subroutine
     
-    subroutine smoother_laplacian_extend_mirror(gradient,itopo)
+    subroutine smoother_laplacian_extend_mirror(grad,itopo)
     !to avoid leakage into the mask zone after smoothing
-    !this subroutine mirrors the gradient wrt midway between points itopo+iaddmirror-1 & itopo+iaddmirror-1 in depth
+    !this subroutine mirrors the grad wrt midway between points itopo+iaddmirror-1 & itopo+iaddmirror-1 in depth
     !then another subroutine cleans the mask zone later
-        real,dimension(nz,nx,ny) :: gradient
+        real,dimension(nz,nx,ny) :: grad
         integer,dimension(nx,ny) :: itopo
     
         do iy=1,ny
         do ix=1,nx
-            gradient(itopo(ix,iy)+iaddmirror-1 :1                            :-1, ix,iy)=&
-            gradient(itopo(ix,iy)+iaddmirror   :2*(itopo(ix,iy)+iaddmirror-1)   , ix,iy)
+            grad(itopo(ix,iy)+iaddmirror-1 :1                            :-1, ix,iy)=&
+            grad(itopo(ix,iy)+iaddmirror   :2*(itopo(ix,iy)+iaddmirror-1)   , ix,iy)
         enddo
         enddo
     
@@ -159,22 +159,22 @@ use m_setup
     !Use convolutions of 1D Laplacian functions on x,y,z axes to roughly approx the 3D Laplacian function
     !Note that high-dimensional Laplacian function can't be decomposed as convolutions of 1D Laplacian functions, unlike Gaussian functions..
     !True 2D Laplacian function has a circular shape whereas this approx function has a diamond shape.   
-    subroutine smoother_laplacian_pseudo_stationary(gradient,b)
-        real,dimension(nz,nx,ny) :: gradient
+    subroutine smoother_laplacian_pseudo_stationary(grad,b)
+        real,dimension(nz,nx,ny) :: grad
         real,dimension(3) :: b
         
         !real norm
         real,dimension(:),allocatable :: vector
         
-        !norm=sum(abs(gradient))
+        !norm=sum(abs(grad))
         
         !z axis
         allocate(vector(nz))
         do iy=1,ny
         do ix=1,nx
-            vector=gradient(:,ix,iy)
+            vector=grad(:,ix,iy)
             call smoother_1D_stationary(nz,dz,vector,b(1))
-            gradient(:,ix,iy)=vector
+            grad(:,ix,iy)=vector
         enddo
         enddo
         deallocate(vector)
@@ -183,9 +183,9 @@ use m_setup
         allocate(vector(nx))
         do iy=1,ny
         do iz=1,nz
-            vector=gradient(iz,:,iy)
+            vector=grad(iz,:,iy)
             call smoother_1D_stationary(nx,dx,vector,b(2))
-            gradient(iz,:,iy)=vector
+            grad(iz,:,iy)=vector
         enddo
         enddo
         deallocate(vector)
@@ -195,9 +195,9 @@ use m_setup
             allocate(vector(ny))
             do ix=1,nx
             do iz=1,nz
-                vector=gradient(iz,ix,:)
+                vector=grad(iz,ix,:)
                 call smoother_1D_stationary(ny,dy,vector,b(3))
-                gradient(iz,ix,:)=vector
+                grad(iz,ix,:)=vector
             enddo
             enddo
             deallocate(vector)
@@ -205,17 +205,17 @@ use m_setup
         
     end subroutine
     
-    subroutine smoother_laplacian_pseudo_nonstationary(gradient,velocity)
-        real,dimension(nz,nx,ny) :: gradient,velocity
+    subroutine smoother_laplacian_pseudo_nonstationary(grad,velocity)
+        real,dimension(nz,nx,ny) :: grad,velocity
         
         real,dimension(:),allocatable :: vector,frac_lambda
         real :: old_norm
         real,dimension(:,:,:),allocatable :: table_one
         
         if(preserve=='L1norm') then
-            old_norm = sum(abs(gradient))
+            old_norm = sum(abs(grad))
         elseif(preserve=='L2norm') then
-            old_norm = norm2(gradient)
+            old_norm = norm2(grad)
         elseif(preserve=='scale1') then
             allocate(table_one(nz,nx,ny))
             table_one=1.
@@ -225,10 +225,10 @@ use m_setup
         allocate(vector(nz),frac_lambda(nz))
         do iy=1,ny
         do ix=1,nx
-            vector=gradient(:,ix,iy)
+            vector=grad(:,ix,iy)
             frac_lambda=velocity(:,ix,iy)/freq*frac_z
             call smoother_1D_nonstationary(nz,dz,vector,frac_lambda)
-            gradient(:,ix,iy)=vector
+            grad(:,ix,iy)=vector
         enddo
         enddo
         deallocate(vector,frac_lambda)
@@ -237,10 +237,10 @@ use m_setup
         allocate(vector(nx),frac_lambda(nx))
         do iy=1,ny
         do iz=1,nz
-            vector=gradient(iz,:,iy)
+            vector=grad(iz,:,iy)
             frac_lambda=velocity(iz,:,iy)/freq*frac_x
             call smoother_1D_nonstationary(nx,dx,vector,frac_lambda)
-            gradient(iz,:,iy)=vector
+            grad(iz,:,iy)=vector
         enddo
         enddo
         deallocate(vector,frac_lambda)
@@ -250,10 +250,10 @@ use m_setup
             allocate(vector(ny),frac_lambda(ny))
             do ix=1,nx
             do iz=1,nz
-                vector=gradient(iz,ix,:)
+                vector=grad(iz,ix,:)
                 frac_lambda=velocity(iz,ix,:)/freq*frac_y
                 call smoother_1D_nonstationary(ny,dy,vector,frac_lambda)
-                gradient(iz,ix,:)=vector
+                grad(iz,ix,:)=vector
             enddo
             enddo
             deallocate(vector,frac_lambda)
@@ -302,11 +302,11 @@ use m_setup
         
         !normalization
         if(preserve=='L1norm') then
-            gradient = gradient * old_norm / sum(abs(gradient))
+            grad = grad * old_norm / sum(abs(grad))
         elseif(preserve=='L2norm') then
-            gradient = gradient * old_norm / norm2(gradient)
+            grad = grad * old_norm / norm2(grad)
         elseif(preserve=='scale1') then
-            gradient = gradient / table_one
+            grad = grad / table_one
             deallocate(table_one)
         endif
         

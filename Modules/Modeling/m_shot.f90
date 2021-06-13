@@ -53,17 +53,17 @@ use m_model
 
         real,dimension(:,:),allocatable :: dobs !observed seismogram
         real,dimension(:,:),allocatable :: dsyn !synthetic seismogram
-        real,dimension(:,:),allocatable :: dres !residual seismogram
-        !real,dimension(:,:),allocatable :: dadj !adjoint seismogram
+        !real,dimension(:,:),allocatable :: dres !residual seismogram
+        real,dimension(:,:),allocatable :: dadj !adjoint source seismogram
         
         contains
         procedure :: init => init
         procedure :: read_from_setup => read_from_setup
         procedure :: read_from_data  => read_from_data
-        procedure :: set_time  => set_time
-        procedure :: set_space => set_space
+        procedure :: set_var_time  => set_var_time
+        procedure :: set_var_space => set_var_space
         procedure :: update_wavelet => update_wavelet
-        procedure :: update_residuals => update_residuals
+        procedure :: update_adjsource => update_adjsource
         
     end type
     
@@ -138,16 +138,16 @@ use m_model
             self%rcv(ir)%z=-data%hdrs(ir)%gelev
             
             select case (data%hdrs(ir)%trid)
-                case (11)
+            case (11)
                 self%rcv(ir)%comp='p'  !pressure
-                case (12)
+            case (12)
                 self%rcv(ir)%comp='vz' !vertical velocity
-                case (13)
+            case (13)
                 self%rcv(ir)%comp='vy' !horizontal velocity
-                case (14)
+            case (14)
                 self%rcv(ir)%comp='vx'
                 
-                case default
+            case default
                 self%rcv(ir)%comp='p'
             end select
             
@@ -184,7 +184,7 @@ use m_model
 
     end subroutine
 
-    subroutine set_time(self)
+    subroutine set_var_time(self)
         class(t_shot) :: self
 
         character(:),allocatable :: file
@@ -222,7 +222,7 @@ use m_model
 
     end subroutine
 
-    subroutine set_space(self,is_fdsg)
+    subroutine set_var_space(self,is_fdsg)
         class(t_shot) :: self
         logical :: is_fdsg
 
@@ -344,10 +344,10 @@ use m_model
 
     end subroutine
     
-    subroutine update_residuals(self)
+    subroutine update_adjsource(self)
         class(t_shot) :: self
 
-        call matchfilter_correlate_filter_residual(self%nt,self%nrcv,self%dres)
+        call matchfilter_correlate_filter_residual(self%nt,self%nrcv,self%dadj)
 
     end subroutine
 

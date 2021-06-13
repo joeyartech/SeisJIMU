@@ -84,13 +84,9 @@ use m_computebox
         call alloc(self%b_x,[cb%ifx,cb%ilx]); call alloc(self%b_x_half,[cb%ifx,cb%ilx])
         call alloc(self%b_y,[cb%ify,cb%ily]); call alloc(self%b_y_half,[cb%ify,cb%ily])
                 
-        call alloc(self%kpa_z,[cb%ifz,cb%ilz],initialize=.false.); call alloc(self%kpa_z_half,[cb%ifz,cb%ilz],initialize=.false.)
-        call alloc(self%kpa_x,[cb%ifx,cb%ilx],initialize=.false.); call alloc(self%kpa_x_half,[cb%ifx,cb%ilx],initialize=.false.)
-        call alloc(self%kpa_y,[cb%ify,cb%ily],initialize=.false.); call alloc(self%kpa_y_half,[cb%ify,cb%ily],initialize=.false.)
-
-        self%kpa_z=1.; self%kpa_z_half=1.       
-        self%kpa_x=1.; self%kpa_x_half=1.
-        self%kpa_y=1.; self%kpa_y_half=1.
+        call alloc(self%kpa_z,[cb%ifz,cb%ilz],o_init=1.); call alloc(self%kpa_z_half,[cb%ifz,cb%ilz],o_init=1.)
+        call alloc(self%kpa_x,[cb%ifx,cb%ilx],o_init=1.); call alloc(self%kpa_x_half,[cb%ifx,cb%ilx],o_init=1.)
+        call alloc(self%kpa_y,[cb%ify,cb%ily],o_init=1.); call alloc(self%kpa_y_half,[cb%ify,cb%ily],o_init=1.)
 
         !z dir
         do i = cb%ifz,cb%ilz
