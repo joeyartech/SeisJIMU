@@ -58,17 +58,15 @@ use m_preconditioner
         real :: alpha=alpha0 !steplength initializd to alpha0
         real :: alphaL=0., alphaR=0.
         real :: scaler=1.
-        logical :: is_scaled=.false.
+        logical :: if_has_scaler=.false.
         
         !counter
         integer :: imodeling=1 !number of modeling performed
         integer :: isearch=0 !number of linesearch performed
-        integer :: iterate=0 !number of iteration performed    
         
-        integer max_modeling !max total number of forward modeling allowed
-        integer max_search   !max number of linesearch allowed per iteration
-        integer max_iterate  !max number of iteration allowed
-
+        integer :: max_modeling !max total number of forward modeling allowed
+        integer :: max_search   !max number of linesearch allowed per iteration
+        
         contains
         procedure :: init => init
         procedure :: search => search
@@ -107,7 +105,6 @@ use m_preconditioner
         class(t_linesearcher) :: self
 
         !read setup
-        max_iterate=setup%get_int('MAX_ITERATE',o_default='30')
         max_search=setup%get_int('MAX_SEARCH',o_default='12')
         max_modeling=setup%get_int('MAX_MODELING',o_default=num2str(max_iterate+30))
         
@@ -117,7 +114,6 @@ use m_preconditioner
     
     subroutine search(self,iterate,curr,pert,gradient_history,result)
         class(t_linesearcher) :: self
-        integer,intent(in) :: iterate
         type(t_forwardmap),intent(inout) :: curr, pert
         real,dimension(:,:),intent(inout),optional :: gradient_history
         character(7) :: result
@@ -127,11 +123,11 @@ use m_preconditioner
         !initialize
         alphaL=0.
         alphaR=0.
-        if(if_reinit_alpha) alpha=alpha0 !reinitialize alpha in each iterate may help convergence for LBFGS method..
+        if(if_reinit_alpha) self%alpha=alpha0 !reinitialize alpha in each iterate may help convergence for LBFGS method..
         ! if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Initial alphaL/alpha/alphaR =',alphaL,alpha,alphaR
         if(mpiworld%is_master) write(*,'(a, 2x,es8.2)')   ' Initial alpha =',alpha
         if(mpiworld%is_master) write(*,*) 'Initial f,||g|| =',curr%f,norm2(curr%g)
-        pert%x=curr%x+alpha*curr%d
+        pert%x=curr%x+self%alpha*curr%d
         
         !save gradients
         if(present(gradient_history)) then
@@ -142,19 +138,21 @@ use m_preconditioner
         endif
         
         !linesearch loop
-        loop: do isearch=1,max_search
+        loop: do isearch=1,self%max_search
+
+            self%isearch=isearch
         
-            if(mpiworld%is_master) write(*,'(a,3(2x,i5))') '  Iteration.Linesearch.Modeling#',iterate,isearch,imodeling
+            if(mpiworld%is_master) write(*,'(a,3(2x,i5))') '  Iterate.Linesearch.Modeling#',iterate,self%isearch,self%imodeling
             
             call hud('Modeling with perturbed parameters')
             call threshold(pert%x,size(pert%x))
             call param%transform('x2m',pert%x)
-            call nabla%act(fobj)
+            call nabla%act(fobj,oif_approx=.true.)
             pert%f=fobj%total_misfit
             call param%transform('m2x',pert%x,pert%g)
             call self%scale(pert)
             call preco%apply(pert%g,pert%pg)
-            imodeling=imodeling+1
+            self%imodeling=self%imodeling+1
             
             call hud('Judge alpha by Wolfe conditions')
             
@@ -182,29 +180,12 @@ use m_preconditioner
                 exit loop
             endif
             
-            if(isearch==max_search) then
-            
-                !1st condition BAD => failure
-                if(.not. first_condition) then
-                    call hud("Linesearch failure: can't find good alpha.")
-                    result='failure'
-                    exit loop
-                endif
-                
-                !2nd condition BAD => use alpha
-                if(.not. second_condition) then
-                    call hud("Maximum linesearch number reached. Use alpha although curvature condition is not satisfied")
-                    call hud('Enter new iterate')
-                    result='success'
-                    exit loop
-                endif
-                
-            else
+            if(self%isearch<self%max_search) then
             
                 !1st condition BAD => shrink alpha
                 if(.not. first_condition) then
                     call hud("Armijo condition is not satified. Now try a smaller alpha")
-                    result='pert'
+                    result='perturb'
                     self%alphaR=self%alpha
                     self%alpha=0.5*(self%alphaL+self%alphaR)
                     pert%x=curr%x+self%alpha*curr%d
@@ -234,14 +215,33 @@ use m_preconditioner
                 endif
                 
             endif
+
+            if(self%isearch==self%max_search) then
             
+                !1st condition BAD => failure
+                if(.not. first_condition) then
+                    call hud("Linesearch failure: can't find good alpha.")
+                    result='failure'
+                    exit loop
+                endif
+                
+                !2nd condition BAD => use alpha
+                if(.not. second_condition) then
+                    call hud("Maximum linesearch number reached. Use alpha although curvature condition is not satisfied")
+                    call hud('Enter new iterate')
+                    result='success'
+                    exit loop
+                endif
+                
+            endif
+
             !if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Linesearch alphaL/alpha/alphaR =',alphaL,alpha,alphaR
             if(mpiworld%is_master) write(*,'(a, 2x,es8.2)')   ' Linesearch alpha =',self%alpha
             if(mpiworld%is_master) write(*,*) 'f,||g|| =',pert%f,norm2(pert%g)
         
         enddo loop
         
-        if (imodeling>=max_modeling) then
+        if (self%imodeling>=self%max_modeling) then
             call hud('Maximum modeling number reached. Finalize program now..')
             result='maximum'
         endif       
@@ -256,22 +256,20 @@ use m_preconditioner
         where (x>1.) x=1.-thres
 
     end subroutine
-    
-    
-    !scale problem
+        
     subroutine scale(self,fm)
         class(t_linesearcher) :: self
         type(t_forwardmap) :: fm
         
-        if(.not.self%is_scaled) then
+        if(.not.self%if_has_scaler) then
 
             !self%scaler=1e3* 1e-2*m%n/ (sum(abs(fm%g(1:m%n)))) / (par_vp_max -par_vp_min)  !=1e3* |gp1|_L1 / |gvp|_L1 / (vpmax-vpmin)
 
-            self%scaler=1e3* 1e-2*m%n/ (sum(abs(fm%g(1:m%n)))) / (pars_max(1)-pars_min(1))  !=1e3* |gpar1|_L1 / |gpar|_L1 / par1_range
+            self%scaler=1e3* 1e-2*m%n/ (sum(abs(fm%g(1:m%n)))) / (param%pars(1)%range)  !=1e3* |gpar1|_L1 / |gpar|_L1 / par1_range
 
-            if(mpiworld%is_master) write(*,*) 'Linesearch Scaling Factor:', scaling
+            if(mpiworld%is_master) write(*,*) 'Linesearch scaler:', self%scaler
 
-            self%is_scaled=.true.
+            self%if_has_scaler=.true.
 
         endif
         

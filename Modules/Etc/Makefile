@@ -1,3 +1,4 @@
+mod_dir=../../mod/
 include ../../make.inc
 
 
@@ -12,4 +13,4 @@ all : $(srcf77:.f=.o) $(srcf90:.f90=.o)
 
 clean :
 	-rm $(srcf77:.f=.o) $(srcf90:.f90=.o)
-	-rm $(srcf90:%.f90=../../mod/%.mod)
+	-rm $(srcf90:%.f90=$(mod_dir)%.mod)

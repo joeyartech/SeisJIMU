@@ -1,3 +1,4 @@
+mod_dir=../../mod/
 include ../../make.inc
 
 WaveEq=AC
@@ -19,4 +20,4 @@ all : $(src:.f90=.o)
 
 clean :
 	-rm $(src:.f90=.o) 
-	-rm $(src:%.f90=../../mod/%.mod) ../../mod/m_cpml.mod ../../mod/m_propagator.mod
+	-rm $(src:%.f90=$(mod_dir)%.mod) $(mod_dir)m_cpml.mod $(mod_dir)m_propagator.mod

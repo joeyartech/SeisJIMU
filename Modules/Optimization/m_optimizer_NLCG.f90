@@ -38,11 +38,7 @@ use m_linesearcher
     ! SIAM Journal on Optimization, 10 (1999), pp. 177-182!
     !                                                     !
     ! See also Nocedal, Numerical optimization,           !
-    ! 2nd edition p.132                                   !
-    
-    
-    real f0 !initial fobjective
-    real g0norm !initial gradient norm
+    ! 2nd edition p.132                                   !   
     
     real min_update !minimum parameter updates allowed
  
@@ -52,10 +48,17 @@ use m_linesearcher
         type(t_forwardmap) :: pert !point perturbed from current point
         type(t_forwardmap) :: prev !previous point
 
+        real f0 !initial fobjective
+        real g0norm !initial gradient norm
+ 
+        !counter
+        integer :: iterate=0 !number of iteration performed 
+        integer :: max_iterate  !max number of iteration allowed
+
         contains
         procedure :: init => init
         procedure :: optimize => optimize
-        ! procedure :: write => write
+        procedure :: write => write
         ! final :: fin
     end type
     
@@ -74,6 +77,7 @@ use m_linesearcher
     
         !read setup
         min_update=setup%get_real('MIN_UPDATE',o_default='1e-8')
+        max_iterate=setup%get_int('MAX_ITERATE',o_default='30')
         call ls%init
 
         associate(curr=>self%curr, pert=>self%pert, prev=>self%prev)
@@ -81,7 +85,7 @@ use m_linesearcher
         !initialize current point
         call curr%init(self%n,o_fobj=fobj%total_misfit)
         
-            f0=curr%f
+            self%f0=curr%f
 
             !transform by parameterization
             call param%transform('m2x',curr%x,curr%g)
@@ -92,7 +96,7 @@ use m_linesearcher
             !initialize preconditioner and apply
             call preco%init
             call preco%apply(curr%g,curr%pg)
-            g0norm=norm2(curr%g)
+            self%g0norm=norm2(curr%g)
             
             !current descent direction
             curr%d=-curr%pg
@@ -122,16 +126,18 @@ use m_linesearcher
         associate(curr=>self%curr,pert=>self%pert,prev=>self%prev)
 
             !iteration loop
-            loop: do iterate=1,max_iterate
+            loop: do iterate=1,self%max_iterate
+
+                self%iterate=iterate
             
                 if (norm2(curr%d) < min_update) then
                     call hud('Maximum iteration number reached or convergence criteria met')
-                    ! call self%write('criteria')
+                    call self%write('criteria')
                     exit loop
                 endif
                 
                 !linesearcher finds steplength
-                call ls%search(iterate,curr,pert,gradient_history,result=result)
+                call ls%search(self%iterate,curr,pert,gradient_history,result)
                 
                 select case(result)
                     case('success')
@@ -162,14 +168,14 @@ use m_linesearcher
                     !inner product of g and d for Wolfe condition
                     curr%gdotd=sum(curr%g*curr%d)
                     
-                    ! call self%write('update')
+                    call self%write('update')
                     
                     case('failure')
-                    ! call self%write('failure')
+                    call self%write('failure')
                     exit loop
                     
                     case('maximum')
-                    ! call self%write('maximum')
+                    call self%write('maximum')
                     exit loop
                     
                 end select
@@ -179,67 +185,83 @@ use m_linesearcher
         end associate
         
         call hud('-------- FINALIZE OPTIMIZATON --------')
-        ! call self%write('finalize')
+        call self%write('finalize')
         
     end subroutine
 
-    ! subroutine write(self,task)
-    !     class(t_optimizer) :: self
-    !     character(*) :: task
+    subroutine write(self,message)
+        class(t_optimizer) :: self
+        character(*) :: message
         
-    !     if(mpiworld%is_master) then
+        if(mpiworld%is_master) then
         
-    !         select case (task)
-    !             case('start')
-    !                 open(16,file='iterate.log')
-    !                 write(16,'(a)'      ) ' **********************************************************************'
-    !                 write(16,'(a)'      ) '                 NONLINEAR CONJUGATE GRADIENT ALGORITHM                '
-    !                 write(16,'(a)'      ) ' **********************************************************************'
-    !                 write(16,'(a,es8.2)') '     Min update allowed        : ',  min_update
-    !                 write(16,'(a,i5)'   ) '     Max iteration allowed     : ',  max_iterate
-    !                 write(16,'(a,i5)'   ) '     Max linesearch allowed    : ',  max_search
-    !                 write(16,'(a,i5)'   ) '     Max modeling allowed      : ',  max_modeling
-    !                 write(16,'(a,es8.2)') '     Initial fobjective (f0)         : ',  f0
-    !                 write(16,'(a,es8.2)') '     Initial gradient norm (||g0||)  : ',  g0norm
-    !                 write(16,'(a)'      ) ' **********************************************************************'
-    !                 write(16,'(a)'      ) '  Iter#      f         f/f0    ||g||/||g0||    alpha     nls  Modeling#'
-    !                                !e.g.  !    0    1.00E+00    1.00E+00    1.00E+00    1.00E+00      0       1
-    !                 write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, current%f, current%f/f0, norm2(current%g)/g0norm, alpha, isearch, imodeling
+            select case (message)
+                case('start')
+                    open(16,file=setup%dir_working//'iterate.log',position='append',action='write')
+                    write(16,'(a)'      ) ' **********************************************************************'
+                    write(16,'(a)'      ) '                 NONLINEAR CONJUGATE GRADIENT ALGORITHM                '
+                    write(16,'(a)'      ) ' **********************************************************************'
+                    write(16,'(a,es8.2)') '     Min update allowed        : ',  min_update
+                    write(16,'(a,i5)'   ) '     Max iteration allowed     : ',  self%max_iterate
+                    write(16,'(a,i5)'   ) '     Max linesearch allowed    : ',  ls%max_search
+                    write(16,'(a,i5)'   ) '     Max modeling allowed      : ',  ls%max_modeling
+                    write(16,'(a,es8.2)') '     Initial fobjective (f0)         : ',  self%f0
+                    write(16,'(a,es8.2)') '     Initial gradient norm (||g0||)  : ',  self%g0norm
+                    write(16,'(a)'      ) ' **********************************************************************'
+                    write(16,'(a)'      ) '  Iter#      f         f/f0    ||g||/||g0||    alpha     nls  Modeling#'
+                                   !e.g.  !    0    1.00E+00    1.00E+00    1.00E+00    1.00E+00      0       1
+                    write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  self%iterate, self%curr%f, self%curr%f/self%f0, norm2(self%curr%g)/self%g0norm, ls%alpha, ls%isearch, ls%imodeling
+                    close(16)
                     
-    !             case('update')
-    !                 write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, current%f, current%f/f0, norm2(current%g)/g0norm, alpha, isearch, imodeling
+                case('update')
+                    open(16,file=setup%dir_working//'iterate.log',position='append',action='write')
+                    write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  self%iterate, self%curr%f, self%curr%f/f0, norm2(self%curr%g)/g0norm, ls%alpha, ls%isearch, ls%imodeling
+                    close(16)
                     
-    !                 call parameterization%transform('x2m',current%x)
-    !                 call model%write(suffix='Iter'//int2str(iterate))
-    !             case('maximum')
-    !                 write(16,'(a)'      ) ' **********************************************************************'
-    !                 write(16,'(a)'      ) '     STOP: MAXIMUM MODELING NUMBER REACHED                             '
-    !                 write(16,'(a)'      ) ' **********************************************************************'
-    !             case('criteria')
-    !                 write(16,'(a)'      ) ' **********************************************************************'
-    !                 write(16,'(a)'      ) '     STOP: CONVERGENCE CRITERIA SATISFIED                              '
-    !                 write(16,'(a)'      ) ' **********************************************************************'
-    !             case('failure')
-    !                 write(16,'(a)'      ) ' **********************************************************************'
-    !                 write(16,'(a)'      ) '     STOP: LINE SEARCH FAILURE                                         '
-    !                 write(16,'(a)'      ) ' **********************************************************************'
-    !             case('finalize')
-    !                 write(16,'(a)'      ) ' **********************************************************************'
-    !                 write(16,'(a)'      ) '     STOP: LINE SEARCH FINISHED                                         '
-    !                 write(16,'(a)'      ) ' **********************************************************************'
-    !                 close(16)
+                    call param%transform('x2m',self%curr%x)
+                    call m%write(o_suffix='Iter'//int2str(self%iterate))
+
+                case('maximum')
+                    open(16,file=setup%dir_working//'iterate.log',position='append',action='write')
+                    write(16,'(a)'      ) ' **********************************************************************'
+                    write(16,'(a)'      ) '     STOP: MAXIMUM MODELING NUMBER REACHED                             '
+                    write(16,'(a)'      ) ' **********************************************************************'
+                    close(16)
+
+                case('criteria')
+                    open(16,file=setup%dir_working//'iterate.log',position='append',action='write')
+                    write(16,'(a)'      ) ' **********************************************************************'
+                    write(16,'(a)'      ) '     STOP: CONVERGENCE CRITERIA SATISFIED                              '
+                    write(16,'(a)'      ) ' **********************************************************************'
+                    close(16)
+
+                case('failure')
+                    open(16,file=setup%dir_working//'iterate.log',position='append',action='write')
+                    write(16,'(a)'      ) ' **********************************************************************'
+                    write(16,'(a)'      ) '     STOP: LINE SEARCH FAILURE                                         '
+                    write(16,'(a)'      ) ' **********************************************************************'
+                    close(16)
+
+                case('finalize')
+                    open(16,file=setup%dir_working//'iterate.log',position='append',action='write')
+                    write(16,'(a)'      ) ' **********************************************************************'
+                    write(16,'(a)'      ) '     FINALIZE                                         '
+                    write(16,'(a)'      ) ' **********************************************************************'
+                    close(16)
                     
-    !                 call parameterization%transform('x2m',perturb%x)
-    !                 call model%write(suffix='Iter'//int2str(iterate))
+                    call param%transform('x2m',self%pert%x)
+                    call m%write(o_suffix='Iter'//int2str(self%iterate))
                     
-    !                 call parameterization%transform('x2m',current%x)
-    !                 call model%write(suffix='final')
+                    call param%transform('x2m',self%curr%x)
+                    call m%write(o_suffix='final')
                     
-    !                 write(*,'(a,i0.4)') 'ximage < model_final n1=',m%nz
-    !                 write(*,'(a,i0.4,a,i0.4)') 'xmovie < model_update loop=1 title=%g n1=',m%nz,' n2=',m%nx
-    !             end select
-    !     endif
+                    write(*,'(a,i0.4)') 'ximage < model_final n1=',m%nz
+                    write(*,'(a,i0.4,a,i0.4)') 'xmovie < model_update loop=1 title=%g n1=',m%nz,' n2=',m%nx
+
+                end select
+
+        endif
     
-    ! end subroutine
+    end subroutine
 
 end

@@ -1,6 +1,7 @@
+mod_dir=../../mod/
 include ../../make.inc
 
-#Preco=scaling
+
 LineS=Wolfe
 Optim=NLCG
 #Optim=LBFGS
@@ -14,4 +15,4 @@ all : $(src:.f90=.o)
 
 clean :
 	-rm $(src:.f90=.o) 
-	-rm $(src:%.f90=../../mod/%.mod)  ../../mod/m_linesearcher.mod ../../mod/m_optimizer.mod
+	-rm $(src:%.f90=$(mod_dir)%.mod)  $(mod_dir)m_linesearcher.mod $(mod_dir)m_optimizer.mod

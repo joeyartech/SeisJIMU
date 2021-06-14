@@ -252,79 +252,80 @@ use m_setup
 
     end subroutine
 
-    subroutine write(self)
+    subroutine write(self,o_suffix)
         class(t_model) :: self
-        ! character(*),optional :: o_suffix
-        ! character(:),allocatable :: suffix
+        character(*),optional :: o_suffix
 
-        ! if(present(o_suffix)) then
-        !     suffix=o_suffix
-        ! else
-        !     suffix=''
-        ! endif
+        character(:),allocatable :: suf
 
-        open(13,file=setup%dir_working//'model',access='direct',recl=4*self%n,action='write')
+        if(present(o_suffix)) then
+            suf=o_suffix
+        else
+            suf=''
+        endif
+
+        open(13,file=setup%dir_working//'model'//suf,access='direct',recl=4*self%n,action='write')
         
         do i=1,size(self%attributes_write)
             select case(self%attributes_write(i)%s)
             case ('vp')
                 if(allocated(self%vp)) then
                     write(13,rec=i) self%vp
-                    call hud('vp model is written.')
+                    ! call hud('vp model is written.')
                 endif
 
             case ('vs')
                 if(allocated(self%vp)) then
                     write(13,rec=i) self%vs
-                    call hud('vs model is written.')
+                    ! call hud('vs model is written.')
                 endif
 
             case ('rho')
                 if(allocated(self%rho)) then
                     write(13,rec=i) self%rho
-                    call hud('rho model is written.')
+                    ! call hud('rho model is written.')
                 endif
 
             case ('ip')
                 if(allocated(self%vp).and.allocated(self%rho)) then
                     write(13,rec=i) self%vp*self%rho
-                    call hud('ip model is written.')
+                    ! call hud('ip model is written.')
                 endif
 
             case ('is')
                 if(allocated(self%vs).and.allocated(self%rho)) then
                     write(13,rec=i) self%vs*self%rho
-                    call hud('is model is written.')
+                    ! call hud('is model is written.')
                 endif
 
             case ('eps')
                 if(allocated(self%eps)) then
                     write(13,rec=i) self%eps
-                    call hud('eps model is written.')
+                    ! call hud('eps model is written.')
                 endif
 
             case ('del')
                 if(allocated(self%del)) then
                     write(13,rec=i) self%del
-                    call hud('del model is written.')
+                    ! call hud('del model is written.')
                 endif
 
             case ('eta')
                 if(allocated(self%eta)) then
                     write(13,rec=i) self%eta
-                    call hud('eta model is written.')
+                    ! call hud('eta model is written.')
                 endif
 
             case ('qp')
                 if(allocated(self%qp)) then
                     write(13,rec=i) self%qp
-                    call hud('qp model is written.')
+                    ! call hud('qp model is written.')
                 endif
 
             case ('qs')
                 if(allocated(self%qs)) then
                     write(13,rec=i) self%qs
-                    call hud('qs model is written.')
+                    ! call hud('qs model is written.')
                 endif
 
             end select

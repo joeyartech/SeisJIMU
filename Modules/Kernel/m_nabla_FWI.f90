@@ -1,4 +1,4 @@
-module m_nabla_FWI
+module m_nabla
 use m_string
 use m_setup
 use m_mpienv
@@ -38,9 +38,9 @@ use m_smoother_laplacian_sparse
 
         !compute gradient by adjoint-state method
         if(present(oif_approx)) then
-            if(oif_approx) call grad_modeling_approximate(fobj)
+            if(oif_approx) call gradient_modeling_approximate(fobj)
         else
-            call grad_modeling(fobj)
+            call gradient_modeling(fobj)
         endif
 
         !postprocessing
@@ -91,7 +91,7 @@ use m_smoother_laplacian_sparse
     subroutine curl
     end subroutine
 
-    subroutine grad_modeling(fobj)
+    subroutine gradient_modeling(fobj)
         type(t_fobjective) :: fobj
 
         type(t_field) :: sfield, rfield
@@ -167,7 +167,7 @@ use m_smoother_laplacian_sparse
     end subroutine
 
 
-    subroutine grad_modeling_approximate(fobj)
+    subroutine gradient_modeling_approximate(fobj)
         type(t_fobjective) :: fobj
     end subroutine
 

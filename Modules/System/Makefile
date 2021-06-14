@@ -1,3 +1,4 @@
+mod_dir=../../mod/
 include ../../make.inc
 
 
@@ -14,4 +15,4 @@ all : $(src:.f90=.o)
 
 clean :
 	-rm $(src:.f90=.o) 
-	-rm $(src:%.f90=../../mod/%.mod)
+	-rm $(src:%.f90=$(mod_dir)%.mod)

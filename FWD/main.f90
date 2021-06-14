@@ -1,20 +1,19 @@
 program main
+use m_string
+use m_setup
+use m_mpienv
+use m_format_su
 use m_model
-use m_computebox
-use m_gen_acqui
 use m_shotlist
 use m_shot
-use m_propagator
+use m_computebox
 use m_field
+use m_cpml
+use m_propagator
 
-    type(t_model) :: m
-    type(t_computebox) :: cb
     type(t_field) :: sfield
-    type(t_acqui) :: acqui
-    type(t_shotlist) :: shotlist
-    type(t_shot) :: shot
 
-    character(:),allocatable :: job  
+    !character(:),allocatable :: job  
 
     !mpiworld lives in t_mpienv
     call mpiworld%init(name='MPIWorld',communicator=MPI_COMM_WORLD)
@@ -38,16 +37,11 @@ use m_field
     !print FD scheme and field info
     call sfield%print_info   
 
-    !estimate required memory
+   !estimate required memory
     call m%estim_RAM
     call cb%estim_RAM
     call sfield%estim_RAM
-
-    job=setup%get('JOB',default='optimization')
-    if(job=='estim RAM') then
-        call mpiworld%finalize
-        stop
-    endif
+    call mpiworld%finalize
 
     !read model
     call m%init

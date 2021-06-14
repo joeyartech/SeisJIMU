@@ -1,17 +1,47 @@
-include ../../make.inc
+mod_dir=../mod/
+include ../make.inc
 
 
-src = \
-# $(DIR)Modules/SignalProcessing/m_hicks.f90 \
-# $(DIR)Modules/SignalProcessing/m_butterworth.f90 \
-# $(DIR)Modules/SignalProcessing/m_resamp.f90 \
-# $(DIR)Modules/SignalProcessing/m_weighter_polygon.f90 \
-# $(DIR)Modules/SignalProcessing/m_weighter_table.f90 \
-# $(DIR)Modules/SignalProcessing/m_matchfilter.f90 \
-# $(DIR)Modules/SignalProcessing/m_smoother_laplacian_sparse.f90
+WaveEq=AC
+# WaveEq=AC_VTI
+# WaveEq=PSV
+Solver=FDSG
+Order=O4
+LineS=Wolfe
+Optim=NLCG
 
-all : $(src:.f90=.o)
+app=fwi
+APP=FWI
+
+mod :
+	#System
+	(cd ../Modules/System; make)
+	#Etc
+	(cd ../Modules/Etc; make)
+	#Signal
+	(cd ../Modules/Signal; make)
+	#Modeling
+	(cd ../Modules/Modeling; make WaveEq=$(WaveEq) Solver=$(Solver) Order=$(Order) )
+	#Kernel
+	(cd ../Modules/Kernel; make Param=$(Param) APP=$(APP))
+	#Optimization
+	(cd ../Modules/Optimization; make LineS=$(LineS) Optim=$(Optim))
+
+exe : main.o
+	mpif90 $(FLAGF90) $^ $(MOD) -o ../exe/$(app)_$(WaveEq)_$(Solver)_$(Order)_$(LineS)_$(Optim)
+	(cd ../exe; ln -sf $(app)_$(WaveEq)_$(Solver)_$(Order)_$(LineS)_$(Optim) $(APP) )
 
 clean :
-	-rm $(src:.f90=.o) 
-	-rm $(src:%.f90=../../mod/%.mod)
+	-rm main.o
+
+cleanall :
+	#System
+	(cd ../Modules/System; make clean)
+	#Etc
+	(cd ../Modules/Etc; make clean)
+	#Signal
+	(cd ../Modules/Signal; make clean)
+	#Modeling
+	(cd ../Modules/Modeling; make clean)
+	#FWD
+	make clean
