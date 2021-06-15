@@ -1,5 +1,6 @@
 mod_dir=../../mod/
 include ../../make.inc
+include ../../setup.inc
 
 
 srcf77 = \

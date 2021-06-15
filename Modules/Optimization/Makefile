@@ -1,10 +1,7 @@
 mod_dir=../../mod/
 include ../../make.inc
+include ../../setup.inc
 
-
-LineS=Wolfe
-Optim=NLCG
-#Optim=LBFGS
 
 src = \
 m_preconditioner.f90 \

@@ -1,5 +1,4 @@
 module m_shotlist
-use m_global
 use m_string
 use m_mpienv
 use m_message

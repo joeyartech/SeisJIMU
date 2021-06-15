@@ -1,5 +1,4 @@
 module m_weighter
-use m_global
 use m_string
 use m_arrayop
 use m_setup
@@ -43,11 +42,7 @@ use m_shot
 
         call alloc(self%weight,self%nt,self%ntr,o_init=1.)
 
-        if(m%is_cubic) then
-            list=setup%get_strs('WEIGHTING','WEI',o_default='aoffset^1')
-        else
-            list=setup%get_strs('WEIGHTING','WEI',o_default='aoffset^0.5')
-        endif
+        list=setup%get_strs('WEIGHTING','WEI',o_default=either(m%is_cubic,'aoffset^1','aoffset^0.5')
 
         do i=1,size(list)
             !weight traces based on power of aoffset

@@ -1,5 +1,4 @@
 module m_preconditioner
-use m_global
 use m_string
 use m_arrayop
 use m_setup
@@ -107,6 +106,10 @@ use m_parameterization
 
         deallocate(tmp)
 
+    end subroutine
+
+    subroutine by_sfield(self)
+        class(t_preconditioner) :: self
     end subroutine
     
     subroutine apply(self,g,pg)

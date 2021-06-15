@@ -1,5 +1,4 @@
 module m_butterworth
-use m_global
 
     private
     public :: butterworth

@@ -128,16 +128,19 @@ use m_model
         self%nt=data%ns  !assume all traces have same ns
         self%dt=data%dt  !assume all traces have same dt
         
-        self%nrcv=data%ntr
+        ntr=data%ntr
         if(allocated(self%rcv))deallocate(self%rcv)
-        allocate(self%rcv(self%nrcv))
+        allocate(self%rcv(ntr))
 
-        do ir=1,self%nrcv
+        shot%nrcv=ntr
+        do ir=1,ntr
             self%rcv(ir)%x= data%hdrs(ir)%gx
             self%rcv(ir)%y= data%hdrs(ir)%gy
             self%rcv(ir)%z=-data%hdrs(ir)%gelev
             
             select case (data%hdrs(ir)%trid)
+            case (2:3) !dead or dummy trace, removed
+                self%nrcv=self%nrcv-1
             case (11)
                 self%rcv(ir)%comp='p'  !pressure
             case (12)
@@ -146,13 +149,11 @@ use m_model
                 self%rcv(ir)%comp='vy' !horizontal velocity
             case (14)
                 self%rcv(ir)%comp='vx'
-                
             case default
                 self%rcv(ir)%comp='p'
             end select
             
-        enddo
-        
+        enddo        
 
         !scale back elevation
         if(data%hdrs(1)%scalel > 0) then

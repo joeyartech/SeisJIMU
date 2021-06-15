@@ -1,11 +1,7 @@
 mod_dir=../../mod/
 include ../../make.inc
+include ../../setup.inc
 
-
-Param=velocities-density
-#Param=velocities-impedance
-#Param=slowness-density
-APP=FWI
 
 ifeq '$(APP)' 'RTM'
 	src = 

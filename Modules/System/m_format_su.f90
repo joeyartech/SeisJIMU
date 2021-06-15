@@ -375,7 +375,6 @@ use m_string
         integer :: ns !assume all traces have same number of samples
         real    :: dt !assume all traces have same time sampling interval
         contains
-        procedure :: init => init
         procedure :: read => read
         procedure :: write => write
         final     :: fin
@@ -383,28 +382,6 @@ use m_string
 
     contains
     
-    subroutine init(self,ns,ntr,o_dt,o_trs)
-        class(t_format_su) :: self
-        real,optional :: o_dt
-        real,dimension(ns,ntr),optional :: o_trs
-
-        allocate(self%hdrs(ntr))
-        allocate(self%trs(ns,ntr))
-
-        self%hdrs(:)%ns=ns
-
-        self%hdrs(:)%tracl=[(i,i=1,ntr)]
-        
-        if(present(o_dt)) then
-            self%hdrs(:)%dt=o_dt*1e6
-        endif
-
-        if(present(o_trs)) then
-            self%trs=o_trs
-        endif
-
-    end subroutine
-
     subroutine read(self,file,o_sindex)
         class(t_format_su) :: self
         character(*) :: file
@@ -450,6 +427,9 @@ use m_string
         character(*) :: file
         character(*),optional :: o_sindex
 
+        ! character(:),allocatable :: ftmp
+        ! ftmp=ternary(if_2scratch,setup%dir_scratch,setup%dir_working)//file
+
         if(present(o_sindex)) write(*,*) 'Shot# '//o_sindex//' will write '//num2str(self%ntr)//' traces, each trace has '//num2str(self%ns)//' samples.'
 
         open(12,file=file,action='read',access='stream') !access='direct',recl=4*(ns+60))
@@ -468,11 +448,17 @@ use m_string
 
         type(t_format_su) :: sudata
 
+        allocate(sudata%hdrs(ntr))
+        allocate(sudata%trs(ns,ntr))
+
+        sudata%hdrs(:)%ns=ns
+        sudata%hdrs(:)%tracl=[(i,i=1,ntr)]
+        
         if(present(o_dt)) then
-            call sudata%init(ns,ntr,o_trs=data,o_dt=o_dt)
-        else
-            call sudata%init(ns,ntr,o_trs=data)
+            sudata%hdrs(:)%dt=o_dt*1e6
         endif
+
+        sudata%trs=data
 
         if(present(o_sindex)) then
             call sudata%write(file,o_sindex)

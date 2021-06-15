@@ -1,5 +1,11 @@
 module m_math
 
+    !math constants
+    real,parameter :: r_pi = 3.1415927
+    double precision,parameter :: d_pi = 3.1415926535897932d0
+    !real,parameter :: r_epsilon = epsilon(r_pi)
+    real,parameter :: r_epsilon=1e-3
+    
     contains
 
     !sinc function

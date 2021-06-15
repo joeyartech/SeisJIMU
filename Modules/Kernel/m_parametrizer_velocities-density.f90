@@ -1,5 +1,4 @@
 module m_parameterization
-use m_global
 use m_string
 use m_setup
 use m_mpienv

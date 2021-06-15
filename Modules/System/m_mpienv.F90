@@ -5,6 +5,22 @@ use m_global
 
     private
 
+    !compilation info
+    character(*),parameter :: commit = git_commit
+    character(*),parameter :: branch = git_branch
+
+#ifdef GNU
+    character(*),parameter :: compiler = 'gfortran v' // __VERSION__
+    character(*),parameter :: version = __VERSION__
+    integer,parameter      :: endian = __BYTE_ORDER__
+#endif
+
+#ifdef INTEL
+    character(*),parameter :: compiler = 'ifort'
+    integer,parameter      :: version(2) = [__INTEL_COMPILER, __INTEL_COMPILER_UPDATE]
+    character(*),parameter :: endian = 'unavailable'
+#endif
+
     type,public :: t_mpienv
         integer iproc, nproc, communicator
         character(4) :: sproc
@@ -123,11 +139,11 @@ use m_global
         write(*,*) 'Using executable: (ls -l $exe)'
         call execute_command_line('ls -l '//trim(adjustl(exe)), wait=.true.)
         
-        write(*,*) 'Git Commit: ', s_commit
-        write(*,*) 'Git Branch: ', s_branch
-        write(*,*) 'Compiler: ',   s_compiler
-        write(*,*) 'Version: ',    s_version
-        write(*,*) 'Endianness: ', i_endian
+        write(*,*) 'Git Commit: ', commit
+        write(*,*) 'Git Branch: ', branch
+        write(*,*) 'Compiler: ',   compiler
+        write(*,*) 'Version: ',    version
+        write(*,*) 'Endianness: ', endian
 
         !!allow unlimited stack memory
         !call execute_command_line('ulimit -s unlimited', wait=.true.)

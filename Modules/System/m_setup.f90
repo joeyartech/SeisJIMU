@@ -1,5 +1,4 @@
 module m_setup
-use m_global
 use m_message
 use m_string
 
@@ -54,7 +53,7 @@ use m_string
         
         call hud('Setup file: '//file)
 
-        self%dir_working=self%get_str('DIR','DIR_WORKING',o_default='./results')
+        self%dir_working=self%get_str('DIR_WORKING','DIR',o_default='./res')
         self%dir_scratch=self%get_str('DIR_SCRATCH','DIR_TMP',o_default=self%dir_working)
 
         call hud('Working directory:'//self%dir_working)

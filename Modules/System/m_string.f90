@@ -6,7 +6,17 @@
 !https://github.com/szaghi/StringiFor
 
 module m_string
-use m_global, only : i_str_len
+
+    !default string length
+    integer,parameter :: i_str_slen  = 64
+    integer,parameter :: i_str_len  = 128
+    integer,parameter :: i_str_xlen = 256
+    integer,parameter :: i_str_xxlen = 512
+    integer,parameter :: i_str_xxxlen = 1024
+    character(*), parameter :: s_return = achar(13)
+        !https://software.intel.com/en-us/forums/intel-fortran-compiler/topic/494946
+        !char function: CHAR(10) is linefeed LF. CHAR(13) is carriage return CR. If you are a little paranoid, ACHAR(10) is better - this is a little more robust to the default character kind not being ascii.
+        !The NEW_LINE standard intrinsic is even more robust. There's also the C_NEW_LINE and C_CARRIAGE_RETURN constants from the ISO_C_BINDING module for kind C_CHAR characters.
 
     integer,parameter,private :: A2a = ichar('a') - ichar('A')
     character(*),parameter,private :: digits='1234567890'

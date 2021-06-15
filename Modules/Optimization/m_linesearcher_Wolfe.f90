@@ -1,5 +1,4 @@
 module m_linesearcher
-use m_global
 use m_string
 use m_arrayop
 use m_setup

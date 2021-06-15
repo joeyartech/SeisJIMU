@@ -1,11 +1,7 @@
 mod_dir=../../mod/
 include ../../make.inc
+include ../../setup.inc
 
-WaveEq=AC
-# WaveEq=AC_VTI
-# WaveEq=PSV
-Solver=FDSG
-Order=O4
 
 src = \
 m_model.f90 \

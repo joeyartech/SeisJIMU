@@ -1,15 +1,7 @@
 mod_dir=../mod/
 include ../make.inc
+include ../setup.inc
 
-
-WaveEq=AC
-# WaveEq=AC_VTI
-# WaveEq=PSV
-Solver=FDSG
-Order=O4
-
-app=fwd
-APP=FWD
 
 mod :
 	#System
@@ -19,7 +11,7 @@ mod :
 	#Signal
 	(cd ../Modules/Signal; make)
 	#Modeling
-	(cd ../Modules/Modeling; make WaveEq=$(WaveEq) Solver=$(Solver) Order=$(Order) )
+	(cd ../Modules/Modeling; make)
 
 exe : main.o
 	mpif90 $(FLAGF90) $^ $(MOD) -o ../exe/$(app)_$(WaveEq)_$(Solver)_$(Order)
