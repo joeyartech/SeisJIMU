@@ -1,4 +1,38 @@
+module m_sysio
+use m_mpienv
+use m_message
+use m_setup
 
+    character(:),allocatable :: dir_in, dir_out
+
+    contains
+
+    subroutine init
+        logical exist
+
+        dir_in=setup%get_str('DIR_IN',o_default='./') 
+
+#ifdef GNU
+        inquire(file=dir_in,exist=exist)
+#endif
+#ifdef INTEL
+        inquire(directory=dir_in,exist=exist)
+#endif
+        if(.not.exist) then !input directory not exist
+            call hud('Input directory: '//dir_in//' does NOT exist, reset to ./')
+            dir_in='./'
+        endif
+
+        call hud('Input directory: '//dir_in)
+
+        dir_out=setup%get_str('DIR_OUT',o_default='./results')
+        call execute_command_line('mkdir -p '//dir_out, wait=.true.)
+        
+        call hud('Output directory:'//dir_out)
+
+    end subroutine
+
+end
 !     subroutine write_master(array,filename)
 !         real,dimension(*) :: array
 !         character(*) :: filename

@@ -8,9 +8,7 @@ use m_string
 
     type,public :: t_setup
         logical :: exist=.true.
-        character(:),allocatable :: dir_working
-        character(:),allocatable :: dir_scratch
-
+        
         contains
         procedure :: init => init
         procedure,nopass :: check => check
@@ -52,22 +50,12 @@ use m_string
         endif
         
         call hud('Setup file: '//file)
-
-        self%dir_working=self%get_str('DIR_WORKING','DIR',o_default='./res')
-        self%dir_scratch=self%get_str('DIR_SCRATCH','DIR_TMP',o_default=self%dir_working)
-
-        call hud('Working directory:'//self%dir_working)
-        call hud('Scratch directory:'//self%dir_scratch)
         
-        call execute_command_line('mkdir -p '//self%dir_working, wait=.true.)
-        call execute_command_line('mkdir -p '//self%dir_scratch, wait=.true.)
-        
-        return
-
     end subroutine
 
-    function find(key,alias) result(res)
-        character(*) :: key,alias
+    function find(key,o_alias) result(res)
+        character(*) :: key
+        character(*),optional :: o_alias
         character(:),allocatable :: res
 
         character(i_str_len) :: text
@@ -83,11 +71,17 @@ use m_string
             if (text=='') cycle !blank line
             text2=text//'  !!'
             
-            read(text,*)  tmp_key, tmp_val
+            read(text2,*)  tmp_key, tmp_val
             if(tmp_val=='!!') cycle !missing value
 
-            if(key==lalign(tmp_key) .or. alias==lalign(tmp_key)) then
+            if(key==lalign(tmp_key)) then
                 tmp_res=tmp_val
+            endif
+
+            if(present(o_alias)) then
+            if(o_alias==lalign(tmp_key)) then
+                tmp_res=tmp_val
+            endif
             endif
 
         end do
@@ -147,41 +141,41 @@ use m_string
 
     ! end function
 
-    function check(key,alias) result(exist)
+    function check(key,o_alias) result(exist)
         character(*) :: key
-        character(*),optional :: alias !alias of inquired key
+        character(*),optional :: o_alias !alias of inquired key
         logical :: exist
 
         exist=.false.
 
-        if(present(alias)) then
-            if(find(key,alias)/='') exist=.true.
-        else
-            if(find(key,key)/='') exist=.true.
-        endif
+        if(find(key,o_alias)/='') exist=.true.
         
     end function
 
-    function read(key,alias,default,mandatory) result(res)
-        character(*) :: key,alias
-        character(*) :: default !default output value
-        logical :: mandatory
+    function read(key,o_alias,o_default,o_mandatory) result(res)
+        character(*) :: key
+        character(*),optional :: o_alias, o_default
+        logical,optional :: o_mandatory
         character(:),allocatable :: res
 
         character(:),allocatable :: keys
-        keys=key//' ('//alias//') '
+        logical :: mandatory
+        
+        keys=key//either(' ',' ('//o_alias//') ',present(o_alias))
 
-        res=find(key,alias)
+        mandatory=either(o_mandatory,.false.,present(o_mandatory))
 
-        if(res/='') then
-            call hud(keys//':'//res)
-        endif
+        res=find(key,o_alias)
+
+        if(res/='') call hud(keys//':'//res)
 
         if(res=='') then
-            if(default/='') then
-                call hud(keys//'is NOT found, take default: '//default)
-                res=default
-            elseif(mandatory) then
+            if(present(o_default)) then
+                call hud(keys//'is NOT found, take default: '//o_default)
+                res=o_default
+            endif
+            
+            if(mandatory) then
                 call error(keys//'is NOT found, but is MANDATORY.')
                 ! call hud(keys//'is NOT found, but is MANDATORY.'//s_return &
                 !     'SeisJIMU has to ask for the value of this key before running further.'//s_return &
@@ -192,10 +186,11 @@ use m_string
                 !     'SeisJIMU checks this file every 1 min'//s_return &
                 !     'and will take the new value when no "!!" is leading the line.')
                 ! res=demand(key)
-            else
+            endif
+
+            if(.not.present(o_default).and..not.mandatory) then
                 call hud(keys//"is NOT found, take 0 for number(s), '' for character(s) and filename, or .false. for logical type(s)")
                 res=''
-
             endif
         endif
 
@@ -211,30 +206,7 @@ use m_string
         logical,optional :: o_mandatory       
         integer :: res
 
-        character(:),allocatable :: alias, default
-        logical :: mandatory
-
-        if(present(o_alias)) then
-            alias=o_alias
-        else
-            alias=key
-        endif
-
-        if(present(o_default)) then
-            default=o_default
-        else
-            default=''
-        endif
-
-        if(present(o_mandatory)) then
-            mandatory=o_mandatory
-        else
-            mandatory=.false.
-        endif
-
-        res=str2int(read(key,alias,default,mandatory))
-
-        deallocate(alias, default)
+        res=str2int(read(key,o_alias,o_default,o_mandatory))
 
     end function
 
@@ -247,39 +219,13 @@ use m_string
         logical,optional :: o_mandatory
         integer,dimension(:),allocatable :: res
 
-        character(:),allocatable :: alias, default
-        character(1) :: sep
-        logical :: mandatory
         type(t_string),dimension(:),allocatable :: tmp
 
-        if(present(o_alias)) then
-            alias=o_alias
-        else
-            alias=key
-        endif
+        tmp=split(read(key,o_alias,o_default,o_mandatory),o_sep=o_sep)
 
-        if(present(o_sep)) then
-            sep=o_sep
-        else
-            sep=' '
-        endif
-
-        if(present(o_default)) then
-            default=o_default
-        else
-            default=''
-        endif
-
-        if(present(o_mandatory)) then
-            mandatory=o_mandatory
-        else
-            mandatory=.false.
-        endif
-
-        tmp=split(read(key,alias,default,mandatory),o_sep=sep)
         res=strs2ints(tmp,size(tmp))
 
-        deallocate(alias, default, tmp)
+        deallocate(tmp)
 
     end function
 
@@ -291,30 +237,7 @@ use m_string
         logical,optional :: o_mandatory
         real :: res
 
-        character(:),allocatable :: alias, default
-        logical :: mandatory
-
-        if(present(o_alias)) then
-            alias=o_alias
-        else
-            alias=key
-        endif
-
-        if(present(o_default)) then
-            default=o_default
-        else
-            default=''
-        endif
-
-        if(present(o_mandatory)) then
-            mandatory=o_mandatory
-        else
-            mandatory=.false.
-        endif
-
-        res=str2real(read(key,alias,default,mandatory))
-
-        deallocate(alias, default)
+        res=str2real(read(key,o_alias,o_default,o_mandatory))
 
     end function
 
@@ -327,39 +250,13 @@ use m_string
         logical,optional :: o_mandatory
         real,dimension(:),allocatable :: res
         
-        character(:),allocatable :: alias, default
-        character(1) :: sep
-        logical :: mandatory
         type(t_string),dimension(:),allocatable :: tmp
 
-        if(present(o_alias)) then
-            alias=o_alias
-        else
-            alias=key
-        endif
+        tmp=split(read(key,o_alias,o_default,o_mandatory),o_sep=o_sep)
 
-        if(present(o_sep)) then
-            sep=o_sep
-        else
-            sep=' '
-        endif
-
-        if(present(o_default)) then
-            default=o_default
-        else
-            default=''
-        endif
-
-        if(present(o_mandatory)) then
-            mandatory=o_mandatory
-        else
-            mandatory=.false.
-        endif
-
-        tmp=split(read(key,alias,default,mandatory),o_sep=sep)
         res=strs2reals(tmp,size(tmp))
 
-        deallocate(alias, default, tmp)
+        deallocate(tmp)
 
     end function
 
@@ -371,30 +268,7 @@ use m_string
         logical,optional :: o_mandatory
         character(:),allocatable :: res
 
-        character(:),allocatable :: alias, default
-        logical :: mandatory
-
-        if(present(o_alias)) then
-            alias=o_alias
-        else
-            alias=key
-        endif
-
-        if(present(o_default)) then
-            default=o_default
-        else
-            default=''
-        endif
-
-        if(present(o_mandatory)) then
-            mandatory=o_mandatory
-        else
-            mandatory=.false.
-        endif
-
-        res=read(key,alias,default,mandatory)
-
-        deallocate(alias, default)
+        res=read(key,o_alias,o_default,o_mandatory)
 
     end function
     
@@ -407,37 +281,7 @@ use m_string
         logical,optional :: o_mandatory
         type(t_string),dimension(:),allocatable :: res
 
-        character(:),allocatable :: alias, default
-        character(1) :: sep
-        logical :: mandatory
-
-        if(present(o_alias)) then
-            alias=o_alias
-        else
-            alias=key
-        endif
-
-        if(present(o_sep)) then
-            sep=o_sep
-        else
-            sep=' '
-        endif
-
-        if(present(o_default)) then
-            default=o_default
-        else
-            default=''
-        endif
-
-        if(present(o_mandatory)) then
-            mandatory=o_mandatory
-        else
-            mandatory=.false.
-        endif
-
-        res=split(read(key,alias,default,mandatory),o_sep=sep)
-
-        deallocate(alias, default)
+        res=split(read(key,o_alias,o_default,o_mandatory),o_sep=o_sep)
 
     end function
 
@@ -449,28 +293,9 @@ use m_string
         logical,optional :: o_mandatory
         character(:),allocatable :: res
 
-        character(:),allocatable :: alias, default
-        logical :: mandatory, exist
+        logical :: exist
 
-        if(present(o_alias)) then
-            alias=o_alias
-        else
-            alias=key
-        endif
-
-        if(present(o_default)) then
-            default=o_default
-        else
-            default=''
-        endif
-
-        if(present(o_mandatory)) then
-            mandatory=o_mandatory
-        else
-            mandatory=.false.
-        endif
-
-        res=read(key,alias,default,mandatory)
+        res=read(key,o_alias,o_default,o_mandatory)
 
         if(res/='') then
             inquire(file=res,exist=exist)
@@ -480,8 +305,6 @@ use m_string
             endif
         endif
 
-        deallocate(alias, default)
-        
     end function
         
     function get_bool(self,key,o_alias,o_default,o_mandatory) result(res)
@@ -492,30 +315,7 @@ use m_string
         logical,optional :: o_mandatory
         logical :: res
 
-        character(:),allocatable :: alias, default
-        logical :: mandatory
-
-        if(present(o_alias)) then
-            alias=o_alias
-        else
-            alias=key
-        endif
-
-        if(present(o_default)) then
-            default=o_default
-        else
-            default='F'
-        endif
-
-        if(present(o_mandatory)) then
-            mandatory=o_mandatory
-        else
-            mandatory=.false.
-        endif
-
-        res=str2bool(read(key,alias,default,mandatory))
-
-        deallocate(alias, default)
+        res=str2bool(read(key,o_alias,o_default,o_mandatory))
 
     end function
 

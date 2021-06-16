@@ -6,6 +6,7 @@ module m_either
         module procedure :: either2_real
         module procedure :: either2_reals
         module procedure :: either2_str
+        module procedure :: either2_bool
     end interface
 
     contains
@@ -51,14 +52,23 @@ module m_either
         endif
     end function
 
-    function either2_str(s1,s2,switch)
+    function either2_str(s1,s2,switch) result(res)
         logical :: switch
         character(*) :: s1,s2
-        character(:),allocatable :: either2_str
+        character(:),allocatable :: res
         if(switch) then
-            either2_str=s1
+            res=s1
         else
-            either2_str=s2
+            res=s2
+        endif
+    end function
+
+    function either2_bool(b1,b2,switch) result(res)
+        logical :: switch, b1,b2, res
+        if(switch) then
+            res=b1
+        else
+            res=b2
         endif
     end function
 

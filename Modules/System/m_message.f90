@@ -24,12 +24,12 @@ character(*), parameter :: reset = achar(27)//'[0m' ! Terminates an ANSI code.
 
     contains
     
-    subroutine hud(msg,iproc)
+    subroutine hud(msg,o_iproc)
         character(*) :: msg
-        integer,optional :: iproc
+        integer,optional :: o_iproc
         
-        if(present(iproc)) then
-            if(mpiworld%iproc==iproc) then
+        if(present(o_iproc)) then
+            if(mpiworld%iproc==o_iproc) then
                 write(*,*) 'Proc# '//mpiworld%sproc//' : '//msg
             endif
         else
@@ -40,12 +40,12 @@ character(*), parameter :: reset = achar(27)//'[0m' ! Terminates an ANSI code.
         
     end subroutine
 
-    subroutine warn(msg,iproc)
+    subroutine warn(msg,o_iproc)
         character(*) :: msg
-        integer,optional :: iproc
+        integer,optional :: o_iproc
 
-        if(present(iproc)) then
-            if(mpiworld%iproc==iproc) then
+        if(present(o_iproc)) then
+            if(mpiworld%iproc==o_iproc) then
                 write(*,'(a,x,a)') 'Proc# '//mpiworld%sproc//' : '//bg_black//yellow//bold//'WARNING:'//reset, msg
             endif
         else
@@ -56,13 +56,13 @@ character(*), parameter :: reset = achar(27)//'[0m' ! Terminates an ANSI code.
         
     end subroutine
 
-    subroutine error(msg,solution,iproc)
+    subroutine error(msg,solution,o_iproc)
         character(*) :: msg
         character(*),optional :: solution
-        integer,optional :: iproc
+        integer,optional :: o_iproc
 
-        if(present(iproc)) then
-            if(mpiworld%iproc==iproc) then
+        if(present(o_iproc)) then
+            if(mpiworld%iproc==o_iproc) then
                 write(*,'(a,x,a)') 'Proc# '//mpiworld%sproc//' : '//bg_black//red//bold_blink//'ERROR:'//reset, msg
                 if(present(solution)) then
                     write(*,'(a)') 'Possible solutions:'

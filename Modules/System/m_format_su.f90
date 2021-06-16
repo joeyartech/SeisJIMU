@@ -1,5 +1,6 @@
 module m_format_su
 use m_string
+use m_either
 
 !A Fortran version of su format (defined in /SeisUnix/include/segy.h)
 !
@@ -454,17 +455,11 @@ use m_string
         sudata%hdrs(:)%ns=ns
         sudata%hdrs(:)%tracl=[(i,i=1,ntr)]
         
-        if(present(o_dt)) then
-            sudata%hdrs(:)%dt=o_dt*1e6
-        endif
-
+        sudata%hdrs(:)%dt=either(0.,o_dt*1e6,present(o_dt))
+    
         sudata%trs=data
 
-        if(present(o_sindex)) then
-            call sudata%write(file,o_sindex)
-        else
-            call sudata%write(file)
-        endif
+        call sudata%write(file,o_sindex)
 
     end subroutine
     

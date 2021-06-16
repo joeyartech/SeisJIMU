@@ -6,6 +6,7 @@
 !https://github.com/szaghi/StringiFor
 
 module m_string
+    use m_either
 
     !default string length
     integer,parameter :: i_str_slen  = 64
@@ -345,7 +346,7 @@ module m_string
         character(:),allocatable :: text
         integer :: totlen
 
-        glue=' '; if(present(o_glue)) glue=o_glue
+        glue=either(o_glue,' ',present(o_glue))
 
         totlen=len(strs(1)%s)+1
         if(n>1) then
