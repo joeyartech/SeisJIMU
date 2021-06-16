@@ -1,5 +1,6 @@
 module m_computebox
 use m_arrayop
+use m_setup
 use m_model
 use m_shot
 

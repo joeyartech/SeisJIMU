@@ -3,6 +3,7 @@ use m_string
 use m_mpienv
 use m_message
 use m_arrayop
+use m_setup
 
     private
 

@@ -12,13 +12,10 @@ FPP=-cpp -DGNU -D"git_commit='$(GIT_COMMIT)'" -D"git_branch='$(GIT_BRANCH)'"
 MOD=-J $(mod_dir)
 
 
-.SUFFIX : %.f %.F90 %.f90 %.o
-
-%.o : %.F90
-	mpif90 $(FPP) $(FLAGF90) $(MOD) -c $^ -o $@
+.SUFFIX : %.f %.f90 %.o
 
 %.o : %.f90
-	mpif90        $(FLAGF90) $(MOD) -c $^ -o $@
+	mpif90 $(FPP) $(FLAGF90) $(MOD) -c $^ -o $@
 
 %.o : %.f
 	mpif77        $(FLAGF77)        -c $^ -o $@

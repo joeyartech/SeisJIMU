@@ -42,7 +42,7 @@ use m_shot
 
         call alloc(self%weight,self%nt,self%ntr,o_init=1.)
 
-        list=setup%get_strs('WEIGHTING','WEI',o_default=either(m%is_cubic,'aoffset^1','aoffset^0.5')
+        list=setup%get_strs('WEIGHTING','WEI',o_default=either('aoffset^1','aoffset^0.5',m%is_cubic))
 
         do i=1,size(list)
             !weight traces based on power of aoffset

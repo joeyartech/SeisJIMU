@@ -1,6 +1,6 @@
 module m_arrayop
+use m_either
 use m_mpienv
-use m_setup
 
     integer,parameter :: max_array_size=2147483647  !=huge(integer(kind=4))
 
@@ -43,13 +43,8 @@ use m_setup
             endif
             deallocate(a)
         endif
-        allocate(a(n1))
-        
-        if(present(o_init)) then
-            a=o_init
-        else
-            a=0
-        endif
+
+        allocate(a(n1),source=either(o_init,0,present(o_init)))
         
     end
     
@@ -75,13 +70,8 @@ use m_setup
             endif
             deallocate(a)
         endif
-        allocate(a(n1,n2))
-        
-        if(present(o_init)) then
-            a=o_init
-        else
-            a=0
-        endif
+
+        allocate(a(n1,n2),source=either(o_init,0,present(o_init)))
         
     end
     
@@ -102,13 +92,8 @@ use m_setup
             endif
             deallocate(a)
         endif
-        allocate(a(n1))
-        
-        if(present(o_init)) then
-            a=o_init
-        else
-            a=0.
-        endif
+
+        allocate(a(n1),source=either(o_init,0.,present(o_init)))
         
     end
     
@@ -134,13 +119,8 @@ use m_setup
             endif
             deallocate(a)
         endif
-        allocate(a(n1,n2))
-        
-        if(present(o_init)) then
-            a=o_init
-        else
-            a=0.
-        endif
+
+        allocate(a(n1,n2),source=either(o_init,0.,present(o_init)))
         
     end
     
@@ -171,13 +151,8 @@ use m_setup
             endif
             deallocate(a)
         endif
-        allocate(a(n1,n2,n3))
-        
-        if(present(o_init)) then
-            a=o_init
-        else
-            a=0.
-        endif
+
+        allocate(a(n1,n2,n3),source=either(o_init,0.,present(o_init)))
         
     end
     
@@ -213,13 +188,8 @@ use m_setup
             endif
             deallocate(a)
         endif
-        allocate(a(n1,n2,n3,n4))
-        
-        if(present(o_init)) then
-            a=o_init
-        else
-            a=0.
-        endif
+
+        allocate(a(n1,n2,n3,n4),source=either(o_init,0.,present(o_init)))
         
     end
 
@@ -240,13 +210,8 @@ use m_setup
             endif
             deallocate(a)
         endif
-        allocate(a(n1(1):n1(2)))
-        
-        if(present(o_init)) then
-            a=o_init
-        else
-            a=0.
-        endif
+
+        allocate(a(n1(1):n1(2)),source=either(o_init,0.,present(o_init)))
         
     end
     
@@ -272,13 +237,8 @@ use m_setup
             endif
             deallocate(a)
         endif
-        allocate(a(n1(1):n1(2),n2(1):n2(2)))
-        
-        if(present(o_init)) then
-            a=o_init
-        else
-            a=0.
-        endif
+
+        allocate(a(n1(1):n1(2),n2(1):n2(2)),source=either(o_init,0.,present(o_init)))
         
     end
     
@@ -309,13 +269,8 @@ use m_setup
             endif
             deallocate(a)
         endif
-        allocate(a(n1(1):n1(2),n2(1):n2(2),n3(1):n3(2)))
-        
-        if(present(o_init)) then
-            a=o_init
-        else
-            a=0.
-        endif
+
+        allocate(a(n1(1):n1(2),n2(1):n2(2),n3(1):n3(2)),source=either(o_init,0.,present(o_init)))
         
     end
     
