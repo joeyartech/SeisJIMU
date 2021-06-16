@@ -216,10 +216,8 @@ use m_cpml
 
         call f%init_bloom(origin)
 
-        if(present(oif_will_reconstruct)) then
-        if(oif_will_reconstruct) then
+        if(either(oif_will_reconstruct,.false.,present(oif_will_reconstruct))) then
             call f%init_boundary
-        endif
         endif
 
     end subroutine
@@ -291,13 +289,11 @@ use m_cpml
             call f%write(it)
             
             !step 6: save v^it+1 in boundary layers
-            if(present(oif_will_reconstruct)) then
-            if(oif_will_reconstruct) then
+            if(either(oif_will_reconstruct,.false.,present(oif_will_reconstruct))) then
                 call cpu_time(tic)
                 call f%boundary_transport('save',it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
-            endif
             endif
 
         enddo
@@ -644,13 +640,11 @@ use m_cpml
             tt10=tt10+toc-tic
             
             !adjoint step 1: sample v^it or s^it+0.5 at source position
-            if(present(oif_record_seismo)) then
-            if(oif_record_seismo) then
+            if(either(oif_record_seismo,.false.,present(oif_record_seismo))) then
                 call cpu_time(tic)
                 call self%extract_adjoint(rf,it)
                 call cpu_time(toc)
                 tt11=tt11+toc-tic
-            endif
             endif
             
             !grho: sfield%v_dt^it \dot rfield%v^it

@@ -8,7 +8,7 @@ use m_string
 
     type,public :: t_setup
         logical :: exist=.true.
-        
+
         contains
         procedure :: init => init
         procedure,nopass :: check => check
@@ -161,7 +161,7 @@ use m_string
         character(:),allocatable :: keys
         logical :: mandatory
         
-        keys=key//either(' ',' ('//o_alias//') ',present(o_alias))
+        keys=key//either(' ('//o_alias//') ',' ',present(o_alias))
 
         mandatory=either(o_mandatory,.false.,present(o_mandatory))
 
@@ -175,7 +175,7 @@ use m_string
                 res=o_default
             endif
             
-            if(mandatory) then
+            if(.not.present(o_default) .and. mandatory) then
                 call error(keys//'is NOT found, but is MANDATORY.')
                 ! call hud(keys//'is NOT found, but is MANDATORY.'//s_return &
                 !     'SeisJIMU has to ask for the value of this key before running further.'//s_return &
@@ -188,7 +188,7 @@ use m_string
                 ! res=demand(key)
             endif
 
-            if(.not.present(o_default).and..not.mandatory) then
+            if(.not.present(o_default) .and. .not.mandatory) then
                 call hud(keys//"is NOT found, take 0 for number(s), '' for character(s) and filename, or .false. for logical type(s)")
                 res=''
             endif

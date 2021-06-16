@@ -428,9 +428,6 @@ use m_either
         character(*) :: file
         character(*),optional :: o_sindex
 
-        ! character(:),allocatable :: ftmp
-        ! ftmp=ternary(if_2scratch,setup%dir_scratch,setup%dir_working)//file
-
         if(present(o_sindex)) write(*,*) 'Shot# '//o_sindex//' will write '//num2str(self%ntr)//' traces, each trace has '//num2str(self%ns)//' samples.'
 
         open(12,file=file,action='read',access='stream') !access='direct',recl=4*(ns+60))
@@ -455,7 +452,7 @@ use m_either
         sudata%hdrs(:)%ns=ns
         sudata%hdrs(:)%tracl=[(i,i=1,ntr)]
         
-        sudata%hdrs(:)%dt=either(0.,o_dt*1e6,present(o_dt))
+        sudata%hdrs(:)%dt=either(0,int(o_dt*1e6),present(o_dt))
     
         sudata%trs=data
 

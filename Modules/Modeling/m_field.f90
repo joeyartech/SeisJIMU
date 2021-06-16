@@ -224,11 +224,7 @@ use, intrinsic :: ieee_arithmetic
 
         character(:),allocatable :: suf
 
-        if(present(o_suffix)) then
-            suf=o_suffix
-        else
-            suf=''
-        endif
+        suf=either(o_suffix,'',present(o_suffix))
 
         if(if_snapshot) then
 
@@ -264,8 +260,7 @@ use, intrinsic :: ieee_arithmetic
         logical,optional :: ois_adjoint
 
         !add adjoint source
-        if(present(ois_adjoint)) then
-        if(ois_adjoint) then
+        if(either(ois_adjoint,.false.,present(ois_adjoint))) then
             call alloc(self%wavelet,shot%nrcv,nt)
             do i=1,shot%nrcv
                 call resampler(shot%dadj(:,i),self%wavelet(i,:),shot%nrcv,&
@@ -273,7 +268,6 @@ use, intrinsic :: ieee_arithmetic
             enddo
 
             return
-        endif
         endif
 
         !add source

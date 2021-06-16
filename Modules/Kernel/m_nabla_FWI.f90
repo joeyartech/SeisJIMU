@@ -37,8 +37,8 @@ use m_smoother_laplacian_sparse
         call alloc(fobj%gradient,m%nz,m%nx,m%ny,propagator%ngrad)
 
         !compute gradient by adjoint-state method
-        if(present(oif_approx)) then
-            if(oif_approx) call gradient_modeling_approximate(fobj)
+        if(either(oif_approx,.false.,present(oif_approx))) then
+            call gradient_modeling_approximate(fobj)
         else
             call gradient_modeling(fobj)
         endif

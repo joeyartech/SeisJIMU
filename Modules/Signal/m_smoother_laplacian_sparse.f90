@@ -1,4 +1,5 @@
 module m_smoother_laplacian_sparse
+use m_either
 use m_string
 use m_mpienv
 use m_message
@@ -107,20 +108,16 @@ use m_setup
         nx=n(2); dx=d(2)
         ny=n(3); dy=d(3)
         
-        if(ny==1) then
-            is_cubic=.false.
-        else
-            is_cubic=.true.
-        endif
+        is_cubic=either(.true.,.false.,ny>1)
         
         freq=freq_
-        
-        if(present(o_addmirror)) then
-            iaddmirror=nint(o_addmirror/dz)+1
-        else
-            iaddmirror=nint( setup%get_real('SMTH_ADDMIRROR',o_default='dz') /dz ) +1
-        endif
-        
+
+        iaddmirror = nint( &
+            either(o_addmirror, &
+                setup%get_real('SMTH_ADDMIRROR',o_default=num2str(dz)), &
+                present(o_addmirror)) &
+            /dz)+1
+    
         if(present(o_frac)) then
             frac_z=o_frac(1)
             frac_x=o_frac(2)
@@ -132,12 +129,10 @@ use m_setup
             frac_y=tmp(3)
         endif
         
-        if(present(o_preserve)) then
-            preserve=o_preserve
-        else
-            preserve=setup%get_str('LAPLACIAN_SMTH_PRESERVE_GRAD_NORM','LAP_PRESERVE',o_default='nopreserve')
-        endif
-        
+        preserve = either(o_preserve, &
+            setup%get_str('LAPLACIAN_SMTH_PRESERVE_GRAD_NORM','LAP_PRESERVE',o_default='nopreserve'), &
+            present(o_preserve))
+
     end subroutine
     
     subroutine smoother_laplacian_extend_mirror(grad,itopo)
@@ -170,36 +165,30 @@ use m_setup
         
         !z axis
         allocate(vector(nz))
-        do iy=1,ny
-        do ix=1,nx
+        do iy=1,ny; do ix=1,nx
             vector=grad(:,ix,iy)
             call smoother_1D_stationary(nz,dz,vector,b(1))
             grad(:,ix,iy)=vector
-        enddo
-        enddo
+        enddo; enddo
         deallocate(vector)
         
         !x axis
         allocate(vector(nx))
-        do iy=1,ny
-        do iz=1,nz
+        do iy=1,ny; do iz=1,nz
             vector=grad(iz,:,iy)
             call smoother_1D_stationary(nx,dx,vector,b(2))
             grad(iz,:,iy)=vector
-        enddo
-        enddo
+        enddo; enddo
         deallocate(vector)
         
         !y axis
         if(is_cubic) then
             allocate(vector(ny))
-            do ix=1,nx
-            do iz=1,nz
+            do ix=1,nx; do iz=1,nz
                 vector=grad(iz,ix,:)
                 call smoother_1D_stationary(ny,dy,vector,b(3))
                 grad(iz,ix,:)=vector
-            enddo
-            enddo
+            enddo; enddo
             deallocate(vector)
         endif
         
@@ -212,14 +201,15 @@ use m_setup
         real :: old_norm
         real,dimension(:,:,:),allocatable :: table_one
         
-        if(preserve=='L1norm') then
+        select case (preserve)
+        case('L1norm')
             old_norm = sum(abs(grad))
-        elseif(preserve=='L2norm') then
+        case('L2norm')
             old_norm = norm2(grad)
-        elseif(preserve=='scale1') then
+        case('scale1')
             allocate(table_one(nz,nx,ny))
             table_one=1.
-        endif
+        end select
         
         !z axis
         allocate(vector(nz),frac_lambda(nz))
@@ -301,14 +291,15 @@ use m_setup
         endif
         
         !normalization
-        if(preserve=='L1norm') then
+        select case (preserve)
+        case('L1norm')
             grad = grad * old_norm / sum(abs(grad))
-        elseif(preserve=='L2norm') then
+        case('L2norm')
             grad = grad * old_norm / norm2(grad)
-        elseif(preserve=='scale1') then
+        case('scale1')
             grad = grad / table_one
             deallocate(table_one)
-        endif
+        end select
         
     end subroutine
     

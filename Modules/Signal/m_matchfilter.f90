@@ -1,4 +1,5 @@
 module m_matchfilter
+use m_either
 use m_mpienv
 use singleton
 
@@ -39,11 +40,9 @@ use singleton
             close(12)
         endif
         
-        if(present(oif_stack)) then
-        if(oif_stack) then
+        if(either(oif_stack,.false.,present(oif_stack))) then
             call mpi_allreduce(MPI_IN_PLACE, filter, nt, MPI_DOUBLE_COMPLEX, MPI_SUM, mpiworld%communicator, mpiworld%ierr)
             filter =filter /mpiworld%nproc
-        endif
         endif
         
     end subroutine

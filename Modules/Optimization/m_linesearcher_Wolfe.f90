@@ -111,10 +111,10 @@ use m_preconditioner
 
     end subroutine
     
-    subroutine search(self,iterate,curr,pert,gradient_history,result)
+    subroutine search(self,iterate,curr,pert,o_gradient_history,result)
         class(t_linesearcher) :: self
         type(t_forwardmap),intent(inout) :: curr, pert
-        real,dimension(:,:),intent(inout),optional :: gradient_history
+        real,dimension(:,:),intent(inout),optional :: o_gradient_history
         character(7) :: result
         
         logical :: first_condition, second_condition
@@ -129,10 +129,10 @@ use m_preconditioner
         pert%x=curr%x+self%alpha*curr%d
         
         !save gradients
-        if(present(gradient_history)) then
-            l=size(gradient_history,2) !number of gradient in history
+        if(present(o_gradient_history)) then
+            l=size(o_gradient_history,2) !number of gradient in history
             i=1
-            gradient_history(:,i)=curr%g
+            o_gradient_history(:,i)=curr%g
             i=i+1; if(i>l) i=1;
         endif
         
@@ -189,8 +189,8 @@ use m_preconditioner
                     self%alpha=0.5*(self%alphaL+self%alphaR)
                     pert%x=curr%x+self%alpha*curr%d
                     !save gradient
-                    if(present(gradient_history)) then
-                        gradient_history(:,i)=pert%g
+                    if(present(o_gradient_history)) then
+                        o_gradient_history(:,i)=pert%g
                         i=i+1; if(i>l) i=1;
                     endif
                 endif
@@ -207,8 +207,8 @@ use m_preconditioner
                     endif
                     pert%x=curr%x+alpha*curr%d
                     !save gradient
-                    if(present(gradient_history)) then
-                        gradient_history(:,i)=pert%g
+                    if(present(o_gradient_history)) then
+                        o_gradient_history(:,i)=pert%g
                         i=i+1; if(i>l) i=1;
                     endif
                 endif

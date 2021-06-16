@@ -1,8 +1,9 @@
 module m_optimizer
 use m_string
+use m_mpienv
 use m_arrayop
 use m_setup
-use m_mpienv
+use m_sysio
 use m_model
 use m_propagator
 use m_fobjective
@@ -196,7 +197,7 @@ use m_linesearcher
         
             select case (message)
                 case('start')
-                    open(16,file=setup%dir_working//'iterate.log',position='append',action='write')
+                    open(16,file=dir_out//'iterate.log',position='append',action='write')
                     write(16,'(a)'      ) ' **********************************************************************'
                     write(16,'(a)'      ) '                 NONLINEAR CONJUGATE GRADIENT ALGORITHM                '
                     write(16,'(a)'      ) ' **********************************************************************'
@@ -213,7 +214,7 @@ use m_linesearcher
                     close(16)
                     
                 case('update')
-                    open(16,file=setup%dir_working//'iterate.log',position='append',action='write')
+                    open(16,file=dir_out//'iterate.log',position='append',action='write')
                     write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  self%iterate, self%curr%f, self%curr%f/f0, norm2(self%curr%g)/g0norm, ls%alpha, ls%isearch, ls%imodeling
                     close(16)
                     
@@ -221,28 +222,28 @@ use m_linesearcher
                     call m%write(o_suffix='Iter'//int2str(self%iterate))
 
                 case('maximum')
-                    open(16,file=setup%dir_working//'iterate.log',position='append',action='write')
+                    open(16,file=dir_out//'iterate.log',position='append',action='write')
                     write(16,'(a)'      ) ' **********************************************************************'
                     write(16,'(a)'      ) '     STOP: MAXIMUM MODELING NUMBER REACHED                             '
                     write(16,'(a)'      ) ' **********************************************************************'
                     close(16)
 
                 case('criteria')
-                    open(16,file=setup%dir_working//'iterate.log',position='append',action='write')
+                    open(16,file=dir_out//'iterate.log',position='append',action='write')
                     write(16,'(a)'      ) ' **********************************************************************'
                     write(16,'(a)'      ) '     STOP: CONVERGENCE CRITERIA SATISFIED                              '
                     write(16,'(a)'      ) ' **********************************************************************'
                     close(16)
 
                 case('failure')
-                    open(16,file=setup%dir_working//'iterate.log',position='append',action='write')
+                    open(16,file=dir_out//'iterate.log',position='append',action='write')
                     write(16,'(a)'      ) ' **********************************************************************'
                     write(16,'(a)'      ) '     STOP: LINE SEARCH FAILURE                                         '
                     write(16,'(a)'      ) ' **********************************************************************'
                     close(16)
 
                 case('finalize')
-                    open(16,file=setup%dir_working//'iterate.log',position='append',action='write')
+                    open(16,file=dir_out//'iterate.log',position='append',action='write')
                     write(16,'(a)'      ) ' **********************************************************************'
                     write(16,'(a)'      ) '     FINALIZE                                         '
                     write(16,'(a)'      ) ' **********************************************************************'

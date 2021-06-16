@@ -302,7 +302,7 @@ module m_string
         character(1) :: sep
         character(:),allocatable :: text
         
-        sep=' '; if(present(o_sep)) sep = o_sep
+        sep=either(o_sep,' ',present(o_sep))
         
         !regularize input string
         text = remove_repetition(sep//str//sep , sep)

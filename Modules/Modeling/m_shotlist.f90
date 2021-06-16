@@ -4,6 +4,7 @@ use m_mpienv
 use m_message
 use m_arrayop
 use m_setup
+use m_sysio
 
     private
 
@@ -168,7 +169,7 @@ use m_setup
         call hud('See file "shotlist" for details.')
 
         !write shotlist to disk
-        call mpiworld%write(setup%dir_working//'shotlist', 'Proc# '//mpiworld%sproc//' has '//num2str(self%nshot_per_processor)//' assigned shots:'// &
+        call mpiworld%write(dir_out//'shotlist', 'Proc# '//mpiworld%sproc//' has '//num2str(self%nshot_per_processor)//' assigned shots:'// &
             strcat(ints2strs(self%list_per_processor,self%nshot_per_processor),self%nshot_per_processor))
         
     end subroutine

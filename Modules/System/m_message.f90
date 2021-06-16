@@ -1,5 +1,10 @@
 module m_message
-use m_mpienv, only: mpiworld
+use m_either
+use m_string
+use m_mpienv
+
+    private
+    public :: hud, warn, error, fatal
 
 !ANSI colors
 !http://fortranwiki.org/fortran/show/ansi_colors
@@ -28,14 +33,8 @@ character(*), parameter :: reset = achar(27)//'[0m' ! Terminates an ANSI code.
         character(*) :: msg
         integer,optional :: o_iproc
         
-        if(present(o_iproc)) then
-            if(mpiworld%iproc==o_iproc) then
-                write(*,*) 'Proc# '//mpiworld%sproc//' : '//msg
-            endif
-        else
-            if(mpiworld%is_master) then
-                write(*,*) msg
-            endif
+        if(mpiworld%iproc==either(o_iproc,0,present(o_iproc))) then
+            write(*,*) either('Proc# '//mpiworld%sproc//' : ','',present(o_iproc))//msg
         endif
         
     end subroutine
@@ -44,41 +43,24 @@ character(*), parameter :: reset = achar(27)//'[0m' ! Terminates an ANSI code.
         character(*) :: msg
         integer,optional :: o_iproc
 
-        if(present(o_iproc)) then
-            if(mpiworld%iproc==o_iproc) then
-                write(*,'(a,x,a)') 'Proc# '//mpiworld%sproc//' : '//bg_black//yellow//bold//'WARNING:'//reset, msg
-            endif
-        else
-            if(mpiworld%is_master) then
-                write(*,'(a,x,a)') bg_black//yellow//bold//'WARNING:'//reset, msg
-            endif
+        if(mpiworld%iproc==either(o_iproc,0,present(o_iproc))) then
+            write(*,*) either('Proc# '//mpiworld%sproc//' : ','',present(o_iproc))//&
+                bg_black//yellow//bold//'WARNING:'//reset//' '//msg
         endif
         
     end subroutine
 
-    subroutine error(msg,solution,o_iproc)
+    subroutine error(msg,o_solution,o_iproc)
         character(*) :: msg
-        character(*),optional :: solution
+        character(*),optional :: o_solution
         integer,optional :: o_iproc
 
-        if(present(o_iproc)) then
-            if(mpiworld%iproc==o_iproc) then
-                write(*,'(a,x,a)') 'Proc# '//mpiworld%sproc//' : '//bg_black//red//bold_blink//'ERROR:'//reset, msg
-                if(present(solution)) then
-                    write(*,'(a)') 'Possible solutions:'
-                    write(*,'(a)') solution
-                endif
-            endif
-        else
-            if(mpiworld%is_master) then
-                write(*,'(a,x,a)') bg_black//red//bold_blink//'ERROR:'//reset, msg
-                if(present(solution)) then
-                    write(*,'(a)') 'Possible solutions:'
-                    write(*,'(a)') solution
-                endif
-            endif
+        if(mpiworld%iproc==either(o_iproc,0,present(o_iproc))) then
+            write(*,*) either('Proc# '//mpiworld%sproc//' : ','',present(o_iproc))//&
+                bg_black//red//bold_blink//'ERROR:'//reset//' '//msg//&
+                either(s_return//'Possible solutions:'//o_solution,'',present(o_solution))
         endif
-        
+
         call mpiworld%fin
         error stop
         

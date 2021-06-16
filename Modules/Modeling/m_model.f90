@@ -1,6 +1,7 @@
 module m_model
 use m_string
 use m_setup
+use m_sysio
 
     private
 
@@ -258,13 +259,9 @@ use m_setup
 
         character(:),allocatable :: suf
 
-        if(present(o_suffix)) then
-            suf=o_suffix
-        else
-            suf=''
-        endif
+        suf=either(o_suffix,'',present(o_suffix))
 
-        open(13,file=setup%dir_working//'model'//suf,access='direct',recl=4*self%n,action='write')
+        open(13,file=dir_out//'model'//suf,access='direct',recl=4*self%n,action='write')
         
         do i=1,size(self%attributes_write)
             select case(self%attributes_write(i)%s)

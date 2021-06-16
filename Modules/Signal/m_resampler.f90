@@ -1,4 +1,5 @@
 module m_resampler
+use m_either
 use m_math
 
     private
@@ -62,8 +63,8 @@ use m_math
         real :: fin, fout
         real,dimension(:),allocatable :: tout
         
-        fin=0.;   if(present(o_fin )) fin =o_fin
-        fout=fin; if(present(o_fout)) fout=o_fout
+        fin =either( 0.,o_fin, present(o_fin ))
+        fout=either(fin,o_fout,present(o_fout))
         
         if(allocated(tout)) deallocate(tout)
         allocate(tout(nout))
@@ -426,13 +427,7 @@ use m_math
 
         a = sinc(fmax*[(j,j=0,ltable-1)])
         c = sinc(fmax*(ltable/2-[(j,j=0,ltable-1)]-1+d))
-        ! do j=0,ltable-1
-        !     a(j)=sinc(fmax*j)
-        ! enddo
-        ! do j=0,ltable-1
-        !     c(j)=sinc(fmax*(ltable/2-j-1+d))
-        ! enddo
-
+        
         !solve symmetric Toeplitz system for the sinc approximation
         call stoep(ltable,a,c,s,work)
 

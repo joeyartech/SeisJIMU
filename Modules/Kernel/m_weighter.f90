@@ -2,6 +2,7 @@ module m_weighter
 use m_string
 use m_arrayop
 use m_setup
+use m_sysio
 use m_format_su
 use m_model
 use m_shot
@@ -28,17 +29,17 @@ use m_shot
     
     contains
 
-    subroutine init(self,o_nt_in,o_dt_in,o_ntr_in)
+    subroutine init(self,o_nt_,o_dt_,o_ntr_)
         class(t_weighter) :: self
-        integer,optional :: o_nt_in, o_ntr_in
-        real,optional :: o_dt_in
+        integer,optional :: o_nt_, o_ntr_
+        real,optional :: o_dt_
 
         type(t_string),dimension(:),allocatable :: list,sublist
         character(:),allocatable :: file
 
-        self%nt =shot%nt  ; if(present(o_nt_in )) self%nt =nt_in
-        self%ntr=shot%nrcv; if(present(o_ntr_in)) self%ntr=ntr_in
-        self%dt =shot%dt  ; if(present(o_dt_in )) self%dt =dt_in
+        self%nt = either(o_nt_,  shot%nt  , present(o_nt_ ))
+        self%ntr= either(o_ntr_, shot%nrcv, present(o_ntr_))
+        self%dt = either(o_dt_,  shot%dt  , present(o_dt_ ))
 
         call alloc(self%weight,self%nt,self%ntr,o_init=1.)
 
@@ -101,7 +102,7 @@ use m_shot
 
         enddo
 
-        if(mpiworld%is_master) call suformat_write(setup%dir_working//'weights',self%weight,self%nt,self%ntr,o_dt=self%dt)
+        if(mpiworld%is_master) call suformat_write(dir_out//'weights',self%weight,self%nt,self%ntr,o_dt=self%dt)
         
     end subroutine
 

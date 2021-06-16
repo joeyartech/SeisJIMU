@@ -7,9 +7,10 @@ use m_setup
 
     contains
 
-    subroutine init
+    subroutine sysio_init
         logical exist
 
+        !input directory
         dir_in=setup%get_str('DIR_IN',o_default='./') 
 
 #ifdef GNU
@@ -18,6 +19,7 @@ use m_setup
 #ifdef INTEL
         inquire(directory=dir_in,exist=exist)
 #endif
+        
         if(.not.exist) then !input directory not exist
             call hud('Input directory: '//dir_in//' does NOT exist, reset to ./')
             dir_in='./'
@@ -25,7 +27,9 @@ use m_setup
 
         call hud('Input directory: '//dir_in)
 
+        !output directory
         dir_out=setup%get_str('DIR_OUT',o_default='./results')
+
         call execute_command_line('mkdir -p '//dir_out, wait=.true.)
         
         call hud('Output directory:'//dir_out)

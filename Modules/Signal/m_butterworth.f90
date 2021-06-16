@@ -1,4 +1,5 @@
 module m_butterworth
+use m_either
 
     private
     public :: butterworth
@@ -95,7 +96,7 @@ module m_butterworth
 ! !!*************** end self doc **********************************!!
 
     subroutine butterworth(ntr,nt,dt,trace,&
-        o_zerophase,o_locut,o_hicut,&
+        ois_zerophase,oif_locut,oif_hicut,&
         o_fstoplo,o_fpasslo,o_fpasshi,o_fstophi,&
         o_astoplo,o_apasslo,o_apasshi,o_astophi,&
         o_npoleslo,o_npoleshi,&
@@ -106,9 +107,9 @@ module m_butterworth
         real,dimension(ntr,nt) :: trace
         real dt     !sample spacing
         
-        logical,optional :: o_zerophase !flag for zero phase filtering
-        logical,optional :: o_locut     !flag for low cut filtering
-        logical,optional :: o_hicut     !flag for high cut filtering
+        logical,optional :: ois_zerophase !flag for zero phase filtering
+        logical,optional :: oif_locut     !flag for low cut filtering
+        logical,optional :: oif_hicut     !flag for high cut filtering
         logical zerophase, locut, hicut
         
         real,optional :: o_fstoplo        !left lower corner frequency
@@ -134,82 +135,33 @@ module m_butterworth
 
         nyq = 0.5/dt
 
-        if(present(o_zerophase)) then
-            zerophase = o_zerophase
-        else
-            zerophase = .true.
-        endif
-        if(present(o_locut)) then
-            locut = o_locut
-        else
-            locut = .true.
-        endif
-        if(present(o_hicut)) then
-            hicut = o_hicut
-        else
-            hicut = .true.
-        endif
+        zerophase=either(ois_zerophase,.true.,present(ois_zerophase))
 
-        !Get design frequencies and amplitudes
-        if(present(o_fstoplo)) then
-            fstoplo=o_fstoplo
-        else
-            fstoplo = .10 * nyq
-        endif
-        if(present(o_fpasslo)) then
-            fpasslo=o_fpasslo
-        else
-            fpasslo = .15 * nyq
-        endif
-        if(present(o_fpasshi)) then
-            fpasshi=o_fpasshi
-        else
-            fpasshi = .40 * nyq
-        endif
-        if(present(o_fstophi)) then
-            fstophi=o_fstophi
-        else
-            fstophi = .55 * nyq
-        endif
-    !     if (locut) {
-    !             if (fstoplo <= 0.0)      err("fstoplo must be positive")
-    !             if (fstoplo > fpasslo)  err("fstoplo must be < fpasslo")
-    !     }
-    !     if (hicut) {
-    !             if (fpasshi > fstophi)  err("fpasshi must be < fstophi")
-    !             if (fstophi > nyq)  err("fstophi must be < nyquist (%f)", nyq)
-    !     }
-        if(present(o_astoplo)) then
-            astoplo=o_astoplo
-        else
-            astoplo = .05
-        endif
-        if(present(o_apasslo)) then
-            apasslo=o_apasslo
-        else
-            apasslo = .95
-        endif
-        if(present(o_apasshi)) then
-            apasshi=o_apasshi
-        else
-            apasshi = .95
-        endif
-        if(present(o_astophi)) then
-            astophi=o_astophi
-        else
-            astophi = .05
-        endif
-        
+        locut=either(oif_locut,.true.,present(oif_locut))
+        hicut=either(oif_hicut,.true.,present(oif_hicut))
+
+        !Get design frequencies and normalize to [0, 0.5] for bfdesign
+        fstoplo=either(o_fstoplo,.10*nyq,present(o_fstoplo)) *dt
+        fpasslo=either(o_fpasslo,.15*nyq,present(o_fpasslo)) *dt
+        fpasshi=either(o_fpasshi,.40*nyq,present(o_fpasshi)) *dt
+        fstophi=either(o_fstophi,.55*nyq,present(o_fstophi)) *dt
+        ! if (locut) {
+        !         if (fstoplo <= 0.0)      err("fstoplo must be positive")
+        !         if (fstoplo > fpasslo)  err("fstoplo must be < fpasslo")
+        ! }
+        ! if (hicut) {
+        !         if (fpasshi > fstophi)  err("fpasshi must be < fstophi")
+        !         if (fstophi > nyq)  err("fstophi must be < nyquist (%f)", nyq)
+        ! }
+
+        !Get design amplitudes and adapt in case of zerophase
+        astoplo=either(o_astoplo,.05,present(o_astoplo))
+        apasslo=either(o_apasslo,.95,present(o_apasslo))
+        apasshi=either(o_apasshi,.95,present(o_apasshi))
+        astophi=either(o_astophi,.05,present(o_astophi))        
     !     if (astoplo > apasslo || apasshi < astophi)
     !             err("Bad amplitude parameters")
         
-        !Normalize frequencies to [0, 0.5] for bfdesign
-        fstoplo = fstoplo * dt
-        fpasslo = fpasslo * dt
-        fstophi = fstophi * dt
-        fpasshi = fpasshi * dt
-
-
         !Adapt user frequencies if zerophase selected
         if (zerophase) then
             astoplo = sqrt(astoplo)
@@ -220,49 +172,42 @@ module m_butterworth
 
         if (present(o_npoleslo)) then
             npoleslo = o_npoleslo
-            if (present(o_f3dblo)) then
-                f3dblo = o_f3dblo
-            else 
-                f3dblo = .15 * nyq
-            endif
-            f3dblo = f3dblo *dt
+            f3dblo = either(o_f3dblo,.15*nyq,present(o_f3dblo)) *dt
+
         else !Use bdesign to make lo cut filters
             if (locut) call bfdesign(fpasslo,apasslo,fstoplo,astoplo,npoleslo,f3dblo)
+
         endif
 
         if (present(o_npoleshi)) then
             npolehi = o_npoleshi
-            if (present(o_f3dbhi)) then
-                f3dbhi=o_f3dbhi
-            else 
-                f3dbhi = 0.40 * nyq
-            endif
-            f3dbhi = f3dbhi *dt
+            f3dbhi = either(o_f3dbhi,.40*nyq,present(o_f3dbhi)) *dt
+
         else !Use bdesign to make hi cut filters
             if (hicut) call bfdesign(fpasshi,apasshi,fstophi,astophi,npoleshi,f3dbhi)
+
         endif
-
-
-    !     !Give verbose info if requested
-    !     if (verbose && locut) {
-    !             if (zerophase) {
-    !                     warn("low-cut filter: npoles = %d, 3db point = %f(Hz)",
-    !                             2*npoleslo, f3dblo/dt)
-    !             } else {
-    !                     warn("low-cut filter: npoles = %d, 3db point = %f(Hz)",
-    !                             npoleslo, f3dblo/dt)
-    !             }
-    !     }
-    !     if (verbose && hicut) {
-    !             if (zerophase) {
-    !                     warn("high-cut filter: npoles = %d, 3db point = %f(Hz)",
-    !                             2*npoleshi, f3dbhi/dt)
-    !             } else {
-    !                     warn("high-cut filter: npoles = %d, 3db point = %f(Hz)",
-    !                             npoleshi, f3dbhi/dt)
-    ! 
-    !             }
-    !     }
+        
+        ! !Give verbose info if requested
+        ! if (verbose && locut) {
+        !         if (zerophase) {
+        !                 warn("low-cut filter: npoles = %d, 3db point = %f(Hz)",
+        !                         2*npoleslo, f3dblo/dt)
+        !         } else {
+        !                 warn("low-cut filter: npoles = %d, 3db point = %f(Hz)",
+        !                         npoleslo, f3dblo/dt)
+        !         }
+        ! }
+        ! if (verbose && hicut) {
+        !         if (zerophase) {
+        !                 warn("high-cut filter: npoles = %d, 3db point = %f(Hz)",
+        !                         2*npoleshi, f3dbhi/dt)
+        !         } else {
+        !                 warn("high-cut filter: npoles = %d, 3db point = %f(Hz)",
+        !                         npoleshi, f3dbhi/dt)
+    
+        !         }
+        ! }
 
         !low-cut (high pass) filter
         if (locut) then
