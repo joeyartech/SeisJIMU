@@ -33,6 +33,7 @@ use m_model
         real    :: z,x,y, aoffset
         integer :: iz,ix,iy
         integer :: ifz,ilz,ifx,ilx,ify,ily
+        logical :: if_badtrace=.false.
         character(4) :: comp
         real,dimension(:,:,:),allocatable :: interp_coef
     end type
@@ -137,10 +138,10 @@ use m_model
             self%rcv(ir)%x= data%hdrs(ir)%gx
             self%rcv(ir)%y= data%hdrs(ir)%gy
             self%rcv(ir)%z=-data%hdrs(ir)%gelev
+
+            self%rcv(ir)%if_badtrace = data%hdrs(ir)%trid==2 .or. data%hdrs(ir)%trid==3  !dead or dummy trace
             
             select case (data%hdrs(ir)%trid)
-            case (2:3) !dead or dummy trace, removed
-                self%nrcv=self%nrcv-1
             case (11)
                 self%rcv(ir)%comp='p'  !pressure
             case (12)

@@ -1,6 +1,8 @@
 module m_computebox
+use m_string
 use m_arrayop
 use m_setup
+use m_checkpoint
 use m_model
 use m_shot
 
@@ -51,6 +53,9 @@ use m_shot
         procedure :: project => project
         procedure :: project_back => project_back
         final :: fin
+
+        procedure :: is_registered => is_registered
+        procedure :: register => register
     end type
 
     type(t_computebox),public :: cb
@@ -239,6 +244,67 @@ use m_shot
         if(allocated(self%qp )) deallocate(self%qp )
         if(allocated(self%qs )) deallocate(self%qs )
         if(allocated(self%kernel)) deallocate(self%kernel)
+
+    end subroutine
+
+
+    logical function is_registered(self,chp,str)
+        class(t_computebox) :: self
+        type(t_checkpoint) :: chp
+        character(*) :: str
+
+        type(t_string),dimension(:),allocatable :: list
+
+        if(.not.if_use_checkpoint) then
+            is_registered=.false.
+            return
+        endif
+
+        list=split(str)
+
+        is_registered=.true.
+
+        do i=1,size(list)
+            if(.not.chp%check('computebox%'//list(i)%s)) then
+                is_registered=.false.
+                return
+            endif
+        enddo
+
+        do i=1,size(list)
+            select case (list(i)%s)
+            case ('kernel')
+                call chp%open('computebox%kernel')
+                if(allocated(self%kernel)) call chp%read(self%kernel,size(self%kernel))
+                call chp%close
+            end select
+
+        enddo
+
+    end function
+
+    subroutine register(self,chp,str)
+        class(t_computebox) :: self
+        type(t_checkpoint) :: chp
+        character(*) :: str
+
+        type(t_string),dimension(:),allocatable :: list
+
+        if(.not.if_checkpoint) then
+            return
+        endif
+
+        list=split(str)
+
+        do i=1,size(list)
+            select case (list(i)%s)
+            case ('kernel')
+                call chp%open('computebox%kernel')
+                if(allocated(self%kernel)) call chp%write(self%kernel,size(self%kernel))
+                call chp%close
+            end select
+
+        enddo
 
     end subroutine
 

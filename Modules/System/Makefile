@@ -10,6 +10,7 @@ m_mpienv.f90 \
 m_message.f90 \
 m_arrayop.f90 \
 m_setup.f90 \
+m_checkpoint.f90 \
 m_sysio.f90 \
 m_format_su.f90
 

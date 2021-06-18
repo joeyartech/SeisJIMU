@@ -81,6 +81,8 @@ use m_weighter
                 dres = (shot%dsyn-shot%dobs)*wei%weight
                 
                 do ir=1,shot%nrcv
+                    if(shot%rcv(ir)%if_badtrace) cycle
+
                     self%dnorms(i) = self%dnorms(i) + sum(dres(:,ir)**2)
 
                     !set unit of dnorm to be [Nm], same as Lagrangian
@@ -97,6 +99,8 @@ use m_weighter
                 dres = (shot%dsyn-shot%dobs)*wei%weight
 
                 do ir=1,shot%nrcv
+                    if(shot%rcv(ir)%if_badtrace) cycle
+                    
                     self%dnorms(i) = self%dnorms(i) + sum(abs(dres(:,ir)))
 
                     if(shot%rcv(ir)%comp=='p') then !for pressure data

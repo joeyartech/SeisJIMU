@@ -1,7 +1,7 @@
 module m_mpienv
 use omp_lib
 use mpi
-use m_global
+use m_string
 
     private
 

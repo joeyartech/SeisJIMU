@@ -31,6 +31,9 @@ use m_optimizer
         stop
     endif
 
+    !checkpoint
+    call checkpoint_init
+
     !print FD scheme and field info
     call sfield%print_info
     call rfield%print_info

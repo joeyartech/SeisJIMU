@@ -11,7 +11,9 @@ use m_field
 use m_cpml
 use m_propagator
 
-    type(t_field) :: sfield
+    type(t_checkpoint) :: chp
+
+    type(t_field) :: field
 
     !character(:),allocatable :: job  
 
@@ -28,63 +30,67 @@ use m_propagator
         if(mpiworld%is_master) then
             call hud('No input setup file given. Print manual..')
             call print_manual
-            call sfield%print_info
+            ! call sfield%print_info
         endif
         call mpiworld%finalize
         stop
     endif
 
     !print FD scheme and field info
-    call sfield%print_info   
+    ! call field%print_info   
 
-   !estimate required memory
-    call m%estim_RAM
-    call cb%estim_RAM
-    call sfield%estim_RAM
-    call mpiworld%finalize
+    !estimate required memory
+    ! call m%estim_RAM
+    ! call cb%estim_RAM
+    ! call field%estim_RAM
+    ! call mpiworld%finalize
 
     !read model
-    call m%init
+    call m%read
 
     !assign shots to processors
-    call shotlist%init
+    call sl%init
 
     call hud('===== START LOOP OVER SHOTS =====')
 
-    do ishot=1,shotlist%nshot_per_processor
+    call chp%init('FWD_shotloop','Shot#','given')
+    do i=1,sl%nshot_per_processor
+        call chp%count(sl%list_per_processor(i))
 
-        if(status%check('FWD_shot'//shot%sindex)) cycle !if this shot has been simulated
+        call shot%init(i)
+        call shot%read_from_setup
+        call shot%set_var_time
+        call shot%set_var_space(index(propagator%info,'FDSG')>0)
 
-        !get acquisition
-        call acqui%init
+        call hud('Modeling shot# '//shot%sindex)
 
-        call hud('Modeling shot# '//acqui%sindex)
-
-        !build computebox and its cpml
         call cb%init
+        call cb%project(is_fdsg=index(propagator%info,'FDSG')>0,abslayer_width=cpml%nlayer)
+
+        call propagator%check_discretization
         
-        call field%add_source
-        
-        !check model, CFL condition, dispersion etc.
-        call field%check_model
-        call field%check_discretization
-    
-        !initialize propagation
-        call field%init
-        
+        call propagator%init
+
+        call propagator%init_field(field,name='field',origin='src',oif_will_reconstruct=.true.)
+
+        call field%add_RHS
+                
         !forward modeling
-        call field%forward
+        if(.not.field%is_registered(chp,'seismo')) then
+            call propagator%forward
+            call field%register(chp,'seismo')
+        endif
+
+        call field%acquire
         
         !write synthetic data
-        call suformat_write(file='synth_data_'//shot%sindex,shot%dsyn)
-
-        call status%save('FWD_shot'//shot%sindex) !this shot is simulated
+        call suformat_write(file='dsyn_'//shot%sindex,shot%dsyn,shot%nt,shot%nrcv,o_dt=shot%dt,o_sindex=shot%sindex)
 
     enddo
     
     call hud('        END LOOP OVER SHOTS        ')
     
-    call mpiworld_finalize
+    call mpiworld%finalize
     
 end
 

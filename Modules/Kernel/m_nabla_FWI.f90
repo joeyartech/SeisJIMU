@@ -3,6 +3,7 @@ use m_string
 use m_setup
 use m_mpienv
 use m_format_su
+use m_checkpoint
 use m_model
 use m_shotlist
 use m_shot
@@ -95,14 +96,17 @@ use m_smoother_laplacian_sparse
         type(t_fobjective) :: fobj
 
         type(t_field) :: sfield, rfield
-
         character(:),allocatable :: update_wavelet
+
+        type(t_checkpoint),save :: chp
                 
         call hud('===== START LOOP OVER SHOTS =====')
         
-        do i=1,sl%nshot_per_processor        
+        call chp%init('FWI_shotlist','Init# Shot#','per_init given')
+        do i=1,sl%nshot_per_processor
+            call chp%count(sl%list_per_processor(i))
 
-            call shot%init(i)
+            call shot%init(sl%list_per_processor(i))
             call shot%read_from_data
             call shot%set_var_time
             call shot%set_var_space(index(propagator%info,'FDSG')>0)
@@ -120,18 +124,22 @@ use m_smoother_laplacian_sparse
 
             call sfield%add_RHS
             
-            call propagator%forward(sfield)
+            !forward modeling
+            if(.not.sfield%is_registered(chp,'seismo comp boundary')) then
+                call propagator%forward(sfield)
+                call sfield%register(chp,'seismo comp boundary')
+            endif
 
             call sfield%acquire
 
-            if(mpiworld%is_master) call suformat_write('synth_raw_'//shot%sindex,shot%dsyn,shot%nt,shot%nrcv,o_dt=shot%dt)
+            if(mpiworld%is_master) call suformat_write('draw_'//shot%sindex,shot%dsyn,shot%nt,shot%nrcv,o_dt=shot%dt)
             
             update_wavelet=setup%get_str('UPDATE_WAVELET',o_default='per shot')
 
             if(update_wavelet/='no') call shot%update_wavelet !call gradient_matchfilter_data
             
             !write synthetic data
-            call suformat_write('synth_data_'//shot%sindex,shot%dsyn,shot%nt,shot%nrcv,o_dt=shot%dt,o_sindex=shot%sindex)
+            call suformat_write('dsyn_'//shot%sindex,shot%dsyn,shot%nt,shot%nrcv,o_dt=shot%dt,o_sindex=shot%sindex)
                         
             !objective function
             call fobj%compute_dnorms
@@ -146,7 +154,11 @@ use m_smoother_laplacian_sparse
             
             call alloc(cb%kernel,cb%mz,cb%mx,cb%my,propagator%ngrad)
 
-            call propagator%adjoint(rfield,o_sf=sfield,o_grad=cb%kernel)
+            !adjoint modeling
+            if(.not.cb%is_registered(chp,'kernel')) then
+                call propagator%adjoint(rfield,o_sf=sfield,o_grad=cb%kernel)
+                call cb%register(chp,'kernel')
+            endif
 
             !put cb%kernel into global gradient
             call cb%project_back(fobj%gradient,cb%kernel,propagator%ngrad)

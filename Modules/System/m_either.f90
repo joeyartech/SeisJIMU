@@ -11,8 +11,9 @@ module m_either
 
     contains
 
-    function either2_int(i1,i2,switch) result(res)
-        logical :: switch
+    pure function either2_int(i1,i2,switch) result(res)
+        integer,intent(in) :: i1,i2
+        logical,intent(in) :: switch
         integer :: res
         if(switch) then
             res=i1
@@ -21,9 +22,9 @@ module m_either
         endif
     end function
 
-    function either2_ints(i1,i2,switch) result(res)
-        logical :: switch
-        integer,dimension(:) :: i1,i2
+    pure function either2_ints(i1,i2,switch) result(res)
+        integer,dimension(:),intent(in) :: i1,i2
+        logical,intent(in) :: switch
         integer,dimension(:),allocatable :: res
         if(switch) then
             allocate(res,source=i1)
@@ -32,8 +33,9 @@ module m_either
         endif
     end function
 
-    function either2_real(r1,r2,switch) result(res)
-        logical :: switch
+    pure function either2_real(r1,r2,switch) result(res)
+        real,intent(in) :: r1,r2
+        logical,intent(in) :: switch
         if(switch) then
             res=r1
         else
@@ -41,9 +43,9 @@ module m_either
         endif
     end function
 
-    function either2_reals(r1,r2,switch) result(res)
-        logical :: switch
-        real,dimension(:) :: r1,r2
+    pure function either2_reals(r1,r2,switch) result(res)
+        real,dimension(:),intent(in) :: r1,r2
+        logical,intent(in) :: switch
         real,dimension(:),allocatable :: res
         if(switch) then
             allocate(res,source=r1)
@@ -52,9 +54,9 @@ module m_either
         endif
     end function
 
-    function either2_str(s1,s2,switch) result(res)
-        logical :: switch
-        character(*) :: s1,s2
+    pure function either2_str(s1,s2,switch) result(res)
+        character(*),intent(in) :: s1,s2
+        logical,intent(in) :: switch
         character(:),allocatable :: res
         if(switch) then
             res=s1
@@ -63,8 +65,9 @@ module m_either
         endif
     end function
 
-    function either2_bool(b1,b2,switch) result(res)
-        logical :: switch, b1,b2, res
+    pure function either2_bool(b1,b2,switch) result(res)
+        logical,intent(in) :: b1,b2, switch
+        logical :: res
         if(switch) then
             res=b1
         else

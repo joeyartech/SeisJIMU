@@ -3,6 +3,7 @@ use m_string
 use m_mpienv
 use m_arrayop
 use m_setup
+use m_checkpoint
 use m_resampler
 use m_model
 use m_shot
@@ -14,6 +15,7 @@ use, intrinsic :: ieee_arithmetic
     
     !boundary components for wavefield recontruction
     type t_boundary
+
         real,dimension(:,:),allocatable :: vz_top,vz_bot
         real,dimension(:,:),allocatable :: vx_left,vx_right
         real,dimension(:,:),allocatable :: vy_front,vy_rear
@@ -72,6 +74,9 @@ use, intrinsic :: ieee_arithmetic
         procedure :: write => write
         procedure :: boundary_transport => boundary_transport
         final :: fin
+
+        procedure :: is_registered => is_registered
+        procedure :: register => register
 
     end type
 
@@ -378,7 +383,7 @@ use, intrinsic :: ieee_arithmetic
         endif
         
     end subroutine
-    
+
     subroutine fin(self)
         type(t_field) :: self
 
@@ -422,6 +427,120 @@ use, intrinsic :: ieee_arithmetic
         if(allocated(self%bloom)) deallocate(self%bloom)
 
         !snapshot
+    end subroutine
+    
+    logical function is_registered(self,chp,str)
+        class(t_field) :: self
+        type(t_checkpoint) :: chp
+        character(*) :: str
+
+        type(t_string),dimension(:),allocatable :: list
+
+        if(.not.if_use_checkpoint) then
+            is_registered=.false.
+            return
+        endif
+
+        list=split(str)
+
+        is_registered=.true.
+
+        do i=1,size(list)
+            if(.not.chp%check(self%name//'%'//list(i)%s)) then
+                is_registered=.false.
+                return
+            endif
+        enddo
+
+        do i=1,size(list)
+            select case (list(i)%s)
+            case ('seismo')
+                call chp%open(self%name//'%seismo')
+                if(allocated(self%seismo)) call chp%read(self%seismo,size(self%seismo))
+                call chp%close
+            case ('comp')
+                call chp%open(self%name//'%comp')
+                if(allocated(self%vz )) call chp%read(self%vz ,size(self%vz ))
+                if(allocated(self%vx )) call chp%read(self%vx ,size(self%vx ))
+                if(allocated(self%vy )) call chp%read(self%vy ,size(self%vy ))
+                if(allocated(self%szz)) call chp%read(self%szz,size(self%szz))
+                if(allocated(self%szx)) call chp%read(self%szx,size(self%szx))
+                if(allocated(self%szy)) call chp%read(self%szy,size(self%szy))
+                if(allocated(self%sxx)) call chp%read(self%sxx,size(self%sxx))
+                if(allocated(self%sxy)) call chp%read(self%sxy,size(self%sxy))
+                if(allocated(self%syy)) call chp%read(self%syy,size(self%syy))
+                if(allocated(self%shh)) call chp%read(self%shh,size(self%shh))
+                if(allocated(self%p  )) call chp%read(self%p  ,size(self%p  ))
+                call chp%close
+            case ('boundary')
+                call chp%open(self%name//'%boundary')
+                if(allocated(self%bnd%vz_top  )) call chp%read(self%bnd%vz_top  ,size(self%bnd%vz_top  ))
+                if(allocated(self%bnd%vz_bot  )) call chp%read(self%bnd%vz_bot  ,size(self%bnd%vz_bot  ))
+                if(allocated(self%bnd%vx_left )) call chp%read(self%bnd%vx_left ,size(self%bnd%vx_left ))
+                if(allocated(self%bnd%vx_right)) call chp%read(self%bnd%vx_right,size(self%bnd%vx_right))
+                if(allocated(self%bnd%vy_front)) call chp%read(self%bnd%vy_front,size(self%bnd%vy_front))
+                if(allocated(self%bnd%vy_rear )) call chp%read(self%bnd%vy_rear ,size(self%bnd%vy_rear ))
+                if(allocated(self%bnd%vx_top  )) call chp%read(self%bnd%vx_top  ,size(self%bnd%vx_top  ))
+                if(allocated(self%bnd%vx_bot  )) call chp%read(self%bnd%vx_bot  ,size(self%bnd%vx_bot  ))
+                if(allocated(self%bnd%vz_left )) call chp%read(self%bnd%vz_left ,size(self%bnd%vz_left ))
+                if(allocated(self%bnd%vz_right)) call chp%read(self%bnd%vz_right,size(self%bnd%vz_right))
+                    call chp%close
+            end select
+
+        enddo
+
+    end function
+
+    subroutine register(self,chp,str)
+        class(t_field) :: self
+        type(t_checkpoint) :: chp
+        character(*) :: str
+
+        type(t_string),dimension(:),allocatable :: list
+
+        if(.not.if_checkpoint) then
+            return
+        endif
+
+        list=split(str)
+
+        do i=1,size(list)
+            select case (list(i)%s)
+            case ('seismo')
+                call chp%open(self%name//'%seismo')
+                if(allocated(self%seismo)) call chp%write(self%seismo,size(self%seismo))
+                call chp%close
+            case ('comp')
+                call chp%open(self%name//'%comp')
+                if(allocated(self%vz )) call chp%write(self%vz ,size(self%vz ))
+                if(allocated(self%vx )) call chp%write(self%vx ,size(self%vx ))
+                if(allocated(self%vy )) call chp%write(self%vy ,size(self%vy ))
+                if(allocated(self%szz)) call chp%write(self%szz,size(self%szz))
+                if(allocated(self%szx)) call chp%write(self%szx,size(self%szx))
+                if(allocated(self%szy)) call chp%write(self%szy,size(self%szy))
+                if(allocated(self%sxx)) call chp%write(self%sxx,size(self%sxx))
+                if(allocated(self%sxy)) call chp%write(self%sxy,size(self%sxy))
+                if(allocated(self%syy)) call chp%write(self%syy,size(self%syy))
+                if(allocated(self%shh)) call chp%write(self%shh,size(self%shh))
+                if(allocated(self%p  )) call chp%write(self%p  ,size(self%p  ))
+                call chp%close
+            case ('boundary')
+                call chp%open(self%name//'%boundary')
+                if(allocated(self%bnd%vz_top  )) call chp%write(self%bnd%vz_top  ,size(self%bnd%vz_top  ))
+                if(allocated(self%bnd%vz_bot  )) call chp%write(self%bnd%vz_bot  ,size(self%bnd%vz_bot  ))
+                if(allocated(self%bnd%vx_left )) call chp%write(self%bnd%vx_left ,size(self%bnd%vx_left ))
+                if(allocated(self%bnd%vx_right)) call chp%write(self%bnd%vx_right,size(self%bnd%vx_right))
+                if(allocated(self%bnd%vy_front)) call chp%write(self%bnd%vy_front,size(self%bnd%vy_front))
+                if(allocated(self%bnd%vy_rear )) call chp%write(self%bnd%vy_rear ,size(self%bnd%vy_rear ))
+                if(allocated(self%bnd%vx_top  )) call chp%write(self%bnd%vx_top  ,size(self%bnd%vx_top  ))
+                if(allocated(self%bnd%vx_bot  )) call chp%write(self%bnd%vx_bot  ,size(self%bnd%vx_bot  ))
+                if(allocated(self%bnd%vz_left )) call chp%write(self%bnd%vz_left ,size(self%bnd%vz_left ))
+                if(allocated(self%bnd%vz_right)) call chp%write(self%bnd%vz_right,size(self%bnd%vz_right))
+                call chp%close
+            end select
+
+        enddo
+
     end subroutine
 
 end

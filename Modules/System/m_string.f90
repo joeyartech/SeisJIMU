@@ -8,6 +8,8 @@
 module m_string
     use m_either
 
+    private :: fin
+
     !default string length
     integer,parameter :: i_str_slen  = 64
     integer,parameter :: i_str_len  = 128
@@ -39,9 +41,15 @@ module m_string
         contains
         !procedure :: as_real => as_real
         !procedure :: as_complex => as_complex
+        final :: fin
     end type
 
     contains
+
+    subroutine fin(str)
+        type(t_string) :: str
+        deallocate(str%s)
+    end subroutine
 
     function lalign(str)
         character(*),intent(in) :: str

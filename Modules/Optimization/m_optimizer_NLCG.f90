@@ -201,21 +201,21 @@ use m_linesearcher
                     write(16,'(a)'      ) ' **********************************************************************'
                     write(16,'(a)'      ) '                 NONLINEAR CONJUGATE GRADIENT ALGORITHM                '
                     write(16,'(a)'      ) ' **********************************************************************'
-                    write(16,'(a,es8.2)') '     Min update allowed        : ',  min_update
-                    write(16,'(a,i5)'   ) '     Max iteration allowed     : ',  self%max_iterate
-                    write(16,'(a,i5)'   ) '     Max linesearch allowed    : ',  ls%max_search
-                    write(16,'(a,i5)'   ) '     Max modeling allowed      : ',  ls%max_modeling
+                    write(16,'(a,es8.2)') '     Min update allowed          : ',  min_update
+                    write(16,'(a,i5)'   ) '     Max iterates allowed        : ',  self%max_iterate
+                    write(16,'(a,i5)'   ) '     Max linesearches allowed    : ',  ls%max_search
+                    write(16,'(a,i5)'   ) '     Max gradients allowed       : ',  ls%max_gradient
                     write(16,'(a,es8.2)') '     Initial fobjective (f0)         : ',  self%f0
                     write(16,'(a,es8.2)') '     Initial gradient norm (||g0||)  : ',  self%g0norm
                     write(16,'(a)'      ) ' **********************************************************************'
                     write(16,'(a)'      ) '  Iter#      f         f/f0    ||g||/||g0||    alpha     nls  Modeling#'
                                    !e.g.  !    0    1.00E+00    1.00E+00    1.00E+00    1.00E+00      0       1
-                    write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  self%iterate, self%curr%f, self%curr%f/self%f0, norm2(self%curr%g)/self%g0norm, ls%alpha, ls%isearch, ls%imodeling
+                    write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  self%iterate, self%curr%f, self%curr%f/self%f0, norm2(self%curr%g)/self%g0norm, ls%alpha, ls%isearch, ls%igradient
                     close(16)
                     
                 case('update')
                     open(16,file=dir_out//'iterate.log',position='append',action='write')
-                    write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  self%iterate, self%curr%f, self%curr%f/f0, norm2(self%curr%g)/g0norm, ls%alpha, ls%isearch, ls%imodeling
+                    write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  self%iterate, self%curr%f, self%curr%f/f0, norm2(self%curr%g)/g0norm, ls%alpha, ls%isearch, ls%igradient
                     close(16)
                     
                     call param%transform('x2m',self%curr%x)

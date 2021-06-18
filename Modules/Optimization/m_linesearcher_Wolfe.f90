@@ -60,10 +60,10 @@ use m_preconditioner
         logical :: if_has_scaler=.false.
         
         !counter
-        integer :: imodeling=1 !number of modeling performed
-        integer :: isearch=0 !number of linesearch performed
+        integer :: igradient=1 !total number of gradient computed
+        integer :: isearch=0 !number of linesearch performed in each iterate
         
-        integer :: max_modeling !max total number of forward modeling allowed
+        integer :: max_gradient !max total number of gradient computation allowed
         integer :: max_search   !max number of linesearch allowed per iteration
         
         contains
@@ -105,7 +105,7 @@ use m_preconditioner
 
         !read setup
         max_search=setup%get_int('MAX_SEARCH',o_default='12')
-        max_modeling=setup%get_int('MAX_MODELING',o_default=num2str(max_iterate+30))
+        max_gradient=setup%get_int('MAX_GRADIENT',o_default=num2str(max_iterate+30))
         
         if_reinit_alpha=setup%get_bool('IF_REINIT_ALPHA',o_default='F')
 
@@ -141,7 +141,7 @@ use m_preconditioner
 
             self%isearch=isearch
         
-            if(mpiworld%is_master) write(*,'(a,3(2x,i5))') '  Iterate.Linesearch.Modeling#',iterate,self%isearch,self%imodeling
+            if(mpiworld%is_master) write(*,'(a,3(2x,i5))') '  Iterate.Linesearch.Gradient#',iterate,self%isearch,self%igradient
             
             call hud('Modeling with perturbed parameters')
             call threshold(pert%x,size(pert%x))
@@ -151,7 +151,7 @@ use m_preconditioner
             call param%transform('m2x',pert%x,pert%g)
             call self%scale(pert)
             call preco%apply(pert%g,pert%pg)
-            self%imodeling=self%imodeling+1
+            self%igradient=self%igradient+1
             
             call hud('Judge alpha by Wolfe conditions')
             
@@ -240,8 +240,8 @@ use m_preconditioner
         
         enddo loop
         
-        if (self%imodeling>=self%max_modeling) then
-            call hud('Maximum modeling number reached. Finalize program now..')
+        if (self%igradient>=self%max_gradient) then
+            call hud('Maximum number of gradients reached. Finalize program now..')
             result='maximum'
         endif       
     
