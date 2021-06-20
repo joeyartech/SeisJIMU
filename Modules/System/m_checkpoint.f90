@@ -124,11 +124,13 @@ use m_setup
 
     end subroutine
 
-    logical function check(self,var)
+    logical function check(self,var,o_filesize)
         class(t_checkpoint) :: self
         character(*) :: var
+        integer,optional :: o_filesize
         
         character(:),allocatable :: file
+        integer filesize
 
         file=self%name//'_'//&
             strcat(          self%s_cnts,             self%n_cnts,o_glue=',')//'_'//&
@@ -136,7 +138,18 @@ use m_setup
             strcat(          self%s_cnts_cond,        self%n_cnts,o_glue=',')//'_'//&
             'Var:'//var
 
-        inquire(file=dir_checkpoint//file,exist=check)
+        inquire(file=dir_checkpoint//file,exist=check,size=filesize)
+        
+        !requires to match file size
+        if(check .and. present(oif_filesize)) then
+            filesize=filesize/4
+            if(filesize<oif_filesize) then
+                call hud('At checkpoint '//self%name//','//&
+                    ' the size of the requested file ('//num2str(filesize)//') is smaller than the prescribed size ('//(num2str(o_filesize))//')'//s_return//&
+                    'Will recompute the associated variables.')
+                check=.false.
+            endif
+        endif
 
     end function
     

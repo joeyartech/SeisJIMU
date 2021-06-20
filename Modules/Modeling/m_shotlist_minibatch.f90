@@ -16,6 +16,7 @@ use m_sysio
         procedure :: read_from_setup => read_from_setup
         procedure :: read_from_data  => read_from_data
         procedure :: assign => assign
+        procedure :: assign_random => assign_random
         procedure :: print => print
     end type
 
@@ -117,10 +118,16 @@ use m_sysio
 
         deallocate(shots, subshots)
 
-    end subroutine
-
-    subroutine assign(self)
-        class(t_shotlist) :: self
+        !Random decimation of shots:
+        !First, shots are grouped into N groups. In each group, one shot is randomly selected to compute the objective function and gradient.
+        !When the optimizer signals a new selection, new shots are randomly selected from each group
+        !
+        !batch size = number of shots to compute one gradient = number of groups
+        !batch size=1: stochastic gradient descent
+        !1<batch size<all shots: mini-batch gradient descent
+        !batch size=number of total shots: batch gradient descent (ie no random selection)
+        
+        batch_size=setup%get_str('SHOT_BATCH_SIZE','NBATCH',o_default=num2str(self%nshot)) !no random selection by default
 
         integer,dimension(:),allocatable :: list
 
@@ -131,30 +138,44 @@ use m_sysio
 
         call alloc(list, ceiling(self%nshot*1./mpiworld%nproc) )
 
-        !mapping between Shot# and Proc#
+!deprecated.. can't do the job..
+k=1 !shotlist's index
+j=0 !modulo shot#/processor#
 
-        k=1 !shotlist's index
-        j=0 !modulo shot#/processor#
+do i=1,self%nshot
+    if (j==mpiworld%nproc) then
+        j=j-mpiworld%nproc
+        k=k+1
+    endif
+    if (mpiworld%iproc==j) then
+        list(k)=self%list(i)
+    endif
+    j=j+1
+enddo
+
+self%nshot_per_processor=count(list>=0)
+
+call alloc(self%list_per_processor,self%nshot_per_processor)
+
+self%list_per_processor=list(1:self%nshot_per_processor)
+
+deallocate(list)
         
-        do i=1,self%nshot
-            if (j==mpiworld%nproc) then
-                j=j-mpiworld%nproc
-                k=k+1
-            endif
-            if (mpiworld%iproc==j) then
-                list(k)=self%list(i)
-            endif
-            j=j+1
-        enddo
+    end subroutine
 
-        self%nshot_per_processor=count(list>=0)
+    subroutine assign(self)
+        class(t_shotlist) :: self
 
-        call alloc(self%list_per_processor,self%nshot_per_processor)
+        type(t_checkpoint) :: chp
 
-        self%list_per_processor=list(1:self%nshot_per_processor)
+        call chp%init('FWI_randomshotlist','shotlist')
 
-        deallocate(list)
-        
+        if(.not.chp%check('shotlist',o_filesize=?) then
+            call hud('The random shotlist file is considered invalid as checkpoint '//chp%name//' returns F when checking this file. '//s_return//&
+                'For reproducibility arguments, set if_use_checkpoint to F.')
+            if_use_checkpoint=.false.
+        endif
+
     end subroutine
 
     subroutine print(self)

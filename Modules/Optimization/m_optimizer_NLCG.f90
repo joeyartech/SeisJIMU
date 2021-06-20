@@ -119,12 +119,15 @@ use m_linesearcher
 
         character(7) :: result
         real nom, denom
+
+type(t_checkpoint),save :: chp
         
         ! call self%write('start')
         call hud('============ START OPTIMIZATON ============')
         
         associate(curr=>self%curr,pert=>self%pert,prev=>self%prev)
 
+! call chp%init('FWI_shotlist','Iter#')
             !iteration loop
             loop: do iterate=1,self%max_iterate
 
@@ -170,6 +173,13 @@ use m_linesearcher
                     
                     call self%write('update')
                     
+! if(index(sl%info,'Random')>0) then
+!     if(.not.sl%is_registered(chp,'shotlist')) then
+!         call sl%assign
+!         call sl%register(chp,'shotlist')
+!     endif
+! endif
+
                     case('failure')
                     call self%write('failure')
                     exit loop

@@ -102,7 +102,7 @@ use m_smoother_laplacian_sparse
                 
         call hud('===== START LOOP OVER SHOTS =====')
         
-        call chp%init('FWI_shotlist','Init# Shot#','per_init given')
+        call chp%init('FWI_shotloop','Init# Shot#','per_init given')
         do i=1,sl%nshot_per_processor
             call chp%count(sl%list_per_processor(i))
 
