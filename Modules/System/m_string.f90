@@ -352,28 +352,26 @@ module m_string
 
         character(1) :: glue
         character(:),allocatable :: text
-        integer :: totlen
 
         glue=either(o_glue,' ',present(o_glue))
 
-        totlen=len(strs(1)%s)+1
-        if(n>1) then
-            do k=2,n
-                totlen=totlen+len(strs(k)%s)+1
-            enddo
-        endif
-        text=repeat(' ' ,totlen)
+        maxlen=len(strs(1)%s)+1
+        do k=2,either(n,1,n>1)
+            length=len(strs(k)%s)+1
+            maxlen=either(maxlen,length,maxlen>=length)
+        enddo
+        text=repeat(glue,maxlen*n)
 
-        i=1
-        do k=1,n
-            j=len(strs(k)%s)+1
-            text(i:j)=strs(k)%s//glue
-            i=j
+        do k=0,n-1
+            text(k*maxlen+1:k*maxlen+len(strs(k+1)%s))=strs(k+1)%s
         enddo
 
-        str=lalign(text)
+        text=text(1:len(text)-1) !remove very last glue
+        
+        str=lalign(remove_repetition(text,glue))
 
         deallocate(text)
 
     end function
+
 end

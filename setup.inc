@@ -9,6 +9,7 @@ WaveEq=AC
 # WaveEq=PSV
 Solver=FDSG
 Order=O4
+Batch=batching
 
 ##########
 # Kernel #
