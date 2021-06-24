@@ -120,16 +120,22 @@ use m_linesearcher
         character(7) :: result
         real nom, denom
 
-type(t_checkpoint),save :: chp
-        
+        type(t_checkpoint),save :: chp
+       
         ! call self%write('start')
         call hud('============ START OPTIMIZATON ============')
+        call chp%init('FWI_shotlist_optim','Iter#',oif_fuse=.true.)
         
         associate(curr=>self%curr,pert=>self%pert,prev=>self%prev)
 
-! call chp%init('FWI_shotlist','Iter#')
             !iteration loop
             loop: do iterate=1,self%max_iterate
+                call chp%count
+
+                if(.not.shls%is_registered(chp,'yield_shots')) then
+                    call shls%yield
+                    call shls%register(chp,'yield_shots')
+                endif
 
                 self%iterate=iterate
             
@@ -172,13 +178,6 @@ type(t_checkpoint),save :: chp
                     curr%gdotd=sum(curr%g*curr%d)
                     
                     call self%write('update')
-                    
-! if(index(sl%info,'Random')>0) then
-!     if(.not.sl%is_registered(chp,'shotlist')) then
-!         call sl%assign
-!         call sl%register(chp,'shotlist')
-!     endif
-! endif
 
                     case('failure')
                     call self%write('failure')

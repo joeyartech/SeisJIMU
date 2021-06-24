@@ -31,74 +31,58 @@ use m_optimizer
         stop
     endif
 
+    ! !print FD scheme and field info
+    ! call sfield%print_info
+
+    ! !estimate required memory
+    ! call m%estim_RAM
+    ! call cb%estim_RAM
+    ! call sfield%estim_RAM
+    ! call rfield%estim_RAM
+    
     !checkpoint
     call checkpoint_init
 
-    !print FD scheme and field info
-    call sfield%print_info
-    call rfield%print_info
-
-    !estimate required memory
-    call m%estim_RAM
-    call cb%estim_RAM
-    call sfield%estim_RAM
-    call rfield%estim_RAM
-
-    job=setup%get('JOB',default='optimization')
-    if(job=='estim RAM') then
-        call mpiworld%finalize
-        stop
-    endif
-    
     !read model
-    call m%init
+    call m%read
 
-    if(.not. status%check('first_gradient')) then !if this shot did not simulated
-    
-        call fobj%init
-
-        call gradient_modeling(fobj)
-
-        !call objectivefunc_model_norm ...
-        call fobj%compute_mnorm(m)
-
+    !shotlist
+    call shls%read_from_data
+    call shls%build
+    call chp%init('FWI_shotlist_grad',oif_fuse=.true.)
+    if(.not.shls%is_registered(chp,'yield_shots')) then
+        call shls%yield
+        call shls%register(chp,'yield_shots')
     endif
+    call shls%write
+    call shls%assign
 
-    open(12,file='gradient',action='write',access='stream')
-    write(12) gradient
-    close(12)
-        
-    
-!     open(12,file='precond_gradient',action='write',access='direct',recl=4*m%n*2)
-!     write(12,rec=1) precond_gradient
-!     close(12)
-    
-    ! job=get_setup_char('JOB',default='optimization')
-    ! !if just estimate the wavelet or compute the gradient then this is it.
-    ! if(job/='optimization') then
-    !     call mpiworld_finalize
-    !     stop
-    ! endif
-    
+    call fobj%init
+
+    call nabla%act(fobj)
     
     !initialize parameterization
     call param%init
 
-    !initialize optimizer
-    call optim%init(size=m%n*npar)
+    call preco%apply()
+
+    open(12,file='gradient',action='write',access='stream')
+    write(12) gradient
+    close(12)
     
-    open(12,file='initial%pg',action='write',access='direct',recl=4*m%n*npar)
-    write(12,rec=1) current%pg
+    open(12,file='precond_gradient',action='write',access='direct',recl=4*m%n*2)
+    write(12,rec=1) precond_gradient
     close(12)
 
-
-    job=setup%get('JOB',default='optimization')
     
     !if just estimate the wavelet or compute the gradient then this is it.
-    if(job/='optimization') then
+    if(setup%get_str('JOB',o_default='optimization')/='optimization') then
         call mpiworld%finalize
         stop
     endif
+
+    !initialize optimizer
+    call optim%init(size=m%n*npar)
     
     call optim%optimize
     

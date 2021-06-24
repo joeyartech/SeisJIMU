@@ -4,7 +4,7 @@ use m_mpienv
 use m_message
 use m_arrayop
 use m_setup
-use m_sysio
+use m_checkpoint
 
 !Procedure read: find all shots with their indices. E.g.
 !{1 2 3 4 5 6 7 8 9 10 11 12 15 16 17 18} (16 shots in total)
@@ -16,11 +16,11 @@ use m_sysio
 !3rd list: { 5  6  7  8}
 !4th list: { 9 10 11 12}
 !5th list: {15 16 17 18}
-!batch size = number of lists. Since one shot will be randomly selected from each list
+!batch size = number of lists. Since one shot will be selected from each list
 !batch size is also the number of shots for one objective function and gradient computation.
 !offsets = first shot index in each list.
 !
-!Two methods to build lists:
+!Two methods:
 !   a) Read batch size from setup (default to number of MPI processors). Offsets are set such that first list starts with first shot and no overlapping of shots between lists.
 !      Three typical cases:
 !      1. Stochastic gradient descent (batch size=1):
@@ -73,49 +73,80 @@ use m_sysio
 !   b) User provides a shotlists file (via setup)
 !      for arbitrary lengths, arbitrary offsets etc.
 !
-!Procedure assign: Assign lists to MPI processors. Each process is assigned with 1 or more lists.
-!In the first example, if we have 2 processors,
-!Proc #0 (master):
-!1st list: { 1  2  3}
-!3rd list: { 5  6  7  8}
-!5th list: {15 16 17 18}
+!Procedure yield: select one shot from each list. Two methods:
+!   a) Cyclic yield. For the very beginning example,
+!      1st yield:
+!      { 1  2  3}    -> 1
+!      { 3  4  5}    -> 3
+!      { 5  6  7  8} -> 5
+!      { 9 10 11 12} -> 9
+!      {15 16 17 18} -> 15
+!      which gives 5 shots (=batch size) for one objective function and gradient computation.
+!      
+!      2nd yield:
+!      { 1  2  3}    -> 2
+!      { 3  4  5}    -> 3
+!      { 5  6  7  8} -> 6
+!      { 9 10 11 12} -> 9
+!      {15 16 17 18} -> 16
+!      ...
+!      4th yield:
+!      { 1  2  3}    -> 1
+!      { 3  4  5}    -> 3
+!      { 5  6  7  8} -> 8
+!      { 9 10 11 12} -> 12
+!      {15 16 17 18} -> 18
+!                  
+!   b) Random yield.
+!      1st yield:
+!      { 1  2  3}    -> 2
+!      { 3  4  5}    -> 3
+!      { 5  6  7  8} -> 5
+!      { 9 10 11 12} -> 12
+!      {15 16 17 18} -> 17
+!         
+!      2nd yield:
+!      { 1  2  3}    -> 1
+!      { 3  4  5}    -> 5
+!      { 5  6  7  8} -> 5
+!      { 9 10 11 12} -> 9
+!      {15 16 17 18} -> 16
 !
-!Proc #1:
-!2nd list: { 3  4  5}
-!4th list: { 9 10 11 12}
+!Procedure assign: assign the yielded shots to MPI processors. Each process is assigned with 1 or more shots to each process.
+!E.g. yield_shots={1 3 5 9 15}, if we have 2 processors,
+!Proc #0 (master) is assigned with {1 5 15}
+!Proc #1 is assigned with {3 9}
 !
-!Procedure yield: During shot loop, randomly select shots from each list per processor. E.g.
-!1st iteration:
-!   Proc #0: { 1  2  3}    -> 2
-!   Proc #1: { 3  4  5}    -> 3
-!
-!2nd iteration:
-!   Proc #0: { 5  6  7  8} -> 5
-!   Proc #1: { 9 10 11 12} -> 12
-!
-!3rd iteration:
-!   Proc #1: {15 16 17 18} -> 17
-!
-!which gives 5 shots (=batch size) for one objective function and gradient computation.
+!Procedure select: return one shot from yield_shots inside shot loop.
 
     private
 
     type,public :: t_shotlist
         character(:),allocatable :: wholelist
         integer :: nshot
-        type(t_string),dimension(:),allocatable :: lists, lists_per_processor
-        integer :: nlists, nlists_per_processor
+        type(t_string),dimension(:),allocatable :: lists
+        integer :: nlists
+        integer,dimension(:),allocatable :: icycle
+        type(t_string),dimension(:),allocatable :: yield_shots
+        
+        type(t_string),dimension(:),allocatable :: shots_per_processor
+        integer :: nshots_per_processor
 
         contains
         procedure :: read_from_setup => read_from_setup
         procedure :: read_from_data  => read_from_data
         procedure :: build => build
-        procedure :: assign => assign
         procedure :: yield => yield
-        procedure :: print => print
+        procedure :: assign => assign
+        procedure :: select => select
+
+        procedure :: is_registered => is_registered
+        procedure :: register => register
     end type
 
     type(t_shotlist),public :: shls
+
+    character(:),allocatable :: yield_method
     
     contains
 
@@ -234,8 +265,9 @@ use m_sysio
                 
     end subroutine
 
-    subroutine build(self)
+    subroutine build(self,o_batchsize)
         class(t_shotlist) :: self
+        integer,optional :: o_batchsize
         
         character(:),allocatable :: file
         type(t_string),dimension(:),allocatable :: swholelist
@@ -248,17 +280,20 @@ use m_sysio
         endif
         
         swholelist=split(self%wholelist)
-        
-        if(NBATCH>self%nshot) then
-            print*,'NBATCH>self%nshot! Reset NBATCH=NPROC'
-            NBATCH=NPROC
-        endif
-        allocate(self%lists(NBATCH))
-        self%nlists=NBATCH
-        
-        maxlength=ceiling(self%nshot*1./NBATCH)
 
-        do k=1,NBATCH
+        self%nlists=either(o_batchsize,&
+            setup%get_int('SHOT_BATCH_SIZE','NBATCH',o_default=num2str(mpiworld%nproc)),&
+            present(o_batchsize))
+        
+        if(self%nlists>self%nshot) then
+            call warn('NBATCH > self%nshot! Reset NBATCH=NPROC')
+            self%nlists=self%nshot
+        endif
+        allocate(self%lists(self%nlists))
+        
+        maxlength=ceiling(self%nshot*1./self%nlists)
+
+        do k=1,self%nlists
             self%lists(k)%s='' !initialization
         enddo
         
@@ -268,8 +303,8 @@ use m_sysio
             if(mod(i,maxlength)==0) k=k+1
         enddo
         
-        !handle empty lists
-        do k=NBATCH/2,NBATCH
+        !some lists can be empty
+        do k=self%nlists/2,self%nlists
             if(self%lists(k)%s=='') then
                 self%lists(k)%s=swholelist(self%nshot)%s
             endif
@@ -277,68 +312,139 @@ use m_sysio
         
     end subroutine
 
-    subroutine assign(self)
+    subroutine yield(self)
+        class(t_shotlist) :: self
+
+        type(t_string),dimension(:),allocatable :: sublist
+        
+        yield_method=setup%get_str('SHOT_YIELD_METHOD',o_default='cyclic')
+
+        if(yield_method=='cyclic') then
+            do i=1,self%nlists
+                sublist=split(self%lists(i)%s)
+                self%yield_shots(i)%s=sublist(self%icycle(i))%s
+
+                self%icycle(i)=self%icycle(i)+1
+                if(self%icycle(i)>size(sublist)) self%icycle(i)=1
+                
+            enddo
+        endif
+        
+        if(yield_method=='random') then
+            do i=1,self%nlists
+                sublist=split(self%lists(i)%s)
+                
+                call random_number(r) !gives random real number 0<=r<1
+                !convert to random integer from n to m: i=n+floor((m+1-n)*r)            
+                self%yield_shots(i)%s=sublist(1+floor(size(sublist)*r))%s
+                
+            enddo
+        endif
+        
+    end subroutine
+    
+    subroutine write(self)
         class(t_shotlist) :: self
                 
-        !count how many lists per processors
-        self%nlists_per_processor=0
+        !message
+        write(*,*) ' Proc# '//mpiworld%sproc//' has '//num2str(self%nshots_per_processor)//' assigned shots.'
+        call hud('See file "shotlist" for details.')
+
+        !write shotlist to disk
+        call mpiworld%write(dir_out//'shotlist', 'Proc# '//mpiworld%sproc//' has '//num2str(self%nshots_per_processor)//' assigned shots:'// &
+            strcat(ints2strs(self%shots_per_processor,self%nshots_per_processor),self%nshots_per_processor))
+        
+    end subroutine
+
+    subroutine assign(self)
+        class(t_shotlist) :: self
+        
+        !count how many shots per processors
+        self%nshots_per_processor=0
         k=1 !list index
         j=0 !modulo list#/processor#
-        do i=1,NBATCH
+        do i=1,self%nlists
             if (j==NPROC) then
                 j=j-NPROC
                 k=k+1
             endif
-            if (IPROC==j) then !IPROC starts from 0
-                self%nlists_per_processor=self%nlists_per_processor+1
+            if (IPROC==j) then !iproc starts from 0
+                self%nshots_per_processor=self%nshots_per_processor+1
             endif
             j=j+1
         enddo
         
-        allocate(self%lists_per_processor(ceiling(self%nlists*1./NPROC)))
+        allocate(self%shots_per_processor(self%nshots_per_processor))
         
-        !redo the loop
         k=1 !list index
         j=0 !modulo list#/processor#
-        do i=1,NBATCH
+        do i=1,self%nlists
             if (j==NPROC) then
                 j=j-NPROC
                 k=k+1
             endif
             if (IPROC==j) then
-                self%lists_per_processor(k)=self%lists(i)
+                self%shots_per_processor(k)=self%yield_shots(i)
             endif
             j=j+1
         enddo
-        
+
     end subroutine
-    
-    function yield(self,i)
+
+    function select(self,i)
         class(t_shotlist) :: self
-        character(:),allocatable :: yield
+        character(:),allocatable :: select
         
-        type(t_string),dimension(:),allocatable :: slists
-        
-        slists=split(self%lists_per_processor(i)%s)
-        
-        call random_number(r) !gives random real number 0<=r<1
-        !convert to random integer from n to m: i=n+floor((m+1-n)*r) 
-        
-        yield=slists(1+floor(size(slists)*r))%s
-        
+        select=self%shots_per_processor(i)%s
+
     end function
 
-    subroutine print(self)
-        class(t_shotlist) :: self
-                
-        ! !message
-        ! write(*,*) ' Proc# '//mpiworld%sproc//' has '//num2str(self%nlist_per_processor)//' assigned shots.'
-        ! call hud('See file "shotlist" for details.')
 
-        ! !write shotlist to disk
-        ! call mpiworld%write(dir_out//'shotlist', 'Proc# '//mpiworld%sproc//' has '//num2str(self%nshot_per_processor)//' assigned shots:'// &
-        !     strcat(ints2strs(self%list_per_processor,self%nshot_per_processor),self%nshot_per_processor))
-        
+    logical function is_registered(self,chp,str)
+        class(t_shotlist) :: self
+        type(t_checkpoint) :: chp
+        character(*) :: str
+
+        type(t_string),dimension(:),allocatable :: list
+
+        list=split(str)
+
+        do i=1,size(list)
+            is_registered=chp%check('shotlist%'//list(i)%s)
+            if(.not.is_registered) return
+        enddo
+
+        do i=1,size(list)
+            select case (list(i)%s)
+            case ('lists')
+                call chp%open('shotlist%lists')
+                if(allocated(self%lists)) call chp%read(self%lists,self%nlists)
+                call chp%close
+            end select
+
+        enddo
+
+    end function
+
+    subroutine register(self,chp,str)
+        class(t_shotlist) :: self
+        type(t_checkpoint) :: chp
+        character(*) :: str
+
+        type(t_string),dimension(:),allocatable :: list
+
+        list=split(str)
+
+        do i=1,size(list)
+            select case (list(i)%s)
+            case ('lists')
+                call chp%open(self%name//'%lists')
+                if(allocated(self%lists)) call chp%write(self%lsits,self%nlists)
+                call chp%close
+            end select
+
+        enddo
+
     end subroutine
 
 end

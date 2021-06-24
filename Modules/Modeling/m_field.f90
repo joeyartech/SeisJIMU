@@ -428,6 +428,7 @@ use, intrinsic :: ieee_arithmetic
 
         !snapshot
     end subroutine
+
     
     logical function is_registered(self,chp,str)
         class(t_field) :: self
@@ -436,20 +437,11 @@ use, intrinsic :: ieee_arithmetic
 
         type(t_string),dimension(:),allocatable :: list
 
-        if(.not.if_use_checkpoint) then
-            is_registered=.false.
-            return
-        endif
-
         list=split(str)
 
-        is_registered=.true.
-
         do i=1,size(list)
-            if(.not.chp%check(self%name//'%'//list(i)%s)) then
-                is_registered=.false.
-                return
-            endif
+            is_registered=chp%check(self%name//'%'//list(i)%s))
+            if(.not.is_registered) return
         enddo
 
         do i=1,size(list)
@@ -497,10 +489,6 @@ use, intrinsic :: ieee_arithmetic
         character(*) :: str
 
         type(t_string),dimension(:),allocatable :: list
-
-        if(.not.if_checkpoint) then
-            return
-        endif
 
         list=split(str)
 

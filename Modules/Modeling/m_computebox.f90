@@ -255,20 +255,11 @@ use m_shot
 
         type(t_string),dimension(:),allocatable :: list
 
-        if(.not.if_use_checkpoint) then
-            is_registered=.false.
-            return
-        endif
-
         list=split(str)
 
-        is_registered=.true.
-
         do i=1,size(list)
-            if(.not.chp%check('computebox%'//list(i)%s)) then
-                is_registered=.false.
-                return
-            endif
+            is_registered=chp%check('computebox%'//list(i)%s)
+            if(.not.is_registered) return
         enddo
 
         do i=1,size(list)
@@ -289,10 +280,6 @@ use m_shot
         character(*) :: str
 
         type(t_string),dimension(:),allocatable :: list
-
-        if(.not.if_checkpoint) then
-            return
-        endif
 
         list=split(str)
 

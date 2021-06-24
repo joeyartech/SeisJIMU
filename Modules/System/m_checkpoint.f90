@@ -5,15 +5,16 @@ use m_setup
     private
     public :: checkpoint_init
 
-    logical,public :: if_checkpoint !if use checkpoint system in the 1st run
-    logical,public :: if_use_checkpoint !if use checkpointed variables in the 2nd run 
+    logical :: if_checkpoint !if use checkpoint system in the 1st run
+    logical :: if_use_checkpoint !if use checkpointed variables in the 2nd run 
 
-    character(:),allocatable :: dir_checkpoint
+    character(:),allocatable :: dir_chp
 
     type,public :: t_checkpoint
         character(:),allocatable :: name
 
         logical :: if_first_init=.true.
+        logical :: if_fuse
 
         !counters
         integer n_cnts !number of counters
@@ -39,31 +40,44 @@ use m_setup
 
     subroutine checkpoint_init
 
-        if_checkpoint=setup%get_bool('IF_CHECKPOINT',o_default=checkpoint)
+        if_checkpoint=setup%get_bool('IF_CHECKPOINT',o_default='F')
 
         if_use_checkpoint = either(&
             setup%get_bool('IF_USE_CHECKPOINT', o_default='T'),&
             .false.,&
             if_checkpoint)
 
-        dir_checkpoint = setup%get_str('DIR_CHECKPOINT','DIR_CHP',o_default='./checkpoints/')
+        dir_chp = setup%get_str('DIR_CHECKPOINT','DIR_CHP',o_default='./checkpoints/')
         
-        if(if_checkpoint) call execute_command_line('mkdir -p '//dir_checkpoint, wait=.true.)
+        if(if_checkpoint) call execute_command_line('mkdir -p '//dir_chp, wait=.true.)
 
     end subroutine
 
-    subroutine init(self,name,cnts_name,o_cnts_cond)
+    subroutine init(self,name,o_cnts_name,o_cnts_cond,oif_fuse)
         class(t_checkpoint) :: self
-        character(*) :: name, cnts_name
-        character(*),optional :: o_cnts_cond
+        character(*) :: name
+        character(*),optional :: o_cnts_name, o_cnts_cond
+        logical,optional :: oif_fuse
 
         type(t_string),dimension(:),allocatable :: list
 
+        if(.not.if_checkpoint) return
+
         if(self%if_first_init) then
+            self%if_first_init=.false.
+
             self%name=name
 
+            self%if_fuse=either(oif_fuse,.false.,present(oif_fuse))
+
+            !no counters
+            if(.not.present(o_cnts_name)) then
+                self%n_cnts=0
+                return
+            endif
+
             !counters name
-            list=split(cnts_name); self%n_cnts=size(list)
+            list=split(o_cnts_name); self%n_cnts=size(list)
             
             allocate(self%s_cnts(self%n_cnts))
             
@@ -91,7 +105,7 @@ use m_setup
 
             endif
 
-            self%if_first_init=.false.
+            return
 
         endif
 
@@ -104,6 +118,8 @@ use m_setup
 
             enddo
 
+            return
+
         endif
 
     end subroutine
@@ -111,6 +127,8 @@ use m_setup
     subroutine count(self,o_given)
         class(t_checkpoint) :: self
         integer,optional :: o_given
+
+        if(.not.if_checkpoint) return
 
         do i=1,self%n_cnts
             select case (self%s_cnts_cond(i)%s)
@@ -124,13 +142,17 @@ use m_setup
 
     end subroutine
 
-    logical function check(self,var,o_filesize)
+    logical function check(self,var)
         class(t_checkpoint) :: self
         character(*) :: var
-        integer,optional :: o_filesize
         
         character(:),allocatable :: file
         integer filesize
+
+        if(.not. if_use_checkpoint) then
+            check=.false.
+            return
+        endif
 
         file=self%name//'_'//&
             strcat(          self%s_cnts,             self%n_cnts,o_glue=',')//'_'//&
@@ -138,18 +160,24 @@ use m_setup
             strcat(          self%s_cnts_cond,        self%n_cnts,o_glue=',')//'_'//&
             'Var:'//var
 
-        inquire(file=dir_checkpoint//file,exist=check,size=filesize)
+        inquire(file=dir_chp//file,exist=check) !,size=filesize)
         
-        !requires to match file size
-        if(check .and. present(oif_filesize)) then
-            filesize=filesize/4
-            if(filesize<oif_filesize) then
-                call hud('At checkpoint '//self%name//','//&
-                    ' the size of the requested file ('//num2str(filesize)//') is smaller than the prescribed size ('//(num2str(o_filesize))//')'//s_return//&
-                    'Will recompute the associated variables.')
-                check=.false.
-            endif
+        !will fuse the whole checkpoint system when check is false
+        if(self%if_fuse) then
+            if(check.eqv..false.) if_use_checkpoint=.false.
         endif
+
+        ! !requires to match file size
+        !but is difficult to check
+        ! if(check .and. present(oif_filesize)) then
+        !     filesize=filesize/4
+        !     if(filesize<oif_filesize) then
+        !         call hud('At checkpoint '//self%name//','//&
+        !             ' the size of the requested file ('//num2str(filesize)//') is smaller than the prescribed size ('//(num2str(o_filesize))//')'//s_return//&
+        !             'Will recompute the associated variables.')
+        !         check=.false.
+        !     endif
+        ! endif
 
     end function
     
@@ -159,14 +187,18 @@ use m_setup
 
         character(:),allocatable :: file
 
-        file=self%name//'_'//&
-            strcat(          self%s_cnts,             self%n_cnts,o_glue=',')//'_'//&
-            strcat(nums2strs(self%i_cnts,self%n_cnts),self%n_cnts,o_glue=',')//'_'//&
-            strcat(          self%s_cnts_cond,        self%n_cnts,o_glue=',')//'_'//&
-            'Var:'//var
+        if(if_use_checkpoint.or.if_checkpoint) then
 
-        open(11,file=dir_checkpoint//file,access='stream')
-        self%fp=11
+            file=self%name//'_'//&
+                strcat(          self%s_cnts,             self%n_cnts,o_glue=',')//'_'//&
+                strcat(nums2strs(self%i_cnts,self%n_cnts),self%n_cnts,o_glue=',')//'_'//&
+                strcat(          self%s_cnts_cond,        self%n_cnts,o_glue=',')//'_'//&
+                'Var:'//var
+
+            open(11,file=dir_chp//file,access='stream')
+            self%fp=11
+
+        endif
 
     end subroutine
 
@@ -174,19 +206,19 @@ use m_setup
         class(t_checkpoint) :: self
         integer size
         real :: arr(size)
-        read(self%fp) arr
+        if(if_use_checkpoint) read(self%fp) arr
     end subroutine
     
     subroutine write(self,arr,size)
         class(t_checkpoint) :: self
         integer size
         real :: arr(size)
-        write(self%fp) arr
+        if(if_checkpoint) write(self%fp) arr
     end subroutine
 
     subroutine close(self)
         class(t_checkpoint) :: self
-        close(self%fp)
+        if(if_use_checkpoint.or.if_checkpoint) close(self%fp)
     end subroutine
 
 end module

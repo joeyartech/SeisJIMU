@@ -23,7 +23,7 @@ use m_propagator
     call hud('======================================'//s_return// &
              '   WELCOME TO SeisJIMU FWD MODELING   '//s_return// &
              '======================================')
-    
+
     call setup%init
     
     if(.not. setup%exist) then
@@ -45,19 +45,26 @@ use m_propagator
     ! call field%estim_RAM
     ! call mpiworld%finalize
 
+    !checkpoint
+    call checkpoint_init
+
     !read model
     call m%read
 
-    !assign shots to processors
-    call sl%init
+    !shotlist
+    call shls%read_from_setup
+    call shls%build(o_batchsize=shls%nshot)
+    call shls%yield
+    call shls%write
+    call shls%assign
 
     call hud('===== START LOOP OVER SHOTS =====')
 
     call chp%init('FWD_shotloop','Shot#','given')
-    do i=1,sl%nshot_per_processor
-        call chp%count(sl%list_per_processor(i))
+    do i=1,shls%nshots_per_processor
+        call chp%count(str2int(shls%select(i)))
 
-        call shot%init(i)
+        call shot%init(shls%select(i))
         call shot%read_from_setup
         call shot%set_var_time
         call shot%set_var_space(index(propagator%info,'FDSG')>0)

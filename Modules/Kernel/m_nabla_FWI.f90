@@ -103,10 +103,10 @@ use m_smoother_laplacian_sparse
         call hud('===== START LOOP OVER SHOTS =====')
         
         call chp%init('FWI_shotloop','Init# Shot#','per_init given')
-        do i=1,shls%nlist_per_processor
-            call chp%count(sl%list_per_processor(i))
+        do i=1,shls%nshots_per_processor
+            call chp%count(str2int(shls%select(i)))
 
-            call shot%init(sl%yield(i))
+            call shot%init(shls%select(i))
             call shot%read_from_data
             call shot%set_var_time
             call shot%set_var_space(index(propagator%info,'FDSG')>0)
