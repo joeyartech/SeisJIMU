@@ -202,18 +202,36 @@ use m_setup
 
     end subroutine
 
-    subroutine read(self,arr,size)
+    subroutine read(self,a1,n1,a2,n2,a3,n3,a4,n4)
         class(t_checkpoint) :: self
-        integer size
-        real :: arr(size)
-        if(if_use_checkpoint) read(self%fp) arr
+        real,dimension(*) :: a1,a2,a3,a4
+        optional :: a2,a3,a4
+        optional :: n2,n3,n4
+
+        if(if_use_checkpoint) then
+                            read(self%fp) a1(1:n1)
+            if(present(a2)) read(self%fp) a2(1:n2)
+            if(present(a3)) read(self%fp) a3(1:n3)
+            if(present(a4)) read(self%fp) a4(1:n4)
+
+        endif
+
     end subroutine
     
-    subroutine write(self,arr,size)
+    subroutine write(self,a1,n1,a2,n2,a3,n3,a4,n4)
         class(t_checkpoint) :: self
-        integer size
-        real :: arr(size)
-        if(if_checkpoint) write(self%fp) arr
+        real,dimension(*) :: a1,a2,a3,a4
+        optional :: a2,a3,a4
+        optional :: n2,n3,n4
+
+        if(if_checkpoint) then
+                            write(self%fp) a1(1:n1)
+            if(present(a2)) write(self%fp) a2(1:n1)
+            if(present(a3)) write(self%fp) a3(1:n1)
+            if(present(a4)) write(self%fp) a4(1:n1)
+
+        endif
+
     end subroutine
 
     subroutine close(self)

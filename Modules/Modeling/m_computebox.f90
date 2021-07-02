@@ -232,18 +232,13 @@ use m_shot
 
     end subroutine
     
-    subroutine fin(self)
-        type(t_computebox) :: self
+    subroutine fin(s)
+        type(t_computebox) :: s
 
-        if(allocated(self%vp )) deallocate(self%vp )
-        if(allocated(self%vs )) deallocate(self%vs )
-        if(allocated(self%rho)) deallocate(self%rho)
-        if(allocated(self%eps)) deallocate(self%eps)
-        if(allocated(self%del)) deallocate(self%del)
-        if(allocated(self%eta)) deallocate(self%eta)
-        if(allocated(self%qp )) deallocate(self%qp )
-        if(allocated(self%qs )) deallocate(self%qs )
-        if(allocated(self%kernel)) deallocate(self%kernel)
+        call dealloc(s%vp,s%vs,s%rho)
+        call dealloc(s%eps,s%del,s%eta)
+        call dealloc(s%qp,s%qs)
+        call dealloc(s%kernel)
 
     end subroutine
 
@@ -266,7 +261,7 @@ use m_shot
             select case (list(i)%s)
             case ('kernel')
                 call chp%open('computebox%kernel')
-                if(allocated(self%kernel)) call chp%read(self%kernel,size(self%kernel))
+                call chp%read(self%kernel,size(self%kernel))
                 call chp%close
             end select
 
@@ -287,7 +282,7 @@ use m_shot
             select case (list(i)%s)
             case ('kernel')
                 call chp%open('computebox%kernel')
-                if(allocated(self%kernel)) call chp%write(self%kernel,size(self%kernel))
+                call chp%write(self%kernel,size(self%kernel))
                 call chp%close
             end select
 

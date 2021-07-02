@@ -5,9 +5,9 @@ use m_setup
 use m_mpienv
 use m_model
 use m_propagator
+use m_parametrizer
 use m_fobjective
 use m_nabla
-use m_parameterization
 use m_preconditioner
 
     private
@@ -117,7 +117,7 @@ use m_preconditioner
         real,dimension(:,:),intent(inout),optional :: o_gradient_history
         character(7) :: result
         
-        logical :: first_condition, second_condition
+        logical :: if_1st_cond, if_2nd_cond
         
         !initialize
         alphaL=0.
@@ -143,13 +143,14 @@ use m_preconditioner
         
             if(mpiworld%is_master) write(*,'(a,3(2x,i5))') '  Iterate.Linesearch.Gradient#',iterate,self%isearch,self%igradient
             
-            call hud('Modeling with perturbed parameters')
+            call hud('Modeling with perturbed models')
             call threshold(pert%x,size(pert%x))
-            call param%transform('x2m',pert%x)
+            call fobj%update(pert%x)
             call nabla%act(fobj,oif_approx=.true.)
-            pert%f=fobj%total_misfit
-            call param%transform('m2x',pert%x,pert%g)
+            pert%f=fobj%total_loss
+            pert%g=pack(fobj%gradient,mask=.not. param%is_freeze_zone)
             call self%scale(pert)
+            call preco%update
             call preco%apply(pert%g,pert%pg)
             self%igradient=self%igradient+1
             
@@ -158,21 +159,21 @@ use m_preconditioner
             pert%gdotd=sum(pert%g*curr%d)
             
             !Wolfe conditions
-            first_condition = (pert%f <= (curr%f+c1*self%alpha*curr%gdotd))
-            !second_condition= (abs(pert%gdotd) >= c2*abs(curr%gdotd)) !strong Wolfe condition
-            second_condition= (pert%gdotd >= c2*curr%gdotd) !strong Wolfe condition
+            if_1st_cond = (pert%f <= (curr%f+c1*self%alpha*curr%gdotd))
+            !if_2nd_cond = (abs(pert%gdotd) >= c2*abs(curr%gdotd)) !strong Wolfe condition
+            if_2nd_cond = (pert%gdotd >= c2*curr%gdotd) !strong Wolfe condition
             
-            ! print*,'1st cond',pert%f,curr%f,curr%gdotd, first_condition
-            ! print*,'2nd cond',pert%gdotd, second_condition
+            ! print*,'1st cond',pert%f,curr%f,curr%gdotd, if_1st_cond
+            ! print*,'2nd cond',pert%gdotd, if_2nd_cond
             ! print*,'alpha(3)',alphaL,alpha,alpha_R
 
             !occasionally optimizers on processors don't have same behavior
             !try to avoid this by broadcast controlling logicals.
-            call mpi_bcast(first_condition,  1, mpi_logical, 0, mpiworld%communicator, mpiworld%ierr)
-            call mpi_bcast(second_condition, 1, mpi_logical, 0, mpiworld%communicator, mpiworld%ierr)
+            call mpi_bcast(if_1st_cond, 1, mpi_logical, 0, mpiworld%communicator, mpiworld%ierr)
+            call mpi_bcast(if_2nd_cond, 1, mpi_logical, 0, mpiworld%communicator, mpiworld%ierr)
 
             !1st condition OK, 2nd condition OK => use alpha
-            if(first_condition .and. second_condition) then
+            if(if_1st_cond .and. if_2nd_cond) then
                 call hud('Wolfe conditions are satisfied')
                 call hud('Enter new iterate')
                 result='success'
@@ -182,7 +183,7 @@ use m_preconditioner
             if(self%isearch<self%max_search) then
             
                 !1st condition BAD => shrink alpha
-                if(.not. first_condition) then
+                if(.not. if_1st_cond) then
                     call hud("Armijo condition is not satified. Now try a smaller alpha")
                     result='perturb'
                     self%alphaR=self%alpha
@@ -196,7 +197,7 @@ use m_preconditioner
                 endif
                 
                 !2nd condition BAD => increase alpha unless alphaR=0.
-                if(first_condition .and. .not. second_condition) then
+                if(if_1st_cond .and. .not. if_2nd_cond) then
                     call hud("Curvature condition is not satified. Now try a larger alpha")
                     result='perturb'
                     self%alphaL=self%alpha
@@ -218,14 +219,14 @@ use m_preconditioner
             if(self%isearch==self%max_search) then
             
                 !1st condition BAD => failure
-                if(.not. first_condition) then
+                if(.not. if_1st_cond) then
                     call hud("Linesearch failure: can't find good alpha.")
                     result='failure'
                     exit loop
                 endif
                 
                 !2nd condition BAD => use alpha
-                if(.not. second_condition) then
+                if(.not. if_2nd_cond) then
                     call hud("Maximum linesearch number reached. Use alpha although curvature condition is not satisfied")
                     call hud('Enter new iterate')
                     result='success'

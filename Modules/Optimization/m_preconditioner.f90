@@ -9,6 +9,9 @@ use m_parameterization
 
     private
 
+    logical :: if_will_update=.false.
+    real :: depth
+
     type,public :: t_preconditioner
 
         real,dimension(:,:,:),allocatable :: preco
@@ -17,7 +20,9 @@ use m_parameterization
 
         procedure :: init => init
         procedure :: by_depth => by_depth
+        procedure :: by_sfield => by_sfield
         procedure :: by_custom => by_custom
+        procedure :: update => update
         procedure :: apply => apply
 
     end type
@@ -49,6 +54,14 @@ use m_parameterization
                 call self%by_depth(o_factor=str2real(sublist(2)%s))
             endif
 
+            if(list(i)%s(1:2)=='sfield') then
+                sublist=split(list(i)%s,o_sep='/')
+                call hud('Will precondition the gradient by autocorrelation of sfield')
+                if_will_update=.true.
+                depth=str2real(sublist(2)%s)
+                call self%by_sfield
+            endif
+
             if(list(i)%s(1:6)=='custom') then
                 sublist=split(list(i)%s,o_sep=':')
                 if(size(sublist)==1) then !filename is not attached, ask for it
@@ -64,6 +77,11 @@ use m_parameterization
 
         enddo
 
+    end subroutine
+
+    subroutine update(self)
+        class(t_preconditioner) :: self
+        call self%by_sfield
     end subroutine
 
     subroutine by_depth(self,o_power,o_factor)
@@ -110,6 +128,32 @@ use m_parameterization
 
     subroutine by_sfield(self)
         class(t_preconditioner) :: self
+
+        ! !convert gradient wrt model to gradient wrt parameters
+        ! call param%transform_gradient('m->x',fobj%gradient)
+        
+        ! !start_depth
+
+        ! !H11 = H_[kappainv,kappainv] = (wadj dA/dVp w)^adj (wadj dA/dVp w) = autocorr of pressure field
+        ! !tmp1=pbdir%p*(pbdir%p_bwd-pbdir%p)*pbdir%kappa
+        ! !inv%h11+=tmp1*tmp1 /pbdir%dt
+        ! !inv%h11=inv%h11/pbdir%rho**4/pbdir%vp**8 !kappa is the model parameter instead of kappainv
+        
+        ! idepth=nint(depth/m%dz)
+
+        ! do i=1,param%npars
+        !     do iy=1,m%ny; do ix=1,m%nx
+        !     self%preco(1:idepth,ix,iy)=[(i-1)*m%dz,i=1,idepth)] &
+        !         /(depth*sfield%amp(1:idepth,ix,iy))
+
+        !     self%preco(idepth+1:m%nz,ix,iy)=1./sfield%amp(idepth+1:m%nz,:,:)
+        !     enddo; enddo
+        ! enddo
+
+        ! where(ieee_is_nan(self%preco) .or. .not. ieee_is_finite(self%preco))
+        !     self%preco=0.
+        ! endwhere
+
     end subroutine
     
     subroutine apply(self,g,pg)

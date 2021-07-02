@@ -16,8 +16,8 @@ use, intrinsic :: ieee_arithmetic
     !boundary components for wavefield recontruction
     type t_boundary
 
-        real,dimension(:,:),allocatable :: vz_top,vz_bot
-        real,dimension(:,:),allocatable :: vx_left,vx_right
+        real,dimension(:,:),allocatable :: vz_top,  vz_bot
+        real,dimension(:,:),allocatable :: vx_left, vx_right
         real,dimension(:,:),allocatable :: vy_front,vy_rear
         real,dimension(:,:),allocatable :: vx_top,vx_bot,vz_left,vz_right
 
@@ -384,47 +384,30 @@ use, intrinsic :: ieee_arithmetic
         
     end subroutine
 
-    subroutine fin(self)
-        type(t_field) :: self
-
-        deallocate(self%name)
-
-        if(allocated(self%vz))  deallocate(self%vz)
-        if(allocated(self%vx))  deallocate(self%vx)
-        if(allocated(self%vy))  deallocate(self%vy)
-        if(allocated(self%szz)) deallocate(self%szz)
-        if(allocated(self%szx)) deallocate(self%szx)
-        if(allocated(self%szy)) deallocate(self%szy)
-        if(allocated(self%sxx)) deallocate(self%sxx)
-        if(allocated(self%sxy)) deallocate(self%sxy)
-        if(allocated(self%shh)) deallocate(self%shh)
-        if(allocated(self%p))   deallocate(self%p)
-
-        if(allocated(self%bnd%vz_top))   deallocate(self%bnd%vz_top) 
-        if(allocated(self%bnd%vz_bot))   deallocate(self%bnd%vz_bot) 
-        if(allocated(self%bnd%vx_left))  deallocate(self%bnd%vx_left)
-        if(allocated(self%bnd%vx_right)) deallocate(self%bnd%vx_right)
-        if(allocated(self%bnd%vy_front)) deallocate(self%bnd%vy_front)
-        if(allocated(self%bnd%vy_rear))  deallocate(self%bnd%vy_rear)
-        if(allocated(self%bnd%vx_top))   deallocate(self%bnd%vx_top) 
-        if(allocated(self%bnd%vx_bot))   deallocate(self%bnd%vx_bot) 
-        if(allocated(self%bnd%vz_left))  deallocate(self%bnd%vz_left)
-        if(allocated(self%bnd%vz_right)) deallocate(self%bnd%vz_right)
-
-        !too many..
-        ! if(allocate(self%dvz_dz))  deallocate(self%dvz)
-        ! if(allocate(self%dvz_dx))  deallocate(self%dvx)
-        ! if(allocate(self%dvz_dy))  deallocate(self%dvy)
-        ! if(allocate(self%dvx_dz))  deallocate(self%dvz)
-        ! if(allocate(self%dvx_dx))  deallocate(self%dvx)
-        ! if(allocate(self%dv))  deallocate(self%dvy)
-        ! if(allocate(self%dvz))  deallocate(self%dvz)
-        ! if(allocate(self%dvz))  deallocate(self%dvx)
-        ! if(allocate(self%dvy))  deallocate(self%dvy)
+    subroutine fin(s)
+        type(t_field) :: s
         
-        if(allocated(self%wavelet)) deallocate(self%wavelet)
-        if(allocated(self%seismo)) deallocate(self%seismo)
-        if(allocated(self%bloom)) deallocate(self%bloom)
+        deallocate(s%name)
+
+        call dealloc(s%vz,s%vx,s%vy)
+        call dealloc(s%szz,s%szx,s%szy,s%sxx,s%sxy,s%shh,s%p)
+
+        call dealloc(s%bnd%vz_top,  s%bnd%vz_bot)
+        call dealloc(s%bnd%vx_left, s%bnd%vx_right)
+        call dealloc(s%bnd%vy_front,s%bnd%vy_rear)
+        call dealloc(s%bnd%vx_top,  s%bnd%vx_bot)
+        call dealloc(s%bnd%vz_left, s%bnd%vz_right)
+        
+        call dealloc(s%dvz_dz,s%dvz_dx,s%dvz_dy)
+        call dealloc(s%dvx_dz,s%dvx_dx,s%dvx_dy)
+        call dealloc(s%dvy_dz,s%dvy_dx,s%dvy_dy)
+        call dealloc(s%dszz_dz,s%dszx_dz)
+        call dealloc(s%dszx_dx,s%dsxx_dx)
+        call dealloc(s%dshh_dz,s%dshh_dx,s%dshh_dy)
+        call dealloc(s%dp_dz,s%dp_dx,s%dp_dy)
+        
+        call dealloc(s%wavelet,s%seismo)
+        deallocate(s%bloom)
 
         !snapshot
     end subroutine
@@ -440,7 +423,7 @@ use, intrinsic :: ieee_arithmetic
         list=split(str)
 
         do i=1,size(list)
-            is_registered=chp%check(self%name//'%'//list(i)%s))
+            is_registered=chp%check(self%name//'%'//list(i)%s)
             if(.not.is_registered) return
         enddo
 
@@ -452,31 +435,19 @@ use, intrinsic :: ieee_arithmetic
                 call chp%close
             case ('comp')
                 call chp%open(self%name//'%comp')
-                if(allocated(self%vz )) call chp%read(self%vz ,size(self%vz ))
-                if(allocated(self%vx )) call chp%read(self%vx ,size(self%vx ))
-                if(allocated(self%vy )) call chp%read(self%vy ,size(self%vy ))
-                if(allocated(self%szz)) call chp%read(self%szz,size(self%szz))
-                if(allocated(self%szx)) call chp%read(self%szx,size(self%szx))
-                if(allocated(self%szy)) call chp%read(self%szy,size(self%szy))
-                if(allocated(self%sxx)) call chp%read(self%sxx,size(self%sxx))
-                if(allocated(self%sxy)) call chp%read(self%sxy,size(self%sxy))
-                if(allocated(self%syy)) call chp%read(self%syy,size(self%syy))
-                if(allocated(self%shh)) call chp%read(self%shh,size(self%shh))
-                if(allocated(self%p  )) call chp%read(self%p  ,size(self%p  ))
+                call chp%read(self%vz,size(self%vz),self%vx,size(self%vx),self%vy,size(self%vy))
+                call chp%read(self%szz,size(self%szz),self%szx,size(self%szx),self%szy,size(self%szy))
+                call chp%read(self%sxx,size(self%sxx),self%sxy,size(self%sxy),self%syy,size(self%syy))
+                call chp%read(self%shh,size(self%shh),self%p  ,size(self%p  ))
                 call chp%close
             case ('boundary')
                 call chp%open(self%name//'%boundary')
-                if(allocated(self%bnd%vz_top  )) call chp%read(self%bnd%vz_top  ,size(self%bnd%vz_top  ))
-                if(allocated(self%bnd%vz_bot  )) call chp%read(self%bnd%vz_bot  ,size(self%bnd%vz_bot  ))
-                if(allocated(self%bnd%vx_left )) call chp%read(self%bnd%vx_left ,size(self%bnd%vx_left ))
-                if(allocated(self%bnd%vx_right)) call chp%read(self%bnd%vx_right,size(self%bnd%vx_right))
-                if(allocated(self%bnd%vy_front)) call chp%read(self%bnd%vy_front,size(self%bnd%vy_front))
-                if(allocated(self%bnd%vy_rear )) call chp%read(self%bnd%vy_rear ,size(self%bnd%vy_rear ))
-                if(allocated(self%bnd%vx_top  )) call chp%read(self%bnd%vx_top  ,size(self%bnd%vx_top  ))
-                if(allocated(self%bnd%vx_bot  )) call chp%read(self%bnd%vx_bot  ,size(self%bnd%vx_bot  ))
-                if(allocated(self%bnd%vz_left )) call chp%read(self%bnd%vz_left ,size(self%bnd%vz_left ))
-                if(allocated(self%bnd%vz_right)) call chp%read(self%bnd%vz_right,size(self%bnd%vz_right))
-                    call chp%close
+                call chp%read(self%bnd%vz_top,  size(self%bnd%vz_top),  self%bnd%vz_bot,  size(self%bnd%vz_bot  ))
+                call chp%read(self%bnd%vx_left, size(self%bnd%vx_left), self%bnd%vx_right,size(self%bnd%vx_right))
+                call chp%read(self%bnd%vy_front,size(self%bnd%vy_front),self%bnd%vy_rear ,size(self%bnd%vy_rear ))
+                call chp%read(self%bnd%vx_top  ,size(self%bnd%vx_top  ),self%bnd%vx_bot  ,size(self%bnd%vx_bot  ))
+                call chp%read(self%bnd%vz_left ,size(self%bnd%vz_left ),self%bnd%vz_right,size(self%bnd%vz_right))
+                call chp%close
             end select
 
         enddo
@@ -500,30 +471,18 @@ use, intrinsic :: ieee_arithmetic
                 call chp%close
             case ('comp')
                 call chp%open(self%name//'%comp')
-                if(allocated(self%vz )) call chp%write(self%vz ,size(self%vz ))
-                if(allocated(self%vx )) call chp%write(self%vx ,size(self%vx ))
-                if(allocated(self%vy )) call chp%write(self%vy ,size(self%vy ))
-                if(allocated(self%szz)) call chp%write(self%szz,size(self%szz))
-                if(allocated(self%szx)) call chp%write(self%szx,size(self%szx))
-                if(allocated(self%szy)) call chp%write(self%szy,size(self%szy))
-                if(allocated(self%sxx)) call chp%write(self%sxx,size(self%sxx))
-                if(allocated(self%sxy)) call chp%write(self%sxy,size(self%sxy))
-                if(allocated(self%syy)) call chp%write(self%syy,size(self%syy))
-                if(allocated(self%shh)) call chp%write(self%shh,size(self%shh))
-                if(allocated(self%p  )) call chp%write(self%p  ,size(self%p  ))
+                call chp%write(self%vz,size(self%vz),self%vx,size(self%vx),self%vy,size(self%vy))
+                call chp%write(self%szz,size(self%szz),self%szx,size(self%szx),self%szy,size(self%szy))
+                call chp%write(self%sxx,size(self%sxx),self%sxy,size(self%sxy),self%syy,size(self%syy))
+                call chp%write(self%shh,size(self%shh),self%p  ,size(self%p  ))
                 call chp%close
             case ('boundary')
                 call chp%open(self%name//'%boundary')
-                if(allocated(self%bnd%vz_top  )) call chp%write(self%bnd%vz_top  ,size(self%bnd%vz_top  ))
-                if(allocated(self%bnd%vz_bot  )) call chp%write(self%bnd%vz_bot  ,size(self%bnd%vz_bot  ))
-                if(allocated(self%bnd%vx_left )) call chp%write(self%bnd%vx_left ,size(self%bnd%vx_left ))
-                if(allocated(self%bnd%vx_right)) call chp%write(self%bnd%vx_right,size(self%bnd%vx_right))
-                if(allocated(self%bnd%vy_front)) call chp%write(self%bnd%vy_front,size(self%bnd%vy_front))
-                if(allocated(self%bnd%vy_rear )) call chp%write(self%bnd%vy_rear ,size(self%bnd%vy_rear ))
-                if(allocated(self%bnd%vx_top  )) call chp%write(self%bnd%vx_top  ,size(self%bnd%vx_top  ))
-                if(allocated(self%bnd%vx_bot  )) call chp%write(self%bnd%vx_bot  ,size(self%bnd%vx_bot  ))
-                if(allocated(self%bnd%vz_left )) call chp%write(self%bnd%vz_left ,size(self%bnd%vz_left ))
-                if(allocated(self%bnd%vz_right)) call chp%write(self%bnd%vz_right,size(self%bnd%vz_right))
+                call chp%write(self%bnd%vz_top  ,size(self%bnd%vz_top  ),self%bnd%vz_bot  ,size(self%bnd%vz_bot  ))
+                call chp%write(self%bnd%vx_left ,size(self%bnd%vx_left ),self%bnd%vx_right,size(self%bnd%vx_right))
+                call chp%write(self%bnd%vy_front,size(self%bnd%vy_front),self%bnd%vy_rear ,size(self%bnd%vy_rear ))
+                call chp%write(self%bnd%vx_top  ,size(self%bnd%vx_top  ),self%bnd%vx_bot  ,size(self%bnd%vx_bot  ))
+                call chp%write(self%bnd%vz_left ,size(self%bnd%vz_left ),self%bnd%vz_right,size(self%bnd%vz_right))
                 call chp%close
             end select
 

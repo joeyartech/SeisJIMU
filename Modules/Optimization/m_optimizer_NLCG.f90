@@ -3,8 +3,10 @@ use m_string
 use m_mpienv
 use m_arrayop
 use m_setup
+use m_checkpoint
 use m_sysio
 use m_model
+use m_shotlist
 use m_propagator
 use m_fobjective
 use m_nabla
@@ -83,12 +85,13 @@ use m_linesearcher
         associate(curr=>self%curr, pert=>self%pert, prev=>self%prev)
         
         !initialize current point
-        call curr%init(self%n,o_fobj=fobj%total_misfit)
+        call curr%init(self%n,o_fobj=fobj%total_loss)
         
             self%f0=curr%f
 
             !transform by parameterization
-            call param%transform('m2x',curr%x,curr%g)
+            call param%transform_model('m->x',curr%x)
+            call param%transform_gradient('m->x',curr%g)
             
             !scale problem
             call ls%scale(curr)
@@ -117,10 +120,9 @@ use m_linesearcher
     subroutine optimize(self)
         class(t_optimizer) :: self
 
+        type(t_checkpoint),save :: chp
         character(7) :: result
         real nom, denom
-
-        type(t_checkpoint),save :: chp
        
         ! call self%write('start')
         call hud('============ START OPTIMIZATON ============')
@@ -133,9 +135,11 @@ use m_linesearcher
                 call chp%count
 
                 if(.not.shls%is_registered(chp,'yield_shots')) then
-                    call shls%yield
+                    call shls%sample
                     call shls%register(chp,'yield_shots')
                 endif
+                call shls%write
+                call shls%assign
 
                 self%iterate=iterate
             
@@ -227,7 +231,7 @@ use m_linesearcher
                     write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  self%iterate, self%curr%f, self%curr%f/f0, norm2(self%curr%g)/g0norm, ls%alpha, ls%isearch, ls%igradient
                     close(16)
                     
-                    call param%transform('x2m',self%curr%x)
+                    call param%transform_model('x->m',self%curr%x)
                     call m%write(o_suffix='Iter'//int2str(self%iterate))
 
                 case('maximum')
@@ -258,10 +262,10 @@ use m_linesearcher
                     write(16,'(a)'      ) ' **********************************************************************'
                     close(16)
                     
-                    call param%transform('x2m',self%pert%x)
+                    call param%transform_model('x->m',self%pert%x)
                     call m%write(o_suffix='Iter'//int2str(self%iterate))
                     
-                    call param%transform('x2m',self%curr%x)
+                    call param%transform_model('x->m',self%curr%x)
                     call m%write(o_suffix='final')
                     
                     write(*,'(a,i0.4)') 'ximage < model_final n1=',m%nz

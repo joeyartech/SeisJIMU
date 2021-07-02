@@ -54,7 +54,7 @@ use m_propagator
     !shotlist
     call shls%read_from_setup
     call shls%build(o_batchsize=shls%nshot)
-    call shls%yield
+    call shls%sample
     call shls%write
     call shls%assign
 
@@ -62,9 +62,9 @@ use m_propagator
 
     call chp%init('FWD_shotloop','Shot#','given')
     do i=1,shls%nshots_per_processor
-        call chp%count(str2int(shls%select(i)))
+        call chp%count(str2int(shls%yield(i)))
 
-        call shot%init(shls%select(i))
+        call shot%init(shls%yield(i))
         call shot%read_from_setup
         call shot%set_var_time
         call shot%set_var_space(index(propagator%info,'FDSG')>0)

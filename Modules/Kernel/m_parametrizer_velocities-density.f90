@@ -1,10 +1,9 @@
-module m_parameterization
+module m_parametrizer
 use m_string
 use m_setup
 use m_mpienv
 use m_model
 use m_propagator
-use m_fobjective
 
     !PARAMETERIZATION     -- ALLOWED PARAMETERS
     !velocities-density   -- vp vs ip
@@ -51,11 +50,16 @@ use m_fobjective
 
         type(t_parameter),dimension(:),allocatable :: pars
         integer :: npars
-        type(t_string),dimension(:),allocatable :: empirical        
+        type(t_string),dimension(:),allocatable :: empirical
+
+        integer :: n1,n2,n3
+        real :: d1,d2,d3,h3
+        logical,dimension(:,:,:,:),allocatable :: is_freeze_zone
         
         contains
         procedure :: init => init
-        procedure :: transform => transform
+        procedure :: transform_model => transform_model
+        procedure :: transform_gradient => transform_gradient
     end type
 
     type(t_paramerization),public :: param
@@ -69,6 +73,18 @@ use m_fobjective
         class(t_paramerization) :: self
 
         type(t_string),dimension(:),allocatable :: list,sublist
+
+        self%n1=m%nz
+        self%n2=m%nx
+        self%n3=m%ny
+        self%d1=m%dz
+        self%d2=m%dx
+        self%d3=m%dy
+        self%h3=self%d1*self%d2*self%d3
+        allocate(self%is_freeze_zone(self%n1,self%n2,self%n3,self%npars))
+        do i=1,self%npars
+            self%is_freeze_zone(:,:,:,i)=m%is_freeze_zone
+        enddo
 
         !read in empirical law
         list=setup%get_strs('EMPIRICAL_LAW')
@@ -165,23 +181,33 @@ use m_fobjective
 
     end subroutine
         
-    subroutine transform(self,dir,x,g)
+    subroutine transform_model(self,dir,x,oif_prior)
         class(t_paramerization) :: self
-        character(3) :: dir
+        character(4) :: dir
         real,dimension(m%nz,m%nx,m%ny,self%npars) :: x
-        real,dimension(m%nz,m%nx,m%ny,self%npars),optional :: g
+        logical,optional :: oif_prior
 
         !model
-        if(dir=='m2x') then
-            do i=1,self%npars
-                select case (self%pars(i)%name)
-                case ('vp' ); x(:,:,:,i) = (m%vp -self%pars(i)%min)/self%pars(i)%range
-                case ('vs' ); x(:,:,:,i) = (m%vs -self%pars(i)%min)/self%pars(i)%range
-                case ('rho'); x(:,:,:,i) = (m%rho-self%pars(i)%min)/self%pars(i)%range
-                end select
-            enddo
+        if(dir=='m->x') then
+            if(either(oif_prior,.false.,present(oif_prior))) then
+                do i=1,self%npars
+                    select case (self%pars(i)%name)
+                    case ('vp' ); x(:,:,:,i) = (m%vp_prior -self%pars(i)%min)/self%pars(i)%range
+                    case ('vs' ); x(:,:,:,i) = (m%vs_prior -self%pars(i)%min)/self%pars(i)%range
+                    case ('rho'); x(:,:,:,i) = (m%rho_prior-self%pars(i)%min)/self%pars(i)%range
+                    end select
+                enddo
+            else
+                do i=1,self%npars
+                    select case (self%pars(i)%name)
+                    case ('vp' ); x(:,:,:,i) = (m%vp -self%pars(i)%min)/self%pars(i)%range
+                    case ('vs' ); x(:,:,:,i) = (m%vs -self%pars(i)%min)/self%pars(i)%range
+                    case ('rho'); x(:,:,:,i) = (m%rho-self%pars(i)%min)/self%pars(i)%range
+                    end select
+                enddo
+            endif
 
-        else !x2m
+        else !x->m
             do i=1,self%npars
                 select case (self%pars(i)%name)
                 case ('vp' ); m%vp = x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
@@ -197,33 +223,43 @@ use m_fobjective
 
         endif
 
+    end subroutine
+
+    subroutine transform_gradient(self,dir,g)
+        class(t_paramerization) :: self
+        character(4) :: dir
+        real,dimension(m%nz,m%nx,m%ny,self%npars) :: g
+
+        real,dimension(m%nz,m%nx,m%ny,self%npars) :: grad
+
+
         !gradient
-        !!for units of gradient and g, see m_field*.f90
-        if(present(g)) then
-        if(dir=='m2x') then
+        if(dir=='m->x') then
+
+            grad=g
             
             !acoustic
             if(is_ac .and. .not. is_empirical) then
                 do i=1,self%npars
                     select case (self%pars(i)%name)
-                    case ('vp' ); g(:,:,:,ipar) = fobj%gradient(:,:,:,1)*2*m%rho*m%vp
-                    case ('rho'); g(:,:,:,ipar) = fobj%gradient(:,:,:,1)*m%vp**2 + fobj%gradient(:,:,:,2)
+                    case ('vp' ); g(:,:,:,ipar) = grad(:,:,:,1)*2*m%rho*m%vp
+                    case ('rho'); g(:,:,:,ipar) = grad(:,:,:,1)*m%vp**2 + grad(:,:,:,2)
                     end select
                 enddo
             endif
 
             !acoustic + gardner
             if(is_ac .and. is_gardner) then
-                g(:,:,:,1) =(fobj%gradient(:,:,:,1)*(b+2)/b*m%vp**2 + fobj%gradient(:,:,:,2))*a*b*m%vp**(b-1)
+                g(:,:,:,1) =(grad(:,:,:,1)*(b+2)/b*m%vp**2 + grad(:,:,:,2))*a*b*m%vp**(b-1)
             endif
 
             !elastic
             if(is_el .and. .not. is_empirical) then
                 do i=1,self%npars
                     select case (self%pars(i)%name)
-                    case ('vp' ); g(:,:,:,ipar) = fobj%gradient(:,:,:,1)*2*m%rho*m%vp
-                    case ('vs' ); g(:,:,:,ipar) =(fobj%gradient(:,:,:,1)*(-2) + fobj%gradient(:,:,:,2))*2*m%rho*m%vs
-                    case ('rho'); g(:,:,:,ipar) = fobj%gradient(:,:,:,1)*m%vp**2 + (-2*fobj%gradient(:,:,:,1)+fobj%gradient(:,:,:,2))*m%vs**2 + fobj%gradient(:,:,:,3)
+                    case ('vp' ); g(:,:,:,ipar) = grad(:,:,:,1)*2*m%rho*m%vp
+                    case ('vs' ); g(:,:,:,ipar) =(grad(:,:,:,1)*(-2) + grad(:,:,:,2))*2*m%rho*m%vs
+                    case ('rho'); g(:,:,:,ipar) = grad(:,:,:,1)*m%vp**2 + (-2*grad(:,:,:,1)+grad(:,:,:,2))*m%vs**2 + grad(:,:,:,3)
                     end select
                 enddo
             endif
@@ -232,19 +268,18 @@ use m_fobjective
             if(is_el .and. is_gardner) then
                 do i=1,self%npars
                     select case (self%pars(i)%name)
-                    case ('vp' ); g(:,:,:,i) =(fobj%gradient(:,:,:,1)*(b+2)/b*m%vp + (-2*fobj%gradient(:,:,:,1)+fobj%gradient(:,:,:,2))*m%vs**2 + fobj%gradient(:,:,:,3))*a*b*m%vp**(b-1)
-                    case ('vs' ); g(:,:,:,i) =(fobj%gradient(:,:,:,1)*(-2) + fobj%gradient(:,:,:,2))*2*a*m%vp**b*m%vs
+                    case ('vp' ); g(:,:,:,i) =(grad(:,:,:,1)*(b+2)/b*m%vp + (-2*grad(:,:,:,1)+grad(:,:,:,2))*m%vs**2 + grad(:,:,:,3))*a*b*m%vp**(b-1)
+                    case ('vs' ); g(:,:,:,i) =(grad(:,:,:,1)*(-2) + grad(:,:,:,2))*2*a*m%vp**b*m%vs
                     end select
                 enddo
             endif
 
 
-            !normaliz g to be unitless
+            !normaliz g by allowed parameter range
             do i=1,self%npars
                 g(:,:,:,i)=g(:,:,:,i)*self%pars(i)%range
             enddo
 
-        endif
         endif
         
     end subroutine

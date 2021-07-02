@@ -16,6 +16,13 @@ use m_mpienv
         module procedure alloc_real3
     end interface
 
+    interface dealloc
+        module procedure dealloc_real1
+        module procedure dealloc_real2
+        module procedure dealloc_real3
+        module procedure dealloc_real4
+    end interface
+
     interface add
         module procedure add_int1
     end interface
@@ -271,6 +278,110 @@ use m_mpienv
         endif
 
         allocate(a(n1(1):n1(2),n2(1):n2(2),n3(1):n3(2)),source=either(o_init,0.,present(o_init)))
+        
+    end
+
+    subroutine dealloc_real1(a,b,c,d,e,f,g)
+        real,dimension(:),allocatable :: a,b,c,d,e,f,g
+        optional :: b,c,d,e,f,g
+        
+            if(allocated(a)) deallocate(a)
+        if(present(b)) then
+            if(allocated(b)) deallocate(b)
+        endif
+        if(present(c)) then
+            if(allocated(c)) deallocate(c)
+        endif
+        if(present(d)) then
+            if(allocated(d)) deallocate(d)
+        endif
+        if(present(e)) then
+            if(allocated(e)) deallocate(e)
+        endif
+        if(present(f)) then
+            if(allocated(f)) deallocate(f)
+        endif
+        if(present(g)) then
+            if(allocated(g)) deallocate(g)
+        endif
+
+    end
+
+    subroutine dealloc_real2(a,b,c,d,e,f,g)
+        real,dimension(:,:),allocatable :: a,b,c,d,e,f,g
+        optional :: b,c,d,e,f,g
+        
+            if(allocated(a)) deallocate(a)
+        if(present(b)) then
+            if(allocated(b)) deallocate(b)
+        endif
+        if(present(c)) then
+            if(allocated(c)) deallocate(c)
+        endif
+        if(present(d)) then
+            if(allocated(d)) deallocate(d)
+        endif
+        if(present(e)) then
+            if(allocated(e)) deallocate(e)
+        endif
+        if(present(f)) then
+            if(allocated(f)) deallocate(f)
+        endif
+        if(present(g)) then
+            if(allocated(g)) deallocate(g)
+        endif
+
+    end
+
+    subroutine dealloc_real3(a,b,c,d,e,f,g)
+        real,dimension(:,:,:),allocatable :: a,b,c,d,e,f,g
+        optional :: b,c,d,e,f,g
+        
+            if(allocated(a)) deallocate(a)
+        if(present(b)) then
+            if(allocated(b)) deallocate(b)
+        endif
+        if(present(c)) then
+            if(allocated(c)) deallocate(c)
+        endif
+        if(present(d)) then
+            if(allocated(d)) deallocate(d)
+        endif
+        if(present(e)) then
+            if(allocated(e)) deallocate(e)
+        endif
+        if(present(f)) then
+            if(allocated(f)) deallocate(f)
+        endif
+        if(present(g)) then
+            if(allocated(g)) deallocate(g)
+        endif
+
+    end
+
+    subroutine dealloc_real4(a,b,c,d,e,f,g)
+        real,dimension(:,:,:,:),allocatable :: a,b,c,d,e,f,g
+        optional :: b,c,d,e,f,g
+        
+            if(allocated(a)) deallocate(a)
+        if(present(b)) then
+            if(allocated(b)) deallocate(b)
+        endif
+        if(present(c)) then
+            if(allocated(c)) deallocate(c)
+        endif
+        if(present(d)) then
+            if(allocated(d)) deallocate(d)
+        endif
+        if(present(e)) then
+            if(allocated(e)) deallocate(e)
+        endif
+        if(present(f)) then
+            if(allocated(f)) deallocate(f)
+        endif
+        if(present(g)) then
+            if(allocated(g)) deallocate(g)
+        endif
         
     end
     

@@ -50,9 +50,9 @@ use m_optimizer
     call shls%read_from_data
     call shls%build
     call chp%init('FWI_shotlist_grad',oif_fuse=.true.)
-    if(.not.shls%is_registered(chp,'yield_shots')) then
-        call shls%yield
-        call shls%register(chp,'yield_shots')
+    if(.not.shls%is_registered(chp,'sampled_shots')) then
+        call shls%sample
+        call shls%register(chp,'sampled_shots')
     endif
     call shls%write
     call shls%assign

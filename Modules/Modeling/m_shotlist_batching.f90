@@ -113,21 +113,23 @@ use m_checkpoint
 !      {15 16 17 18} -> 16
 !
 !Procedure assign: assign the yielded shots to MPI processors. Each process is assigned with 1 or more shots to each process.
-!E.g. yield_shots={1 3 5 9 15}, if we have 2 processors,
+!E.g. sampled_shots={1 3 5 9 15}, if we have 2 processors,
 !Proc #0 (master) is assigned with {1 5 15}
 !Proc #1 is assigned with {3 9}
 !
-!Procedure select: return one shot from yield_shots inside shot loop.
+!Procedure select: return one shot from sampled_shots inside shot loop.
 
     private
 
     type,public :: t_shotlist
-        character(:),allocatable :: wholelist
+        character(:),allocatable :: all
         integer :: nshot
+
         type(t_string),dimension(:),allocatable :: lists
         integer :: nlists
+        
         integer,dimension(:),allocatable :: icycle
-        type(t_string),dimension(:),allocatable :: yield_shots
+        type(t_string),dimension(:),allocatable :: sampled_shots
         
         type(t_string),dimension(:),allocatable :: shots_per_processor
         integer :: nshots_per_processor
@@ -136,9 +138,10 @@ use m_checkpoint
         procedure :: read_from_setup => read_from_setup
         procedure :: read_from_data  => read_from_data
         procedure :: build => build
-        procedure :: yield => yield
+        procedure :: sample => sample
+        procedure :: write => write
         procedure :: assign => assign
-        procedure :: select => select
+        procedure :: yield => yield
 
         procedure :: is_registered => is_registered
         procedure :: register => register
@@ -146,7 +149,7 @@ use m_checkpoint
 
     type(t_shotlist),public :: shls
 
-    character(:),allocatable :: yield_method
+    character(:),allocatable :: sample_method
     
     contains
 
@@ -172,7 +175,7 @@ use m_checkpoint
             
         end select        
 
-        self%wholelist=strcat(nums2strs([(i,i=1,self%nshot)],self%nshot),self%nshot)
+        self%all=strcat(nums2strs([(i,i=1,self%nshot)],self%nshot),self%nshot)
 
         call hud('Will compute '//num2str(self%nshot)//' synthetic shots.')
 
@@ -203,7 +206,7 @@ use m_checkpoint
 
             self%nshot=i
 
-            self%wholelist=strcat(nums2strs([(i,i=1,self%nshot)],self%nshot),self%nshot)
+            self%all=strcat(nums2strs([(i,i=1,self%nshot)],self%nshot),self%nshot)
         
             call hud('Found '//num2str(self%nshot)//' sequential shots.')
 
@@ -248,7 +251,7 @@ use m_checkpoint
                 endif
             enddo
 
-            self%wholelist=strcat(nums2strs(ishots,size(ishots)),size(ishots))
+            self%all=strcat(nums2strs(ishots,size(ishots)),size(ishots))
 
             self%nshot=size(ishots)
 
@@ -270,7 +273,7 @@ use m_checkpoint
         integer,optional :: o_batchsize
         
         character(:),allocatable :: file
-        type(t_string),dimension(:),allocatable :: swholelist
+        type(t_string),dimension(:),allocatable :: sall
         
         file=setup%get_file('FILE_SHOT_BATCH')
         
@@ -279,7 +282,7 @@ use m_checkpoint
             return
         endif
         
-        swholelist=split(self%wholelist)
+        sall=split(self%all)
 
         self%nlists=either(o_batchsize,&
             setup%get_int('SHOT_BATCH_SIZE','NBATCH',o_default=num2str(mpiworld%nproc)),&
@@ -299,30 +302,34 @@ use m_checkpoint
         
         k=1
         do i=1,self%nshot
-            self%lists(k)%s=self%lists(k)%s//' '//swholelist(i)%s
+            self%lists(k)%s=self%lists(k)%s//' '//sall(i)%s
             if(mod(i,maxlength)==0) k=k+1
         enddo
         
         !some lists can be empty
         do k=self%nlists/2,self%nlists
             if(self%lists(k)%s=='') then
-                self%lists(k)%s=swholelist(self%nshot)%s
+                self%lists(k)%s=sall(self%nshot)%s
             endif
         enddo
         
     end subroutine
 
-    subroutine yield(self)
+    subroutine sample(self)
         class(t_shotlist) :: self
 
+        logical,save :: if_first_in=.true.
         type(t_string),dimension(:),allocatable :: sublist
         
-        yield_method=setup%get_str('SHOT_YIELD_METHOD',o_default='cyclic')
+        if(if_first_in) then
+            sample_method=setup%get_str('SHOT_SAMPLE_METHOD',o_default='cyclic')
+            if_first_in=.false.
+        endif
 
-        if(yield_method=='cyclic') then
+        if(sample_method=='cyclic') then
             do i=1,self%nlists
                 sublist=split(self%lists(i)%s)
-                self%yield_shots(i)%s=sublist(self%icycle(i))%s
+                self%sampled_shots(i)%s=sublist(self%icycle(i))%s
 
                 self%icycle(i)=self%icycle(i)+1
                 if(self%icycle(i)>size(sublist)) self%icycle(i)=1
@@ -330,13 +337,13 @@ use m_checkpoint
             enddo
         endif
         
-        if(yield_method=='random') then
+        if(sample_method=='random') then
             do i=1,self%nlists
                 sublist=split(self%lists(i)%s)
                 
                 call random_number(r) !gives random real number 0<=r<1
                 !convert to random integer from n to m: i=n+floor((m+1-n)*r)            
-                self%yield_shots(i)%s=sublist(1+floor(size(sublist)*r))%s
+                self%sampled_shots(i)%s=sublist(1+floor(size(sublist)*r))%s
                 
             enddo
         endif
@@ -351,8 +358,8 @@ use m_checkpoint
         call hud('See file "shotlist" for details.')
 
         !write shotlist to disk
-        call mpiworld%write(dir_out//'shotlist', 'Proc# '//mpiworld%sproc//' has '//num2str(self%nshots_per_processor)//' assigned shots:'// &
-            strcat(ints2strs(self%shots_per_processor,self%nshots_per_processor),self%nshots_per_processor))
+        call mpiworld%write('shotlist', 'Proc# '//mpiworld%sproc//' has '//num2str(self%nshots_per_processor)//' assigned shots:'// &
+            strcat(self%shots_per_processor,self%nshots_per_processor))
         
     end subroutine
 
@@ -384,18 +391,18 @@ use m_checkpoint
                 k=k+1
             endif
             if (IPROC==j) then
-                self%shots_per_processor(k)=self%yield_shots(i)
+                self%shots_per_processor(k)=self%sampled_shots(i)
             endif
             j=j+1
         enddo
 
     end subroutine
 
-    function select(self,i)
+    function yield(self,i)
         class(t_shotlist) :: self
-        character(:),allocatable :: select
+        character(:),allocatable :: yield
         
-        select=self%shots_per_processor(i)%s
+        yield=self%shots_per_processor(i)%s
 
     end function
 
@@ -406,6 +413,7 @@ use m_checkpoint
         character(*) :: str
 
         type(t_string),dimension(:),allocatable :: list
+        real,dimension(:),allocatable :: tmp
 
         list=split(str)
 
@@ -416,9 +424,11 @@ use m_checkpoint
 
         do i=1,size(list)
             select case (list(i)%s)
-            case ('lists')
-                call chp%open('shotlist%lists')
-                if(allocated(self%lists)) call chp%read(self%lists,self%nlists)
+            case ('sampled_shots')
+                call chp%open('shotlist%sampled_shots')
+                call alloc(tmp,self%nlists)
+                call chp%read(a1=tmp,n1=self%nlists)
+                self%sampled_shots=nums2strs(tmp,self%nlists)
                 call chp%close
             end select
 
@@ -432,14 +442,17 @@ use m_checkpoint
         character(*) :: str
 
         type(t_string),dimension(:),allocatable :: list
+        real,dimension(:),allocatable :: tmp
 
         list=split(str)
 
         do i=1,size(list)
             select case (list(i)%s)
-            case ('lists')
-                call chp%open(self%name//'%lists')
-                if(allocated(self%lists)) call chp%write(self%lsits,self%nlists)
+            case ('sampled_shots')
+                call chp%open('shotlist%sampled_shots')
+                call alloc(tmp,self%nlists)
+                tmp=strs2reals(self%sampled_shots,self%nlists)
+                call chp%write(a1=tmp,n1=self%nlists)
                 call chp%close
             end select
 

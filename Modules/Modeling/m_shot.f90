@@ -72,12 +72,12 @@ use m_model
     
     contains
     
-    subroutine init(self,index)
+    subroutine init(self,sindex)
         class(t_shot) :: self
-        integer index
+        character(*) :: sindex
 
-        self%index=index
-        self%sindex=num2str(index,'(i0.4)')
+        self%sindex=sindex
+        self%index=str2num(sindex)
     
     end subroutine
 

@@ -11,6 +11,7 @@ use m_computebox
 use m_field
 use m_cpml
 use m_propagator
+use m_parametrizer
 use m_fobjective
 use m_matchfilter
 use m_smoother_laplacian_sparse
@@ -35,22 +36,21 @@ use m_smoother_laplacian_sparse
         type(t_string),dimension(:),allocatable :: smoothings
         character(:),allocatable :: smask
 
-        call alloc(fobj%gradient,m%nz,m%nx,m%ny,propagator%ngrad)
+        !convert parameters to models
+        call param%transform_model('x->m',fobj%x)
 
-        !compute gradient by adjoint-state method
+        !compute dnorm's gradient by adjoint-state method
         if(either(oif_approx,.false.,present(oif_approx))) then
             call gradient_modeling_approximate(fobj)
         else
             call gradient_modeling(fobj)
         endif
 
-        !postprocessing
-
-        !smoothing
+        !post-modeling smoothing
         smoothings=setup%get_strs('SMOOTHING','SMTH',o_default='Laplacian')
 
         do i=1,size(smoothings)
-            !Laplcian smoothing
+            !Laplacian smoothing
             if(smoothings(i)%s=='Laplacian') then
                 call hud('Laplacian smoothing')
                 call smoother_laplacian_init([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%fpeak)
@@ -62,7 +62,7 @@ use m_smoother_laplacian_sparse
         enddo
 
         !freeze_zone as hard mask
-        !deprecated
+        !deprecated, hard mask is now applied on the model side
         !where(m%is_freeze_zone) fobj%gradient=0.
 
         !soft mask
@@ -76,6 +76,16 @@ use m_smoother_laplacian_sparse
             do i=1,propagator%ngrad
                 fobj%gradient(:,:,:,i)=fobj%gradient(:,:,:,i)*mask
             enddo
+        endif
+
+        !convert gradient wrt model to gradient wrt parameters
+        call param%transform_gradient('m->x',fobj%gradient)
+
+        !penalize model by Tikhonov regularization
+        if(either(oif_approx,.false.,present(oif_approx))) then
+            call regularize_approximate(fobj)
+        else
+            call regularize(fobj)
         endif
 
     end subroutine
@@ -99,14 +109,16 @@ use m_smoother_laplacian_sparse
         character(:),allocatable :: update_wavelet
 
         type(t_checkpoint),save :: chp
+
+        call alloc(fobj%gradient,m%nz,m%nx,m%ny,propagator%ngrad)
                 
         call hud('===== START LOOP OVER SHOTS =====')
         
         call chp%init('FWI_shotloop','Init# Shot#','per_init given')
         do i=1,shls%nshots_per_processor
-            call chp%count(str2int(shls%select(i)))
+            call chp%count(str2int(shls%yield(i)))
 
-            call shot%init(shls%select(i))
+            call shot%init(shls%yield(i))
             call shot%read_from_data
             call shot%set_var_time
             call shot%set_var_space(index(propagator%info,'FDSG')>0)
@@ -143,7 +155,7 @@ use m_smoother_laplacian_sparse
                         
             !objective function
             call fobj%compute_dnorms
-            call fobj%compute_adjsource
+            ! call fobj%compute_adjsource
         
             !adjoint source
             if(update_wavelet/='no') call shot%update_adjsource
@@ -160,7 +172,6 @@ use m_smoother_laplacian_sparse
                 call cb%register(chp,'kernel')
             endif
 
-            !put cb%kernel into global gradient
             call cb%project_back(fobj%gradient,cb%kernel,propagator%ngrad)
             
         enddo
@@ -178,9 +189,25 @@ use m_smoother_laplacian_sparse
 
     end subroutine
 
-
     subroutine gradient_modeling_approximate(fobj)
         type(t_fobjective) :: fobj
+
+        call gradient_modeling(fobj)
+
+    end subroutine
+
+    subroutine regularize(fobj)
+        type(t_fobjective) :: fobj
+
+        call fobj%compute_xnorms
+
+    end subroutine
+
+    subroutine regularize_approximate(fobj)
+        type(t_fobjective) :: fobj
+
+        call regularize(fobj)
+
     end subroutine
 
 end

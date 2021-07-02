@@ -15,11 +15,13 @@ use m_sysio
         character(:),allocatable :: file
         type(t_string),dimension(:),allocatable :: attributes_read, attributes_write
 
-        logical :: is_cubic, is_freesurface
+        logical :: is_cubic, is_freesurface, if_exist_prior
         
         real,dimension(:,:,:),allocatable :: vp,vs,rho
         real,dimension(:,:,:),allocatable :: eps,del,eta
         real,dimension(:,:,:),allocatable :: qp,qs
+
+        real,dimension(:,:,:),allocatable :: vp_prior,vs_prior,rho_prior
 
         real :: ref_vel=1500., ref_rho=1000., ref_kpa=1000.*1500.**2
 
@@ -29,6 +31,7 @@ use m_sysio
         procedure :: init => init
         procedure :: estim_RAM => estim_RAM
         procedure :: read => read
+        procedure :: read_prior => read_prior
         procedure :: write => write
         procedure :: apply_freeze_zone => apply_freeze_zone
 
@@ -148,7 +151,7 @@ use m_sysio
         self%is_freesurface=setup%get_bool('IS_FREESURFACE',o_default='T')
                 
         !freeze zone
-        allocate(self%is_freeze_zone(self%nz,self%nx,self%ny)); self%is_freeze_zone=.false.
+        allocate(self%is_freeze_zone(self%nz,self%nx,self%ny),source=.false.)
 
         !check file topo
         associate(file=>setup%get_file('FILE_TOPO'))
@@ -198,6 +201,47 @@ use m_sysio
 
         if(allocated(tmp)) deallocate(tmp)
                 
+    end subroutine
+
+    subroutine read_prior(self)
+        class(t_model) :: self
+
+        character(:),allocatable :: file
+        type(t_string),dimension(:),allocatable :: attributes_read
+
+        file=setup%get_file('FILE_PRIOR_MODEL')
+
+        self%if_exist_prior=either(.false.,.true.,file=='')
+
+        if(.not.self%if_exist_prior) return
+
+        attributes_read =setup%get_strs('PRIOR_MODEL_ATTRIBUTES',o_default='vp rho')
+
+        open(12,file=file,access='direct',recl=4*self%n,action='read',status='old')
+
+        do i=1,size(attributes_read)
+            select case(attributes_read(i)%s)
+            case ('vp')
+                call alloc(self%vp_prior,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%vp_prior
+                call hud('vp prior model is read.')
+                
+            case ('vs')
+                call alloc(self%vs_prior,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%vs_prior
+                call hud('vs prior model is read.')
+
+            case ('rho')
+                call alloc(self%rho_prior,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%rho_prior
+                call hud('rho prior model is read.')
+                
+            end select
+
+        enddo
+
+        close(12)
+
     end subroutine
 
     subroutine apply_freeze_zone(self)
