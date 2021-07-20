@@ -3,7 +3,7 @@ use m_string
 use m_arrayop
 use m_setup
 use m_sysio
-use m_format_su
+use m_suformat
 use m_model
 use m_shot
 
@@ -18,6 +18,7 @@ use m_shot
         contains
 
         procedure :: init => init
+        procedure :: by_components => by_components
         procedure :: by_aoffset => by_aoffset
         procedure :: by_polygon => by_polygon
         procedure :: by_table   => by_table
@@ -46,6 +47,31 @@ use m_shot
         list=setup%get_strs('WEIGHTING','WEI',o_default=either('aoffset^1','aoffset^0.5',m%is_cubic))
 
         do i=1,size(list)
+            !weight pressure components
+            if(list(i)%s(1:2)=='p*') then
+                sublist=split(list(i)%s,o_sep='*')
+                call hud('Will multiply pressure component by '//sublist(2)%s)
+                call self%by_components(o_p=str2real(sublist(2)%s))
+            endif
+
+            if(list(i)%s(1:3)=='vz*') then
+                sublist=split(list(i)%s,o_sep='*')
+                call hud('Will multiply vz component by '//sublist(2)%s)
+                call self%by_components(o_vz=str2real(sublist(2)%s))
+            endif
+
+            if(list(i)%s(1:3)=='vx*') then
+                sublist=split(list(i)%s,o_sep='*')
+                call hud('Will multiply vx component by '//sublist(2)%s)
+                call self%by_components(o_vx=str2real(sublist(2)%s))
+            endif
+
+            if(list(i)%s(1:3)=='vy*') then
+                sublist=split(list(i)%s,o_sep='*')
+                call hud('Will multiply vy component by '//sublist(2)%s)
+                call self%by_components(o_vy=str2real(sublist(2)%s))
+            endif
+
             !weight traces based on power of aoffset
             if(list(i)%s(1:8)=='aoffset^') then
                 sublist=split(list(i)%s,o_sep='^')
@@ -104,6 +130,36 @@ use m_shot
 
         if(mpiworld%is_master) call suformat_write(dir_out//'weights',self%weight,self%nt,self%ntr,o_dt=self%dt)
         
+    end subroutine
+
+    subroutine by_components(self,o_p,o_vz,o_vx,o_vy)
+        class(t_weighter) :: self
+        real,optional :: o_p, o_vz, o_vx, o_vy
+
+        if(present(o_p)) then
+            do i=1,shot%nrcv
+                if(shot%rcv(i)%comp=='p') self%weight(:,i)=o_p
+            enddo
+        endif
+
+        if(present(o_vz)) then
+            do i=1,shot%nrcv
+                if(shot%rcv(i)%comp=='vz') self%weight(:,i)=o_vz
+            enddo
+        endif
+
+        if(present(o_vx)) then
+            do i=1,shot%nrcv
+                if(shot%rcv(i)%comp=='vx') self%weight(:,i)=o_vx
+            enddo
+        endif
+
+        if(present(o_vy)) then
+            do i=1,shot%nrcv
+                if(shot%rcv(i)%comp=='vy') self%weight(:,i)=o_vy
+            enddo
+        endif
+
     end subroutine
 
     subroutine by_aoffset(self,o_power,o_factor)
@@ -438,9 +494,7 @@ use m_shot
 
         call alloc(tmp,self%nt,self%ntr,o_init=1.)
 
-        open(10,file=file,access='stream',action='read')
-        read(10,rec=1) tmp
-        close(10)
+        call sysio_read(file,tmp,size(tmp))
 
         self%weight=self%weight*tmp
 

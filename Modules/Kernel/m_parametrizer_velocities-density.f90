@@ -44,8 +44,8 @@ use m_propagator
     type,public :: t_paramerization
         !info
         character(i_str_xxlen) :: info = &
-            'Parameterization: velocities-density'//s_return// &
-            'Allowed pars: vp, vs, ip'//s_return// &
+            'Parameterization: velocities-density'//s_NL// &
+            'Allowed pars: vp, vs, ip'//s_NL// &
             'Available empirical laws: Gardner, Castagna (will implemented later)'
 
         type(t_parameter),dimension(:),allocatable :: pars
@@ -110,7 +110,7 @@ use m_propagator
                         b=str2real(sublist(3)%s)
                     endif
 
-                    call hud('Gardner law is enabled: a='//num2str(a)//', b='//num2str(b)//s_return// &
+                    call hud('Gardner law is enabled: a='//num2str(a)//', b='//num2str(b)//s_NL// &
                         'Parameter rho will not be active in the inversion.')
 
                 elseif(list(i)%s(1:8)=='Castagna') then
@@ -184,30 +184,37 @@ use m_propagator
     subroutine transform_model(self,dir,x,oif_prior)
         class(t_paramerization) :: self
         character(4) :: dir
-        real,dimension(m%nz,m%nx,m%ny,self%npars) :: x
+        real,dimension(self%n1,self%n2,self%n3,self%npars) :: x
         logical,optional :: oif_prior
+
+        real,dimension(m%nz,m%nx,m%ny,self%npars) :: xx
 
         !model
         if(dir=='m->x') then
             if(either(oif_prior,.false.,present(oif_prior))) then
                 do i=1,self%npars
                     select case (self%pars(i)%name)
-                    case ('vp' ); x(:,:,:,i) = (m%vp_prior -self%pars(i)%min)/self%pars(i)%range
-                    case ('vs' ); x(:,:,:,i) = (m%vs_prior -self%pars(i)%min)/self%pars(i)%range
-                    case ('rho'); x(:,:,:,i) = (m%rho_prior-self%pars(i)%min)/self%pars(i)%range
+                    case ('vp' ); xx(:,:,:,i) = (m%vp_prior -self%pars(i)%min)/self%pars(i)%range
+                    case ('vs' ); xx(:,:,:,i) = (m%vs_prior -self%pars(i)%min)/self%pars(i)%range
+                    case ('rho'); xx(:,:,:,i) = (m%rho_prior-self%pars(i)%min)/self%pars(i)%range
                     end select
                 enddo
             else
                 do i=1,self%npars
                     select case (self%pars(i)%name)
-                    case ('vp' ); x(:,:,:,i) = (m%vp -self%pars(i)%min)/self%pars(i)%range
-                    case ('vs' ); x(:,:,:,i) = (m%vs -self%pars(i)%min)/self%pars(i)%range
-                    case ('rho'); x(:,:,:,i) = (m%rho-self%pars(i)%min)/self%pars(i)%range
+                    case ('vp' ); xx(:,:,:,i) = (m%vp -self%pars(i)%min)/self%pars(i)%range
+                    case ('vs' ); xx(:,:,:,i) = (m%vs -self%pars(i)%min)/self%pars(i)%range
+                    case ('rho'); xx(:,:,:,i) = (m%rho-self%pars(i)%min)/self%pars(i)%range
                     end select
                 enddo
             endif
 
+            x=xx(.not. self%is_freeze_zone)
+
         else !x->m
+
+            xx=x.&.m%is(freeze_zone)
+
             do i=1,self%npars
                 select case (self%pars(i)%name)
                 case ('vp' ); m%vp = x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
@@ -279,6 +286,8 @@ use m_propagator
             do i=1,self%npars
                 g(:,:,:,i)=g(:,:,:,i)*self%pars(i)%range
             enddo
+
+            where (self%is_freeze_zone) g=0.
 
         endif
         

@@ -1,5 +1,6 @@
 module m_computebox
 use m_string
+use m_message
 use m_arrayop
 use m_setup
 use m_checkpoint
@@ -134,51 +135,63 @@ use m_shot
             write(*,*)'  iox,mx:',self%iox,self%mx
             write(*,*)'  ioy,my:',self%ioy,self%my
         endif
-        
+
         !shift source-receiver positions by computebox origin
         !then positions are 0-based inside computebox
         !source side
-        shot%src%iz=shot%src%iz-self%ioz+1
-        shot%src%ix=shot%src%ix-self%iox+1
-        shot%src%iy=shot%src%iy-self%ioy+1
+        associate(s=>shot%src)
+            s%iz=s%iz-self%ioz+1
+            s%ix=s%ix-self%iox+1
+            s%iy=s%iy-self%ioy+1
 
-        shot%src%ifz=shot%src%ifz-self%ioz+1; shot%src%ilz=shot%src%ilz-self%ioz+1
-        shot%src%ifx=shot%src%ifx-self%iox+1; shot%src%ilx=shot%src%ilx-self%iox+1
-        shot%src%ify=shot%src%ify-self%ioy+1; shot%src%ily=shot%src%ily-self%ioy+1
-        
-        shot%src%z=shot%src%z-(self%ioz-1)*m%dz
-        shot%src%x=shot%src%x-(self%iox-1)*m%dx
-        shot%src%y=shot%src%y-(self%ioy-1)*m%dy
-                    
+            s%ifz=s%ifz-self%ioz+1; s%ilz=s%ilz-self%ioz+1
+            s%ifx=s%ifx-self%iox+1; s%ilx=s%ilx-self%iox+1
+            s%ify=s%ify-self%ioy+1; s%ily=s%ily-self%ioy+1
+            
+            s%z=s%z-(self%ioz-1)*m%dz
+            s%x=s%x-(self%iox-1)*m%dx
+            s%y=s%y-(self%ioy-1)*m%dy
+        end associate
+
         !receiver side
-        do i=1,shot%nrcv
-            shot%rcv(i)%iz=shot%rcv(i)%iz-self%ioz+1
-            shot%rcv(i)%ix=shot%rcv(i)%ix-self%iox+1
-            shot%rcv(i)%iy=shot%rcv(i)%iy-self%ioy+1
-            shot%rcv(i)%ifz=shot%rcv(i)%ifz-self%ioz+1; shot%rcv(i)%ilz=shot%rcv(ir)%ilz-self%ioz+1
-            shot%rcv(i)%ifx=shot%rcv(i)%ifx-self%iox+1; shot%rcv(i)%ilx=shot%rcv(ir)%ilx-self%iox+1
-            shot%rcv(i)%ify=shot%rcv(i)%ify-self%ioy+1; shot%rcv(i)%ily=shot%rcv(ir)%ily-self%ioy+1
-            shot%rcv(i)%z=shot%rcv(i)%z-(self%ioz-1)*m%dz
-            shot%rcv(i)%x=shot%rcv(i)%x-(self%iox-1)*m%dx
-            shot%rcv(i)%y=shot%rcv(i)%y-(self%ioy-1)*m%dy
-        enddo
-        
+        associate(r=>shot%rcv)
+            do i=1,shot%nrcv
+                r(i)%iz=r(i)%iz-self%ioz+1
+                r(i)%ix=r(i)%ix-self%iox+1
+                r(i)%iy=r(i)%iy-self%ioy+1
+
+                r(i)%ifz=r(i)%ifz-self%ioz+1; r(i)%ilz=r(ir)%ilz-self%ioz+1
+                r(i)%ifx=r(i)%ifx-self%iox+1; r(i)%ilx=r(ir)%ilx-self%iox+1
+                r(i)%ify=r(i)%ify-self%ioy+1; r(i)%ily=r(ir)%ily-self%ioy+1
+
+                r(i)%z=r(i)%z-(self%ioz-1)*m%dz
+                r(i)%x=r(i)%x-(self%iox-1)*m%dx
+                r(i)%y=r(i)%y-(self%ioy-1)*m%dy
+            enddo
+        end associate
 
         !models in computebox
-        if(allocated(m%vp )) call m2cb(m%vp ,self%vp )
+                             call m2cb(m%vp ,self%vp )
         if(allocated(m%vs )) call m2cb(m%vs ,self%vs )
-        if(allocated(m%rho)) call m2cb(m%rho,self%rho)
+                             call m2cb(m%rho,self%rho)
         if(allocated(m%eps)) call m2cb(m%eps,self%eps)
         if(allocated(m%del)) call m2cb(m%del,self%del)
         if(allocated(m%eta)) call m2cb(m%eta,self%eta)
         if(allocated(m%qp )) call m2cb(m%qp ,self%qp )
         if(allocated(m%qs )) call m2cb(m%qs ,self%qs )
-                
-        self%velmin=min(minval(self%vp), minval(self%vs,self%vs>0.))
-        self%velmax=maxval(self%vp*sqrt(1.+2*self%eps)) !I don't think negative epsilon value can play a role here..
-        
+
+        self%velmin=minval(self%vp)
+        if(allocated(self%vs)) then
+            self%velmin=min( self%velmin, minval(self%vs,self%vs>0.) )
+        endif
+
+        self%velmax=maxval(self%vp)
+        if(allocated(self%eps)) then
+            self%velmax=max( self%velmax, maxval(self%vp*sqrt(1.+2*self%eps)) )  !I don't think negative epsilon value can play a role here..
+        endif
+
         call hud('Computebox value ranges:')
-        if(mpiworld%iproc==0) then
+        if(mpiworld%is_master) then
                                     write(*,*)'vp' ,minval(self%vp),maxval(self%vp)
             if(allocated(self%vs )) write(*,*)'vs' ,minval(self%vs),maxval(self%vs)
                                     write(*,*)'rho',minval(self%rho),maxval(self%rho)
@@ -186,7 +199,7 @@ use m_shot
             if(allocated(self%eps)) write(*,*)'eps',minval(self%eps),maxval(self%eps)
             if(allocated(self%del)) write(*,*)'del',minval(self%del),maxval(self%del)
         end if
-        
+
     end subroutine
     
     subroutine m2cb(big,small)

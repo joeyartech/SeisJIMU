@@ -43,14 +43,14 @@ use m_string
 
     contains
 
-    subroutine init(self,name,communicator,thread_level)
+    subroutine init(self,name,o_communicator,o_thread_level)
         class(t_mpienv) :: self
         character(*) :: name
-        integer communicator, thread_level
+        integer,optional :: o_communicator,o_thread_level
         
-        self%communicator=communicator
-
-        call mpi_init_thread(thread_level,self%thread_level,self%ierr)
+        self%communicator=either(o_communicator,MPI_COMM_WORLD,   present(o_communicator))
+        
+        call mpi_init_thread(either(o_thread_level,MPI_THREAD_SINGLE,present(o_thread_level)),self%thread_level,self%ierr)
         self%max_threads=OMP_GET_MAX_THREADS()
 
         call mpi_comm_rank(self%communicator,self%iproc,self%ierr)
@@ -63,9 +63,9 @@ use m_string
 
         if(self%is_master) then
             write(*,*) name//' info:'
-            write(*,'(a,i2,a,i2)') ' MPI_INIT_THREAD, required level:',thread_level,', provided level:', self%thread_level
-            write(*,'(a,i5)') ' Number of MPI processors:',self%nproc
-            write(*,'(a,i5)') ' Max number of OMP threads / processor:',self%max_threads
+            write(*,*) ' MPI_INIT_THREAD level:', self%thread_level
+            write(*,*) ' Number of MPI processors:',self%nproc
+            write(*,*) ' Max number of OMP threads / processor:',self%max_threads
         endif
 
         !exe info
@@ -92,13 +92,13 @@ use m_string
         character(:),allocatable :: stamp, str
 
         !time stamp
-        stamp='========================'//s_return// &
-            ' MPI File IO Time Stamp '//s_return// &
-            '========================'//s_return//time_stamp()
-        
+        stamp='========================'//s_NL// &
+            ' MPI File IO Time Stamp '//s_NL// &
+            '========================'//s_NL//time_stamp()
+
         if(self%is_master) then
-            open(10,file=filename)
-            write(10,'(a)') str
+            open(10,file=filename,access='append')
+            write(10,'(a)') stamp
             close(10)
         endif
 
@@ -107,7 +107,7 @@ use m_string
         ishift=len(stamp)
         
         !mpi write only + append
-        str=string//s_return
+        str=string//s_NL
         disp=ishift+len(str)*self%iproc
         
         call mpi_file_open(self%communicator, filename, mpi_mode_append+mpi_mode_wronly, mpi_info_null, fhandle, self%ierr)
@@ -157,9 +157,9 @@ use m_string
         character(:),allocatable :: str
 
         call date_and_time(time=time,date=date,zone=zone)
-        str =   'System date: '//date(5:6)//'/'//date(7:8)//'/'//date(1:4)//s_return// &
-                'System time: '//time(1:2)//':'//time(3:4)//':'//time(5:6)//s_return// &
-                'System timezone: '//zone(1:3)//':'//zone(4:5)//s_return// &
+        str =   'System date: '//date(5:6)//'/'//date(7:8)//'/'//date(1:4)//s_NL// &
+                'System time: '//time(1:2)//':'//time(3:4)//':'//time(5:6)//s_NL// &
+                'System timezone: '//zone(1:3)//':'//zone(4:5)//s_NL// &
                 '                        '
 
     end function

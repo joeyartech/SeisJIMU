@@ -167,7 +167,7 @@ use m_string
 
         res=find(key,o_alias)
 
-        if(res/='') call hud(keys//':'//res)
+        if(res/='') call hud(keys//': '//res)
 
         if(res=='') then
             if(present(o_default)) then
@@ -177,25 +177,25 @@ use m_string
             
             if(.not.present(o_default) .and. mandatory) then
                 call error(keys//'is NOT found, but is MANDATORY.')
-                ! call hud(keys//'is NOT found, but is MANDATORY.'//s_return &
-                !     'SeisJIMU has to ask for the value of this key before running further.'//s_return &
-                !     'Please open the text file "tentative" in the working directory,'//s_return &
-                !     'provide the missing value, remove "!!" in the line,'//s_return &
-                !     '(like in the setup file)'//s_return &
-                !     'and close the file.'//s_return &
-                !     'SeisJIMU checks this file every 1 min'//s_return &
+                ! call hud(keys//'is NOT found, but is MANDATORY.'//s_NL &
+                !     'SeisJIMU has to ask for the value of this key before running further.'//s_NL &
+                !     'Please open the text file "tentative" in the working directory,'//s_NL &
+                !     'provide the missing value, remove "!!" in the line,'//s_NL &
+                !     '(like in the setup file)'//s_NL &
+                !     'and close the file.'//s_NL &
+                !     'SeisJIMU checks this file every 1 min'//s_NL &
                 !     'and will take the new value when no "!!" is leading the line.')
                 ! res=demand(key)
             endif
 
             if(.not.present(o_default) .and. .not.mandatory) then
-                call hud(keys//"is NOT found, take 0 for number(s), '' for character(s) and filename, or .false. for logical type(s)")
+                call hud(keys//"is NOT found, take 0, '' or F for number, string/filename or boolean types.")
                 res=''
             endif
         endif
 
         deallocate(keys)
-        
+
     end function
 
     function get_int(self,key,o_alias,o_default,o_mandatory) result(res)

@@ -1,5 +1,7 @@
 module m_model
 use m_string
+use m_message
+use m_arrayop
 use m_setup
 use m_sysio
 
@@ -15,7 +17,7 @@ use m_sysio
         character(:),allocatable :: file
         type(t_string),dimension(:),allocatable :: attributes_read, attributes_write
 
-        logical :: is_cubic, is_freesurface, if_exist_prior
+        logical :: is_cubic, is_freesurface, if_has_prior
         
         real,dimension(:,:,:),allocatable :: vp,vs,rho
         real,dimension(:,:,:),allocatable :: eps,del,eta
@@ -53,7 +55,9 @@ use m_sysio
         real,dimension(3) :: rtmp=[1.,1.,1.]
 
         itmp=setup%get_ints('MODEL_SIZE','NZXY',o_mandatory=.true.)
+        
         self%nz=itmp(1); self%nx=itmp(2); self%ny=itmp(3)
+
         self%n=self%nx*self%ny*self%nz
 
         if(self%ny==1) then
@@ -79,7 +83,7 @@ use m_sysio
             self%cell_diagonal=sqrt(self%dz**2+self%dx**2)
             self%cell_inv_diagonal=sqrt(self%dz**(-2) + self%dx**(-2))
         endif
-        
+
         self%file=setup%get_file('FILE_MODEL',o_mandatory=.true.) 
 
         self%attributes_read =setup%get_strs('MODEL_ATTRIBUTES',o_default='vp rho')
@@ -91,6 +95,7 @@ use m_sysio
         class(t_model) :: self
 
         real,dimension(:,:,:),allocatable :: tmp
+        character(:),allocatable :: file
 
         open(12,file=self%file,access='direct',recl=4*self%n,action='read',status='old')
         
@@ -101,7 +106,6 @@ use m_sysio
                 read(12,rec=i) self%vp
                 call hud('vp model is read.')
                 self%ref_vel=self%vp(1,1,1)
-                self%ref_kpa=self%ref_rho*self%ref_vel**2
 
             case ('vs')
                 call alloc(self%vs,self%nz,self%nx,self%ny)
@@ -113,7 +117,6 @@ use m_sysio
                 read(12,rec=i) self%rho
                 call hud('rho model is read.')
                 self%ref_rho=self%rho(1,1,1)
-                self%ref_kpa=self%ref_rho*self%ref_vel**2
 
             case ('eps')
                 call alloc(self%eps,self%nz,self%nx,self%ny)
@@ -146,6 +149,7 @@ use m_sysio
 
         close(12)
 
+        self%ref_kpa=self%ref_rho*self%ref_vel**2
 
         !freesurface
         self%is_freesurface=setup%get_bool('IS_FREESURFACE',o_default='T')
@@ -154,20 +158,19 @@ use m_sysio
         allocate(self%is_freeze_zone(self%nz,self%nx,self%ny),source=.false.)
 
         !check file topo
-        associate(file=>setup%get_file('FILE_TOPO'))
-            if(file/='') then
-                call alloc(tmp,self%nx,self%ny,1)
-                open(12,file=file,access='direct',recl=4*self%n,action='read')
-                read(12,rec=1) tmp
-                close(12)
-                call hud('topo minmax value:'//num2str(minval(tmp))//num2str(maxval(tmp)))
+        file=setup%get_file('FILE_TOPO')
+        if(file/='') then
+            call alloc(tmp,self%nx,self%ny,1)
+            open(12,file=file,access='direct',recl=4*self%n,action='read')
+            read(12,rec=1) tmp
+            close(12)
+            call hud('topo minmax value:'//num2str(minval(tmp))//num2str(maxval(tmp)))
 
-                do iy=1,self%ny; do ix=1,self%nx
-                    self%is_freeze_zone(1:nint(tmp(ix,iy,1)/self%dz)+1,ix,iy)=.true.
-                enddo; enddo
-                call hud('Freeze zone is set from FILE_TOPO.')
-            endif
-        end associate
+            do iy=1,self%ny; do ix=1,self%nx
+                self%is_freeze_zone(1:nint(tmp(ix,iy,1)/self%dz)+1,ix,iy)=.true.
+            enddo; enddo
+            call hud('Freeze zone is set from FILE_TOPO.')
+        endif
 
         !2nd check vs model
         if(allocated(self%vs)) then
@@ -187,20 +190,19 @@ use m_sysio
         endif
 
         !3rd check if file freeze is given
-        associate(file=>setup%get_file('FILE_FREEZE_ZONE'))
-            if(file/='') then
-                call alloc(tmp,self%nz,self%nx,self%ny)
-                open(12,file=file,access='direct',recl=4*self%n,action='read')
-                read(12,rec=1) tmp
-                close(12)
-                
-                where(tmp==0.) self%is_freeze_zone=.true.
-                call hud('Freeze zone is additionally set from FILE_FREEZE_ZONE.')
-            endif
-        end associate
+        file=setup%get_file('FILE_FREEZE_ZONE')
+        if(file/='') then
+            call alloc(tmp,self%nz,self%nx,self%ny)
+            open(12,file=file,access='direct',recl=4*self%n,action='read')
+            read(12,rec=1) tmp
+            close(12)
+            
+            where(tmp==0.) self%is_freeze_zone=.true.
+            call hud('Freeze zone is additionally set from FILE_FREEZE_ZONE.')
+        endif
 
         if(allocated(tmp)) deallocate(tmp)
-                
+
     end subroutine
 
     subroutine read_prior(self)
@@ -211,9 +213,9 @@ use m_sysio
 
         file=setup%get_file('FILE_PRIOR_MODEL')
 
-        self%if_exist_prior=either(.false.,.true.,file=='')
+        self%if_has_prior=either(.false.,.true.,file=='')
 
-        if(.not.self%if_exist_prior) return
+        if(.not.self%if_has_prior) return
 
         attributes_read =setup%get_strs('PRIOR_MODEL_ATTRIBUTES',o_default='vp rho')
 
@@ -249,7 +251,7 @@ use m_sysio
 
         real,dimension(:,:,:),allocatable :: tmp
 
-        call alloc(tmp(self%nz,self%nx,self%ny))
+        call alloc(tmp,self%nz,self%nx,self%ny)
 
         open(12,file=self%file,access='direct',recl=4*self%n,action='read',status='old')
 

@@ -15,6 +15,7 @@ use m_arrayop
 use m_math
 
     private
+    public :: hicks_init, hicks_put_position, hicks_get_coef, hicks_get_position
 
     !Optimum Kaiser windowing parameter b for monopole point source
     !half window width r=1~10, kmax=pi/2 or 2pi/3
@@ -63,8 +64,8 @@ use m_math
         is_cubic=is_cubic_; is_freesurface=is_freesurface_
     end subroutine
 
-    subroutine hikcs_init_position(z_,x_,y_)
-        z=z_;x=x_;y=y_
+    subroutine hicks_put_position(z_,x_,y_)
+        z=z_; x=x_; y=y_
     end subroutine
 
     subroutine hicks_get_coef(fold_type,interp_coef)

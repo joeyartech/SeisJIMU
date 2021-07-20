@@ -1,4 +1,5 @@
 module m_sysio
+use m_string
 use m_mpienv
 use m_message
 use m_setup
@@ -36,16 +37,46 @@ use m_setup
 
     end subroutine
 
+    subroutine sysio_write(file,array,n,o_mode)
+        character(*) :: file
+        real,dimension(n) :: array
+        character(*),optional :: o_mode
+        !integer,optional :: o_iproc
+
+        if(present(o_mode)) then
+            if(o_mode=='append') then
+                !open(12,file=dir_out//file,access='direct',recl=4*n,position='append')
+                open(12,file=dir_out//file,access='stream',position='append')
+            endif
+        else
+            open(12,file=dir_out//file,access='direct',recl=4*n)
+        endif
+
+        write(12,rec=1) array
+        close(12)
+
+    end subroutine
+
+    subroutine sysio_read(file,array,n,o_mode,o_iproc)
+        character(*) :: file
+        real,dimension(n) :: array
+        character(*),optional :: o_mode
+        integer,optional :: o_iproc
+
+        if(present(o_iproc)) then
+            if(mpiworld%iproc==o_iproc) then
+                open(12,file=dir_in//file,access='direct',recl=4*n)
+            endif
+        else
+            open(12,file=dir_in//file,access='direct',recl=4*n)
+        endif
+
+        read(12,rec=1) array
+        close(12)
+        
+    end subroutine
+
 end
-!     subroutine write_master(array,filename)
-!         real,dimension(*) :: array
-!         character(*) :: filename
-!         if(mpiworld%iproc==0) then
-!             open(66,file=trim(adjustl(filename)),access='direct',recl=4*size(array))
-!             write(66,rec=1)array
-!             close(66)
-!         endif
-!     end
 !     
 !     
 !     subroutine write_mpi_ascii(array,prefix)

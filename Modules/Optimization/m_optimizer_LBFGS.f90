@@ -228,7 +228,7 @@ use m_linesearcher
         
             select case (task)
                 case('start')
-                    open(16,file='iterate.log')
+                    open(16,file=dir_out//'iterate.log')
                     write(16,'(a)'      ) ' **********************************************************************'
                     write(16,'(a)'      ) '                     LIMITED MEMORY BFGS ALGORITHM                     '
                     write(16,'(a)'      ) ' **********************************************************************'

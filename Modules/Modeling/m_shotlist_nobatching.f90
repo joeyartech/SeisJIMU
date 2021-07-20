@@ -124,7 +124,7 @@ use m_sysio
 
         integer,dimension(:),allocatable :: list
 
-        call hud('No. of processors: '//num2str(mpiworld%nproc)//s_return// &
+        call hud('No. of processors: '//num2str(mpiworld%nproc)//s_NL// &
                 'No. of shots: '//num2str(self%nshot))
 
         if(self%nshot<mpiworld%nproc) call warn('Shot number < Processor number. Some processors will be always idle..')

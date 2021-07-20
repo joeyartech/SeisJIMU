@@ -16,8 +16,10 @@ module m_string
     integer,parameter :: i_str_xlen = 256
     integer,parameter :: i_str_xxlen = 512
     integer,parameter :: i_str_xxxlen = 1024
-    character(*), parameter :: s_return = achar(13)
+    character(*), parameter :: s_NL = achar(10) !new line (NL) \n or linefeed (LF)
+    character(*), parameter :: s_CR = achar(13) !carriage return (CR) \r
         !https://software.intel.com/en-us/forums/intel-fortran-compiler/topic/494946
+        !https://www.petefreitag.com/item/863.cfm
         !char function: CHAR(10) is linefeed LF. CHAR(13) is carriage return CR. If you are a little paranoid, ACHAR(10) is better - this is a little more robust to the default character kind not being ascii.
         !The NEW_LINE standard intrinsic is even more robust. There's also the C_NEW_LINE and C_CARRIAGE_RETURN constants from the ISO_C_BINDING module for kind C_CHAR characters.
 
@@ -119,6 +121,7 @@ module m_string
 
         character(i_str_len) :: tmp
                 
+        if(allocated(str)) deallocate(str)
         allocate(str(n))
 
         do i=1,n
@@ -157,6 +160,7 @@ module m_string
         
         character(i_str_len) :: tmp
 
+        if(allocated(str)) deallocate(str)
         allocate(str(n))
         
         do i=1,n
@@ -207,6 +211,9 @@ module m_string
         character(*),optional :: o_format
         integer,dimension(:),allocatable :: num
         
+        if(allocated(num)) deallocate(num)
+        allocate(num(n))
+
         do i=1,n
             !in case of no digits
             if(scan(str(i)%s,digits)==0) then
@@ -249,6 +256,9 @@ module m_string
         character(*),optional :: o_format
         real,dimension(:),allocatable :: num
         
+        if(allocated(num)) deallocate(num)
+        allocate(num(n))
+
         do i=1,n
             !in case of no digits
             if(scan(str(i)%s,digits)==0) then

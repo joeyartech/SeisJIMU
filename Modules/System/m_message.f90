@@ -58,7 +58,7 @@ character(*), parameter :: reset = achar(27)//'[0m' ! Terminates an ANSI code.
         if(mpiworld%iproc==either(o_iproc,0,present(o_iproc))) then
             write(*,*) either('Proc# '//mpiworld%sproc//' : ','',present(o_iproc))//&
                 bg_black//red//bold_blink//'ERROR:'//reset//' '//msg//&
-                either(s_return//'Possible solutions:'//o_solution,'',present(o_solution))
+                either(s_NL//'Possible solutions:'//o_solution,'',present(o_solution))
         endif
 
         call mpiworld%fin

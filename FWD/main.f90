@@ -1,8 +1,13 @@
 program main
+use m_either
 use m_string
-use m_setup
 use m_mpienv
-use m_format_su
+use m_message
+use m_arrayop
+use m_setup
+use m_sysio
+use m_checkpoint
+use m_suformat
 use m_model
 use m_shotlist
 use m_shot
@@ -18,10 +23,10 @@ use m_propagator
     !character(:),allocatable :: job  
 
     !mpiworld lives in t_mpienv
-    call mpiworld%init(name='MPIWorld',communicator=MPI_COMM_WORLD)
+    call mpiworld%init(name='MPIWorld')
 
-    call hud('======================================'//s_return// &
-             '   WELCOME TO SeisJIMU FWD MODELING   '//s_return// &
+    call hud('======================================'//s_NL// &
+             '   WELCOME TO SeisJIMU FWD MODELING   '//s_NL// &
              '======================================')
 
     call setup%init
@@ -32,7 +37,7 @@ use m_propagator
             call print_manual
             ! call sfield%print_info
         endif
-        call mpiworld%finalize
+        call mpiworld%fin
         stop
     endif
 
@@ -43,19 +48,20 @@ use m_propagator
     ! call m%estim_RAM
     ! call cb%estim_RAM
     ! call field%estim_RAM
-    ! call mpiworld%finalize
+    ! call mpiworld%fin
 
     !checkpoint
     call checkpoint_init
 
     !read model
+    call m%init
     call m%read
+    call propagator%check_model
 
     !shotlist
     call shls%read_from_setup
     call shls%build(o_batchsize=shls%nshot)
     call shls%sample
-    call shls%write
     call shls%assign
 
     call hud('===== START LOOP OVER SHOTS =====')
@@ -69,35 +75,34 @@ use m_propagator
         call shot%set_var_time
         call shot%set_var_space(index(propagator%info,'FDSG')>0)
 
-        call hud('Modeling shot# '//shot%sindex)
+        call hud('Modeling Shot# '//shot%sindex)
 
         call cb%init
         call cb%project(is_fdsg=index(propagator%info,'FDSG')>0,abslayer_width=cpml%nlayer)
 
         call propagator%check_discretization
-        
         call propagator%init
-
         call propagator%init_field(field,name='field',origin='src',oif_will_reconstruct=.true.)
 
-        call field%add_RHS
-                
+print*,'!!!!!!!!!!!!!!!!'
+        call field%add_src
+print*,'!!!!!!!!!!!!!!!!'
         !forward modeling
         if(.not.field%is_registered(chp,'seismo')) then
-            call propagator%forward
+            call propagator%forward(field)
             call field%register(chp,'seismo')
         endif
 
         call field%acquire
         
         !write synthetic data
-        call suformat_write(file='dsyn_'//shot%sindex,shot%dsyn,shot%nt,shot%nrcv,o_dt=shot%dt,o_sindex=shot%sindex)
+        call suformat_write('dsyn_'//shot%sindex,shot%dsyn,shot%nt,shot%nrcv,o_dt=shot%dt,o_sindex=shot%sindex)
 
     enddo
     
     call hud('        END LOOP OVER SHOTS        ')
     
-    call mpiworld%finalize
+    call mpiworld%fin
     
 end
 

@@ -4,6 +4,7 @@ use m_mpienv
 use m_message
 use m_arrayop
 use m_setup
+use m_sysio
 use m_checkpoint
 
 !Procedure read: find all shots with their indices. E.g.
@@ -73,9 +74,9 @@ use m_checkpoint
 !   b) User provides a shotlists file (via setup)
 !      for arbitrary lengths, arbitrary offsets etc.
 !
-!Procedure yield: select one shot from each list. Two methods:
-!   a) Cyclic yield. For the very beginning example,
-!      1st yield:
+!Procedure sample: select one shot from each list. Two methods:
+!   a) Cyclic sampling. For the very beginning example,
+!      lists         -> 1st sampled shots:
 !      { 1  2  3}    -> 1
 !      { 3  4  5}    -> 3
 !      { 5  6  7  8} -> 5
@@ -83,41 +84,41 @@ use m_checkpoint
 !      {15 16 17 18} -> 15
 !      which gives 5 shots (=batch size) for one objective function and gradient computation.
 !      
-!      2nd yield:
+!      lists         -> 2nd sampled shots:
 !      { 1  2  3}    -> 2
 !      { 3  4  5}    -> 3
 !      { 5  6  7  8} -> 6
 !      { 9 10 11 12} -> 9
 !      {15 16 17 18} -> 16
 !      ...
-!      4th yield:
+!      lists         -> 4th sampled shots:
 !      { 1  2  3}    -> 1
 !      { 3  4  5}    -> 3
 !      { 5  6  7  8} -> 8
 !      { 9 10 11 12} -> 12
 !      {15 16 17 18} -> 18
 !                  
-!   b) Random yield.
-!      1st yield:
+!   b) Random sampling.
+!      1st sampled shots:
 !      { 1  2  3}    -> 2
 !      { 3  4  5}    -> 3
 !      { 5  6  7  8} -> 5
 !      { 9 10 11 12} -> 12
 !      {15 16 17 18} -> 17
 !         
-!      2nd yield:
+!      2nd sampled shots:
 !      { 1  2  3}    -> 1
 !      { 3  4  5}    -> 5
 !      { 5  6  7  8} -> 5
 !      { 9 10 11 12} -> 9
 !      {15 16 17 18} -> 16
 !
-!Procedure assign: assign the yielded shots to MPI processors. Each process is assigned with 1 or more shots to each process.
+!Procedure assign: assign the sampled shots to MPI processors. Each process is assigned with 1 or more shots to each process.
 !E.g. sampled_shots={1 3 5 9 15}, if we have 2 processors,
 !Proc #0 (master) is assigned with {1 5 15}
 !Proc #1 is assigned with {3 9}
 !
-!Procedure select: return one shot from sampled_shots inside shot loop.
+!Procedure yield: return one shot from sampled_shots inside shot loop.
 
     private
 
@@ -139,7 +140,6 @@ use m_checkpoint
         procedure :: read_from_data  => read_from_data
         procedure :: build => build
         procedure :: sample => sample
-        procedure :: write => write
         procedure :: assign => assign
         procedure :: yield => yield
 
@@ -171,7 +171,7 @@ use m_checkpoint
             call hud('Will read '//num2str(self%nshot)//' source positions.')
 
         case default
-            self%nshot=setup%get_int('NUMBER_SOURCE','NS',o_mandatory=.true.)
+            self%nshot=setup%get_int('NUMBER_SOURCE','NS',o_default='1')
             
         end select        
 
@@ -261,7 +261,7 @@ use m_checkpoint
 
         deallocate(list, sublist, ishots)
 
-        call hud('No. of processors: '//num2str(mpiworld%nproc)//s_return// &
+        call hud('No. of processors: '//num2str(mpiworld%nproc)//s_NL// &
                 'No. of shots: '//num2str(self%nshot))
 
         if(self%nshot<mpiworld%nproc) call warn('Shot number < Processor number. Some processors will be always idle..')
@@ -287,56 +287,72 @@ use m_checkpoint
         self%nlists=either(o_batchsize,&
             setup%get_int('SHOT_BATCH_SIZE','NBATCH',o_default=num2str(mpiworld%nproc)),&
             present(o_batchsize))
-        
+
         if(self%nlists>self%nshot) then
-            call warn('NBATCH > self%nshot! Reset NBATCH=NPROC')
+            call warn('shotlist%nlists > shotlist%nshot! Reset shotlist%nlists = shotlist%nshot')
             self%nlists=self%nshot
         endif
+
         allocate(self%lists(self%nlists))
-        
+
         maxlength=ceiling(self%nshot*1./self%nlists)
 
+        !initialization
         do k=1,self%nlists
-            self%lists(k)%s='' !initialization
+            self%lists(k)%s=''
         enddo
-        
+
         k=1
         do i=1,self%nshot
             self%lists(k)%s=self%lists(k)%s//' '//sall(i)%s
             if(mod(i,maxlength)==0) k=k+1
         enddo
-        
-        !some lists can be empty
-        do k=self%nlists/2,self%nlists
+
+        !some lists could be empty
+        do k=1,self%nlists
             if(self%lists(k)%s=='') then
                 self%lists(k)%s=sall(self%nshot)%s
             endif
         enddo
+
+        !write
+        if(mpiworld%is_master) then
+            open(10,file=dir_out//'shotlist')
+            write(10,'(a)') 'Build lists:'
+            do k=1,self%nlists
+                write(10,'(a)') '{'//self%lists(k)%s//'}'
+            enddo
+            close(10)
+        endif
         
     end subroutine
 
     subroutine sample(self)
         class(t_shotlist) :: self
 
-        logical,save :: if_first_in=.true.
+        logical,save :: is_first_in=.true.
         type(t_string),dimension(:),allocatable :: sublist
         
-        if(if_first_in) then
+        if(is_first_in) then
             sample_method=setup%get_str('SHOT_SAMPLE_METHOD',o_default='cyclic')
-            if_first_in=.false.
+            allocate(self%icycle(self%nlists),source=1)
+            allocate(self%sampled_shots(self%nlists))
+
+            is_first_in=.false.
+
         endif
 
         if(sample_method=='cyclic') then
             do i=1,self%nlists
                 sublist=split(self%lists(i)%s)
                 self%sampled_shots(i)%s=sublist(self%icycle(i))%s
-
+                
                 self%icycle(i)=self%icycle(i)+1
                 if(self%icycle(i)>size(sublist)) self%icycle(i)=1
-                
+
             enddo
         endif
-        
+
         if(sample_method=='random') then
             do i=1,self%nlists
                 sublist=split(self%lists(i)%s)
@@ -347,12 +363,59 @@ use m_checkpoint
                 
             enddo
         endif
+
+        !write
+        if(mpiworld%is_master) then
+            open(10,file=dir_out//'shotlist',access='append')
+            write(10,'(a)') 'Sampled shots:'
+            do k=1,self%nlists
+                write(10,'(a)') '{'//self%sampled_shots(k)%s//'}'
+            enddo
+            close(10)
+        endif
         
     end subroutine
     
-    subroutine write(self)
+    subroutine assign(self)
         class(t_shotlist) :: self
-                
+
+        logical,save :: is_first_in=.true.
+        
+        if(is_first_in) then
+            !count how many shots per processors
+            self%nshots_per_processor=0
+            k=1 !list index
+            j=0 !modulo list#/processor#
+            do i=1,self%nlists
+                if (j==mpiworld%nproc) then
+                    j=j-mpiworld%nproc
+                    k=k+1
+                endif
+                if (mpiworld%iproc==j) then !iproc starts from 0
+                    self%nshots_per_processor=self%nshots_per_processor+1
+                endif
+                j=j+1
+            enddo
+            
+            allocate(self%shots_per_processor(self%nshots_per_processor))
+            
+            is_first_in=.false.
+
+        endif
+
+        k=1 !list index
+        j=0 !modulo list#/processor#
+        do i=1,self%nlists
+            if (j==mpiworld%nproc) then
+                j=j-mpiworld%nproc
+                k=k+1
+            endif
+            if (mpiworld%iproc==j) then
+                self%shots_per_processor(k)=self%sampled_shots(i)
+            endif
+            j=j+1
+        enddo
+
         !message
         write(*,*) ' Proc# '//mpiworld%sproc//' has '//num2str(self%nshots_per_processor)//' assigned shots.'
         call hud('See file "shotlist" for details.')
@@ -360,41 +423,6 @@ use m_checkpoint
         !write shotlist to disk
         call mpiworld%write('shotlist', 'Proc# '//mpiworld%sproc//' has '//num2str(self%nshots_per_processor)//' assigned shots:'// &
             strcat(self%shots_per_processor,self%nshots_per_processor))
-        
-    end subroutine
-
-    subroutine assign(self)
-        class(t_shotlist) :: self
-        
-        !count how many shots per processors
-        self%nshots_per_processor=0
-        k=1 !list index
-        j=0 !modulo list#/processor#
-        do i=1,self%nlists
-            if (j==NPROC) then
-                j=j-NPROC
-                k=k+1
-            endif
-            if (IPROC==j) then !iproc starts from 0
-                self%nshots_per_processor=self%nshots_per_processor+1
-            endif
-            j=j+1
-        enddo
-        
-        allocate(self%shots_per_processor(self%nshots_per_processor))
-        
-        k=1 !list index
-        j=0 !modulo list#/processor#
-        do i=1,self%nlists
-            if (j==NPROC) then
-                j=j-NPROC
-                k=k+1
-            endif
-            if (IPROC==j) then
-                self%shots_per_processor(k)=self%sampled_shots(i)
-            endif
-            j=j+1
-        enddo
 
     end subroutine
 

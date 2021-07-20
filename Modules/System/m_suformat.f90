@@ -1,6 +1,7 @@
-module m_format_su
+module m_suformat
 use m_string
 use m_either
+use m_sysio
 
 !A Fortran version of su format (defined in /SeisUnix/include/segy.h)
 !
@@ -243,9 +244,9 @@ use m_either
         !BYTE# 113-114
         integer(2) :: mute=0    !! mute time--end !!
         !BYTE# 115-116
-        integer(2) :: ns=0      !! number of samples in this trace !!
+        integer(2) :: ns=0      !! number of samples in this trace !! !!is not used in SeisJIMU!!
         !BYTE# 117-118
-        integer(2) :: dt=0      !! sample interval in micro-seconds
+        integer(2) :: dt=0      !! sample interval in micro-seconds !! !!is not used in SeisJIMU!!
         !BYTE# 119-120
         integer(2) :: gain=0    !! gain type of field instruments code:
                                 ! 1 = fixed
@@ -360,7 +361,7 @@ use m_either
         !BYTE# 219-220
         integer(2) :: shortpad=0!! alignment padding !!
         !BYTE# 221-224
-        integer(4) :: ntr=0     !! number of traces !!
+        integer(4) :: ntr=0     !! number of traces !! !!is not used in SeisJIMU!!
 
         !! SLTSU local assignments end !! 
         !BYTE# 225-240
@@ -369,7 +370,7 @@ use m_either
         
     end type
         
-    type,public :: t_format_su
+    type,public :: t_suformat
         type(t_header),dimension(:),allocatable :: hdrs
         real(4),dimension(:,:),allocatable :: trs
         integer :: ntr !number of traces
@@ -384,17 +385,17 @@ use m_either
     contains
     
     subroutine read(self,file,o_sindex)
-        class(t_format_su) :: self
+        class(t_suformat) :: self
         character(*) :: file
         character(*),optional :: o_sindex
 
         integer file_size
         integer(2) :: dt
         
-        inquire(file=file, size=file_size) !file_size in bytes
+        inquire(file=dir_in//file,size=file_size) !file_size in bytes
         file_size=file_size/4 !file_size in sizeof(float), single precision
         
-        open(11,file=file,action='read',access='stream')
+        open(11,file=dir_in//file,action='read',access='stream')
         
         read(11,pos=115) ns  !get number of samples from 1st trace
         if(ns<0) ns=ns+32768*2  !ns keyword is unsigned short in C
@@ -402,7 +403,7 @@ use m_either
 
         read(11,pos=117) dt
         if(dt<0) dt=dt+32768*2  !dt keyword is unsigned short in C
-        self%dt=dt/1e-6
+        self%dt=dt*1e-6
         
         close(11)
         
@@ -415,7 +416,7 @@ use m_either
         allocate(self%hdrs(self%ntr))
         allocate(self%trs(self%ns,self%ntr))
         
-        open(11,file=file,action='read',access='stream') !access='direct',recl=4*(ns+60))
+        open(11,file=dir_in//file,action='read',access='stream') !access='direct',recl=4*(ns+60))
         read(11) (self%hdrs(i),self%trs(:,i), i=1,self%ntr)
         close(11)
         
@@ -423,46 +424,64 @@ use m_either
         
     end subroutine
     
-    subroutine write(self,file,o_sindex)
-        class(t_format_su) :: self
+    subroutine write(self,file,o_sindex,o_mode)
+        class(t_suformat) :: self
         character(*) :: file
         character(*),optional :: o_sindex
+        character(*),optional :: o_mode
 
         if(present(o_sindex)) write(*,*) 'Shot# '//o_sindex//' will write '//num2str(self%ntr)//' traces, each trace has '//num2str(self%ns)//' samples.'
 
-        open(12,file=file,action='read',access='stream') !access='direct',recl=4*(ns+60))
-        write(12) (self%hdrs(i),self%trs(:,i), i=1,self%ntr)
+        if(present(o_mode)) then
+            if(o_mode=='append') then
+                open(12,file=dir_out//file//'.su',action='write',access='stream',position='append') !access='direct',recl=4*(ns+60))
+            endif
+        else
+            open(12,file=dir_out//file//'.su',action='write',access='stream') !access='direct',recl=4*(ns+60))
+        endif
+
+        self%hdrs(:)%ntr=self%ntr
+        self%hdrs(:)%ns=self%ns
+        self%hdrs(:)%dt=nint(self%dt*1e6)
+
+        !write(12) (self%hdrs(i),self%trs(:,i), i=1,self%ntr) !randomly cause issues, maybe this is too long?
+        do i=1,self%ntr
+            write(12) self%hdrs(i)
+            write(12) self%trs(:,i)
+        enddo
+
         close(12)
-        
+
         call hud('SU data write success.')
 
     end subroutine
 
-    subroutine suformat_write(file,data,ns,ntr,o_dt,o_sindex)
+    subroutine suformat_write(file,data,ns,ntr,o_dt,o_sindex,o_mode)
         character(*) :: file
         real,dimension(ns,ntr) :: data
         real,optional :: o_dt
         character(*),optional :: o_sindex
+        character(*),optional :: o_mode
 
-        type(t_format_su) :: sudata
+        type(t_suformat) :: sudata
 
         allocate(sudata%hdrs(ntr))
         allocate(sudata%trs(ns,ntr))
 
-        sudata%hdrs(:)%ns=ns
+        sudata%ns=ns
+        sudata%ntr=ntr
+        sudata%dt=either(o_dt,0.,present(o_dt))
         sudata%hdrs(:)%tracl=[(i,i=1,ntr)]
-        
-        sudata%hdrs(:)%dt=either(0,int(o_dt*1e6),present(o_dt))
-    
         sudata%trs=data
 
-        call sudata%write(file,o_sindex)
+        call sudata%write(file,o_sindex,o_mode)
 
     end subroutine
     
     subroutine fin(self)
-        type(t_format_su) :: self
-        deallocate(self%hdrs,self%trs)
+        type(t_suformat) :: self
+        if(allocated(self%hdrs)) deallocate(self%hdrs)
+        if(allocated(self%trs )) deallocate(self%trs )
     end subroutine
 
 end

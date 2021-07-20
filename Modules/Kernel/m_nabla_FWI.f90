@@ -2,7 +2,7 @@ module m_nabla
 use m_string
 use m_setup
 use m_mpienv
-use m_format_su
+use m_suformat
 use m_checkpoint
 use m_model
 use m_shotlist
@@ -36,7 +36,7 @@ use m_smoother_laplacian_sparse
         type(t_string),dimension(:),allocatable :: smoothings
         character(:),allocatable :: smask
 
-        !convert parameters to models
+        !update model
         call param%transform_model('x->m',fobj%x)
 
         !compute dnorm's gradient by adjoint-state method
@@ -69,17 +69,16 @@ use m_smoother_laplacian_sparse
         smask=setup%get_file('GRADIENT_SOFT_MASK')
         if(smask/='') then
             call alloc(mask,m%nz,m%nx,m%ny)
-            open(12,file=smask,access='direct',recl=4*m%n,action='read',status='old')
-            read(12,rec=1) mask
-            close(12)
+            call sysio_read(smask,mask,size(mask))
             
             do i=1,propagator%ngrad
                 fobj%gradient(:,:,:,i)=fobj%gradient(:,:,:,i)*mask
             enddo
         endif
 
-        !convert gradient wrt model to gradient wrt parameters
+        !reparameterization
         call param%transform_gradient('m->x',fobj%gradient)
+        call param%transform_model('m->x',sfield%autocorr)
 
         !penalize model by Tikhonov regularization
         if(either(oif_approx,.false.,present(oif_approx))) then

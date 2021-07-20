@@ -58,6 +58,7 @@ use m_preconditioner
         real :: alphaL=0., alphaR=0.
         real :: scaler=1.
         logical :: if_has_scaler=.false.
+        character(7) :: result
         
         !counter
         integer :: igradient=1 !total number of gradient computed
@@ -76,27 +77,22 @@ use m_preconditioner
 
     contains
 
-    subroutine forwardmap_init(self,n,o_fobj)
+    subroutine forwardmap_init(self,n)
         class(t_forwardmap) :: self
 
-        real,optional :: o_fobj
-
-        call alloc(self%x, n)
-        call alloc(self%g, n)
+        call alloc(self%x, n); self%x=pack(fobj%x,mask=.not.param%is_freeze_zone)
+        call alloc(self%g, n); self%g=pack(fobj%gradient,mask=.not.param%is_freeze_zone)
         call alloc(self%pg,n)
         call alloc(self%d, n)
-
-        if(present(o_fobj)) self%f=o_fobj
         
+        self%f=fobj%total_loss
+
     end subroutine
 
     subroutine forwardmap_fin(self)
         type(t_forwardmap) :: self
 
-        if(allocated(self%x )) deallocate(self%x )
-        if(allocated(self%g )) deallocate(self%g )
-        if(allocated(self%pg)) deallocate(self%pg)
-        if(allocated(self%d )) deallocate(self%d )
+        call dealloc(self%x,self%g,self%pg,self%d)
 
     end subroutine
 
@@ -111,11 +107,10 @@ use m_preconditioner
 
     end subroutine
     
-    subroutine search(self,iterate,curr,pert,o_gradient_history,result)
+    subroutine search(self,iterate,curr,pert,o_gradient_history)
         class(t_linesearcher) :: self
         type(t_forwardmap),intent(inout) :: curr, pert
         real,dimension(:,:),intent(inout),optional :: o_gradient_history
-        character(7) :: result
         
         logical :: if_1st_cond, if_2nd_cond
         
@@ -176,7 +171,7 @@ use m_preconditioner
             if(if_1st_cond .and. if_2nd_cond) then
                 call hud('Wolfe conditions are satisfied')
                 call hud('Enter new iterate')
-                result='success'
+                self%result='success'
                 exit loop
             endif
             
@@ -185,7 +180,7 @@ use m_preconditioner
                 !1st condition BAD => shrink alpha
                 if(.not. if_1st_cond) then
                     call hud("Armijo condition is not satified. Now try a smaller alpha")
-                    result='perturb'
+                    self%result='perturb'
                     self%alphaR=self%alpha
                     self%alpha=0.5*(self%alphaL+self%alphaR)
                     pert%x=curr%x+self%alpha*curr%d
@@ -199,7 +194,7 @@ use m_preconditioner
                 !2nd condition BAD => increase alpha unless alphaR=0.
                 if(if_1st_cond .and. .not. if_2nd_cond) then
                     call hud("Curvature condition is not satified. Now try a larger alpha")
-                    result='perturb'
+                    self%result='perturb'
                     self%alphaL=self%alpha
                     if(abs(self%alphaR) > tiny(1.e0)) then
                         self%alpha=0.5*(self%alphaL+self%alphaR)
@@ -221,7 +216,7 @@ use m_preconditioner
                 !1st condition BAD => failure
                 if(.not. if_1st_cond) then
                     call hud("Linesearch failure: can't find good alpha.")
-                    result='failure'
+                    self%result='failure'
                     exit loop
                 endif
                 
@@ -229,7 +224,7 @@ use m_preconditioner
                 if(.not. if_2nd_cond) then
                     call hud("Maximum linesearch number reached. Use alpha although curvature condition is not satisfied")
                     call hud('Enter new iterate')
-                    result='success'
+                    self%result='success'
                     exit loop
                 endif
                 
@@ -243,7 +238,7 @@ use m_preconditioner
         
         if (self%igradient>=self%max_gradient) then
             call hud('Maximum number of gradients reached. Finalize program now..')
-            result='maximum'
+            self%result='maximum'
         endif       
     
     end subroutine

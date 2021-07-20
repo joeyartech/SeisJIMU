@@ -3,6 +3,7 @@ use m_string
 use m_mpienv
 use m_arrayop
 use m_setup
+use m_sysio
 use m_checkpoint
 use m_resampler
 use m_model
@@ -48,7 +49,7 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:,:),allocatable :: dshh_dz,dshh_dx,dshh_dy
         real,dimension(:,:,:),allocatable :: dp_dz,dp_dx,dp_dy
 
-        !RHS (source terms)
+        !source time function
         ! real,dimension(:,:),allocatable :: fz,fx,fy !forces
         ! real,dimension(:,:),allocatable :: mzz,mzx,mzy !moments
         ! real,dimension(:,:),allocatable ::     mxx,mxy
@@ -56,7 +57,7 @@ use, intrinsic :: ieee_arithmetic
         ! real,dimension(:,:),allocatable :: mhh,p
         real,dimension(:,:),allocatable :: wavelet
 
-        !synthetic seismograms (receiver terms)
+        !synthetic seismograms (receiver time function)
         real,dimension(:,:),allocatable :: seismo
         
         !blooming
@@ -69,7 +70,7 @@ use, intrinsic :: ieee_arithmetic
         procedure :: init_bloom    => init_bloom
         procedure :: init_boundary => init_boundary
         procedure :: check_value => check_value
-        procedure :: add_RHS => add_RHS
+        procedure :: add_src => add_src
         procedure :: acquire => acquire
         procedure :: write => write
         procedure :: boundary_transport => boundary_transport
@@ -81,10 +82,10 @@ use, intrinsic :: ieee_arithmetic
     end type
 
     !info shared by all t_field instances
-    integer nt
-    real dt
+    integer :: nt
+    real :: dt
 
-    logical :: is_shear
+    logical :: if_shear
 
     logical :: if_bloom
     integer,parameter :: initial_half_bloomwidth=5 !half bloom width at ift, should involve hicks points
@@ -95,19 +96,20 @@ use, intrinsic :: ieee_arithmetic
     
     contains
         
-    subroutine init(self,name,nt_in,dt_in,is_shear_in)
+    subroutine init(self,name,nt_in,dt_in,if_shear_in)
         class(t_field) :: self
         character(*) :: name
-        logical is_shear_in
+        logical if_shear_in
 
         self%name=name
-        
+
         nt=nt_in
         dt=dt_in
-        is_shear=is_shear_in
+        
+        if_shear=if_shear_in
 
         !snapshot
-        snapshot=setup%get_strs('SNAPSHOT',o_default='')
+        snapshot=setup%get_strs('SNAPSHOT')
         if_snapshot=size(snapshot)>0 .and. mpiworld%is_master
         if(if_snapshot) then
             n_snapshot=setup%get_real('REF_NUMBER_SNAPSHOT','NSNAPSHOT',o_default='50')
@@ -188,7 +190,7 @@ use, intrinsic :: ieee_arithmetic
         n=3*cb%mx*cb%my
         call alloc(self%bnd%vz_top,n,nt)
         call alloc(self%bnd%vz_bot,n,nt)
-        if(is_shear) then
+        if(if_shear) then
             call alloc(self%bnd%vx_top,n,nt)
             call alloc(self%bnd%vx_bot,n,nt)
         endif
@@ -196,7 +198,7 @@ use, intrinsic :: ieee_arithmetic
         n=cb%mz*3*cb%my
         call alloc(self%bnd%vx_left, n,nt)
         call alloc(self%bnd%vx_right,n,nt)
-        if(is_shear) then
+        if(if_shear) then
             call alloc(self%bnd%vz_left, n,nt)
             call alloc(self%bnd%vz_right,n,nt)
         endif
@@ -237,13 +239,9 @@ use, intrinsic :: ieee_arithmetic
                 do i=1,size(snapshot)
                     select case (snapshot(i)%s)
                     case ('vz')
-                        open(12,file='snap_'//self%name//'%vz'//suf,access='stream',position='append')
-                        write(12) self%vz
-                        close(12)
+                        call sysio_write('snap_'//self%name//'%vz'//suf,self%vz,size(self%vz),o_mode='append')
                     case ('p')
-                        open(12,file='snap_'//self%name//'%p'//suf,access='stream',position='append')
-                        write(12) self%p
-                        close(12)
+                        call sysio_write('snap_'//self%name//'%p'//suf,self%p,size(self%p),o_mode='append')
                     end select
                 enddo
             endif
@@ -260,26 +258,23 @@ use, intrinsic :: ieee_arithmetic
 
     end subroutine
  
-    subroutine add_RHS(self,ois_adjoint)
+    subroutine add_src(self,ois_adjoint)
         class(t_field) :: self
         logical,optional :: ois_adjoint
 
         !add adjoint source
         if(either(ois_adjoint,.false.,present(ois_adjoint))) then
             call alloc(self%wavelet,shot%nrcv,nt)
-            do i=1,shot%nrcv
-                call resampler(shot%dadj(:,i),self%wavelet(i,:),shot%nrcv,&
-                    din=shot%dt,nin=shot%nt,dout=dt,nout=nt)
-            enddo
+            call resampler(shot%dadj(:,i),self%wavelet(i,:),shot%nrcv,din=shot%dt,nin=shot%nt,dout=dt,nout=nt)
 
             return
         endif
 
         !add source
-        call alloc(self%wavelet,1,shot%nt)
-        call resampler(shot%wavelet,self%wavelet(1,:),1,&
-            din=shot%dt,nin=shot%nt,dout=dt,nout=nt)
-        
+        call alloc(self%wavelet,1,nt)
+        call resampler(shot%wavelet,self%wavelet(1,:),1,din=shot%dt,nin=shot%nt,dout=dt,nout=nt)
+        self%wavelet(1,:)=self%wavelet(1,:)*dt/m%cell_volume
+            
     end subroutine
 
     subroutine acquire(self)
@@ -327,7 +322,7 @@ use, intrinsic :: ieee_arithmetic
         endif
 
         !shear part
-        if(is_shear) then
+        if(if_shear) then
             if(m%is_cubic) then
             else
                 !top

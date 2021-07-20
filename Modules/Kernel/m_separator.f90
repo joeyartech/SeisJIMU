@@ -39,7 +39,7 @@ use m_arrayop
             i=index(text,"!"); if(i>0) text=text(1:i-1) !remove comments after !
 
             if (msg < 0) then !end of file
-                call error('ERROR: FILE_SEPARATER is missing xsepa points.'//s_return &
+                call error('ERROR: FILE_SEPARATER is missing xsepa points.'//s_NL &
                     'Code stop now!')
             endif
             if (msg > 0) stop 'Check FILE_SEPARATER.  Something is wrong..'
@@ -57,7 +57,7 @@ use m_arrayop
         !xsepa should be increasing
         do i=1,mx-1
             if(xsepa(i+1)<xsepa(i)) then
-                call error('ERROR: xsepa from FILE_SEPARATER is NOT increasing!'//s_return &
+                call error('ERROR: xsepa from FILE_SEPARATER is NOT increasing!'//s_NL &
                     'Code stop now!')
             end if
         end do
@@ -71,7 +71,7 @@ use m_arrayop
             i=index(text,"!"); if(i>0) text=text(1:i-1) !remove comments after !
 
             if (msg < 0) then !end of file
-                call error('ERROR: FILE_SEPARATER is missing tsepa points.'//s_return &
+                call error('ERROR: FILE_SEPARATER is missing tsepa points.'//s_NL &
                     'Code stop now!')
             endif
             if (msg > 0) stop 'Check FILE_SEPARATER.  Something is wrong..'
@@ -86,7 +86,7 @@ use m_arrayop
         read(text,*,iostat=msg) tsepa(1:mx)
 
         if (any(tsepa(1:mx)<0.)) then
-            call error('ERROR: FILE_SEPARATER has unequal tsepa & xsepa pairs.'//s_return &
+            call error('ERROR: FILE_SEPARATER has unequal tsepa & xsepa pairs.'//s_NL &
                 'Code stop now!')
         endif
 

@@ -2,7 +2,7 @@ module m_fobjective
 use m_string
 use m_arrayop
 use m_setup
-use m_format_su
+use m_suformat
 use m_model
 use m_shot
 use m_weighter
@@ -49,19 +49,19 @@ use m_parametrizer
     subroutine init(self)
         class(t_fobjective) :: self
         
-        call alloc(self%x,     param%n1,param%n2,param%n3,param%npars)
+        call alloc(self%x,param%n1,param%n2,param%n3,param%npars)
         call param%transform_model('m->x',self%x)
 
         !prior models
         call m%read_prior
-        if(m%if_exist_prior) then
+        if(m%if_has_prior) then
             !convert prior models
             call param%transform_model('m->x',self%xprior,oif_prior=.true.)
             !save some RAM
-            call dealloc(m%vp,m%vs,m%rho)
-        else
-            call alloc(self%xprior,param%n1,param%n2,param%n3,param%npars)
+            call dealloc(m%vp_prior,m%vs_prior,m%rho_prior)
         endif
+
+        call param%transform_gradient('m->x',self%gradient)
 
         self%h3=param%d1*param%d2*param%d3
 
@@ -92,10 +92,12 @@ use m_parametrizer
 
     end subroutine
     
-    subroutine update(self,x)
+    subroutine update(self,x,n)
         class(t_fobjective) :: self
-        real,dimension(param%n1,param%n2,param%n3,param%npars) :: x
-        self%x=x
+        real,dimension(n) :: x
+
+        self%x=unpack(x,mask=.not.param%is_freeze_zone)
+
     end subroutine
 
     subroutine compute_dnorms(self)
@@ -115,7 +117,7 @@ use m_parametrizer
                 do ir=1,shot%nrcv
                     if(shot%rcv(ir)%if_badtrace) cycle
 
-                    self%dnorms(i) = self%dnorms(i) + self%h3/shot%dt*0.5*sum(Wdres(:,ir)**2)
+                    self%dnorms(i) = self%dnorms(i) + 0.5*m%cell_size*sum(Wdres(:,ir)**2)
 
                     !set unit of dnorm to be [Nm], same as Lagrangian
                     !this also help balance contributions from different component data
@@ -129,7 +131,7 @@ use m_parametrizer
 
                 !compute adjoint source and set proper units
                 if(i==self%i_dnorm_4adjsource) then
-                    shot%dadj = -Wdres*wei%weight*param%h3/shot%dt
+                    shot%dadj = -wei%weight*Wdres*m%cell_size
 
                     do ir=1,shot%nrcv
                         if(shot%rcv(ir)%comp=='p') then !for pressure data
@@ -167,7 +169,11 @@ use m_parametrizer
             case ('Ridge','L2')
                 !fcost
                 call alloc(Wxres,param%n1,param%n2,param%n3,param%npars)
-                Wxres=self%x-self%xprior
+                if(m%if_has_prior) then
+                    Wxres=self%x-self%xprior
+                else
+                    Wxres=self%x
+                endif
 
                 self%xnorms(i) = sum(Wxres*Wxres, .not.param%is_freeze_zone)
 

@@ -84,14 +84,10 @@ use m_linesearcher
 
         associate(curr=>self%curr, pert=>self%pert, prev=>self%prev)
         
-        !initialize current point
-        call curr%init(self%n,o_fobj=fobj%total_loss)
-        
-            self%f0=curr%f
+            !initialize current point
+            call curr%init(self%n)
 
-            !transform by parameterization
-            call param%transform_model('m->x',curr%x)
-            call param%transform_gradient('m->x',curr%g)
+            self%f0=curr%f
             
             !scale problem
             call ls%scale(curr)
@@ -121,7 +117,6 @@ use m_linesearcher
         class(t_optimizer) :: self
 
         type(t_checkpoint),save :: chp
-        character(7) :: result
         real nom, denom
        
         ! call self%write('start')
@@ -134,9 +129,9 @@ use m_linesearcher
             loop: do iterate=1,self%max_iterate
                 call chp%count
 
-                if(.not.shls%is_registered(chp,'yield_shots')) then
+                if(.not.shls%is_registered(chp,'sampled_shots')) then
                     call shls%sample
-                    call shls%register(chp,'yield_shots')
+                    call shls%register(chp,'sampled_shots')
                 endif
                 call shls%write
                 call shls%assign
@@ -150,9 +145,9 @@ use m_linesearcher
                 endif
                 
                 !linesearcher finds steplength
-                call ls%search(self%iterate,curr,pert,gradient_history,result)
+                call ls%search(self%iterate,curr,pert,gradient_history)
                 
-                select case(result)
+                select case(ls%result)
                     case('success')
                     !update point
                     curr%x=pert%x

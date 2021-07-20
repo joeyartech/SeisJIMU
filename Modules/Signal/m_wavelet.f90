@@ -1,5 +1,7 @@
-module m_wavelets
+module m_wavelet
 use m_string
+use m_message
+use m_arrayop
 use m_setup
 use m_butterworth
     

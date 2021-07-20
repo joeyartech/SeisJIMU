@@ -63,8 +63,8 @@ use m_math
         real :: fin, fout
         real,dimension(:),allocatable :: tout
         
-        fin =either( 0.,o_fin, present(o_fin ))
-        fout=either(fin,o_fout,present(o_fout))
+        fin =either(o_fin, 0., present(o_fin ))
+        fout=either(o_fout,fin,present(o_fout))
         
         if(allocated(tout)) deallocate(tout)
         allocate(tout(nout))

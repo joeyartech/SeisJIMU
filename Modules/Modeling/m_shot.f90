@@ -2,9 +2,11 @@ module m_shot
 use m_string
 use m_mpienv
 use m_setup
-use m_format_su
+use m_suformat
 use m_hicks
+use m_wavelet
 use m_resampler
+use m_matchfilter
 use m_model
 
     private
@@ -77,26 +79,27 @@ use m_model
         character(*) :: sindex
 
         self%sindex=sindex
-        self%index=str2num(sindex)
+        self%index=str2int(sindex)
     
     end subroutine
 
     subroutine read_from_setup(self)
         class(t_shot) :: self
 
-        logical,save :: first_in=.true.
+        logical,save :: is_first_in=.true.
         type(t_string),dimension(:),allocatable :: scomp
 
-        if(first_in) then
-            self%nt=setup%get_int('TIME_STEP','NT')
-            self%dt=setup%get_real('TIME_INTERVAL','DT')
+        if(is_first_in) then
+            self%nt=setup%get_int('TIME_STEP','NT',o_mandatory=.true.)
+            self%dt=setup%get_real('TIME_INTERVAL','DT',o_mandatory=.true.)
             
             scomp=setup%get_strs('SOURCE_COMPONENT','SCOMP',o_default='p')
-            if(size(scomp)>1) call hud('SeisJIMU only considers the 1st component from SOURCE_COMPONENT.')
+            if(size(scomp)>1) call hud('SeisJIMU only considers the 1st component from SOURCE_COMPONENT: '//scomp(1)%s)
             self%src%comp=scomp(1)%s
-        endif
 
-        first_in=.false.
+            is_first_in=.false.
+
+        endif
 
         select case (setup%get_str('ACQUI_GEOMETRY',o_default='spread'))
         case ('spread')
@@ -115,7 +118,7 @@ use m_model
     subroutine read_from_data(self)
         class(t_shot) :: self
 
-        type(t_format_su) :: data
+        type(t_suformat) :: data
         
         call data%read(setup%get_file('FILE_DATA',o_mandatory=.true.),self%sindex)
 
@@ -182,22 +185,20 @@ use m_model
         call alloc(self%dobs,self%nt,self%nrcv)
         self%dobs=data%trs
         
-        call check_setup_positions
-
     end subroutine
 
     subroutine set_var_time(self)
         class(t_shot) :: self
 
-        character(:),allocatable :: file
-        type(t_format_su)::wavelet
+        character(:),allocatable :: file, str
+        type(t_suformat) :: wavelet
 
         self%fpeak=setup%get_real('PEAK_FREQUENCY','FPEAK')
         self%fmax=setup%get_real('MAX_FREQUENCY','FMAX',o_default=num2str(self%fpeak*2.5))
         !self%fmin=setup%get_real('MIN_FREQUENCY','FMIN',o_default='1')
 
-        !wavelet
-        file=setup%get_file('FILE_SOURCE_WAVELET')
+        !source time function, which should not have dt, dx info
+        file=setup%get_file('FILE_SRC_TIME_FUNC','FILE_WAVELET')
 
         if(file=='') then !not given
             if(setup%get_str('WAVELET_TYPE',o_default='sinexp')=='sinexp') then
@@ -216,11 +217,15 @@ use m_model
 
         endif
 
-        if(mpiworld%is_master) then
-            open(12,file='source_wavelet',access='direct',recl=4*self%nt)
-            write(12,rec=1) self%wavelet
-            close(12)
+        str=setup%get_str('SCALING_WAVELET')
+        if(str=='') then
+        elseif(str=='*dx3/dt' .or. str=='/dt*dx3') then
+            self%wavelet=self%wavelet/self%dt*m%cell_volume
+        else
+            self%wavelet=self%wavelet*str2real(str)
         endif
+
+        if(mpiworld%is_master) call suformat_write('wavelet',self%wavelet,self%nt,ntr=1,o_dt=self%dt)
 
     end subroutine
 
@@ -255,11 +260,11 @@ use m_model
             if(is_fdsg) then
                 !for vx,vy,vz components, hicks%x,y,z should be added by m%dx/2,dy/2,dz/2, respectively,
                 !because v(1) is actually v[0.5], v(2) is v[1.5] etc.
-                if(self%src%comp=='vz') call hicks_init_position(self%src%z+m%dz/2.,self%src%x        ,self%src%y        )
-                if(self%src%comp=='vx') call hicks_init_position(self%src%z        ,self%src%x+m%dx/2.,self%src%y        )
-                if(self%src%comp=='vy') call hicks_init_position(self%src%z        ,self%src%x        ,self%src%y+m%dy/2.)
+                if(self%src%comp=='vz') call hicks_put_position(self%src%z+m%dz/2.,self%src%x        ,self%src%y        )
+                if(self%src%comp=='vx') call hicks_put_position(self%src%z        ,self%src%x+m%dx/2.,self%src%y        )
+                if(self%src%comp=='vy') call hicks_put_position(self%src%z        ,self%src%x        ,self%src%y+m%dy/2.)
             else
-                call hicks_init_position(self%src%z,self%src%x,self%src%y)
+                call hicks_put_position(self%src%z,self%src%x,self%src%y)
             endif
 
             if(self%src%comp=='p') then !explosive source or non-vertical force
@@ -280,11 +285,11 @@ use m_model
                 if(is_fdsg) then
                     !for vx,vy,vz components, hicks%x,y,z should be added by m%dx/2,dy/2,dz/2, respectively,
                     !because v(1) is actually v[0.5], v(2) is v[1.5] etc.
-                    if(self%rcv(i)%comp=='vz') call hicks_init_position(self%rcv(i)%z+m%dz/2.,self%rcv(i)%x        ,self%rcv(i)%y        )
-                    if(self%rcv(i)%comp=='vx') call hicks_init_position(self%rcv(i)%z        ,self%rcv(i)%x+m%dx/2.,self%rcv(i)%y        )
-                    if(self%rcv(i)%comp=='vy') call hicks_init_position(self%rcv(i)%z        ,self%rcv(i)%x        ,self%rcv(i)%y+m%dy/2.)
+                    if(self%rcv(i)%comp=='vz') call hicks_put_position(self%rcv(i)%z+m%dz/2.,self%rcv(i)%x        ,self%rcv(i)%y        )
+                    if(self%rcv(i)%comp=='vx') call hicks_put_position(self%rcv(i)%z        ,self%rcv(i)%x+m%dx/2.,self%rcv(i)%y        )
+                    if(self%rcv(i)%comp=='vy') call hicks_put_position(self%rcv(i)%z        ,self%rcv(i)%x        ,self%rcv(i)%y+m%dy/2.)
                 else
-                    call hicks_init_position(self%rcv(i)%z,self%rcv(i)%x,self%rcv(i)%y)
+                    call hicks_put_position(self%rcv(i)%z,self%rcv(i)%x,self%rcv(i)%y)
                 endif
 
                 if(self%rcv(i)%comp=='p') then !explosive source or non-vertical force
@@ -331,57 +336,54 @@ use m_model
     subroutine update_wavelet(self)
         class(t_shot) :: self
 
-        call matchfilter_estimate(self%nt,self%nrcv,self%dsyn,self%dobs,self%sindex)
+        call matchfilter_estimate(self%dsyn,self%dobs,self%nt,self%nrcv)!,self%index)
         
-        call matchfilter_apply_to_wavelet(self%nt,self%wavelet)
+        call matchfilter_apply_to_wavelet(self%wavelet,self%nt)
         
-        call matchfilter_apply_to_data(self%nt,self%nrcv,self%dsyn)
+        call matchfilter_apply_to_data(self%dsyn,self%nt,self%nrcv)
 
-        !call suformat_write(iproc=0,file='wavelet_update',append=.true.)        
-        if(mpiworld%is_master) then
-            open(12,file='source_wavelet',access='stream',position='append')
-            write(12) self%wavelet
-            close(12)
-        endif
+        if(mpiworld%is_master) call suformat_write('wavelet',self%wavelet,self%nt,1,self%dt,o_mode='append')
 
     end subroutine
     
     subroutine update_adjsource(self)
         class(t_shot) :: self
 
-        call matchfilter_correlate_filter_residual(self%nt,self%nrcv,self%dadj)
+        call matchfilter_correlate_filter_residual(self%dadj,self%nt,self%nrcv)
 
     end subroutine
 
     subroutine geometry_spread(shot)
         type(t_shot) :: shot
-        logical :: first_in=.true.
-        real,dimension(3),save :: os,or, ds,dr
-        integer,save :: nr
+        logical :: is_first_in=.true.
+        real,dimension(3),save :: fs=0.,fr=0.
+        real,dimension(3),save :: ds=0.,dr=0.
+        integer,save :: nr=1
         type(t_string),dimension(:),allocatable,save :: rcomp
 
-        if(first_in) then
-            os=setup%get_reals('SOURCE_ORIGIN',  'OS')
-            or=setup%get_reals('RECEIVER_ORIGIN','OR')
+        if(is_first_in) then
+            fs=setup%get_reals('SOURCE_FIRST',  'FS',o_default='0. 0. 0.')
+            fr=setup%get_reals('RECEIVER_FIRST','FR',o_default='0. 0. 0.')
 
-            ds=setup%get_reals('SOURCE_SPACING', 'DS')
-            dr=setup%get_reals('RECEIVER_SPACING','DR')
+            ds=setup%get_reals('SOURCE_SPACING', 'DS',o_default='0. 0. 0.')
+            dr=setup%get_reals('RECEIVER_SPACING','DR',o_default='0. 0. 0.')
 
-            nr=setup%get_int('NUMBER_RECEIVER','NR')
+            nr=setup%get_int('NUMBER_RECEIVER','NR',o_default='1')
             rcomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',o_default='p')
+
+            is_first_in=.false.
+        
         endif
 
-        first_in=.false.
-
         if(.not.m%is_cubic) then
-            os(3)=0.; or(3)=0.
+            fs(3)=0.; fr(3)=0.
             ds(3)=0.; dr(3)=0.
         endif
 
         !source side
-        shot%src%z=os(1)+(shot%index-1)*ds(1)
-        shot%src%x=os(2)+(shot%index-1)*ds(2)
-        shot%src%y=os(3)+(shot%index-1)*ds(3)
+        shot%src%z=fs(1)+(shot%index-1)*ds(1)
+        shot%src%x=fs(2)+(shot%index-1)*ds(2)
+        shot%src%y=fs(3)+(shot%index-1)*ds(3)
 
         !receiver side
         shot%nrcv=nr*size(rcomp)
@@ -389,12 +391,12 @@ use m_model
         if(allocated(shot%rcv)) deallocate(shot%rcv)
         allocate(shot%rcv(shot%nrcv))
 
-        do j=1,size(rcomp)
+        do j=0,size(rcomp)-1
             do i=0,nr-1
-                shot%rcv(1+i+j*nr)%comp = rcomp(j)%s
-                shot%rcv(1+i+j*nr)%z = or(1) + (i-1)*dr(1)
-                shot%rcv(1+i+j*nr)%x = or(2) + (i-1)*dr(2)
-                shot%rcv(1+i+j*nr)%y = or(3) + (i-1)*dr(3)
+                shot%rcv(1+i+j*nr)%comp = rcomp(j+1)%s
+                shot%rcv(1+i+j*nr)%z = fr(1) + i*dr(1)
+                shot%rcv(1+i+j*nr)%x = fr(2) + i*dr(2)
+                shot%rcv(1+i+j*nr)%y = fr(3) + i*dr(3)
             enddo
         enddo
 
@@ -402,33 +404,34 @@ use m_model
 
     subroutine geometry_streamer(shot)
         type(t_shot) :: shot
-        logical :: first_in=.true.
-        real,dimension(3),save :: os,ooff, ds,doff
-        integer,save :: noff
+        logical :: is_first_in=.true.
+        real,dimension(3),save :: fs=0.,foff=0.
+        real,dimension(3),save :: ds=0.,doff=0.
+        integer,save :: noff=1
         type(t_string),dimension(:),allocatable,save :: rcomp
 
-        if(first_in) then
-            os  =setup%get_reals('SOURCE_ORIGIN','OS')
-            ooff=setup%get_reals('OFFSET_ORIGIN','OOFF')
+        if(is_first_in) then
+            fs  =setup%get_reals('SOURCE_FIRST','FS',o_default='0. 0. 0.')
+            foff=setup%get_reals('OFFSET_FIRST','FOFF',o_default='0. 0. 0.')
 
-            ds  =setup%get_reals('SOURCE_SPACING', 'DS')
-            doff=setup%get_reals('OFFSET_SPACING', 'DOFF')
+            ds  =setup%get_reals('SOURCE_SPACING', 'DS',o_default='0. 0. 0.')
+            doff=setup%get_reals('OFFSET_SPACING', 'DOFF',o_default='0. 0. 0.')
 
-            noff=setup%get_int('NUMBER_OFFSET','NOFF')
+            noff=setup%get_int('NUMBER_OFFSET','NOFF',o_default='1')
             rcomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',o_default='p')
         endif
 
-        first_in=.false.
+        is_first_in=.false.
 
         if(.not.m%is_cubic) then
-            os(3)=0.; ooff(3)=0.
+            fs(3)=0.; foff(3)=0.
             ds(3)=0.; doff(3)=0.
         endif
 
         !source side
-        shot%src%z=os(1)+(shot%index-1)*ds(1)
-        shot%src%x=os(2)+(shot%index-1)*ds(2)
-        shot%src%y=os(3)+(shot%index-1)*ds(3)
+        shot%src%z=fs(1)+(shot%index-1)*ds(1)
+        shot%src%x=fs(2)+(shot%index-1)*ds(2)
+        shot%src%y=fs(3)+(shot%index-1)*ds(3)
 
         !receiver side
         shot%nrcv=nr*size(rcomp)
@@ -436,9 +439,9 @@ use m_model
         if(allocated(shot%rcv)) deallocate(shot%rcv)
         allocate(shot%rcv(shot%nrcv))
 
-        do j=1,size(rcomp)
+        do j=0,size(rcomp)-1
             do i=0,nr-1
-                shot%rcv(1+i+j*nr)%comp = rcomp(j)%s
+                shot%rcv(1+i+j*nr)%comp = rcomp(j+1)%s
                 shot%rcv(1+i+j*nr)%z = shot%src%z + off(1) + (i-1)*doff(1)
                 shot%rcv(1+i+j*nr)%x = shot%src%x + off(2) + (i-1)*doff(2)
                 shot%rcv(1+i+j*nr)%y = shot%src%y + off(3) + (i-1)*doff(3)
@@ -449,19 +452,19 @@ use m_model
 
     subroutine geometry_spread_irregular(shot)
         type(t_shot) :: shot
-        logical :: first_in=.true.
+        logical :: is_first_in=.true.
         character(:),allocatable,save :: spos, rpos
         integer, save :: nr
         type(t_string),dimension(:),allocatable,save :: rcomp
 
-        if(first_in) then            
+        if(is_first_in) then            
             spos=setup%get_file('FILE_SOURCE_POSITION','SPOS',o_mandatory=.true.)
             rpos=setup%get_file('FILE_RECEIVER_POSITION','RPOS',o_mandatory=.true.)
 
             rcomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',o_default='p')
         endif
 
-        first_in=.false.
+        is_first_in=.false.
 
         !read source
         open(13,file=spos,action='read')
@@ -658,6 +661,7 @@ use m_model
             shot%src%y = (m%ny-2)*m%dy
             call hud(str//'sy beyond rear bnd of model! Set sy = (ny-2)*dy.',mpiworld%iproc)
         endif
+        deallocate(str)
 
         !check receiver positions
         str='Shot# '//shot%sindex//' has receiver(s) '

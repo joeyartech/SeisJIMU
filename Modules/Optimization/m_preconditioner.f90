@@ -116,9 +116,7 @@ use m_parameterization
         
         call alloc(tmp,m%nz,m%nx,m%ny,o_init=1.)
 
-        open(10,file=file,access='stream',action='read')
-        read(10) tmp
-        close(10)
+        call sysio_read(file,tmp,size(tmp))
 
         self%preco=self%preco*tmp
 

@@ -1,6 +1,7 @@
 module m_matchfilter
 use m_either
 use m_mpienv
+use m_sysio
 use singleton
 
     private
@@ -32,10 +33,10 @@ use singleton
         filter = nom/(denom+eps)
         
         if(present(o_index)) then
-            open(12,file='matchfilters_amp',access='direct',recl=4*nt) !for purpose of quality control of results
+            open(12,file=dir_out//'matchfilters_amp',access='direct',recl=4*nt) !for purpose of quality control of results
             write(12,rec=index) real(abs(filter),kind=4)
             close(12)
-            open(12,file='matchfilters_phase',access='direct',recl=4*nt) !for purpose of quality control of results
+            open(12,file=dir_out//'matchfilters_phase',access='direct',recl=4*nt) !for purpose of quality control of results
             write(12,rec=index) real(atan(filter),kind=4)
             close(12)
         endif

@@ -15,8 +15,8 @@ use m_optimizer
     !mpiworld lives in t_mpienv
     call mpiworld%init(name='MPIWorld',communicator=MPI_COMM_WORLD)
 
-    call hud('======================================'//s_return// &
-             '       WELCOME TO SeisJIMU FWI        '//s_return// &
+    call hud('======================================'//s_NL// &
+             '       WELCOME TO SeisJIMU FWI        '//s_NL// &
              '======================================')
     
     call setup%init

@@ -3,6 +3,7 @@ use m_string
 use m_mpienv
 use m_arrayop
 use m_setup
+use m_sysio
 use m_resampler
 use m_model
 use m_shot
@@ -23,23 +24,24 @@ use m_cpml
     type,public :: t_propagator
         !info
         character(i_str_xxlen) :: info = &
-            'Time-domain ISOtropic 2D/3D ACoustic system'//s_return// &
-            '1st-order Velocity-Stress formulation'//s_return// &
-            'Required model components: vp, rho'//s_return// &
-            'Required field components: vx, vy, vz, p'//s_return// &
-            'Staggered-Grid Finite-Difference (FDSG) method'//s_return// &
-            'Cartesian O(x4,t2) stencil'//s_return// &
-            'gradients wrt: kpa rho'//s_return// &
+            'Time-domain ISOtropic 2D/3D ACoustic system'//s_NL// &
+            '1st-order Velocity-Stress formulation'//s_NL// &
+            'Required model attributes: vp, rho'//s_NL// &
+            'Required field components: vx, vy, vz, p'//s_NL// &
+            'Staggered-Grid Finite-Difference (FDSG) method'//s_NL// &
+            'Cartesian O(x4,t2) stencil'//s_NL// &
+            'basic gradients: grho gkpa'//s_NL// &
             'imaging condition: P-Pxcorr'
 
         integer :: ngrad=2 !number of meta gradients
         integer :: nimag=1 !number of meta images
 
         !shorthand for greek letters
-        !alp bta gma  del(dta) eps zta 
-        !eta tht iota kpa lda mu
-        !nu xi omi pi rho sgm
-        !tau ups phi chi psi oga
+        !alfa bta gma del(dta) eps
+        !zta eta thta iota 
+        !kpa lda mu nu
+        !xi omi pi rho
+        !sgma tau ups phi chi psi oga
         !
         !buo : buoyancy
         !vx,vy : horizontal velocities
@@ -51,7 +53,6 @@ use m_cpml
         !time frames
         integer :: nt
         real :: dt, rdt
-        real :: time_window
 
         contains
         procedure :: print_info => print_info
@@ -90,7 +91,7 @@ use m_cpml
     subroutine print_info(self)
         class(t_propagator) :: self
 
-        call hud('Invoked field & propagator modules info : '//s_return//self%info)
+        call hud('Invoked field & propagator modules info : '//s_NL//self%info)
         if(mpiworld%is_master) then
             write(*,*) 'Coeff:',coef
         endif
@@ -121,27 +122,27 @@ use m_cpml
         class(t_propagator) :: self
 
         !grid dispersion condition
-        ! if (5.*m%cell_diagonal > cb%velmin/shot%fpeak/2.) then  !FDTDo4 rule
-        if (5.*m%dz > cb%velmin/shot%fmax) then  !FDTDo4 rule
-            call warn('Shot# '//shot%sindex//' can have grid dispersion!'//s_return// &
-                ' 5*dz, velmin, fmax = ',num2str(5.*m%dz), num2str(cb%velmin),num2str(shot%fmax))
+        ! if (5.*m%cell_diagonal > cb%velmin/shot%fpeak/2.) then  !FDTD O4 rule
+        if (5.*m%dz > cb%velmin/shot%fmax) then  !FDTD O4 rule
+            call warn('Shot# '//shot%sindex//' can have grid dispersion!'//s_NL// &
+                ' 5*dz, velmin, fmax = '//num2str(5.*m%dz)//', '//num2str(cb%velmin)//', '//num2str(shot%fmax))
         endif
         
         !time frames
         self%nt=shot%nt
         self%dt=shot%dt
-        self%time_window=(shot%nt-1)*shot%dt
+        time_window=(shot%nt-1)*shot%dt
 
         CFL = cb%velmax*self%dt*m%cell_inv_diagonal*sum(abs(coef))! ~0.494 (3D); ~0.606 (2D)
-        call hud('CFL value:'//num2str(CFL))
+        call hud('CFL value: '//num2str(CFL))
         
         if(CFL>1.) then
-            call warn('CFL > 1 on shot# '//shot%sindex//'!'//s_return//&
-                'velmax, dt, 1/dx = '//num2str(cb%velmax)//num2str(shot%dt)//num2str(m%cell_inv_diagonal)//s_return//&
-                'Will need the CFL value from setup file.')
+            call warn('CFL > 1 on Shot# '//shot%sindex//'!'//s_NL//&
+                'velmax, dt, 1/dx = '//num2str(cb%velmax)//', '//num2str(shot%dt)//', '//num2str(1./m%dz) //s_NL//&
+                'Will adjust dt s.t. CFL < 1')
 
             self%dt = setup%get_real('CFL',o_default='0.9')/ (cb%velmax*m%cell_inv_diagonal*sum(abs(coef)))
-            self%nt=nint(self%time_window/self%dt)+1
+            self%nt=nint(time_window/self%dt)+1
 
             write(*,*) 'Adjusted dt, nt =',self%dt,self%nt,'on shot# '//shot%sindex
 
@@ -190,7 +191,7 @@ use m_cpml
         logical,optional :: oif_will_reconstruct
 
         !field
-        call f%init(name,self%nt,self%dt,is_shear_in=.false.)
+        call f%init(name,self%nt,self%dt,if_shear_in=.false.)
 
         call alloc(f%vz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%vx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -204,38 +205,28 @@ use m_cpml
         call alloc(f%dp_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%dp_dy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
-        call alloc(f%vz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%vx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%vy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%p, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        
-        !call alloc(f%wavelet,self%nt)
-        !call resampler(shot%wavelet,f%wavelet,1,din=shot%dt,nin=shot%nt,dout=self%dt,nout=self%nt)
-        !
-        !call alloc(f%seismo,shot%nrcv,self%nt)
-
         call f%init_bloom(origin)
-
         if(either(oif_will_reconstruct,.false.,present(oif_will_reconstruct))) then
             call f%init_boundary
         endif
-
+        
     end subroutine
     
-    !========= forward propagation =================
-    !WE: du_dt = MDu
-    !u=[vx vy vz p]^T, p=(sxx+syy+szz)/3=sxx+syy+szz
-    !  [diag3(b)  0  ]    [0   0   0   dx]
-    !M=[   0     kpa ], D=|0   0   0   dy|
-    !  (b=1/rho)          |0   0   0   dz|
-    !                     [dx  dy  dz  0 ]
+    !========= forward modeling =================
+    !WE: M du_dt = Du + s
+    !u=[vx vy vz p]^T, p=(sxx+syy+szz)/3=sxx+syy+szz, s=[fvx fvy fvz fp]^T*delta(x-xs)
+    !
+    !  [rho   0  ]    [0   0   0   dx]
+    !M=[ 0  1/kpa], D=|0   0   0   dy|
+    !                 |0   0   0   dz|
+    !                 [dx  dy  dz  0 ]
     !
     !Discretization (staggered grid in space and time):
     !  (grid index)     (real index)
     !  s(iz,ix,iy):=   s[iz,ix,iy]^it+0.5,it+1.5,...
+    ! vz(iz,ix,iy):=  vy[iz-0.5,ix,iy]^it,it+1,...
     ! vx(iz,ix,iy):=  vx[iz,ix-0.5,iy]^it,it+1,...
     ! vy(iz,ix,iy):=  vy[iz,ix,iy-0.5]^it,it+1,...
-    ! vz(iz,ix,iy):=  vy[iz-0.5,ix,iy]^it,it+1,...
 
     subroutine forward(self,f,oif_will_reconstruct)
         class(t_propagator) :: self
@@ -319,31 +310,31 @@ use m_cpml
         ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
         ify=shot%src%ify; iy=shot%src%iy; ily=shot%src%ily
         
-        source_term=time_dir*f%wavelet(1,it)
+        wl=time_dir*f%wavelet(1,it)
         
         if(if_hicks) then
             select case (shot%src%comp)
                 case ('vz')
-                f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + source_term*self%buoz(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
+                f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoz(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
                 
                 case ('vx')
-                f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + source_term*self%buox(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
+                f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buox(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
                 
                 case ('vy')
-                f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + source_term*self%buoy(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
+                f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoy(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
                 
             end select
             
         else
             select case (shot%src%comp)
                 case ('vz') !vertical force     on vz[iz-0.5,ix,iy]
-                f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + source_term*self%buoz(iz,ix,iy)
+                f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + wl*self%buoz(iz,ix,iy)
                 
                 case ('vx') !horizontal x force on vx[iz,ix-0.5,iy]
-                f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + source_term*self%buox(iz,ix,iy)
+                f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + wl*self%buox(iz,ix,iy)
                 
                 case ('vy') !horizontal y force on vy[iz,ix,iy-0.5]
-                f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + source_term*self%buoy(iz,ix,iy)
+                f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + wl*self%buoy(iz,ix,iy)
                 
             end select
             
@@ -393,14 +384,14 @@ use m_cpml
         ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
         ify=shot%src%ify; iy=shot%src%iy; ily=shot%src%ily
         
-        source_term=time_dir*f%wavelet(1,it)
+        wl=time_dir*f%wavelet(1,it)
         
         if(if_hicks) then
-            f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + source_term *shot%src%interp_coef
+            f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
             
         else
             !explosion on s[iz,ix,iy]
-            f%p(iz,ix,iy) = f%p(iz,ix,iy) + source_term
+            f%p(iz,ix,iy) = f%p(iz,ix,iy) + wl*self%kpa(iz,ix,iy)
             
         endif
         
@@ -478,25 +469,24 @@ use m_cpml
     end subroutine
     
     !========= adjoint propagation =================
-    !WE:        du_dt   = MDu   + src
-    !->        Ndu_dt   = Du    + Nsrc, N=M^-1
-    !Adjoint:  Ndv_dt^T = D^Tv  + adjsrc
-    !->        -dv_dt   =-MDv   + Mr
-    !     (reverse time) (negative derivatives)
+    !WEq:      Mdu_dt   = Du   + src
+    !Adjoint:  Mdv_dt^T = D^Tv + adjsrc
     !
     !Discrete form (staggered grid in space and time, 2D as example):
-    ! N  [vx^it+1  ] [vx^it    ]   [ 0     0    dx(-)][vx^it+1  ]
-    !----|vz^it+1  |-|vz^it    | = | 0     0    dz(-)||vz^it+1  |  +Nsrc
-    ! dt [ s^it+1.5] [ s^it+0.5]   [dx(+) dz(+)  0   ][ s^it+0.5]
-    !dx(-):=a1(s(ix)-s(ixm1))+a2(s(ixp1)-s(ixm2))  (O(x4))
-    !dx(+):=a1(v(ixp1)-v(ix))+a2(v(ixp2)-v(ixm1))  (O(x4))
+    ! M  [ [vx^it+1  ] [vx^it    ] ]   [ 0     0    dx(-)][vx^it+1  ]
+    !----| |vz^it+1  |-|vz^it    | | = | 0     0    dz(-)||vz^it+1  |  +src
+    ! dt [ [ s^it+1.5] [ s^it+0.5] ]   [dx(+) dz(+)  0   ][ s^it+0.5]
+    !dx(-):=c1(s(ix)-s(ixm1))+c2(s(ixp1)-s(ixm2))  (O(x4))
+    !dx(+):=c1(v(ixp1)-v(ix))+c2(v(ixp2)-v(ixm1))  (O(x4))
+    !
     !Adjoint:
-    ! N  [vx^it    ] [vx^it+1  ]   [ 0       0      dx(+)^T][vx^it+1  ]
-    !----|vz^it    |-|vz^it+1  | = | 0       0      dz(+)^T||vz^it+1  |  +Nsrc
-    ! dt [ s^it+0.5] [ s^it+1.5]   [dx(-)^T dz(-)^T  0     ][ s^it+0.5]
-    !dx(+)^T=a1(s(ixm1)-s(ix))+a2(s(ixm2)-s(ixp1))=-dx(-)
-    !dx(-)^T=a1(v(ix)-v(ixp1))+a2(v(ixm1)-v(ixp2))=-dx(+)
-    !-dx,-dz can be regarded as -dt, thus allowing to use same code with flip of dt sign.
+    ! M  [ [vx^it    ] [vx^it+1  ] ]   [ 0       0      dx(+)^T][vx^it+1  ]
+    !----| |vz^it    |-|vz^it+1  | | = | 0       0      dz(+)^T||vz^it+1  |  +src
+    ! dt [ [ s^it+0.5] [ s^it+1.5] ]   [dx(-)^T dz(-)^T  0     ][ s^it+0.5]
+    !dx(+)^T=c1(s(ixm1)-s(ix))+c2(s(ixm2)-s(ixp1))=-dx(-)
+    !dx(-)^T=c1(v(ix)-v(ixp1))+c2(v(ixm1)-v(ixp2))=-dx(+)
+    !i.e. D^T=-D, allowing to use same code with a negated sign for dt.
+    !
     !transposes of time derivatives centered on v^it+0.5 and s^it+1
     !so v^it+1   - v^it     => v^it - v^it+1
     !   s^it+1.5 - s^it+0.5 => s^it+0.5 - s^it+1.5
@@ -595,14 +585,14 @@ use m_cpml
             if(present(o_sf).and.mod(it,i_rdt)==0) then
                 if(present(o_grad)) then
                     call cpu_time(tic)
-                    call gradient_moduli(o_sf,rf,it,o_grad(:,:,:,1))
+                    call gradient_moduli(o_sf,rf,it,o_grad(:,:,:,2))
                     call cpu_time(toc)
                 endif
                 tt6=tt6+toc-tic
 
                 if(present(o_imag)) then
                     call cpu_time(tic)
-                    call imaging(o_sf,rf,o_imag)
+                    call imaging(o_sf,rf,it,o_imag)
                     call cpu_time(toc)
                 endif
                 tt6=tt6+toc-tic
@@ -652,7 +642,7 @@ use m_cpml
             if(present(o_sf).and.mod(it,i_rdt)==0) then
                 if(present(o_grad)) then
                     call cpu_time(tic)
-                    call gradient_density(o_sf,rf,it,o_grad(:,:,:,2))
+                    call gradient_density(o_sf,rf,it,o_grad(:,:,:,1))
                     call cpu_time(toc)
                     tt12=tt12+toc-tic
                 endif
@@ -662,16 +652,8 @@ use m_cpml
             call rf%write(it)
             if(present(o_sf)) call o_sf%write(it,o_suffix='_back')
             
-            if(present(o_grad)) then
-                open(26,file='snap_grad',access='stream')
-                write(26) o_grad
-                close(26)
-            endif
-            if(present(o_imag)) then
-                open(26,file='snap_imag',access='stream')
-                write(26) o_imag
-                close(26)
-            endif
+            if(present(o_grad)) call sysio_write('snap_grad',o_grad,size(o_grad),o_mode='append')
+            if(present(o_imag)) call sysio_write('snap_imag',o_imag,size(o_imag),o_mode='append')
                         
         enddo
         
@@ -709,17 +691,15 @@ use m_cpml
             ifx=shot%rcv(i)%ifx; ix=shot%rcv(i)%ix; ilx=shot%rcv(i)%ilx
             ify=shot%rcv(i)%ify; iy=shot%rcv(i)%iy; ily=shot%rcv(i)%ily
             
-            !pressure adjsource
-            tmp=f%wavelet(i,it)
+            !adjsource for pressure
+            wl=f%wavelet(i,it)
             
             if(if_hicks) then 
-                f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) &
-                    +tmp* self%kpa(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef
-            
+                f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef
+
             else           
                 !p[iz,ix,iy]
-                f%p(iz,ix,iy) = f%p(iz,ix,iy)  &
-                    +tmp* self%kpa(iz,ix,iy)
+                f%p(iz,ix,iy) = f%p(iz,ix,iy) +wl*self%kpa(iz,ix,iy)
             
             endif
             
@@ -749,34 +729,34 @@ use m_cpml
             ifx=shot%rcv(i)%ifx; ix=shot%rcv(i)%ix; ilx=shot%rcv(i)%ilx
             ify=shot%rcv(i)%ify; iy=shot%rcv(i)%iy; ily=shot%rcv(i)%ily
             
-            tmp=f%wavelet(i,it)
+            wl=f%wavelet(i,it)
             
             if(if_hicks) then
                 select case (shot%rcv(i)%comp)
-                    case ('vz') !horizontal z adjsource
-                    f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + tmp*self%buoz(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef
+                    case ('vz') !vertical z adjsource
+                    f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef
 
                     case ('vx') !horizontal x adjsource
-                    f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + tmp*self%buox(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef
+                    f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buox(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef
                     
                     case ('vy') !horizontal y adjsource
-                    f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + tmp*self%buoy(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef
+                    f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef
                     
                 end select
                 
             else
                 select case (shot%rcv(ircv)%comp)
-                    case ('vz') !horizontal z adjsource
+                    case ('vz') !vertical z adjsource
                     !vz[ix,iy,iz-0.5]
-                    f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + tmp*self%buoz(iz,ix,iy)
+                    f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + wl*self%buoz(iz,ix,iy)
 
                     case ('vx') !horizontal x adjsource
                     !vx[ix-0.5,iy,iz]
-                    f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + tmp*self%buox(iz,ix,iy)
+                    f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + wl*self%buox(iz,ix,iy)
                     
                     case ('vy') !horizontal y adjsource
                     !vy[ix,iy-0.5,iz]
-                    f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + tmp*self%buoy(iz,ix,iy)
+                    f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + wl*self%buoy(iz,ix,iy)
                     
                 end select
                 
@@ -808,7 +788,7 @@ use m_cpml
         if(if_hicks) then
             select case (shot%src%comp)
                 case ('p')
-                f%seismo(1,it)=sum(self%inv_kpa(ifz:ilz,ifx:ilx,ify:ily)*f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef )
+                f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef)
                 
                 case ('vz')
                 f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
@@ -824,7 +804,7 @@ use m_cpml
         else
             select case (shot%src%comp)
                 case ('p') !p[iz,ix,iy]
-                f%seismo(1,it)=self%inv_kpa(iz,ix,iy)*f%p(iz,ix,iy)
+                f%seismo(1,it)=f%p(iz,ix,iy)
                 
                 case ('vz') !vz[iz-0.5,ix,iy]
                 f%seismo(1,it)=f%vz(iz,ix,iy)
@@ -847,38 +827,15 @@ use m_cpml
     end subroutine
 
     !========= for wavefield correlation ===================   
-    !gkpa = -1/kpa2    dp_dt \dot adjp
-    !     = -1/kpa \nabla.v  \dot adjp
-    !v^it+1, p^it+0.5, adjp^it+0.5
+    !grho = -adjv \dot dv_dt
+    !     = -adjv \dot b \nabla p
     !
-    !grho = dv_dt      \dot adjv
-    !     = b \nabla p \dot adjv
+    !gkpa = -adjp \dot -1/kpa2 dp_dt
+    !     = -adjp \dot -1/kpa  \nabla.v
+    !
+    !v^it+1, p^it+0.5, adjp^it+0.5
     !p^it+0.5, v^it, adjv^it
     !use (v[i+1]+v[i])/2 to approximate v[i+0.5], so is adjv
-    
-    subroutine gradient_moduli(sf,rf,it,grad)
-        type(t_field), intent(in) :: sf, rf
-        real,dimension(cb%mz,cb%mx,cb%my) :: grad
-        
-        !nonzero only when sf touches rf
-        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
-        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz-2)
-        ifx=max(sf%bloom(3,it),rf%bloom(3,it),2)
-        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx-2)
-        ify=max(sf%bloom(5,it),rf%bloom(5,it),2)
-        ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my-2)
-        
-        if(m%is_cubic) then
-            call grad3d_moduli(sf%vz,sf%vx,sf%vy,rf%p,&
-                               grad,                  &
-                               ifz,ilz,ifx,ilx,ify,ily)
-        else
-            call grad2d_moduli(sf%vz,sf%vx,rf%p,&
-                               grad,            &
-                               ifz,ilz,ifx,ilx)
-        endif
-        
-    end subroutine
     
     subroutine gradient_density(sf,rf,it,grad)
         type(t_field), intent(in) :: sf, rf
@@ -903,15 +860,42 @@ use m_cpml
         endif
         
     end subroutine
+
+    subroutine gradient_moduli(sf,rf,it,grad)
+        type(t_field), intent(in) :: sf, rf
+        real,dimension(cb%mz,cb%mx,cb%my) :: grad
+        
+        !nonzero only when sf touches rf
+        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
+        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz-2)
+        ifx=max(sf%bloom(3,it),rf%bloom(3,it),2)
+        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx-2)
+        ify=max(sf%bloom(5,it),rf%bloom(5,it),2)
+        ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my-2)
+        
+        if(m%is_cubic) then
+            call grad3d_moduli(sf%vz,sf%vx,sf%vy,rf%p,&
+                               grad,                  &
+                               ifz,ilz,ifx,ilx,ify,ily)
+        else
+            call grad2d_moduli(sf%vz,sf%vx,rf%p,&
+                               grad,            &
+                               ifz,ilz,ifx,ilx)
+        endif
+        
+    end subroutine
     
     subroutine gradient_scaling(self,grad)
         class(t_propagator) :: self
         real,dimension(cb%mz,cb%mx,cb%my,self%ngrad) :: grad
         
-        grad(:,:,:,1)=grad(:,:,:,1) * (-self%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my))
+        !grho, in [J/(kg/m3)]
+        grad(:,:,:,1)=-grad(:,:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)          *m%cell_volume*self%rdt
 
-        grad(:,:,:,2)=grad(:,:,:,2) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
+        !gkpa, in [J/Pa]
+        grad(:,:,:,2)=-grad(:,:,:,2) * (-self%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my)) *m%cell_volume*self%rdt
 
+        !preparing for cb%project_back
         grad(1,:,:,:) = grad(2,:,:,:)
         grad(cb%mz-1,:,:,:) = grad(cb%mz-2,:,:,:)
         grad(cb%mz,  :,:,:) = grad(cb%mz-2,:,:,:)
@@ -925,14 +909,31 @@ use m_cpml
             grad(:,:,cb%my-1,:) = grad(:,:,cb%my-2,:)
             grad(:,:,cb%my  ,:) = grad(:,:,cb%my-2,:)
         endif
+                
+    end subroutine
+
+    subroutine imaging(sf,rf,it,imag)
+        type(t_field), intent(in) :: sf, rf
+        real,dimension(cb%mz,cb%mx,cb%my) :: imag
         
-        !set unit of gkpa to be [m3], grho to be [m5/s2]
-        !such that after multiplied by (kpa_max-kpa_min) or (rho_max-rho_min) (will be done in m_parameterization.f90)
-        !the unit of parameter update is [Nm], same as Lagrangian
-        !and the unit of gradient scaling factor is [1/N/m] (in m_scaling.f90)
-        !therefore parameters become unitless
-        grad=grad*m%cell_volume*self%rdt
+        !nonzero only when sf touches rf
+        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
+        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz-2)
+        ifx=max(sf%bloom(3,it),rf%bloom(3,it),2)
+        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx-2)
+        ify=max(sf%bloom(5,it),rf%bloom(5,it),2)
+        ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my-2)
         
+        if(m%is_cubic) then
+            call imag3d_xcorr(sf%p,rf%p,&
+                              imag,                  &
+                              ifz,ilz,ifx,ilx,ify,ily)
+        else
+            call imag2d_xcorr(sf%p,rf%p,&
+                              imag,            &
+                              ifz,ilz,ifx,ilx)
+        endif
+
     end subroutine
 
     !========= Finite-Difference on flattened arrays ==================
@@ -1352,9 +1353,9 @@ use m_cpml
 
     end subroutine
     
-    subroutine grad3d_flat_density(sf_p,rf_vz,rf_vx,rf_vy,&
-                                   grad,                  &
-                                   ifz,ilz,ifx,ilx,ify,ily)
+    subroutine grad3d_density(sf_p,rf_vz,rf_vx,rf_vy,&
+                              grad,                  &
+                              ifz,ilz,ifx,ilx,ify,ily)
         real,dimension(*) :: sf_p,rf_vz,rf_vx,rf_vy
         real,dimension(*) :: grad
         
@@ -1519,8 +1520,8 @@ use m_cpml
         
     end subroutine
 
-    subroutine imag2d_xcorr(sf_p,rf_p,&
-                            imag,            &
+    subroutine imag2d_xcorr(sf_p,rf_p,     &
+                            imag,          &
                             ifz,ilz,ifx,ilx)
         real,dimension(*) :: sf_p,rf_p
         real,dimension(*) :: imag

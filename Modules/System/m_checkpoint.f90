@@ -173,7 +173,7 @@ use m_setup
         !     filesize=filesize/4
         !     if(filesize<oif_filesize) then
         !         call hud('At checkpoint '//self%name//','//&
-        !             ' the size of the requested file ('//num2str(filesize)//') is smaller than the prescribed size ('//(num2str(o_filesize))//')'//s_return//&
+        !             ' the size of the requested file ('//num2str(filesize)//') is smaller than the prescribed size ('//(num2str(o_filesize))//')'//s_NL//&
         !             'Will recompute the associated variables.')
         !         check=.false.
         !     endif
@@ -236,7 +236,9 @@ use m_setup
 
     subroutine close(self)
         class(t_checkpoint) :: self
+
         if(if_use_checkpoint.or.if_checkpoint) close(self%fp)
+        
     end subroutine
 
 end module

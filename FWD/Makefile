@@ -3,6 +3,14 @@ include ../make.inc
 include ../setup.inc
 
 
+obj = \
+../Modules/System/*.o \
+../Modules/Etc/*.o \
+../Modules/Signal/*.o \
+../Modules/Modeling/*.o
+
+all : mod exe
+
 mod :
 	#System
 	(cd ../Modules/System; make)
@@ -14,8 +22,8 @@ mod :
 	(cd ../Modules/Modeling; make)
 
 exe : main.o
-	mpif90 $(FLAGF90) $^ $(MOD) -o ../exe/$(app)_$(WaveEq)_$(Solver)_$(Order)
-	(cd ../exe; ln -sf $(app)_$(WaveEq)_$(Solver)_$(Order) $(APP) )
+	mpif90 $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/fwd_$(WaveEq)_$(Solver)_$(Order)
+	(cd ../exe; ln -sf fwd_$(WaveEq)_$(Solver)_$(Order) FWD )
 
 clean :
 	-rm main.o

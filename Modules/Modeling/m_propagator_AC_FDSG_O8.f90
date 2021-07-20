@@ -7,10 +7,10 @@ use m_boundarystore
 
     !info
     character(*),parameter :: info = &
-    'Time-domain Isotropic 2D/3D ACoustic system'//s_return// &
-    '1st-order Velocity-Stress formulation'//s_return// &
-    'Staggered-Grid Finite-Difference (FDSG) method'//s_return// &
-    'Cartesian O(x4,t2) stencil'//s_return// &
+    'Time-domain Isotropic 2D/3D ACoustic system'//s_NL// &
+    '1st-order Velocity-Stress formulation'//s_NL// &
+    'Staggered-Grid Finite-Difference (FDSG) method'//s_NL// &
+    'Cartesian O(x4,t2) stencil'//s_NL// &
     'gradients for: kpa rho'
     integer,parameter :: ngrad=2
 
@@ -108,7 +108,7 @@ use m_boundarystore
 
     subroutine print_info
 
-        call hud('Invoked field & propagator modules info : '//s_return//self%info)
+        call hud('Invoked field & propagator modules info : '//s_NL//self%info)
         if(mpiworld%is_master) then
             write(*,*) 'Coeff:',coef
         endif
