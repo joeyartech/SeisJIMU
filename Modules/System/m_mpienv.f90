@@ -88,7 +88,7 @@ use m_string
         character(*) :: filename, string
 
         integer fhandle
-        integer(kind=mpi_offset_kind) disp, offset
+        integer(kind=mpi_offset_kind) :: disp, offset
         character(:),allocatable :: stamp, str
 
         !time stamp

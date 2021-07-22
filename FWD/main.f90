@@ -41,8 +41,8 @@ use m_propagator
         stop
     endif
 
-    !print FD scheme and field info
-    ! call field%print_info   
+    !print FD scheme and propagator info
+    call propagator%print_info   
 
     !estimate required memory
     ! call m%estim_RAM
@@ -68,7 +68,7 @@ use m_propagator
 
     call chp%init('FWD_shotloop','Shot#','given')
     do i=1,shls%nshots_per_processor
-        call chp%count(str2int(shls%yield(i)))
+        call chp%count(shls%yield(i))
 
         call shot%init(shls%yield(i))
         call shot%read_from_setup
@@ -77,26 +77,28 @@ use m_propagator
 
         call hud('Modeling Shot# '//shot%sindex)
 
-        call cb%init
-        call cb%project(is_fdsg=index(propagator%info,'FDSG')>0,abslayer_width=cpml%nlayer)
+        call cb%init(propagator%nbndlayer)
+        call cb%project
 
         call propagator%check_discretization
         call propagator%init
         call propagator%init_field(field,name='field',origin='src',oif_will_reconstruct=.true.)
-
-print*,'!!!!!!!!!!!!!!!!'
+        call propagator%init_abslayer
+        
         call field%add_src
-print*,'!!!!!!!!!!!!!!!!'
+
         !forward modeling
         if(.not.field%is_registered(chp,'seismo')) then
+
             call propagator%forward(field)
+
             call field%register(chp,'seismo')
         endif
 
         call field%acquire
-        
+
         !write synthetic data
-        call suformat_write('dsyn_'//shot%sindex,shot%dsyn,shot%nt,shot%nrcv,o_dt=shot%dt,o_sindex=shot%sindex)
+        call shot%write('dsyn_')
 
     enddo
     

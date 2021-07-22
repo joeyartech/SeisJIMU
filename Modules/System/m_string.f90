@@ -375,7 +375,7 @@ module m_string
         do k=0,n-1
             text(k*maxlen+1:k*maxlen+len(strs(k+1)%s))=strs(k+1)%s
         enddo
-
+        
         text=text(1:len(text)-1) !remove very last glue
         
         str=lalign(remove_repetition(text,glue))

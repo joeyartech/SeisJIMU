@@ -2,6 +2,7 @@ module m_shot
 use m_string
 use m_mpienv
 use m_setup
+use m_sysio
 use m_suformat
 use m_hicks
 use m_wavelet
@@ -35,7 +36,7 @@ use m_model
         real    :: z,x,y, aoffset
         integer :: iz,ix,iy
         integer :: ifz,ilz,ifx,ilx,ify,ily
-        logical :: if_badtrace=.false.
+        logical :: is_badtrace=.false.
         character(4) :: comp
         real,dimension(:,:,:),allocatable :: interp_coef
     end type
@@ -67,6 +68,7 @@ use m_model
         procedure :: set_var_space => set_var_space
         procedure :: update_wavelet => update_wavelet
         procedure :: update_adjsource => update_adjsource
+        procedure :: write => write
         
     end type
     
@@ -74,12 +76,15 @@ use m_model
     
     contains
     
-    subroutine init(self,sindex)
+    subroutine init(self,index)
         class(t_shot) :: self
-        character(*) :: sindex
+        !character(*) :: sindex
 
-        self%sindex=sindex
-        self%index=str2int(sindex)
+        !self%sindex=sindex
+        !self%index=str2int(sindex)
+
+        self%index=index
+        self%sindex=num2str(index,'(i0.4)') !add leading zeros
     
     end subroutine
 
@@ -118,72 +123,55 @@ use m_model
     subroutine read_from_data(self)
         class(t_shot) :: self
 
-        type(t_suformat) :: data
+        type(t_suformat) :: sudata
         
-        call data%read(setup%get_file('FILE_DATA',o_mandatory=.true.),self%sindex)
+        call sudata%read(setup%get_file('FILE_DATA',o_mandatory=.true.),self%sindex)
+
+        self%nt=sudata%ns  !assume all traces have same ns
+        self%dt=sudata%dt  !assume all traces have same dt
+        
+        shot%nrcv=sudata%ntr
+        if(allocated(self%rcv))deallocate(self%rcv)
+        allocate(self%rcv(shot%nrcv))
+
+        scalel=sudata%hdrs(1)%scalel !assume same scalel for all traces
+        scalco=sudata%hdrs(1)%scalco !assume same scalco for all traces
+
+        if(scalel<0) scalel=-1./scalel
+        if(scalco<0) scalco=-1./scalco
 
         !source & receiver geometry
-        self%src%x=data%hdrs(1)%sx
-        self%src%y=data%hdrs(1)%sy
-        self%src%z=data%hdrs(1)%sdepth
+        self%src%z=sudata%hdrs(1)%sdepth*scalel !assume singal shot
+        self%src%x=sudata%hdrs(1)%sx    *scalco
+        self%src%y=sudata%hdrs(1)%sy    *scalco
         
         self%src%comp='p' !don't know which su header tells this info..
         
-        self%nt=data%ns  !assume all traces have same ns
-        self%dt=data%dt  !assume all traces have same dt
-        
-        ntr=data%ntr
-        if(allocated(self%rcv))deallocate(self%rcv)
-        allocate(self%rcv(ntr))
+        do i=1,shot%nrcv
+            self%rcv(i)%z=-sudata%hdrs(i)%gelev*scalco
+            self%rcv(i)%x= sudata%hdrs(i)%gx   *scalel
+            self%rcv(i)%y= sudata%hdrs(i)%gy   *scalel
 
-        shot%nrcv=ntr
-        do ir=1,ntr
-            self%rcv(ir)%x= data%hdrs(ir)%gx
-            self%rcv(ir)%y= data%hdrs(ir)%gy
-            self%rcv(ir)%z=-data%hdrs(ir)%gelev
-
-            self%rcv(ir)%if_badtrace = data%hdrs(ir)%trid==2 .or. data%hdrs(ir)%trid==3  !dead or dummy trace
+            self%rcv(i)%is_badtrace = sudata%hdrs(i)%trid==2 .or. sudata%hdrs(i)%trid==3  !dead or dummy trace
             
-            select case (data%hdrs(ir)%trid)
+            select case (sudata%hdrs(i)%trid)
             case (11)
-                self%rcv(ir)%comp='p'  !pressure
+                self%rcv(i)%comp='p'  !pressure
             case (12)
-                self%rcv(ir)%comp='vz' !vertical velocity
+                self%rcv(i)%comp='vz' !vertical velocity
             case (13)
-                self%rcv(ir)%comp='vy' !horizontal velocity
+                self%rcv(i)%comp='vy' !horizontal velocity
             case (14)
-                self%rcv(ir)%comp='vx'
+                self%rcv(i)%comp='vx'
             case default
-                self%rcv(ir)%comp='p'
+                self%rcv(i)%comp='p'
             end select
             
-        enddo        
+        enddo
 
-        !scale back elevation
-        if(data%hdrs(1)%scalel > 0) then
-            self%src%z    = self%src%z    * data%hdrs(1)%scalel
-            self%rcv(:)%z = self%rcv(:)%z * data%hdrs(1)%scalel
-        elseif(data%hdrs(1)%scalel < 0) then
-            self%src%z    = self%src%z    / (-data%hdrs(1)%scalel)
-            self%rcv(:)%z = self%rcv(:)%z / (-data%hdrs(1)%scalel)
-        endif
-        
-        !scale back coordinates
-        if(data%hdrs(1)%scalco > 0) then
-            self%src%x    = self%src%x    * data%hdrs(1)%scalco
-            self%src%y    = self%src%y    * data%hdrs(1)%scalco
-            self%rcv(:)%x = self%rcv(:)%x * data%hdrs(1)%scalco
-            self%rcv(:)%y = self%rcv(:)%y * data%hdrs(1)%scalco
-        elseif(data%hdrs(1)%scalco < 0) then
-            self%src%x    = self%src%x    / (-data%hdrs(1)%scalco)
-            self%src%y    = self%src%y    / (-data%hdrs(1)%scalco)
-            self%rcv(:)%x = self%rcv(:)%x / (-data%hdrs(1)%scalco)
-            self%rcv(:)%y = self%rcv(:)%y / (-data%hdrs(1)%scalco)
-        endif
-        
-        !load obs traces
+        !load traces
         call alloc(self%dobs,self%nt,self%nrcv)
-        self%dobs=data%trs
+        self%dobs=sudata%trs
         
     end subroutine
 
@@ -249,56 +237,75 @@ use m_model
                                       +(self%src%y-self%rcv(ir)%y)**2 )
         enddo
 
+        self%src%iz=nint(self%src%z/m%dz)+1
+        self%src%ix=nint(self%src%x/m%dx)+1
+        self%src%iy=nint(self%src%y/m%dy)+1
+        self%rcv(:)%iz=nint(self%rcv(:)%z/m%dz)+1
+        self%rcv(:)%ix=nint(self%rcv(:)%x/m%dx)+1
+        self%rcv(:)%iy=nint(self%rcv(:)%y/m%dy)+1
+
+        !Hicks interpolation
         self%if_hicks=setup%get_bool('IF_HICKS',o_default='T')
         
         if(self%if_hicks) then
 
-            !Hicks interpolation
             call hicks_init(m%dz,m%dx,m%dy,m%is_cubic,m%is_freesurface)
             
-            !hicks coeff for source point
+            !hicks coef for source point
             if(is_fdsg) then
                 !for vx,vy,vz components, hicks%x,y,z should be added by m%dx/2,dy/2,dz/2, respectively,
                 !because v(1) is actually v[0.5], v(2) is v[1.5] etc.
-                if(self%src%comp=='vz') call hicks_put_position(self%src%z+m%dz/2.,self%src%x        ,self%src%y        )
-                if(self%src%comp=='vx') call hicks_put_position(self%src%z        ,self%src%x+m%dx/2.,self%src%y        )
-                if(self%src%comp=='vy') call hicks_put_position(self%src%z        ,self%src%x        ,self%src%y+m%dy/2.)
+                select case (self%src%comp)
+                case('vz')
+                    call hicks_put_position(self%src%z+m%dz/2.,self%src%x        ,self%src%y        )
+                case('vx')
+                    call hicks_put_position(self%src%z        ,self%src%x+m%dx/2.,self%src%y        )
+                case('vy')
+                    call hicks_put_position(self%src%z        ,self%src%x        ,self%src%y+m%dy/2.)
+                end select
             else
                 call hicks_put_position(self%src%z,self%src%x,self%src%y)
             endif
 
-            if(self%src%comp=='p') then !explosive source or non-vertical force
+            select case (self%src%comp)
+            case('p') !explosive source or non-vertical force
                 call hicks_get_coef('antisymm', self%src%interp_coef)
-            elseif(self%src%comp=='vz') then !vertical force
+            case('vz') !vertical force
                 call hicks_get_coef('symmetric',self%src%interp_coef)
-            else
+            case default
                 call hicks_get_coef('truncate', self%src%interp_coef)
-            endif
+            end select
 
             call hicks_get_position(self%src%ifz, self%src%ifx, self%src%ify, &
                                     self%src%iz,  self%src%ix,  self%src%iy , &
                                     self%src%ilz, self%src%ilx, self%src%ily  )
 
-            !hicks coeff for receivers
+            !hicks coef for receivers
             do i=1,self%nrcv
 
                 if(is_fdsg) then
                     !for vx,vy,vz components, hicks%x,y,z should be added by m%dx/2,dy/2,dz/2, respectively,
                     !because v(1) is actually v[0.5], v(2) is v[1.5] etc.
-                    if(self%rcv(i)%comp=='vz') call hicks_put_position(self%rcv(i)%z+m%dz/2.,self%rcv(i)%x        ,self%rcv(i)%y        )
-                    if(self%rcv(i)%comp=='vx') call hicks_put_position(self%rcv(i)%z        ,self%rcv(i)%x+m%dx/2.,self%rcv(i)%y        )
-                    if(self%rcv(i)%comp=='vy') call hicks_put_position(self%rcv(i)%z        ,self%rcv(i)%x        ,self%rcv(i)%y+m%dy/2.)
+                    select case (self%rcv(i)%comp)
+                    case('vz')
+                        call hicks_put_position(self%rcv(i)%z+m%dz/2.,self%rcv(i)%x        ,self%rcv(i)%y        )
+                    case('vx')
+                        call hicks_put_position(self%rcv(i)%z        ,self%rcv(i)%x+m%dx/2.,self%rcv(i)%y        )
+                    case('vy')
+                        call hicks_put_position(self%rcv(i)%z        ,self%rcv(i)%x        ,self%rcv(i)%y+m%dy/2.)
+                    end select
                 else
                     call hicks_put_position(self%rcv(i)%z,self%rcv(i)%x,self%rcv(i)%y)
                 endif
 
-                if(self%rcv(i)%comp=='p') then !explosive source or non-vertical force
+                select case (self%rcv(i)%comp)
+                case ('p') !explosive source or non-vertical force
                     call hicks_get_coef('antisymm', self%rcv(i)%interp_coef)
-                elseif(self%rcv(i)%comp=='vz') then !vertical force
+                case ('vz') !vertical force
                     call hicks_get_coef('symmetric',self%rcv(i)%interp_coef)
-                else
+                case default
                     call hicks_get_coef('truncate', self%rcv(i)%interp_coef)
-                endif
+                end select
 
                 call hicks_get_position(self%rcv(i)%ifz, self%rcv(i)%ifx, self%rcv(i)%ify, &
                                         self%rcv(i)%iz , self%rcv(i)%ix , self%rcv(i)%iy , &
@@ -419,9 +426,10 @@ use m_model
 
             noff=setup%get_int('NUMBER_OFFSET','NOFF',o_default='1')
             rcomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',o_default='p')
-        endif
 
-        is_first_in=.false.
+            is_first_in=.false.
+
+        endif
 
         if(.not.m%is_cubic) then
             fs(3)=0.; foff(3)=0.
@@ -434,17 +442,17 @@ use m_model
         shot%src%y=fs(3)+(shot%index-1)*ds(3)
 
         !receiver side
-        shot%nrcv=nr*size(rcomp)
+        shot%nrcv=noff*size(rcomp)
 
         if(allocated(shot%rcv)) deallocate(shot%rcv)
         allocate(shot%rcv(shot%nrcv))
 
         do j=0,size(rcomp)-1
-            do i=0,nr-1
-                shot%rcv(1+i+j*nr)%comp = rcomp(j+1)%s
-                shot%rcv(1+i+j*nr)%z = shot%src%z + off(1) + (i-1)*doff(1)
-                shot%rcv(1+i+j*nr)%x = shot%src%x + off(2) + (i-1)*doff(2)
-                shot%rcv(1+i+j*nr)%y = shot%src%y + off(3) + (i-1)*doff(3)
+            do i=0,noff-1
+                shot%rcv(1+i+j*noff)%comp = rcomp(j+1)%s
+                shot%rcv(1+i+j*noff)%z = shot%src%z + foff(1) + (i-1)*doff(1)
+                shot%rcv(1+i+j*noff)%x = shot%src%x + foff(2) + (i-1)*doff(2)
+                shot%rcv(1+i+j*noff)%y = shot%src%y + foff(3) + (i-1)*doff(3)
             enddo
         enddo
 
@@ -628,7 +636,74 @@ use m_model
     !         enddo
     !     enddo
 
-    ! end subroutin
+    ! end subroutine
+
+    subroutine write(self,file)
+        class(t_shot) :: self
+        character(*) :: file
+        
+        character(:),allocatable :: format
+        type(t_suformat) :: sudata
+
+        format=setup%get_str('DATA_FORMAT',o_default='su')
+
+        if(format=='su') then
+
+            !add headers
+            allocate(sudata%hdrs(self%nrcv))
+            allocate(sudata%trs(self%nt,self%nrcv))
+
+            sudata%ntr=self%nrcv
+            sudata%ns=self%nt
+            sudata%dt=self%dt
+
+            scalel=real(setup%get_int('SU_SCALEL',o_default='1000')) !assume same scalel for all traces
+            scalco=real(setup%get_int('SU_SCALCO',o_default='1000')) !assume same scalco for all traces
+
+            sudata%hdrs(:)%scalel=int(scalel)
+            sudata%hdrs(:)%scalco=int(scalco)
+
+            if(scalel<0) scalel=-1./scalel
+            if(scalco<0) scalco=-1./scalco
+
+            do i=1,self%nrcv
+                sudata%hdrs(i)%tracl=i
+
+                sudata%hdrs(i)%sdepth= (self%src%z+m%oz)    *scalel 
+                sudata%hdrs(i)%gelev =-(self%rcv(i)%z+m%oz) *scalel
+
+                sudata%hdrs(i)%sx=(self%src%x+m%ox)         *scalco
+                sudata%hdrs(i)%sy=(self%src%y+m%oy)         *scalco
+                sudata%hdrs(i)%gx=(self%rcv(i)%x+m%ox)      *scalco
+                sudata%hdrs(i)%gy=(self%rcv(i)%y+m%oy)      *scalco
+
+                select case (self%rcv(i)%comp)
+                case ('p') !pressure
+                    sudata%hdrs(i)%trid=11
+                case ('vz') !vertical velocity
+                    sudata%hdrs(i)%trid=12
+                case ('vx') !horizontal velocity
+                    sudata%hdrs(i)%trid=13
+                case ('vy')
+                    sudata%hdrs(i)%trid=14
+                end select
+
+                if(self%rcv(i)%is_badtrace) sudata%hdrs(i)%trid=3 !dummy trace
+
+            enddo
+
+            sudata%trs=self%dsyn
+
+            call sudata%write(file//self%sindex)
+
+        endif
+
+        if(format/='su') then !binary format
+            call sysio_write(file//self%sindex,self%dsyn,size(self%dsyn))
+            
+        endif
+
+    end subroutine
 
     subroutine check_range(shot)
         type(t_shot) :: shot
@@ -670,7 +745,7 @@ use m_model
             call hud(str//'rz above top of model! Set rz = dz.',mpiworld%iproc)
         endif
         if(any(shot%rcv(:)%z>(m%nz-1)*m%dz)) then
-            where(shot%rcv(:)%z>(m%nz-1)*m%dz) shot%rcv(:)%z=(m%nz-2)*dz
+            where(shot%rcv(:)%z>(m%nz-1)*m%dz) shot%rcv(:)%z=(m%nz-2)*m%dz
             call hud(str//'rz below bottom of model! Set rz = (nz-2)*dz.',mpiworld%iproc)
         endif
         if(any(shot%rcv(:)%x<0.)) then

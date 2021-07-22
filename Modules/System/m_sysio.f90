@@ -47,12 +47,13 @@ use m_setup
             if(o_mode=='append') then
                 !open(12,file=dir_out//file,access='direct',recl=4*n,position='append')
                 open(12,file=dir_out//file,access='stream',position='append')
+                write(12) array
             endif
         else
             open(12,file=dir_out//file,access='direct',recl=4*n)
+            write(12,rec=1) array
         endif
-
-        write(12,rec=1) array
+        
         close(12)
 
     end subroutine

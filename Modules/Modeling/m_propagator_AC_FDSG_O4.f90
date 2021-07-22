@@ -4,6 +4,7 @@ use m_mpienv
 use m_arrayop
 use m_setup
 use m_sysio
+use m_hicks, only : hicks_r
 use m_resampler
 use m_model
 use m_shot
@@ -30,11 +31,13 @@ use m_cpml
             'Required field components: vx, vy, vz, p'//s_NL// &
             'Staggered-Grid Finite-Difference (FDSG) method'//s_NL// &
             'Cartesian O(x4,t2) stencil'//s_NL// &
+            'Required boundary layer thickness: 2'//s_NL// &
             'basic gradients: grho gkpa'//s_NL// &
             'imaging condition: P-Pxcorr'
 
-        integer :: ngrad=2 !number of meta gradients
-        integer :: nimag=1 !number of meta images
+        integer :: nbndlayer=max(2,hicks_r) !minimum absorbing layer thickness
+        integer :: ngrad=2 !number of basic gradients
+        integer :: nimag=1 !number of basic images
 
         !shorthand for greek letters
         !alfa bta gma del(dta) eps
@@ -61,6 +64,7 @@ use m_cpml
         procedure :: check_discretization => check_discretization
         procedure :: init => init
         procedure :: init_field => init_field
+        procedure :: init_abslayer => init_abslayer
 
         procedure :: forward => forward
         procedure :: inject_velocities => inject_velocities
@@ -93,10 +97,8 @@ use m_cpml
 
         call hud('Invoked field & propagator modules info : '//s_NL//self%info)
         if(mpiworld%is_master) then
-            write(*,*) 'Coeff:',coef
+            write(*,*) 'Coef:',coef
         endif
-        c1x=coef(1)/m%dx; c1y=coef(1)/m%dy; c1z=coef(1)/m%dz
-        c2x=coef(2)/m%dx; c2y=coef(2)/m%dy; c2z=coef(2)/m%dz
         
     end subroutine
     
@@ -108,8 +110,9 @@ use m_cpml
         class(t_propagator) :: self
         
         if(index(self%info,'vp')>0  .and. .not. allocated(m%vp)) then
-            allocate(m%vp(m%nz,m%nx,m%ny));  m%vp=2000.
-            call hud('Constant vp model (2 km/s) is allocated by propagator.')
+            call error('vp model is NOT given.')
+            !allocate(m%vp(m%nz,m%nx,m%ny));  m%vp=2000.
+            !call hud('Constant vp model (2 km/s) is allocated by propagator.')
         endif
 
         if(index(self%info,'rho')>0 .and. .not. allocated(m%rho)) then
@@ -152,10 +155,12 @@ use m_cpml
 
     subroutine init(self)
         class(t_propagator) :: self
+
+        c1x=coef(1)/m%dx; c1y=coef(1)/m%dy; c1z=coef(1)/m%dz
+        c2x=coef(2)/m%dx; c2y=coef(2)/m%dy; c2z=coef(2)/m%dz
         
         if_hicks=shot%if_hicks
 
-        !propagator - local model
         call alloc(self%buoz,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(self%buox,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(self%buoy,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -206,10 +211,17 @@ use m_cpml
         call alloc(f%dp_dy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
         call f%init_bloom(origin)
+
         if(either(oif_will_reconstruct,.false.,present(oif_will_reconstruct))) then
             call f%init_boundary
         endif
         
+    end subroutine
+
+    subroutine init_abslayer(self)
+        class(t_propagator) :: self
+
+        call cpml%init
     end subroutine
     
     !========= forward modeling =================
@@ -234,53 +246,56 @@ use m_cpml
         logical,optional :: oif_will_reconstruct
 
         integer,parameter :: time_dir=1 !time direction
+        logical :: if_will_reconstruct
+
+        if_will_reconstruct=either(oif_will_reconstruct,.false.,present(oif_will_reconstruct))
 
         ift=1; ilt=self%nt
 
         tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.
         
         do it=ift,ilt
-            if(mod(it,500)==0 .and. mpiworld%is_master) then
+            if(mod(it,50)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
                 call f%check_value
             endif
-            
+
             !do forward time stepping (step# conforms with backward & adjoint time stepping)
             !step 1: add forces to v^it
             call cpu_time(tic)
             call self%inject_velocities(f,time_dir,it)
             call cpu_time(toc)
             tt1=tt1+toc-tic
-                        
+
             !step 2: from v^it to v^it+1 by differences of s^it+0.5
             call cpu_time(tic)
             call self%update_velocities(f,time_dir,it)
             call cpu_time(toc)
             tt2=tt2+toc-tic
-            
+
             !step 3: add pressure to s^it+0.5
             call cpu_time(tic)
             call self%inject_stresses(f,time_dir,it)
             call cpu_time(toc)
             tt3=tt3+toc-tic
-            
+
             !step 4: from s^it+0.5 to s^it+1.5 by differences of v^it+1
             call cpu_time(tic)
             call self%update_stresses(f,time_dir,it)
             call cpu_time(toc)
             tt4=tt4+toc-tic
-            
+
             !step 5: sample v^it+1 or s^it+1.5 at receivers
             call cpu_time(tic)
             call self%extract(f,it)
             call cpu_time(toc)
             tt5=tt5+toc-tic
-            
+
             !snapshot
             call f%write(it)
-            
+
             !step 6: save v^it+1 in boundary layers
-            if(either(oif_will_reconstruct,.false.,present(oif_will_reconstruct))) then
+            if(if_will_reconstruct) then
                 call cpu_time(tic)
                 call f%boundary_transport('save',it)
                 call cpu_time(toc)
@@ -288,7 +303,7 @@ use m_cpml
             endif
 
         enddo
-                
+
         if(mpiworld%is_master) then
             write(*,*) 'time add source velocities',tt1/mpiworld%max_threads
             write(*,*) 'time update velocities    ',tt2/mpiworld%max_threads
@@ -297,7 +312,13 @@ use m_cpml
             write(*,*) 'time extract field        ',tt5/mpiworld%max_threads
             write(*,*) 'time save boundary        ',tt6/mpiworld%max_threads
         endif
-        
+
+        call hud('Viewing the snapshots (if written) with ximage/xmovie:')
+        write(*,'(a,i0.5,a)') 'ximage < snap_*  n1=',cb%nz,' perc=99'
+        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'                
+        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%mz,' n2=',cb%mx,' clip=?e-?? loop=2 title=%g'
+        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%mz,' n2=',cb%mx,' clip=?e-?? loop=2 title=%g'
+
     end subroutine
 
     !add RHS to v^it
@@ -347,31 +368,33 @@ use m_cpml
         class(t_propagator) :: self
         type(t_field) :: f
         integer :: time_dir, it
-        
+
         ifz=f%bloom(1,it)+2
         ilz=f%bloom(2,it)-1
         ifx=f%bloom(3,it)+2
         ilx=f%bloom(4,it)-1
         ify=f%bloom(5,it)+2
         ily=f%bloom(6,it)-1
-        
+
         if(m%is_freesurface) ifz=max(ifz,1)
-        
+
         if(m%is_cubic) then
             call fd3d_velocities(f%vz,f%vx,f%vy,f%p,                     &
                                  f%dp_dz,f%dp_dx,f%dp_dy,                &
                                  self%buoz,self%buox,self%buoy,          &
                                  ifz,ilz,ifx,ilx,ify,ily,time_dir*self%dt)
         else
+
             call fd2d_velocities(f%vz,f%vx,f%p,                           &
                                  f%dp_dz,f%dp_dx,                         &
                                  self%buoz,self%buox,                     &
                                  ifz,ilz,ifx,ilx,time_dir*time_dir*self%dt)
+
         endif
-        
+
         !apply free surface boundary condition if needed
         if(m%is_freesurface) call fd_freesurface_velocities(f%vz)
-        
+
     end subroutine
     
     !add RHS to s^it+0.5
@@ -387,11 +410,15 @@ use m_cpml
         wl=time_dir*f%wavelet(1,it)
         
         if(if_hicks) then
-            f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
+            if(shot%src%comp=='p') then
+                f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
+            endif
             
         else
-            !explosion on s[iz,ix,iy]
-            f%p(iz,ix,iy) = f%p(iz,ix,iy) + wl*self%kpa(iz,ix,iy)
+            if(shot%src%comp=='p') then
+                !explosion on s[iz,ix,iy]
+                f%p(iz,ix,iy) = f%p(iz,ix,iy) + wl*self%kpa(iz,ix,iy)
+            endif
             
         endif
         
@@ -411,7 +438,7 @@ use m_cpml
         ily=f%bloom(6,it)-2
         
         if(m%is_freesurface) ifz=max(ifz,1)
-        
+
         if(m%is_cubic) then
             call fd3d_stresses(f%vz,f%vx,f%vy,f%p,                     &
                                f%dvz_dz,f%dvx_dx,f%dvy_dy,             &
@@ -437,9 +464,10 @@ use m_cpml
             ifz=shot%rcv(i)%ifz; iz=shot%rcv(i)%iz; ilz=shot%rcv(i)%ilz
             ifx=shot%rcv(i)%ifx; ix=shot%rcv(i)%ix; ilx=shot%rcv(i)%ilx
             ify=shot%rcv(i)%ify; iy=shot%rcv(i)%iy; ily=shot%rcv(i)%ily
-            
+
             if(if_hicks) then
                 select case (shot%rcv(i)%comp)
+                    
                     case ('p')
                     f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef)
                     case ('vz')
@@ -463,7 +491,7 @@ use m_cpml
                 end select
                 
             endif
-            
+
         enddo
         
     end subroutine
@@ -678,6 +706,12 @@ use m_cpml
 
         endif
 
+        call hud('Viewing the snapshots (if written) with ximage/xmovie:')
+        write(*,'(a,i0.5,a)') 'ximage < snap_*  n1=',cb%nz,' perc=99'
+        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'                
+        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%mz,' n2=',cb%mx,' clip=?e-?? loop=2 title=%g'
+        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%mz,' n2=',cb%mx,' clip=?e-?? loop=2 title=%g'
+
     end subroutine
 
     !add RHS to s^it+1.5
@@ -745,7 +779,7 @@ use m_cpml
                 end select
                 
             else
-                select case (shot%rcv(ircv)%comp)
+                select case (shot%rcv(i)%comp)
                     case ('vz') !vertical z adjsource
                     !vz[ix,iy,iz-0.5]
                     f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + wl*self%buoz(iz,ix,iy)
@@ -823,7 +857,7 @@ use m_cpml
 
     subroutine fin(self)
         type(t_propagator) :: self
-        deallocate(self%buox, self%buoy, self%buoz, self%kpa, self%inv_kpa)
+        call dealloc(self%buox, self%buoy, self%buoz, self%kpa, self%inv_kpa)
     end subroutine
 
     !========= for wavefield correlation ===================   
@@ -1019,7 +1053,7 @@ use m_cpml
         nx=cb%nx
         
         dp_dz_=0.; dp_dx_=0.
-        
+
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,&
@@ -1027,10 +1061,10 @@ use m_cpml
         !$omp         dp_dz_,dp_dx_)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
-        
-            !dir$ simd
+
+            !!dir$ simd
             do iz=ifz,ilz
-                
+
                 i=(iz-cb%ifz)+(ix-cb%ifx)*nz+1
                 
                 izm2_ix=i-2  !iz-2,ix
@@ -1041,21 +1075,21 @@ use m_cpml
                 iz_ixm2=i  -2*nz  !iz,ix-2
                 iz_ixm1=i    -nz  !iz,ix-1
                 iz_ixp1=i    +nz  !iz,ix+1
-                
+
                 dp_dz_= c1z*(p(iz_ix)-p(izm1_ix)) +c2z*(p(izp1_ix)-p(izm2_ix))
                 dp_dx_= c1x*(p(iz_ix)-p(iz_ixm1)) +c2x*(p(iz_ixp1)-p(iz_ixm2))
-                
+
                 !cpml
                 dp_dz(iz_ix)= cpml%b_z_half(iz)*dp_dz(iz_ix) + cpml%a_z_half(iz)*dp_dz_
                 dp_dx(iz_ix)= cpml%b_x_half(ix)*dp_dx(iz_ix) + cpml%a_x_half(ix)*dp_dx_
 
                 dp_dz_=dp_dz_*cpml%kpa_z_half(iz) + dp_dz(iz_ix)
                 dp_dx_=dp_dx_*cpml%kpa_x_half(ix) + dp_dx(iz_ix)
-                
+
                 !velocity
                 vz(iz_ix)=vz(iz_ix) + dt*buoz(iz_ix)*dp_dz_
                 vx(iz_ix)=vx(iz_ix) + dt*buox(iz_ix)*dp_dx_
-                
+
             enddo
             
         enddo

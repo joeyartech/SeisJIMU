@@ -1,5 +1,6 @@
 module m_butterworth
 use m_either
+use m_math, only : r_pi
 
     private
     public :: butterworth

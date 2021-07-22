@@ -34,10 +34,10 @@ use singleton
         
         if(present(o_index)) then
             open(12,file=dir_out//'matchfilters_amp',access='direct',recl=4*nt) !for purpose of quality control of results
-            write(12,rec=index) real(abs(filter),kind=4)
+            write(12,rec=o_index) real(abs(filter),kind=4)
             close(12)
             open(12,file=dir_out//'matchfilters_phase',access='direct',recl=4*nt) !for purpose of quality control of results
-            write(12,rec=index) real(atan(filter),kind=4)
+            write(12,rec=o_index) real(atan(filter),kind=4)
             close(12)
         endif
         

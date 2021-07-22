@@ -42,3 +42,5 @@ cleanmod :
 	(cd Modules/Modeling; make clean)
 	(cd Modules/Kernel; make clean)
 	(cd Modules/Optimization; make clean)
+
+cleanall : cleanmod clean

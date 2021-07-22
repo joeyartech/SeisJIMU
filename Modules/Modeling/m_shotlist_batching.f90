@@ -428,9 +428,10 @@ use m_checkpoint
 
     function yield(self,i)
         class(t_shotlist) :: self
-        character(:),allocatable :: yield
+        !character(:),allocatable :: yield
+        integer :: yield
         
-        yield=self%shots_per_processor(i)%s
+        yield=str2int(self%shots_per_processor(i)%s)
 
     end function
 

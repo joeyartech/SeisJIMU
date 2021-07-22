@@ -112,10 +112,17 @@ use, intrinsic :: ieee_arithmetic
         snapshot=setup%get_strs('SNAPSHOT')
         if_snapshot=size(snapshot)>0 .and. mpiworld%is_master
         if(if_snapshot) then
-            n_snapshot=setup%get_real('REF_NUMBER_SNAPSHOT','NSNAPSHOT',o_default='50')
+            n_snapshot=setup%get_int('REF_NUMBER_SNAPSHOT','NSNAPSHOT',o_default='50')
             if(n_snapshot==0) n_snapshot=50
             i_snapshot=ceiling(nt*1./n_snapshot)
+
+            !rm existing snap files
+            call execute_command_line('rm '//dir_out//'snap*', wait=.true.)
+
         endif
+
+        !seismo
+        call alloc(self%seismo,shot%nrcv,nt)
 
     end subroutine
 
@@ -235,7 +242,7 @@ use, intrinsic :: ieee_arithmetic
 
         if(if_snapshot) then
 
-            if(mod(it,i_snapshot)==0) then
+            if(it==1 .or. mod(it,i_snapshot)==0 .or. it==nt) then
                 do i=1,size(snapshot)
                     select case (snapshot(i)%s)
                     case ('vz')
@@ -244,14 +251,6 @@ use, intrinsic :: ieee_arithmetic
                         call sysio_write('snap_'//self%name//'%p'//suf,self%p,size(self%p),o_mode='append')
                     end select
                 enddo
-            endif
-
-            if(it==1) then
-                call hud('Viewing the snapshots with ximage/xmovie:')
-                write(*,'(a,i0.5,a)') 'ximage < snap_*  n1=',cb%nz,' perc=99'
-                write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'                
-                write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%mz,' n2=',cb%mx,' clip=?e-?? loop=2 title=%g'
-                write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%mz,' n2=',cb%mx,' clip=?e-?? loop=2 title=%g'
             endif
 
         endif
@@ -265,9 +264,12 @@ use, intrinsic :: ieee_arithmetic
         !add adjoint source
         if(either(ois_adjoint,.false.,present(ois_adjoint))) then
             call alloc(self%wavelet,shot%nrcv,nt)
-            call resampler(shot%dadj(:,i),self%wavelet(i,:),shot%nrcv,din=shot%dt,nin=shot%nt,dout=dt,nout=nt)
+            do i=1,shot%nrcv
+                call resampler(shot%dadj(:,i),self%wavelet(i,:),1,din=shot%dt,nin=shot%nt,dout=dt,nout=nt)
+            enddo
 
             return
+
         endif
 
         !add source
@@ -282,8 +284,7 @@ use, intrinsic :: ieee_arithmetic
 
         call alloc(shot%dsyn,shot%nt,shot%nrcv)
         do i=1,shot%nrcv
-            call resampler(self%seismo(i,:), shot%dsyn(:,i),shot%nrcv,&
-                din=dt,nin=nt,dout=shot%dt,nout=shot%nt)
+            call resampler(self%seismo(i,:), shot%dsyn(:,i),1,din=dt,nin=nt,dout=shot%dt,nout=shot%nt)
         enddo
 
     end subroutine
@@ -292,7 +293,6 @@ use, intrinsic :: ieee_arithmetic
         class(t_field) :: self
         character(4) :: action
         integer :: it
-        type(t_field) :: f
         
         nz=cb%mz
         nx=cb%mx

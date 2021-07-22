@@ -9,7 +9,7 @@ use m_math
     real :: fmax = 0.066+0.265*log(real(ltable))
     real,dimension(0:ltable-1,0:ntable-1) :: table !sinc interpolation coeff
 
-    logical :: if_tabled=.false.
+    logical :: is_tabled=.false.
 
     contains
 
@@ -71,9 +71,9 @@ use m_math
         tout=fout+[(i,i=0,nout-1)]*dout
         
         !build sinc interpolation table
-        if(.not.if_tabled) then
+        if(.not.is_tabled) then
             call build_table
-            if_tabled=.true.
+            is_tabled=.true.
         endif
         
         do i=1,ntr
@@ -271,7 +271,7 @@ use m_math
         real,dimension(0:nxout-1) :: xout, yout
         
         real,dimension(0:ltable-1) :: pyin, ptable
-        integer,parameter :: ioutb=-3-8
+        integer,parameter :: ioutb=-3-ltable
 
         !compute constants
         xoutf = fxin
@@ -288,7 +288,8 @@ use m_math
             xoutn = xoutb + xout(ixout)*xouts
             ixoutn = int(xoutn)
             kyin = ioutb+ixoutn
-            pyin = yin(kyin:kyin+ltable-1)
+            if(kyin>=0 .and. kyin<=nxinm8) pyin = yin(kyin:kyin+ltable-1)
+
             frac = xoutn-real(ixoutn)
             if (frac>=0.) then
                 ktable = frac*fntablem1+0.5
@@ -327,8 +328,8 @@ use m_math
             
             endif
             
-	enddo
-
+        enddo
+    
     end subroutine
 
 

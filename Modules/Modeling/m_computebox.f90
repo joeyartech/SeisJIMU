@@ -25,9 +25,11 @@ use m_shot
 !                                        Computebox: C+D
 
     real,dimension(4) :: aperture
-
+    
     type,public :: t_computebox
-        
+
+        integer :: nabslayer !thickness of D
+
         !C's index in Model
         integer :: ioz,iox,ioy
         
@@ -37,8 +39,8 @@ use m_shot
         !C+D's index in Computebox
         integer :: ifz,ifx,ify
         integer :: ilz,ilx,ily
-        integer :: nz,nx,ny,n
-        
+        integer :: nz,nx,ny,n        
+
         ! real :: cell_volume, cell_diagonal, cell_inv_diagonal
 
         real velmin, velmax
@@ -63,9 +65,10 @@ use m_shot
 
     contains
 
-    subroutine init(self)
+    subroutine init(self,add_abslayer)
         class(t_computebox) :: self
-        
+        integer :: add_abslayer
+
         !shot aperture, default to whole model
         aperture=setup%get_reals('APERTURE',o_default='-99999 99999 -99999 99999')
 
@@ -79,12 +82,14 @@ use m_shot
         !     self%cell_inv_diagonal=sqrt(m%dz**(-2) + m%dx**(-2))
         ! endif
 
+        !thickness of D = 
+        !thickness of user given + thickness required by propagator
+        self%nabslayer=setup%get_int('REF_BNDLAYER_THICKNESS','NCPML',o_default='20')+add_abslayer 
+
     end subroutine
     
-    subroutine project(self,is_fdsg,abslayer_width)
+    subroutine project(self)
         class(t_computebox) :: self
-        logical :: is_fdsg
-        integer :: abslayer_width
 
         !C's origin index in model
         self%ioz=1 !always from top of model
@@ -105,12 +110,12 @@ use m_shot
         self%my=min(m%ny,nint(y/m%dy)+1) +1 -self%ioy
         
         !C+D's index
-        self%ifx = 1       - abslayer_width
-        self%ilx = self%mx + abslayer_width
-        self%ify = 1       - abslayer_width
-        self%ily = self%my + abslayer_width
-        self%ifz = 1       - abslayer_width
-        self%ilz = self%mz + abslayer_width
+        self%ifx = 1       - self%nabslayer
+        self%ilx = self%mx + self%nabslayer
+        self%ify = 1       - self%nabslayer
+        self%ily = self%my + self%nabslayer
+        self%ifz = 1       - self%nabslayer
+        self%ilz = self%mz + self%nabslayer
         
         !take care of y
         if(.not.m%is_cubic) then
@@ -160,9 +165,9 @@ use m_shot
                 r(i)%ix=r(i)%ix-self%iox+1
                 r(i)%iy=r(i)%iy-self%ioy+1
 
-                r(i)%ifz=r(i)%ifz-self%ioz+1; r(i)%ilz=r(ir)%ilz-self%ioz+1
-                r(i)%ifx=r(i)%ifx-self%iox+1; r(i)%ilx=r(ir)%ilx-self%iox+1
-                r(i)%ify=r(i)%ify-self%ioy+1; r(i)%ily=r(ir)%ily-self%ioy+1
+                r(i)%ifz=r(i)%ifz-self%ioz+1; r(i)%ilz=r(i)%ilz-self%ioz+1
+                r(i)%ifx=r(i)%ifx-self%iox+1; r(i)%ilx=r(i)%ilx-self%iox+1
+                r(i)%ify=r(i)%ify-self%ioy+1; r(i)%ily=r(i)%ily-self%ioy+1
 
                 r(i)%z=r(i)%z-(self%ioz-1)*m%dz
                 r(i)%x=r(i)%x-(self%iox-1)*m%dx
