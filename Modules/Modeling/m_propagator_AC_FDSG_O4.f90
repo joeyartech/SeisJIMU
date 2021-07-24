@@ -1,9 +1,5 @@
 module m_propagator
-use m_string
-use m_mpienv
-use m_arrayop
-use m_setup
-use m_sysio
+use m_System
 use m_hicks, only : hicks_r
 use m_resampler
 use m_model
@@ -86,7 +82,7 @@ use m_cpml
 
     end type
 
-    type(t_propagator),public :: propagator
+    type(t_propagator),public :: ppg
 
     contains
     
@@ -96,9 +92,7 @@ use m_cpml
         class(t_propagator) :: self
 
         call hud('Invoked field & propagator modules info : '//s_NL//self%info)
-        if(mpiworld%is_master) then
-            write(*,*) 'Coef:',coef
-        endif
+        call hud('FDGS Coef : '//num2str(coef(1))//', '//num2str(coef(2)))
         
     end subroutine
     
@@ -221,7 +215,8 @@ use m_cpml
     subroutine init_abslayer(self)
         class(t_propagator) :: self
 
-        call cpml%init
+        call cpml%init(o_kpa_max=1.)
+
     end subroutine
     
     !========= forward modeling =================
@@ -255,7 +250,7 @@ use m_cpml
         tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.
         
         do it=ift,ilt
-            if(mod(it,50)==0 .and. mpiworld%is_master) then
+            if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
                 call f%check_value
             endif

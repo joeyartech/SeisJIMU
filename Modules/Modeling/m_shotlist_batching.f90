@@ -1,11 +1,5 @@
 module m_shotlist
-use m_string
-use m_mpienv
-use m_message
-use m_arrayop
-use m_setup
-use m_sysio
-use m_checkpoint
+use m_System
 
 !Procedure read: find all shots with their indices. E.g.
 !{1 2 3 4 5 6 7 8 9 10 11 12 15 16 17 18} (16 shots in total)

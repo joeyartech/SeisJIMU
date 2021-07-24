@@ -1,9 +1,5 @@
 module m_shot
-use m_string
-use m_mpienv
-use m_setup
-use m_sysio
-use m_suformat
+use m_System
 use m_hicks
 use m_wavelet
 use m_resampler
@@ -237,13 +233,6 @@ use m_model
                                       +(self%src%y-self%rcv(ir)%y)**2 )
         enddo
 
-        self%src%iz=nint(self%src%z/m%dz)+1
-        self%src%ix=nint(self%src%x/m%dx)+1
-        self%src%iy=nint(self%src%y/m%dy)+1
-        self%rcv(:)%iz=nint(self%rcv(:)%z/m%dz)+1
-        self%rcv(:)%ix=nint(self%rcv(:)%x/m%dx)+1
-        self%rcv(:)%iy=nint(self%rcv(:)%y/m%dy)+1
-
         !Hicks interpolation
         self%if_hicks=setup%get_bool('IF_HICKS',o_default='T')
         
@@ -251,21 +240,24 @@ use m_model
 
             call hicks_init(m%dz,m%dx,m%dy,m%is_cubic,m%is_freesurface)
             
-            !hicks coef for source point
-            if(is_fdsg) then
-                !for vx,vy,vz components, hicks%x,y,z should be added by m%dx/2,dy/2,dz/2, respectively,
-                !because v(1) is actually v[0.5], v(2) is v[1.5] etc.
-                select case (self%src%comp)
-                case('vz')
-                    call hicks_put_position(self%src%z+m%dz/2.,self%src%x        ,self%src%y        )
-                case('vx')
-                    call hicks_put_position(self%src%z        ,self%src%x+m%dx/2.,self%src%y        )
-                case('vy')
-                    call hicks_put_position(self%src%z        ,self%src%x        ,self%src%y+m%dy/2.)
-                end select
-            else
-                call hicks_put_position(self%src%z,self%src%x,self%src%y)
-            endif
+
+            !hicks coef for source point    
+            !for vx,vy,vz components, hicks%x,y,z should be added by m%dx/2,dy/2,dz/2, respectively,
+            !because v(1) is actually v[0.5], v(2) is v[1.5] etc.
+            halfz=either(m%dz/2.,0.,is_fdsg)
+            halfx=either(m%dx/2.,0.,is_fdsg)
+            halfy=either(m%dy/2.,0.,is_fdsg)
+
+            select case (self%src%comp)
+            case('p')
+                call hicks_put_position(self%src%z,      self%src%x,      self%src%y)
+            case('vz')
+                call hicks_put_position(self%src%z+halfz,self%src%x,      self%src%y)
+            case('vx')
+                call hicks_put_position(self%src%z,      self%src%x+halfx,self%src%y)
+            case('vy')
+                call hicks_put_position(self%src%z,      self%src%x,      self%src%y+halfy)
+            end select
 
             select case (self%src%comp)
             case('p') !explosive source or non-vertical force
@@ -283,20 +275,16 @@ use m_model
             !hicks coef for receivers
             do i=1,self%nrcv
 
-                if(is_fdsg) then
-                    !for vx,vy,vz components, hicks%x,y,z should be added by m%dx/2,dy/2,dz/2, respectively,
-                    !because v(1) is actually v[0.5], v(2) is v[1.5] etc.
-                    select case (self%rcv(i)%comp)
-                    case('vz')
-                        call hicks_put_position(self%rcv(i)%z+m%dz/2.,self%rcv(i)%x        ,self%rcv(i)%y        )
-                    case('vx')
-                        call hicks_put_position(self%rcv(i)%z        ,self%rcv(i)%x+m%dx/2.,self%rcv(i)%y        )
-                    case('vy')
-                        call hicks_put_position(self%rcv(i)%z        ,self%rcv(i)%x        ,self%rcv(i)%y+m%dy/2.)
-                    end select
-                else
-                    call hicks_put_position(self%rcv(i)%z,self%rcv(i)%x,self%rcv(i)%y)
-                endif
+                select case (self%rcv(i)%comp)
+                case('p')
+                    call hicks_put_position(self%rcv(i)%z      ,self%rcv(i)%x      ,self%rcv(i)%y)
+                case('vz')
+                    call hicks_put_position(self%rcv(i)%z+halfz,self%rcv(i)%x      ,self%rcv(i)%y)
+                case('vx')
+                    call hicks_put_position(self%rcv(i)%z      ,self%rcv(i)%x+halfx,self%rcv(i)%y)
+                case('vy')
+                    call hicks_put_position(self%rcv(i)%z      ,self%rcv(i)%x      ,self%rcv(i)%y+halfy)
+                end select
 
                 select case (self%rcv(i)%comp)
                 case ('p') !explosive source or non-vertical force
@@ -313,6 +301,14 @@ use m_model
 
             enddo
 
+        else
+            self%src%iz=nint(self%src%z/m%dz)+1
+            self%src%ix=nint(self%src%x/m%dx)+1
+            self%src%iy=nint(self%src%y/m%dy)+1
+            self%rcv(:)%iz=nint(self%rcv(:)%z/m%dz)+1
+            self%rcv(:)%ix=nint(self%rcv(:)%x/m%dx)+1
+            self%rcv(:)%iy=nint(self%rcv(:)%y/m%dy)+1
+
         endif
                 
         if(mpiworld%is_master) then
@@ -321,6 +317,7 @@ use m_model
             write(*,*)'================================='
             write(*,*)'  nt,dt:',self%nt,self%dt
             write(*,*)'---------------------------------'
+            write(*,*)'After removing m%oz,ox,iy,'
             write(*,*)'  sz,isz:',self%src%z,self%src%iz
             write(*,*)'  sx,isx:',self%src%x,self%src%ix
             write(*,*)'  sy,isy:',self%src%y,self%src%iy

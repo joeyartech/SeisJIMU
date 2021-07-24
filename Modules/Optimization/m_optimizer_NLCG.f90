@@ -1,20 +1,11 @@
 module m_optimizer
-use m_string
-use m_mpienv
-use m_arrayop
-use m_setup
-use m_checkpoint
-use m_sysio
-use m_model
-use m_shotlist
-use m_propagator
-use m_fobjective
-use m_nabla
-use m_parameterization
-use m_preconditioner
+use m_System
+use m_Modeling
+use m_Kernel
 use m_linesearcher
 
     private
+    public :: optimizer_init, optimizer_loop, optimizer_write
 
     !Method: Nonlinear Conjugate Gradient
     !                                                     !
@@ -41,232 +32,205 @@ use m_linesearcher
     !                                                     !
     ! See also Nocedal, Numerical optimization,           !
     ! 2nd edition p.132                                   !   
+
+    character(*),parameter :: info='Optimization: NonLinear Conjugate Gradient'//s_NL// &
+                                   'with Dai-Yuan formula'
     
     real min_update !minimum parameter updates allowed
  
-    type,public :: t_optimizer
-        integer :: n !dimension of model manifold
-        type(t_forwardmap) :: curr !current point
-        type(t_forwardmap) :: pert !point perturbed from current point
-        type(t_forwardmap) :: prev !previous point
+    type(t_querypoint),pointer :: curr, pert
+    type(t_querypoint),target  :: qp1
+    real,dimension(:,:,:,:),allocatable :: prev_d  !descent direction of previous point (no need for another t_querypoint instance)
 
-        real f0 !initial fobjective
-        real g0norm !initial gradient norm
- 
-        !counter
-        integer :: iterate=0 !number of iteration performed 
-        integer :: max_iterate  !max number of iteration allowed
+    real f0 !initial fobjective
+    real g0norm !initial gradient norm
 
-        contains
-        procedure :: init => init
-        procedure :: optimize => optimize
-        procedure :: write => write
-        ! final :: fin
-    end type
-    
+    !counter
+    integer :: iterate=0 !number of iteration performed 
+    integer :: max_iterate  !max number of iteration allowed
+
     !history of computed gradients
-    real,dimension(:,:),allocatable :: gradient_history
+    real,dimension(:,:,:,:,:),allocatable :: gradient_history
     integer,parameter :: l=1 !save one previous gradient in history
     
     logical :: debug
     
     contains
 
-    subroutine init(self,n)
-        class(t_optimizer) :: self
+    subroutine optimizer_init(qp0)
+        type(t_querypoint),target :: qp0 !initial (model) parameters
 
-        self%n=n
-    
+        call hud(info)
+
+        !current point
+        curr=>qp0       
+        curr%d=-curr%pg
+        curr%gdotd=sum(curr%g*curr%d)
+
+        !initial values
+        f0=curr%f
+        g0norm=norm2(curr%g)
+        
+        !perturbed point
+        pert=>qp1
+        call pert%init
+
+        !descent direction of previous point
+        call alloc(prev_d,param%n1,param%n2,param%n3,param%npars); prev_d=curr%d
+
+        !gradient history
+        call alloc(gradient_history,param%n1,param%n2,param%n3,param%npars,l)
+        gradient_history(:,:,:,:,l)=curr%g
+
         !read setup
         min_update=setup%get_real('MIN_UPDATE',o_default='1e-8')
         max_iterate=setup%get_int('MAX_ITERATE',o_default='30')
-        call ls%init
-
-        associate(curr=>self%curr, pert=>self%pert, prev=>self%prev)
-        
-            !initialize current point
-            call curr%init(self%n)
-
-            self%f0=curr%f
-            
-            !scale problem
-            call ls%scale(curr)
-            
-            !initialize preconditioner and apply
-            call preco%init
-            call preco%apply(curr%g,curr%pg)
-            self%g0norm=norm2(curr%g)
-            
-            !current descent direction
-            curr%d=-curr%pg
-            curr%gdotd=sum(curr%g*curr%d)
-            
-            !gradient history
-            call alloc(gradient_history,n,l)
-            gradient_history(:,1)=curr%g
-            
-            !initialize perturb point
-            call pert%init(self%n)
-            prev%d=curr%d
-
-        end associate
         
     end subroutine
     
-    subroutine optimize(self)
-        class(t_optimizer) :: self
-
+    subroutine optimizer_loop
         type(t_checkpoint),save :: chp
+        type(t_querypoint),pointer :: tmp
         real nom, denom
-       
-        ! call self%write('start')
+        
         call hud('============ START OPTIMIZATON ============')
         call chp%init('FWI_shotlist_optim','Iter#',oif_fuse=.true.)
-        
-        associate(curr=>self%curr,pert=>self%pert,prev=>self%prev)
 
-            !iteration loop
-            loop: do iterate=1,self%max_iterate
-                call chp%count
+        !iteration loop
+        loop: do iterate=1,max_iterate
+            call chp%count
 
-                if(.not.shls%is_registered(chp,'sampled_shots')) then
-                    call shls%sample
-                    call shls%register(chp,'sampled_shots')
-                endif
-                call shls%write
-                call shls%assign
+            if(.not.shls%is_registered(chp,'sampled_shots')) then
+                call shls%sample
+                call shls%register(chp,'sampled_shots')
+            endif
+            call shls%assign
 
-                self%iterate=iterate
+            if (norm2(curr%d) < min_update) then
+                call hud('Maximum iteration number reached or convergence criteria met')
+                call optimizer_write('criteria')
+                exit loop
+            endif
             
-                if (norm2(curr%d) < min_update) then
-                    call hud('Maximum iteration number reached or convergence criteria met')
-                    call self%write('criteria')
-                    exit loop
+            !linesearcher finds steplength
+            call ls%search(iterate,curr,pert,gradient_history)
+            
+            select case(ls%result)
+                case('success')
+                !update point
+                prev_d=curr%d
+                
+                tmp=>curr
+                curr=>pert
+                pert=>tmp               
+                
+                !!!!!!!!!!!!!!!!!!!!!!!!!!!
+                !! NLCG, Dai-Yuan's beta !!
+                !!!!!!!!!!!!!!!!!!!!!!!!!!!
+                !compute beta
+                nom=sum(pert%g*pert%pg)
+                denom=sum((pert%g-gradient_history(:,:,:,:,l))*prev_d)
+                beta=nom/denom
+                
+                !Safeguard 
+                if((beta.ge.1e5).or.(beta.le.-1e5)) then     
+                    beta=0.
                 endif
                 
-                !linesearcher finds steplength
-                call ls%search(self%iterate,curr,pert,gradient_history)
+                !new descent direction
+                curr%d=-pert%pg+beta*prev_d
                 
-                select case(ls%result)
-                    case('success')
-                    !update point
-                    curr%x=pert%x
-                    curr%f=pert%f
-                    curr%g=pert%g
-                    
-                    prev%d=curr%d
-                    
-                    
-                    !!!!!!!!!!!!!!!!!!!!!!!!!!!
-                    !! NLCG, Dai-Yuan's beta !!
-                    !!!!!!!!!!!!!!!!!!!!!!!!!!!
-                    !compute beta
-                    nom=sum(pert%g*pert%pg)
-                    denom=sum((pert%g-gradient_history(:,1))*prev%d)
-                    beta=nom/denom
-                    
-                    !Safeguard 
-                    if((beta.ge.1e5).or.(beta.le.-1e5)) then     
-                        beta=0.
-                    endif
-                    
-                    !new descent direction
-                    curr%d=-pert%pg+beta*prev%d
-                    
-                    !inner product of g and d for Wolfe condition
-                    curr%gdotd=sum(curr%g*curr%d)
-                    
-                    call self%write('update')
-
-                    case('failure')
-                    call self%write('failure')
-                    exit loop
-                    
-                    case('maximum')
-                    call self%write('maximum')
-                    exit loop
-                    
-                end select
+                !inner product of g and d for Wolfe condition
+                curr%gdotd=sum(curr%g*curr%d)
                 
-            end do loop
+                call optimizer_write('update')
 
-        end associate
+                case('failure')
+                call optimizer_write('failure')
+                exit loop
+                
+                case('maximum')
+                call optimizer_write('maximum')
+                exit loop
+                
+            end select
+            
+        end do loop
         
         call hud('-------- FINALIZE OPTIMIZATON --------')
-        call self%write('finalize')
+        call optimizer_write('finalize')
         
     end subroutine
 
-    subroutine write(self,message)
-        class(t_optimizer) :: self
+    subroutine optimizer_write(message)
         character(*) :: message
         
         if(mpiworld%is_master) then
         
             select case (message)
-                case('start')
-                    open(16,file=dir_out//'iterate.log',position='append',action='write')
-                    write(16,'(a)'      ) ' **********************************************************************'
-                    write(16,'(a)'      ) '                 NONLINEAR CONJUGATE GRADIENT ALGORITHM                '
-                    write(16,'(a)'      ) ' **********************************************************************'
-                    write(16,'(a,es8.2)') '     Min update allowed          : ',  min_update
-                    write(16,'(a,i5)'   ) '     Max iterates allowed        : ',  self%max_iterate
-                    write(16,'(a,i5)'   ) '     Max linesearches allowed    : ',  ls%max_search
-                    write(16,'(a,i5)'   ) '     Max gradients allowed       : ',  ls%max_gradient
-                    write(16,'(a,es8.2)') '     Initial fobjective (f0)         : ',  self%f0
-                    write(16,'(a,es8.2)') '     Initial gradient norm (||g0||)  : ',  self%g0norm
-                    write(16,'(a)'      ) ' **********************************************************************'
-                    write(16,'(a)'      ) '  Iter#      f         f/f0    ||g||/||g0||    alpha     nls  Modeling#'
-                                   !e.g.  !    0    1.00E+00    1.00E+00    1.00E+00    1.00E+00      0       1
-                    write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  self%iterate, self%curr%f, self%curr%f/self%f0, norm2(self%curr%g)/self%g0norm, ls%alpha, ls%isearch, ls%igradient
-                    close(16)
-                    
-                case('update')
-                    open(16,file=dir_out//'iterate.log',position='append',action='write')
-                    write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  self%iterate, self%curr%f, self%curr%f/f0, norm2(self%curr%g)/g0norm, ls%alpha, ls%isearch, ls%igradient
-                    close(16)
-                    
-                    call param%transform_model('x->m',self%curr%x)
-                    call m%write(o_suffix='Iter'//int2str(self%iterate))
+            case('start')
+                open(16,file=dir_out//'iterate.log',position='append',action='write')
+                write(16,'(a)'      ) ' **********************************************************************'
+                write(16,'(a)'      ) '                 NONLINEAR CONJUGATE GRADIENT ALGORITHM                '
+                write(16,'(a)'      ) ' **********************************************************************'
+                write(16,'(a,es8.2)') '     Min update allowed          : ',  min_update
+                write(16,'(a,i5)'   ) '     Max iterates allowed        : ',  max_iterate
+                write(16,'(a,i5)'   ) '     Max linesearches allowed    : ',  ls%max_search
+                write(16,'(a,i5)'   ) '     Max gradients allowed       : ',  ls%max_gradient
+                write(16,'(a,es8.2)') '     Initial fobjective (f0)         : ',  f0
+                write(16,'(a,es8.2)') '     Initial gradient norm (||g0||)  : ',  g0norm
+                write(16,'(a)'      ) ' **********************************************************************'
+                write(16,'(a)'      ) '  Iter#      f         f/f0    ||g||/||g0||    alpha     nls  Modeling#'
+                               !e.g.  !    0    1.00E+00    1.00E+00    1.00E+00    1.00E+00      0       1
+                write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, curr%f, curr%f/f0, norm2(curr%g)/g0norm, ls%alpha, ls%isearch, ls%igradient
+                close(16)
+                
+            case('update')
+                open(16,file=dir_out//'iterate.log',position='append',action='write')
+                write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, curr%f, curr%f/f0, norm2(curr%g)/g0norm, ls%alpha, ls%isearch, ls%igradient
+                close(16)
+                
+                call param%transform('x->m',o_x=curr%x)
+                call m%write(o_suffix='Iter'//int2str(iterate))
 
-                case('maximum')
-                    open(16,file=dir_out//'iterate.log',position='append',action='write')
-                    write(16,'(a)'      ) ' **********************************************************************'
-                    write(16,'(a)'      ) '     STOP: MAXIMUM MODELING NUMBER REACHED                             '
-                    write(16,'(a)'      ) ' **********************************************************************'
-                    close(16)
+            case('maximum')
+                open(16,file=dir_out//'iterate.log',position='append',action='write')
+                write(16,'(a)'      ) ' **********************************************************************'
+                write(16,'(a)'      ) '     STOP: MAXIMUM MODELING NUMBER REACHED                             '
+                write(16,'(a)'      ) ' **********************************************************************'
+                close(16)
 
-                case('criteria')
-                    open(16,file=dir_out//'iterate.log',position='append',action='write')
-                    write(16,'(a)'      ) ' **********************************************************************'
-                    write(16,'(a)'      ) '     STOP: CONVERGENCE CRITERIA SATISFIED                              '
-                    write(16,'(a)'      ) ' **********************************************************************'
-                    close(16)
+            case('criteria')
+                open(16,file=dir_out//'iterate.log',position='append',action='write')
+                write(16,'(a)'      ) ' **********************************************************************'
+                write(16,'(a)'      ) '     STOP: CONVERGENCE CRITERIA SATISFIED                              '
+                write(16,'(a)'      ) ' **********************************************************************'
+                close(16)
 
-                case('failure')
-                    open(16,file=dir_out//'iterate.log',position='append',action='write')
-                    write(16,'(a)'      ) ' **********************************************************************'
-                    write(16,'(a)'      ) '     STOP: LINE SEARCH FAILURE                                         '
-                    write(16,'(a)'      ) ' **********************************************************************'
-                    close(16)
+            case('failure')
+                open(16,file=dir_out//'iterate.log',position='append',action='write')
+                write(16,'(a)'      ) ' **********************************************************************'
+                write(16,'(a)'      ) '     STOP: LINE SEARCH FAILURE                                         '
+                write(16,'(a)'      ) ' **********************************************************************'
+                close(16)
 
-                case('finalize')
-                    open(16,file=dir_out//'iterate.log',position='append',action='write')
-                    write(16,'(a)'      ) ' **********************************************************************'
-                    write(16,'(a)'      ) '     FINALIZE                                         '
-                    write(16,'(a)'      ) ' **********************************************************************'
-                    close(16)
-                    
-                    call param%transform_model('x->m',self%pert%x)
-                    call m%write(o_suffix='Iter'//int2str(self%iterate))
-                    
-                    call param%transform_model('x->m',self%curr%x)
-                    call m%write(o_suffix='final')
-                    
-                    write(*,'(a,i0.4)') 'ximage < model_final n1=',m%nz
-                    write(*,'(a,i0.4,a,i0.4)') 'xmovie < model_update loop=1 title=%g n1=',m%nz,' n2=',m%nx
+            case('finalize')
+                open(16,file=dir_out//'iterate.log',position='append',action='write')
+                write(16,'(a)'      ) ' **********************************************************************'
+                write(16,'(a)'      ) '     FINALIZE                                         '
+                write(16,'(a)'      ) ' **********************************************************************'
+                close(16)
+                
+                call param%transform('x->m',o_x=pert%x)
+                call m%write(o_suffix='Iter'//int2str(iterate))
+                
+                call param%transform('x->m',o_x=curr%x)
+                call m%write(o_suffix='final')
+                
+                write(*,'(a,i0.4)') 'ximage < model_final n1=',m%nz
+                write(*,'(a,i0.4,a,i0.4)') 'xmovie < model_update loop=1 title=%g n1=',m%nz,' n2=',m%nx
 
-                end select
+            end select
 
         endif
     

@@ -7,21 +7,19 @@ ifeq '$(APP)' 'RTM'
 	src = 
 endif
 
+src = \
+	m_weighter.f90 \
+	m_parametrizer_$(Param).f90 \
+	m_fobjective.f90 \
+	m_nabla.f90 \
+	m_preconditioner.f90 \
+	m_Kernel.f90
+
 ifeq '$(APP)' 'FWI'
-	src = \
-		m_weighter.f90 \
-		m_parametrizer_$(Param).f90 \
-		m_fobjective.f90 \
-		m_nabla_$(APP).f90
 endif
 
 ifeq '$(APP)' 'RWI'
-	src = \
-		m_weighter.f90 \
-		m_separator.f90 \
-		m_parametrizer_$(Param).f90 \
-		m_fobjective.f90 \
-		m_nabla_$(APP).f90
+	src += m_separator.f90
 endif
 
 all : $(src:.f90=.o)

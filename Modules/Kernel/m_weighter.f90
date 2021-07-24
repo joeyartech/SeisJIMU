@@ -1,11 +1,6 @@
 module m_weighter
-use m_string
-use m_arrayop
-use m_setup
-use m_sysio
-use m_suformat
-use m_model
-use m_shot
+use m_System
+use m_Modeling
 
     private
 
@@ -276,10 +271,10 @@ use m_shot
 
             !convert string to real numbers
             read(text,*,iostat=msg) gain, taper
-            ntaper=nint(taper/dt)
+            ntaper=nint(taper/self%dt)
 
             !loop of offset
-            do itr=1,ntr
+            do itr=1,self%ntr
                 
                 !find the two xgain's closest to aoffset
                 if(shot%rcv(itr)%aoffset<=xgain(1)) then
@@ -302,12 +297,12 @@ use m_shot
                 !interp time by the two tgain & xgain pairs
                 time = tgain(jx1)*dx2 + tgain(jx2)*dx1
 
-                itime = nint(time/dt)+1  !assume all receivers have same dt ...
+                itime = nint(time/self%dt)+1  !assume all receivers have same dt ...
                 itime_start = itime-ntaper  !1 <= itime_start <= itime <= nt
 
                 !apply linear taper from itime_start+1 to itime
-                do it=min(max(itime_start+1,1),nt) , &
-                      min(max(itime        ,1),nt)
+                do it=min(max(itime_start+1,1),self%nt) , &
+                      min(max(itime        ,1),self%nt)
                     
                     k=it-itime_start-1
 
@@ -315,8 +310,8 @@ use m_shot
                 end do               
 
                 !apply constant gain from itime+1 to nt
-                it = min(max(itime+1,1),nt)
-                self%weight(it:nt,itr) = self%weight(it:nt,itr)* gain
+                it = min(max(itime+1,1),self%nt)
+                self%weight(it:self%nt,itr) = self%weight(it:self%nt,itr)* gain
                 
             end do
             
@@ -427,7 +422,7 @@ use m_shot
         deallocate(tmp_table)
 
         !map table to weight with interpolation
-        do itr=1,ntr
+        do itr=1,self%ntr
 
             !find the two xgain's closest to aoffset
             if(shot%rcv(itr)%aoffset<=xgain(1)) then
@@ -448,8 +443,8 @@ use m_shot
             endif
 
 
-            do it=1,nt
-                t=(it-1)*dt
+            do it=1,self%nt
+                t=(it-1)*self%dt
 
                 !find the two tgain's closest to aoffset
                 if(t<=tgain(1)) then

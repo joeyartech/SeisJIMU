@@ -1,8 +1,5 @@
 module m_wavelet
-use m_string
-use m_message
-use m_arrayop
-use m_setup
+use m_System
 use m_math, only: r_pi
 use m_butterworth
     

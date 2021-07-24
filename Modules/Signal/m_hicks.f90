@@ -11,7 +11,7 @@
 !with the free GeoGebra tool.
 !
 module m_hicks
-use m_arrayop
+use m_System
 use m_math
 
     private

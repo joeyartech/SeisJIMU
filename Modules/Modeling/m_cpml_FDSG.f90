@@ -1,8 +1,5 @@
 module m_cpml
-use m_string
-use m_mpienv
-use m_arrayop
-use m_setup
+use m_System
 use m_math, only: r_pi
 use m_resampler
 use m_model
@@ -12,15 +9,16 @@ use m_computebox
     private
 
     !CPML parameter
-    real,parameter :: k_z = 1.
-    real,parameter :: k_x = 1.
-    real,parameter :: k_y = 1.
     real,parameter :: npower = 2.
     real,parameter :: logR = log(0.001)
-    real,parameter :: kpa_max=7.  !increase this number if absorbing is not satisfactory at grazing incident angle
-                                    !(make in/outside PML reflection more separate..)
-                                    !decrease this number if grid dispersion is not satisfactory
-    real,parameter :: kpa_max_m1=kpa_max-1.
+    real :: kpa_max
+    !empirically kpa_max=1 for acoustic modeling,
+    !and kpa_max=7 for elastic (P-SV) modeling
+    !Comments by Komatitsch:
+    !increase kpa_max if absorbing is not satisfactory at grazing incident angle
+    !(making in/outside PML reflection more separate..)
+    !decrease this number if grid dispersion is not satisfactory
+    real :: kpa_max_m1
 
     type,public :: t_cpml
         real,dimension(:),allocatable :: b_z,b_z_half, a_z,a_z_half
@@ -45,8 +43,9 @@ use m_computebox
     !CPML implementation from Komatitsch & Martin, 2007, Geophysics
     !code from Geodynamics or Komatitsch's GitHub site:
     !https://github.com/geodynamics/seismic_cpml
-    subroutine init(self)
+    subroutine init(self,o_kpa_max)
         class(t_cpml) :: self
+        real,optional :: o_kpa_max
         
         real,dimension(:),allocatable :: alfa_z,alfa_z_half
         real,dimension(:),allocatable :: alfa_x,alfa_x_half
@@ -54,6 +53,9 @@ use m_computebox
         real,dimension(:),allocatable :: d_z,d_z_half
         real,dimension(:),allocatable :: d_x,d_x_half
         real,dimension(:),allocatable :: d_y,d_y_half       
+
+        kpa_max=either(o_kpa_max,7.,present(o_kpa_max))
+        kpa_max_m1=kpa_max-1
 
         !self%nlayer=setup%get_int('CPML_SIZE','NCPML',o_default='20')+add_thickness
         self%nlayer=cb%nabslayer

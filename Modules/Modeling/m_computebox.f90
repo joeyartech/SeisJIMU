@@ -1,9 +1,5 @@
 module m_computebox
-use m_string
-use m_message
-use m_arrayop
-use m_setup
-use m_checkpoint
+use m_System
 use m_model
 use m_shot
 
@@ -49,7 +45,7 @@ use m_shot
         real,dimension(:,:,:),allocatable :: eps,del,eta
         real,dimension(:,:,:),allocatable :: qp,qs
         
-        real,dimension(:,:,:,:),allocatable :: kernel
+        real,dimension(:,:,:,:),allocatable :: grad, imag, autocorr
         
         contains
         procedure :: init => init
@@ -256,7 +252,7 @@ use m_shot
         call dealloc(s%vp,s%vs,s%rho)
         call dealloc(s%eps,s%del,s%eta)
         call dealloc(s%qp,s%qs)
-        call dealloc(s%kernel)
+        call dealloc(s%grad,s%imag,s%autocorr)
 
     end subroutine
 
@@ -277,9 +273,9 @@ use m_shot
 
         do i=1,size(list)
             select case (list(i)%s)
-            case ('kernel')
-                call chp%open('computebox%kernel')
-                call chp%read(self%kernel,size(self%kernel))
+            case ('grad')
+                call chp%open('computebox%grad')
+                call chp%read(self%grad,size(self%grad))
                 call chp%close
             end select
 
@@ -298,9 +294,9 @@ use m_shot
 
         do i=1,size(list)
             select case (list(i)%s)
-            case ('kernel')
-                call chp%open('computebox%kernel')
-                call chp%write(self%kernel,size(self%kernel))
+            case ('grad')
+                call chp%open('computebox%grad')
+                call chp%write(self%grad,size(self%grad))
                 call chp%close
             end select
 

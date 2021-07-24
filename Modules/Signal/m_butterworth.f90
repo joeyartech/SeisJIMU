@@ -1,5 +1,5 @@
 module m_butterworth
-use m_either
+use m_System
 use m_math, only : r_pi
 
     private

@@ -2,8 +2,7 @@
 ! dir: SeisUnix/src/su/main/windowing_sorting_muting
 
 module m_separator
-use m_setup
-use m_arrayop
+use m_System
 
     contains
     

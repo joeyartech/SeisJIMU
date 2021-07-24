@@ -1,20 +1,6 @@
 program main
-use m_either
-use m_string
-use m_mpienv
-use m_message
-use m_arrayop
-use m_setup
-use m_sysio
-use m_checkpoint
-use m_suformat
-use m_model
-use m_shotlist
-use m_shot
-use m_computebox
-use m_field
-use m_cpml
-use m_propagator
+use m_System
+use m_Modeling
 
     type(t_checkpoint) :: chp
 
@@ -35,14 +21,14 @@ use m_propagator
         if(mpiworld%is_master) then
             call hud('No input setup file given. Print manual..')
             call print_manual
-            ! call sfield%print_info
+            call ppg%print_info
         endif
         call mpiworld%fin
         stop
     endif
 
-    !print FD scheme and propagator info
-    call propagator%print_info   
+    !print propagator info
+    call ppg%print_info
 
     !estimate required memory
     ! call m%estim_RAM
@@ -53,10 +39,10 @@ use m_propagator
     !checkpoint
     call checkpoint_init
 
-    !read model
+    !model
     call m%init
     call m%read
-    call propagator%check_model
+    call ppg%check_model
 
     !shotlist
     call shls%read_from_setup
@@ -73,25 +59,23 @@ use m_propagator
         call shot%init(shls%yield(i))
         call shot%read_from_setup
         call shot%set_var_time
-        call shot%set_var_space(index(propagator%info,'FDSG')>0)
+        call shot%set_var_space(index(ppg%info,'FDSG')>0)
 
         call hud('Modeling Shot# '//shot%sindex)
 
-        call cb%init(propagator%nbndlayer)
+        call cb%init(ppg%nbndlayer)
         call cb%project
 
-        call propagator%check_discretization
-        call propagator%init
-        call propagator%init_field(field,name='field',origin='src',oif_will_reconstruct=.true.)
-        call propagator%init_abslayer
-        
+        call ppg%check_discretization
+        call ppg%init
+        call ppg%init_field(field,name='field',origin='src',oif_will_reconstruct=.true.)
+        call ppg%init_abslayer
+
         call field%add_src
 
         !forward modeling
         if(.not.field%is_registered(chp,'seismo')) then
-
-            call propagator%forward(field)
-
+            call ppg%forward(field)
             call field%register(chp,'seismo')
         endif
 

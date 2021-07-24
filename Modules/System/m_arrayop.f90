@@ -11,6 +11,7 @@ use m_mpienv
         module procedure alloc_real2_ubound
         module procedure alloc_real3_ubound
         module procedure alloc_real4_ubound
+        module procedure alloc_real5_ubound
         module procedure alloc_real1
         module procedure alloc_real2
         module procedure alloc_real3
@@ -53,7 +54,7 @@ use m_mpienv
 
         allocate(a(n1),source=either(o_init,0,present(o_init)))
         
-    end
+    end subroutine
     
     subroutine alloc_int2_ubound(a,n1,n2,old2,o_init)
         integer n1,n2
@@ -80,7 +81,7 @@ use m_mpienv
 
         allocate(a(n1,n2),source=either(o_init,0,present(o_init)))
         
-    end
+    end subroutine
     
     subroutine alloc_real1_ubound(a,n1,old2,o_init)
         integer n1
@@ -102,7 +103,7 @@ use m_mpienv
 
         allocate(a(n1),source=either(o_init,0.,present(o_init)))
         
-    end
+    end subroutine
     
     subroutine alloc_real2_ubound(a,n1,n2,old2,o_init)
         integer n1,n2
@@ -129,7 +130,7 @@ use m_mpienv
 
         allocate(a(n1,n2),source=either(o_init,0.,present(o_init)))
         
-    end
+    end subroutine
     
     subroutine alloc_real3_ubound(a,n1,n2,n3,old2,o_init)
         integer n1,n2,n3
@@ -161,7 +162,7 @@ use m_mpienv
 
         allocate(a(n1,n2,n3),source=either(o_init,0.,present(o_init)))
         
-    end
+    end subroutine
     
     subroutine alloc_real4_ubound(a,n1,n2,n3,n4,old2,o_init)
         integer n1,n2,n3,n4
@@ -198,7 +199,49 @@ use m_mpienv
 
         allocate(a(n1,n2,n3,n4),source=either(o_init,0.,present(o_init)))
         
-    end
+    end subroutine
+
+    subroutine alloc_real5_ubound(a,n1,n2,n3,n4,n5,old2,o_init)
+        integer n1,n2,n3,n4,n5
+        real,dimension(:,:,:,:,:),allocatable :: a
+        real,dimension(:,:,:,:,:),optional :: old2
+        real,optional :: o_init
+        
+        if(n1<1.or.n1>max_array_size) then
+            if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n1=',n1
+            error stop
+        endif
+        
+        if(n2<1.or.n2>max_array_size) then
+            if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n2=',n2
+            error stop
+        endif
+        
+        if(n3<1.or.n3>max_array_size) then
+            if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n3=',n3
+            error stop
+        endif
+        
+        if(n4<1.or.n4>max_array_size) then
+            if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n4=',n4
+            error stop
+        endif
+
+        if(n5<1.or.n5>max_array_size) then
+            if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n4=',n4
+            error stop
+        endif
+
+        if (allocated(a)) then
+            if(present(old2)) then
+                old2=a
+            endif
+            deallocate(a)
+        endif
+
+        allocate(a(n1,n2,n3,n4,n5),source=either(o_init,0.,present(o_init)))
+        
+    end subroutine
 
     subroutine alloc_real1(a,n1,old2,o_init)
         integer,dimension(2) :: n1
@@ -220,7 +263,7 @@ use m_mpienv
 
         allocate(a(n1(1):n1(2)),source=either(o_init,0.,present(o_init)))
         
-    end
+    end subroutine
     
     subroutine alloc_real2(a,n1,n2,old2,o_init)
         integer,dimension(2) :: n1,n2
@@ -247,7 +290,7 @@ use m_mpienv
 
         allocate(a(n1(1):n1(2),n2(1):n2(2)),source=either(o_init,0.,present(o_init)))
         
-    end
+    end subroutine
     
     subroutine alloc_real3(a,n1,n2,n3,old2,o_init)
         integer,dimension(2) :: n1,n2,n3
@@ -279,7 +322,7 @@ use m_mpienv
 
         allocate(a(n1(1):n1(2),n2(1):n2(2),n3(1):n3(2)),source=either(o_init,0.,present(o_init)))
         
-    end
+    end subroutine
 
     subroutine dealloc_real1(a,b,c,d,e,f,g)
         real,dimension(:),allocatable :: a,b,c,d,e,f,g
@@ -305,7 +348,7 @@ use m_mpienv
             if(allocated(g)) deallocate(g)
         endif
 
-    end
+    end subroutine
 
     subroutine dealloc_real2(a,b,c,d,e,f,g)
         real,dimension(:,:),allocatable :: a,b,c,d,e,f,g
@@ -331,7 +374,7 @@ use m_mpienv
             if(allocated(g)) deallocate(g)
         endif
 
-    end
+    end subroutine
 
     subroutine dealloc_real3(a,b,c,d,e,f,g)
         real,dimension(:,:,:),allocatable :: a,b,c,d,e,f,g
@@ -357,7 +400,7 @@ use m_mpienv
             if(allocated(g)) deallocate(g)
         endif
 
-    end
+    end subroutine
 
     subroutine dealloc_real4(a,b,c,d,e,f,g)
         real,dimension(:,:,:,:),allocatable :: a,b,c,d,e,f,g
@@ -383,7 +426,7 @@ use m_mpienv
             if(allocated(g)) deallocate(g)
         endif
         
-    end
+    end subroutine
     
     ! subroutine flatten_alias(a,n1,p)
     !     integer,intent(in),dimension(2) :: n1

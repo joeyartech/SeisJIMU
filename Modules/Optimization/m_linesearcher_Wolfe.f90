@@ -1,14 +1,7 @@
 module m_linesearcher
-use m_string
-use m_arrayop
-use m_setup
-use m_mpienv
-use m_model
-use m_propagator
-use m_parametrizer
-use m_fobjective
-use m_nabla
-use m_preconditioner
+use m_System
+use m_Modeling
+use m_Kernel
 
     private
     
@@ -28,6 +21,9 @@ use m_preconditioner
     ! C. Lemaréchal, C.A. Sagastizábal,           !
     ! Springer-Verlag, Universitext               !
     
+    character(*),parameter :: info='Linesearch based on a bracketing - dichotomy algoritm'//s_NL// &
+                                   'Steplength (alpha) judged by Wolfe conditions'
+
     !Wolfe conditions parameters (Nocedal value)
     real,parameter :: c1=1e-4, c2=0.9 !for (quasi-)Newton method, 0.1 for NLCG
     !Bracketting parameter (Gilbert value)
@@ -39,19 +35,6 @@ use m_preconditioner
 
     !thresholding
     real,parameter :: thres=0.
-    
-    type,public :: t_forwardmap
-        real,dimension(:),allocatable :: x !point in model manifold
-        real,dimension(:),allocatable :: g !gradient
-        real,dimension(:),allocatable :: pg !preconditioned gradient
-        real,dimension(:),allocatable :: d !descent direction
-        real :: f !value of objective function
-        real :: gdotd  !g.d
-
-        contains
-        procedure :: init => forwardmap_init
-        final :: forwardmap_fin
-    end type
 
     type,public :: t_linesearcher
         real :: alpha=alpha0 !steplength initializd to alpha0
@@ -76,32 +59,15 @@ use m_preconditioner
     type(t_linesearcher),public :: ls
 
     contains
-
-    subroutine forwardmap_init(self,n)
-        class(t_forwardmap) :: self
-
-        call alloc(self%x, n); self%x=pack(fobj%x,mask=.not.param%is_freeze_zone)
-        call alloc(self%g, n); self%g=pack(fobj%gradient,mask=.not.param%is_freeze_zone)
-        call alloc(self%pg,n)
-        call alloc(self%d, n)
-        
-        self%f=fobj%total_loss
-
-    end subroutine
-
-    subroutine forwardmap_fin(self)
-        type(t_forwardmap) :: self
-
-        call dealloc(self%x,self%g,self%pg,self%d)
-
-    end subroutine
-
+    
     subroutine init(self)
         class(t_linesearcher) :: self
 
+        call hud(info)
+
         !read setup
-        max_search=setup%get_int('MAX_SEARCH',o_default='12')
-        max_gradient=setup%get_int('MAX_GRADIENT',o_default=num2str(max_iterate+30))
+        self%max_search=setup%get_int('MAX_SEARCH',o_default='12')
+        self%max_gradient=setup%get_int('MAX_GRADIENT',o_default=num2str(max_iterate+30))
         
         if_reinit_alpha=setup%get_bool('IF_REINIT_ALPHA',o_default='F')
 
@@ -109,9 +75,9 @@ use m_preconditioner
     
     subroutine search(self,iterate,curr,pert,o_gradient_history)
         class(t_linesearcher) :: self
-        type(t_forwardmap),intent(inout) :: curr, pert
-        real,dimension(:,:),intent(inout),optional :: o_gradient_history
-        
+        type(t_querypoint) :: curr,pert
+        real,dimension(:,:,:,:,:),optional :: o_gradient_history
+
         logical :: if_1st_cond, if_2nd_cond
         
         !initialize
@@ -119,16 +85,19 @@ use m_preconditioner
         alphaR=0.
         if(if_reinit_alpha) self%alpha=alpha0 !reinitialize alpha in each iterate may help convergence for LBFGS method..
         ! if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Initial alphaL/alpha/alphaR =',alphaL,alpha,alphaR
-        if(mpiworld%is_master) write(*,'(a, 2x,es8.2)')   ' Initial alpha =',alpha
-        if(mpiworld%is_master) write(*,*) 'Initial f,||g|| =',curr%f,norm2(curr%g)
-        pert%x=curr%x+self%alpha*curr%d
+        call hud('Initial alpha = '//num2str(self%alpha))
+        call hud('Initial f, ||g|| = '//num2str(curr%f)//', '//num2str(norm2(curr%g)))
+
+        !perturb current point
+        pert%x = curr%x + self%alpha*curr%d
+        call threshold(pert%x,size(pert%x))
         
         !save gradients
         if(present(o_gradient_history)) then
-            l=size(o_gradient_history,2) !number of gradient in history
+            l=size(o_gradient_history,5) !number of gradient in history
             i=1
-            o_gradient_history(:,i)=curr%g
-            i=i+1; if(i>l) i=1;
+            o_gradient_history(:,:,:,:,i)=curr%g
+            i=i+1; if(i>l) i=1
         endif
         
         !linesearch loop
@@ -138,12 +107,9 @@ use m_preconditioner
         
             if(mpiworld%is_master) write(*,'(a,3(2x,i5))') '  Iterate.Linesearch.Gradient#',iterate,self%isearch,self%igradient
             
+            
             call hud('Modeling with perturbed models')
-            call threshold(pert%x,size(pert%x))
-            call fobj%update(pert%x)
-            call nabla%act(fobj,oif_approx=.true.)
-            pert%f=fobj%total_loss
-            pert%g=pack(fobj%gradient,mask=.not. param%is_freeze_zone)
+            call nabla%act(fobj,pert,oif_update_m=.true.,oif_approx=.true.)
             call self%scale(pert)
             call preco%update
             call preco%apply(pert%g,pert%pg)
@@ -183,12 +149,6 @@ use m_preconditioner
                     self%result='perturb'
                     self%alphaR=self%alpha
                     self%alpha=0.5*(self%alphaL+self%alphaR)
-                    pert%x=curr%x+self%alpha*curr%d
-                    !save gradient
-                    if(present(o_gradient_history)) then
-                        o_gradient_history(:,i)=pert%g
-                        i=i+1; if(i>l) i=1;
-                    endif
                 endif
                 
                 !2nd condition BAD => increase alpha unless alphaR=0.
@@ -201,12 +161,16 @@ use m_preconditioner
                     else
                         self%alpha=self%alpha*multiplier
                     endif
-                    pert%x=curr%x+alpha*curr%d
-                    !save gradient
-                    if(present(o_gradient_history)) then
-                        o_gradient_history(:,i)=pert%g
-                        i=i+1; if(i>l) i=1;
-                    endif
+                endif
+
+                !perturb current point
+                pert%x = curr%x + self%alpha*curr%d
+                call threshold(pert%x,size(pert%x))
+
+                !save gradients
+                if(present(o_gradient_history)) then
+                    o_gradient_history(:,:,:,:,i)=pert%g
+                    i=i+1; if(i>l) i=1
                 endif
                 
             endif
@@ -252,15 +216,15 @@ use m_preconditioner
 
     end subroutine
         
-    subroutine scale(self,fm)
+    subroutine scale(self,qp)
         class(t_linesearcher) :: self
-        type(t_forwardmap) :: fm
+        type(t_querypoint) :: qp
         
         if(.not.self%if_has_scaler) then
 
-            !self%scaler=1e3* 1e-2*m%n/ (sum(abs(fm%g(1:m%n)))) / (par_vp_max -par_vp_min)  !=1e3* |gp1|_L1 / |gvp|_L1 / (vpmax-vpmin)
+            !self%scaler=1e3* 1e-2*m%n/ (sum(abs(qp%g(1:m%n)))) / (par_vp_max -par_vp_min)  !=1e3* |gp1|_L1 / |gvp|_L1 / (vpmax-vpmin)
 
-            self%scaler=1e3* 1e-2*m%n/ (sum(abs(fm%g(1:m%n)))) / (param%pars(1)%range)  !=1e3* |gpar1|_L1 / |gpar|_L1 / par1_range
+            self%scaler=1e3* 1e-2*m%n/ (sum(abs(qp%g(:,:,:,1)))) / (param%pars(1)%range)  !=1e3* |gpar1|_L1 / |gpar|_L1 / par1_range
 
             if(mpiworld%is_master) write(*,*) 'Linesearch scaler:', self%scaler
 
@@ -268,8 +232,8 @@ use m_preconditioner
 
         endif
         
-        fm%f=fm%f*self%scaler
-        fm%g=fm%g*self%scaler
+        qp%f=qp%f*self%scaler
+        qp%g=qp%g*self%scaler
         
     end subroutine
     

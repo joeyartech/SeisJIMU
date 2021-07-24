@@ -1,9 +1,5 @@
 module m_model
-use m_string
-use m_message
-use m_arrayop
-use m_setup
-use m_sysio
+use m_System
 
     private
 
@@ -28,6 +24,8 @@ use m_sysio
         real :: ref_vel=1500., ref_rho=1000., ref_kpa=1000.*1500.**2
 
         logical,dimension(:,:,:),allocatable :: is_freeze_zone
+
+        real,dimension(:,:,:,:),allocatable :: gradient
 
         contains
         procedure :: init => init

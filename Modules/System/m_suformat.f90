@@ -432,6 +432,8 @@ use m_sysio
 
         if(present(o_sindex)) write(*,*) 'Shot# '//o_sindex//' will write '//num2str(self%ntr)//' traces, each trace has '//num2str(self%ns)//' samples.'
 
+        call execute_command_line('rm '//dir_out//file//'.su')
+
         if(present(o_mode)) then
             if(o_mode=='append') then
                 open(12,file=dir_out//file//'.su',action='write',access='stream',position='append') !access='direct',recl=4*(ns+60))

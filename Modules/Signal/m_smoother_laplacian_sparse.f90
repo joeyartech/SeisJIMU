@@ -1,9 +1,5 @@
 module m_smoother_laplacian_sparse
-use m_either
-use m_string
-use m_mpienv
-use m_message
-use m_setup
+use m_System
 
     private
     public :: smoother_laplacian_init, smoother_laplacian_extend_mirror, smoother_laplacian_pseudo_stationary, smoother_laplacian_pseudo_nonstationary

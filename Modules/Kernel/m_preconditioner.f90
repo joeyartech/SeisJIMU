@@ -1,11 +1,7 @@
 module m_preconditioner
-use m_string
-use m_arrayop
-use m_setup
-use m_mpienv
-use m_model
-use m_propagator
-use m_parameterization
+use m_System
+use m_Modeling
+use m_parametrizer
 
     private
 
@@ -90,14 +86,14 @@ use m_parameterization
 
         if(present(o_power)) then
             self%preco(:,1,1)=[(((iz-1)*m%dz)**o_power,iz=1,m%nz)]
-            do iy=1,m%ny; do ix=1,nx
+            do iy=1,m%ny; do ix=1,m%nx
                 self%preco(:,ix,iy)=self%preco(:,1,1)
             enddo; enddo
         endif
 
         if(present(o_factor)) then
             self%preco(:,1,1)=[(((iz-1)*m%dz)*o_factor,iz=1,m%nz)]
-            do iy=1,m%ny; do ix=1,nx
+            do iy=1,m%ny; do ix=1,m%nx
                 self%preco(:,ix,iy)=self%preco(:,1,1)
             enddo; enddo
         endif

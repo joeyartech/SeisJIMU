@@ -327,17 +327,18 @@ module m_string
         
         !trivial case
         if(text==sep) then
-            allocate(strs(1)); strs(1)%s=''
+            allocate(strs(0))
             deallocate(text)
             return
         endif
-        
+
         !count how many substrings
         n=0
         do k=1,len(text)
             if(text(k:k)==sep) n=n+1
         enddo
         n=n-1
+
         allocate(strs(n))
         
         !split

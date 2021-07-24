@@ -1,9 +1,6 @@
 module m_parametrizer
-use m_string
-use m_setup
-use m_mpienv
-use m_model
-use m_propagator
+use m_System
+use m_Modeling
 
     !PARAMETERIZATION     -- ALLOWED PARAMETERS
     !velocities-density   -- vp vs ip
@@ -41,50 +38,40 @@ use m_propagator
         real :: min, max, range
     end type
 
-    type,public :: t_paramerization
+    type,public :: t_parametrizer
         !info
         character(i_str_xxlen) :: info = &
             'Parameterization: velocities-density'//s_NL// &
             'Allowed pars: vp, vs, ip'//s_NL// &
-            'Available empirical laws: Gardner, Castagna (will implemented later)'
+            'Available empirical laws: Gardner, Castagna (will implemented in future)'
 
         type(t_parameter),dimension(:),allocatable :: pars
         integer :: npars
         type(t_string),dimension(:),allocatable :: empirical
 
-        integer :: n1,n2,n3
-        real :: d1,d2,d3,h3
         logical,dimension(:,:,:,:),allocatable :: is_freeze_zone
+
+        integer :: n1,n2,n3,n
+        real :: d1,d2,d3,cell_volume
         
         contains
         procedure :: init => init
-        procedure :: transform_model => transform_model
-        procedure :: transform_gradient => transform_gradient
+        procedure :: transform => transform
     end type
 
-    type(t_paramerization),public :: param
+    type(t_parametrizer),public :: param
 
-    logical :: is_empirical, is_gardner, is_castagna
-    logical :: is_ac, is_el
+    logical :: is_empirical, is_gardner !, is_castagna
+    logical :: is_AC, is_EL
+
+    real :: a,b
 
     contains
     
     subroutine init(self)
-        class(t_paramerization) :: self
+        class(t_parametrizer) :: self
 
         type(t_string),dimension(:),allocatable :: list,sublist
-
-        self%n1=m%nz
-        self%n2=m%nx
-        self%n3=m%ny
-        self%d1=m%dz
-        self%d2=m%dx
-        self%d3=m%dy
-        self%h3=self%d1*self%d2*self%d3
-        allocate(self%is_freeze_zone(self%n1,self%n2,self%n3,self%npars))
-        do i=1,self%npars
-            self%is_freeze_zone(:,:,:,i)=m%is_freeze_zone
-        enddo
 
         !read in empirical law
         list=setup%get_strs('EMPIRICAL_LAW')
@@ -131,8 +118,8 @@ use m_propagator
         
         
         !PDE info
-        is_ac = index(propagator%info,'AC')>0
-        is_el = index(propagator%info,'EL')>0
+        is_AC = index(ppg%info,'AC')>0
+        is_EL = index(ppg%info,'EL')>0
 
         !read in active parameters and their allowed ranges
         list=setup%get_strs('PARAMETER',o_default='vp:1500:3400')
@@ -151,7 +138,7 @@ use m_propagator
                 self%npars=self%npars+1
 
             case ('vs' )
-                if(is_ac) then
+                if(is_AC) then
                     call hud('vs parameter from PARAMETER is neglected as the PDE is ACoustic.')
                     cycle loop
                 endif
@@ -179,115 +166,115 @@ use m_propagator
         !check vp,vs,rho [min,max] is in the same range as m%ref_vp,ref_vs,ref_rho
         !
 
+        self%n1=m%nz
+        self%n2=m%nx
+        self%n3=m%ny
+        self%n=self%n1*self%n2*self%n3*self%npars
+
+        self%d1=m%dz
+        self%d2=m%dx
+        self%d3=m%dy
+        self%cell_volume=self%d1*self%d2*self%d3
+
     end subroutine
-        
-    subroutine transform_model(self,dir,x,oif_prior)
-        class(t_paramerization) :: self
-        character(4) :: dir
-        real,dimension(self%n1,self%n2,self%n3,self%npars) :: x
-        logical,optional :: oif_prior
+    
+    ! subroutine init_forwardmap(self,fm,oif_g,oif_)
+    !     class(t_parametrizer) :: self
+    !     type(t_forwardmap) :: fm
 
-        real,dimension(m%nz,m%nx,m%ny,self%npars) :: xx
+    !     call alloc(fm%x, n1,n2,n3,self%npars)
+    !     call alloc(fm%g, n1,n2,n3,self%npars)
+    !     call alloc(fm%pg,n1,n2,n3,self%npars)
+    !     call alloc(fm%d, n1,n2,n3,self%npars)
 
-        !model
-        if(dir=='m->x') then
-            if(either(oif_prior,.false.,present(oif_prior))) then
+    ! end subroutine
+
+    subroutine transform(self,o_dir,o_x,o_xprior,o_g)
+        class(t_parametrizer) :: self
+        character(4),optional :: o_dir
+        real,dimension(self%n1,self%n2,self%n3,self%npars),optional :: o_x,o_xprior,o_g
+
+
+        if(present(o_x)) then
+            if(either(o_dir,'m->x',present(o_dir))=='m->x') then
                 do i=1,self%npars
-                    select case (self%pars(i)%name)
-                    case ('vp' ); xx(:,:,:,i) = (m%vp_prior -self%pars(i)%min)/self%pars(i)%range
-                    case ('vs' ); xx(:,:,:,i) = (m%vs_prior -self%pars(i)%min)/self%pars(i)%range
-                    case ('rho'); xx(:,:,:,i) = (m%rho_prior-self%pars(i)%min)/self%pars(i)%range
-                    end select
+                        select case (self%pars(i)%name)
+                        case ('vp' ); o_x(:,:,:,i) = (m%vp -self%pars(i)%min)/self%pars(i)%range
+                        case ('vs' ); o_x(:,:,:,i) = (m%vs -self%pars(i)%min)/self%pars(i)%range
+                        case ('rho'); o_x(:,:,:,i) = (m%rho-self%pars(i)%min)/self%pars(i)%range
+                        end select
                 enddo
             else
                 do i=1,self%npars
                     select case (self%pars(i)%name)
-                    case ('vp' ); xx(:,:,:,i) = (m%vp -self%pars(i)%min)/self%pars(i)%range
-                    case ('vs' ); xx(:,:,:,i) = (m%vs -self%pars(i)%min)/self%pars(i)%range
-                    case ('rho'); xx(:,:,:,i) = (m%rho-self%pars(i)%min)/self%pars(i)%range
+                    case ('vp' ); m%vp = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
+                    case ('vs' ); m%vs = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
+                    case ('rho'); m%rho= o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
                     end select
                 enddo
+                ! + gardner
+                if(is_gardner) m%rho = a*m%vp**b
+                call m%apply_freeze_zone
             endif
-
-            x=xx(.not. self%is_freeze_zone)
-
-        else !x->m
-
-            xx=x.&.m%is(freeze_zone)
-
-            do i=1,self%npars
-                select case (self%pars(i)%name)
-                case ('vp' ); m%vp = x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
-                case ('vs' ); m%vs = x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
-                case ('rho'); m%rho= x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
-                end select
-            enddo
-
-            ! + gardner
-            if(is_gardner) m%rho = a*m%vp**b
-
-            call m%apply_freeze_zone
-
         endif
 
-    end subroutine
 
-    subroutine transform_gradient(self,dir,g)
-        class(t_paramerization) :: self
-        character(4) :: dir
-        real,dimension(m%nz,m%nx,m%ny,self%npars) :: g
+        if(present(o_xprior)) then
+            do i=1,self%npars
+                select case (self%pars(i)%name)
+                case ('vp' ); o_x(:,:,:,i) = (m%vp_prior -self%pars(i)%min)/self%pars(i)%range
+                case ('vs' ); o_x(:,:,:,i) = (m%vs_prior -self%pars(i)%min)/self%pars(i)%range
+                case ('rho'); o_x(:,:,:,i) = (m%rho_prior-self%pars(i)%min)/self%pars(i)%range
+                end select
+            enddo
+        endif
+        
 
-        real,dimension(m%nz,m%nx,m%ny,self%npars) :: grad
+        if(present(o_g)) then
 
-
-        !gradient
-        if(dir=='m->x') then
-
-            grad=g
-            
             !acoustic
-            if(is_ac .and. .not. is_empirical) then
+            if(is_AC .and. .not. is_empirical) then
                 do i=1,self%npars
                     select case (self%pars(i)%name)
-                    case ('vp' ); g(:,:,:,ipar) = grad(:,:,:,1)*2*m%rho*m%vp
-                    case ('rho'); g(:,:,:,ipar) = grad(:,:,:,1)*m%vp**2 + grad(:,:,:,2)
+                    case ('vp' ); o_g(:,:,:,i) = m%gradient(:,:,:,1)*2*m%rho*m%vp
+                    case ('rho'); o_g(:,:,:,i) = m%gradient(:,:,:,1)*m%vp**2 + m%gradient(:,:,:,2)
                     end select
                 enddo
             endif
 
             !acoustic + gardner
-            if(is_ac .and. is_gardner) then
-                g(:,:,:,1) =(grad(:,:,:,1)*(b+2)/b*m%vp**2 + grad(:,:,:,2))*a*b*m%vp**(b-1)
+            if(is_AC .and. is_gardner) then
+                o_g(:,:,:,1) =(cb%grad(:,:,:,1)*(b+2)/b*m%vp**2 + cb%grad(:,:,:,2))*a*b*m%vp**(b-1)
             endif
 
             !elastic
-            if(is_el .and. .not. is_empirical) then
+            if(is_EL .and. .not. is_empirical) then
                 do i=1,self%npars
                     select case (self%pars(i)%name)
-                    case ('vp' ); g(:,:,:,ipar) = grad(:,:,:,1)*2*m%rho*m%vp
-                    case ('vs' ); g(:,:,:,ipar) =(grad(:,:,:,1)*(-2) + grad(:,:,:,2))*2*m%rho*m%vs
-                    case ('rho'); g(:,:,:,ipar) = grad(:,:,:,1)*m%vp**2 + (-2*grad(:,:,:,1)+grad(:,:,:,2))*m%vs**2 + grad(:,:,:,3)
+                    case ('vp' ); o_g(:,:,:,i) = m%gradient(:,:,:,1)*2*m%rho*m%vp
+                    case ('vs' ); o_g(:,:,:,i) =(m%gradient(:,:,:,1)*(-2) + m%gradient(:,:,:,2))*2*m%rho*m%vs
+                    case ('rho'); o_g(:,:,:,i) = m%gradient(:,:,:,1)*m%vp**2 + (-2*m%gradient(:,:,:,1)+m%gradient(:,:,:,2))*m%vs**2 + m%gradient(:,:,:,3)
                     end select
                 enddo
             endif
 
             !elastic + gardner
-            if(is_el .and. is_gardner) then
+            if(is_EL .and. is_gardner) then
                 do i=1,self%npars
                     select case (self%pars(i)%name)
-                    case ('vp' ); g(:,:,:,i) =(grad(:,:,:,1)*(b+2)/b*m%vp + (-2*grad(:,:,:,1)+grad(:,:,:,2))*m%vs**2 + grad(:,:,:,3))*a*b*m%vp**(b-1)
-                    case ('vs' ); g(:,:,:,i) =(grad(:,:,:,1)*(-2) + grad(:,:,:,2))*2*a*m%vp**b*m%vs
+                    case ('vp' ); o_g(:,:,:,i) =(m%gradient(:,:,:,1)*(b+2)/b*m%vp + (-2*m%gradient(:,:,:,1)+m%gradient(:,:,:,2))*m%vs**2 + m%gradient(:,:,:,3))*a*b*m%vp**(b-1)
+                    case ('vs' ); o_g(:,:,:,i) =(m%gradient(:,:,:,1)*(-2) + m%gradient(:,:,:,2))*2*a*m%vp**b*m%vs
                     end select
                 enddo
             endif
 
-
-            !normaliz g by allowed parameter range
+            !normaliz o_g by allowed parameter range
+            !s.t. o_g is in unit [Nm]
             do i=1,self%npars
-                g(:,:,:,i)=g(:,:,:,i)*self%pars(i)%range
+                o_g(:,:,:,i)=o_g(:,:,:,i)*self%pars(i)%range
             enddo
 
-            where (self%is_freeze_zone) g=0.
+            where (self%is_freeze_zone) o_g=0.
 
         endif
         

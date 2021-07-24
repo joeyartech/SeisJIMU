@@ -1,20 +1,29 @@
 module m_fobjective
-use m_string
-use m_arrayop
-use m_setup
-use m_suformat
-use m_model
-use m_shot
+use m_System
+use m_Modeling
 use m_weighter
 use m_parametrizer
 
     private
 
+    type,public :: t_querypoint
+        
+        real,dimension(:,:,:,:),allocatable :: x  !point in parameter space X (unitless)
+        real,dimension(:,:,:,:),allocatable :: g  !gradient, unit in [1/Nm]
+        real,dimension(:,:,:,:),allocatable :: pg !preconditioned gradient
+        real,dimension(:,:,:,:),allocatable :: d  !descent direction
+        real :: f !objective function value, unit in [Nm]
+        real :: gdotd  !g.d
+
+        contains
+        procedure :: init => querypoint_init
+        final :: querypoint_fin
+
+    end type
+
+    real,dimension(:,:,:,:),allocatable :: xprior !prior parameter
+
     type,public :: t_fobjective
-        real,dimension(:,:,:,:),allocatable :: x, xprior !unitless
-        real :: h3
-        real :: total_loss !unit in [Nm]
-        real,dimension(:,:,:,:),allocatable :: gradient !unit in [1/Nm]
 
         type(t_string),dimension(:),allocatable :: s_dnorms !norms for data residuals
         type(t_string),dimension(:),allocatable :: s_xnorms !norms for model residuals
@@ -29,10 +38,10 @@ use m_parametrizer
 
         contains
 
-        procedure :: init => init
-        procedure :: update => update
+        procedure :: init => fobjective_init
         procedure :: compute_dnorms => compute_dnorms
         procedure :: compute_xnorms => compute_xnorms
+        procedure :: total_loss => total_loss
         procedure :: print_dnorms => print_dnorms
         procedure :: print_xnorms => print_xnorms
 
@@ -46,25 +55,52 @@ use m_parametrizer
 
     contains
 
-    subroutine init(self)
-        class(t_fobjective) :: self
-        
-        call alloc(self%x,param%n1,param%n2,param%n3,param%npars)
-        call param%transform_model('m->x',self%x)
+    subroutine querypoint_init(self,oif_g,oif_pg,oif_d)
+        class(t_querypoint) :: self
+        logical,optional :: oif_g,oif_pg,oif_d
 
-        !prior models
-        call m%read_prior
-        if(m%if_has_prior) then
-            !convert prior models
-            call param%transform_model('m->x',self%xprior,oif_prior=.true.)
-            !save some RAM
-            call dealloc(m%vp_prior,m%vs_prior,m%rho_prior)
+        logical,save :: is_first_in=.true.
+
+                    call alloc(self%x, param%n1,param%n2,param%n3,param%npars)
+        if(oif_g)   call alloc(self%g, param%n1,param%n2,param%n3,param%npars)
+        if(oif_pg)  call alloc(self%pg,param%n1,param%n2,param%n3,param%npars)
+        if(oif_d)   call alloc(self%d, param%n1,param%n2,param%n3,param%npars)
+        
+        self%f=0.
+        self%gdotd=0.
+
+                    call param%transform('m->x',o_x=self%x)
+
+        if(oif_g)   call param%transform(o_g=self%g)
+
+        if(is_first_in) then
+            !prior models
+            call m%read_prior
+            if(m%if_has_prior) then
+                call alloc(xprior,param%n1,param%n2,param%n3,param%npars)
+                !transform prior models
+                call param%transform('m->x',o_xprior=xprior)
+                !save some RAM
+                call dealloc(m%vp_prior,m%vs_prior,m%rho_prior)
+            endif
+
+            is_first_in=.false.
+
         endif
 
-        call param%transform_gradient('m->x',self%gradient)
+    end subroutine
 
-        self%h3=param%d1*param%d2*param%d3
+    subroutine querypoint_fin(self)
+        type(t_querypoint) :: self
 
+        call dealloc(self%x,self%g,self%pg,self%d)
+
+    end subroutine
+
+
+    subroutine fobjective_init(self)
+        class(t_fobjective) :: self
+        
         !data norms
         self%s_dnorms=setup%get_strs('DATA_NORMS','DNORMS',o_default='L1 =>L2 Linf')
         self%n_dnorms=size(self%s_dnorms)
@@ -87,19 +123,9 @@ use m_parametrizer
         if(self%n_xnorms>0) then
             xnorms_weights=setup%get_reals('PARAMETER_NORMS_WEIGHTS','XNORMS_WEI',o_default='1. 1. 1. 1.')
         endif
-
-        self%total_loss=0.
-
+        
     end subroutine
     
-    subroutine update(self,x,n)
-        class(t_fobjective) :: self
-        real,dimension(n) :: x
-
-        self%x=unpack(x,mask=.not.param%is_freeze_zone)
-
-    end subroutine
-
     subroutine compute_dnorms(self)
         class(t_fobjective) :: self
         
@@ -112,12 +138,12 @@ use m_parametrizer
             case ('L2')
                 Wdres = (shot%dsyn-shot%dobs)*wei%weight
 
-                call write('Wdres')
+                if(mpiworld%is_master) call shot%write('Wdres')
 
                 do ir=1,shot%nrcv
-                    if(shot%rcv(ir)%if_badtrace) cycle
+                    if(shot%rcv(ir)%is_badtrace) cycle
 
-                    self%dnorms(i) = self%dnorms(i) + 0.5*m%cell_size*sum(Wdres(:,ir)**2)
+                    self%dnorms(i) = self%dnorms(i) + 0.5*m%cell_volume*sum(Wdres(:,ir)**2)
 
                     !set unit of dnorm to be [Nm], same as Lagrangian
                     !this also help balance contributions from different component data
@@ -131,7 +157,7 @@ use m_parametrizer
 
                 !compute adjoint source and set proper units
                 if(i==self%i_dnorm_4adjsource) then
-                    shot%dadj = -wei%weight*Wdres*m%cell_size
+                    shot%dadj = -wei%weight*Wdres*m%cell_volume
 
                     do ir=1,shot%nrcv
                         if(shot%rcv(ir)%comp=='p') then !for pressure data
@@ -142,7 +168,7 @@ use m_parametrizer
 
                     enddo
 
-                    call write('shot%dadj')
+                    call shot%write('dadj')
 
                 endif
                 
@@ -155,12 +181,13 @@ use m_parametrizer
 
     end subroutine
 
-    subroutine compute_xnorms(self)
+    subroutine compute_xnorms(self,x,g)
         class(t_fobjective) :: self
+        real,dimension(param%n1,param%n2,param%n3,param%npars) :: x,g
 
-        real,dimension(:,:,:,:),allocatable :: grad
+        real,dimension(:,:,:,:),allocatable :: spatgrad !spatial gradient of x
 
-        call alloc(grad,param%n1,param%n2,param%n3,param%npars,o_init=0.)
+        call alloc(spatgrad,param%n1,param%n2,param%n3,param%npars,o_init=0.)
 
         self%xnorms=0.
 
@@ -170,15 +197,15 @@ use m_parametrizer
                 !fcost
                 call alloc(Wxres,param%n1,param%n2,param%n3,param%npars)
                 if(m%if_has_prior) then
-                    Wxres=self%x-self%xprior
+                    Wxres=x-xprior
                 else
-                    Wxres=self%x
+                    Wxres=x
                 endif
 
                 self%xnorms(i) = sum(Wxres*Wxres, .not.param%is_freeze_zone)
 
-                !gradient
-                grad = grad + Wxres
+                !spatial gradient
+                spatgrad = spatgrad + Wxres
 
             case ('Lasso','L1')
 
@@ -186,28 +213,28 @@ use m_parametrizer
 
                 !fcost
                 do j=1,param%n1
-                    self%xnorms(i) = self%xnorms(i) + xnorms_weights(1)*sum((self%x(j+1,:,:,:)-self%x(j,:,:,:))**2,.not.param%is_freeze_zone(j,:,:,:))
+                    self%xnorms(i) = self%xnorms(i) + xnorms_weights(1)*sum((x(j+1,:,:,:)-x(j,:,:,:))**2,.not.param%is_freeze_zone(j,:,:,:))
                 enddo
 
                 do j=1,param%n2
-                    self%xnorms(i) = self%xnorms(i) + xnorms_weights(2)*sum((self%x(:,j+1,:,:)-self%x(:,j,:,:))**2,.not.param%is_freeze_zone(:,j,:,:))
+                    self%xnorms(i) = self%xnorms(i) + xnorms_weights(2)*sum((x(:,j+1,:,:)-x(:,j,:,:))**2,.not.param%is_freeze_zone(:,j,:,:))
                 enddo
 
                 if(m%is_cubic) then
                 do j=1,param%n3
-                    self%xnorms(i) = self%xnorms(i) + xnorms_weights(3)*sum((self%x(:,:,j+1,:)-self%x(:,:,j,:))**2,.not.param%is_freeze_zone(:,:,j,:))
+                    self%xnorms(i) = self%xnorms(i) + xnorms_weights(3)*sum((x(:,:,j+1,:)-x(:,:,j,:))**2,.not.param%is_freeze_zone(:,:,j,:))
                 enddo
                 endif
 
-                !gradient
+                !spatial gradient
                 do i4=1,param%npars
                 do i3=1,param%n3
                 do i2=1,param%n2
                 do i1=1,param%n1
-                    grad(i1,i2,i3,i4) = grad(i1,i2,i3,i4) &
-                        -xnorms_weights(1)*(self%x(i1-1,i2,i3,i4)-2.*self%x(i1,i2,i3,i4)+self%x(i1+1,i2,i3,i4)) &
-                        -xnorms_weights(2)*(self%x(i1,i2-1,i3,i4)-2.*self%x(i1,i2,i3,i4)+self%x(i1,i2+1,i3,i4)) &
-                        -xnorms_weights(3)*(self%x(i1,i2,i3-1,i4)-2.*self%x(i1,i2,i3,i4)+self%x(i1,i2,i3+1,i4))
+                    spatgrad(i1,i2,i3,i4) = spatgrad(i1,i2,i3,i4) &
+                        -xnorms_weights(1)*(x(i1-1,i2,i3,i4)-2.*x(i1,i2,i3,i4)+x(i1+1,i2,i3,i4)) &
+                        -xnorms_weights(2)*(x(i1,i2-1,i3,i4)-2.*x(i1,i2,i3,i4)+x(i1,i2+1,i3,i4)) &
+                        -xnorms_weights(3)*(x(i1,i2,i3-1,i4)-2.*x(i1,i2,i3,i4)+x(i1,i2,i3+1,i4))
                 enddo
                 enddo
                 enddo
@@ -219,20 +246,21 @@ use m_parametrizer
 
         enddo
 
-        self%xnorms = 0.5*m%ref_kpa*self%xnorms*param%h3
+        self%xnorms = 0.5*m%ref_kpa*self%xnorms*param%cell_volume
 
-        where(param%is_freeze_zone) grad=0.
+        where(param%is_freeze_zone) spatgrad=0.
 
-        self%gradient = self%gradient + m%ref_kpa*param%h3*grad
+        !add to dnorm's gradient wrt parameters
+        g = g + spatgrad*m%ref_kpa*param%cell_volume
 
     end subroutine
 
-    subroutine compute_total_loss(self)
+    real function total_loss(self)
         class(t_fobjective) :: self
 
-        self%total_loss = self%dnorms(self%i_dnorm_4adjsource) + sum(self%xnorms)
+        total_loss = self%dnorms(self%i_dnorm_4adjsource) + sum(self%xnorms)
 
-    end subroutine
+    end function
 
     subroutine print_dnorms(self)
         class(t_fobjective) :: self

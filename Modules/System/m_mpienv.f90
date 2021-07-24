@@ -120,10 +120,15 @@ use m_string
     subroutine fin(self)
         class(t_mpienv) :: self
 
-        if(self%is_master) print*, time_stamp()
+        if(self%is_master) then
+            write(*,*)  '==================================='//s_NL// &
+                        '   SeisJIMU has finished the job   '//s_NL// &
+                        '==================================='
+        write(*,*) time_stamp()
+        endif
 
         call self%barrier
-        call mpi_abort(self%communicator,ierrcode,self%ierr)
+        !call mpi_abort(self%communicator,ierrcode,self%ierr)
         call mpi_finalize(self%ierr)
         
     end subroutine

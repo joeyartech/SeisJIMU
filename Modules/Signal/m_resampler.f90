@@ -1,5 +1,5 @@
 module m_resampler
-use m_either
+use m_System
 use m_math
 
     private
