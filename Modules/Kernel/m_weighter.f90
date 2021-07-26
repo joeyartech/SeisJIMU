@@ -25,17 +25,17 @@ use m_Modeling
     
     contains
 
-    subroutine init(self,o_nt_,o_dt_,o_ntr_)
+    subroutine init(self,o_nt,o_dt,o_ntr)
         class(t_weighter) :: self
-        integer,optional :: o_nt_, o_ntr_
-        real,optional :: o_dt_
+        integer,optional :: o_nt, o_ntr
+        real,optional :: o_dt
 
         type(t_string),dimension(:),allocatable :: list,sublist
         character(:),allocatable :: file
 
-        self%nt = either(o_nt_,  shot%nt  , present(o_nt_ ))
-        self%ntr= either(o_ntr_, shot%nrcv, present(o_ntr_))
-        self%dt = either(o_dt_,  shot%dt  , present(o_dt_ ))
+        self%nt = either(o_nt,  shot%nt  , present(o_nt ))
+        self%ntr= either(o_ntr, shot%nrcv, present(o_ntr))
+        self%dt = either(o_dt,  shot%dt  , present(o_dt ))
 
         call alloc(self%weight,self%nt,self%ntr,o_init=1.)
 
@@ -85,7 +85,7 @@ use m_Modeling
             if(list(i)%s(1:7)=='polygon') then
                 sublist=split(list(i)%s,o_sep=':')
                 if(size(sublist)==1) then !filename is not attached, ask for it
-                    file=setup%get_file('FILE_WEIGHT_POLYGON',o_mandatory=.true.)
+                    file=setup%get_file('FILE_WEIGHT_POLYGON',o_mandatory=1)
                 else !filename is attached
                     file=sublist(2)%s
                 endif
@@ -98,7 +98,7 @@ use m_Modeling
             if(list(i)%s(1:5)=='table') then
                 sublist=split(list(i)%s,o_sep=':')
                 if(size(sublist)==1) then !filename is not attached, ask for it
-                    file=setup%get_file('FILE_WEIGHT_TABLE',o_mandatory=.true.)
+                    file=setup%get_file('FILE_WEIGHT_TABLE',o_mandatory=1)
                 else !filename is attached
                     file=sublist(2)%s
                 endif
@@ -111,7 +111,7 @@ use m_Modeling
             if(list(i)%s(1:6)=='custom') then
                 sublist=split(list(i)%s,o_sep=':')
                 if(size(sublist)==1) then !filename is not attached, ask for it
-                    file=setup%get_file('FILE_WEIGHT_CUSTOM',o_mandatory=.true.)
+                    file=setup%get_file('FILE_WEIGHT_CUSTOM',o_mandatory=1)
                 else !filename is attached
                     file=sublist(2)%s
                 endif

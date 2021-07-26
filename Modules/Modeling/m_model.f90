@@ -25,7 +25,7 @@ use m_System
 
         logical,dimension(:,:,:),allocatable :: is_freeze_zone
 
-        real,dimension(:,:,:,:),allocatable :: gradient
+        real,dimension(:,:,:,:),allocatable :: gradient, pgradient, image
 
         contains
         procedure :: init => init
@@ -49,10 +49,10 @@ use m_System
     subroutine init(self)
         class(t_model) :: self
 
-        integer,dimension(3) :: itmp=[1,1,1]
-        real,dimension(3) :: rtmp=[1.,1.,1.]
+        integer,dimension(3) :: itmp=1
+        real,dimension(3) :: rtmp=1.
 
-        itmp=setup%get_ints('MODEL_SIZE','NZXY',o_mandatory=.true.)
+        itmp=setup%get_ints('MODEL_SIZE','NZXY',o_mandatory=3)
         
         self%nz=itmp(1); self%nx=itmp(2); self%ny=itmp(3)
 
@@ -67,10 +67,11 @@ use m_System
             self%is_cubic=.true.
         endif
 
-        rtmp=setup%get_reals('MODEL_SPACING','DZXY',o_mandatory=.true.)
+        rtmp=setup%get_reals('MODEL_SPACING','DZXY',o_mandatory=3)
         self%dz=rtmp(1); self%dx=rtmp(2); self%dy=rtmp(3)
 
         rtmp=setup%get_reals('MODEL_ORIGIN','OZXY',o_default='0. 0. 0.')
+        rtmp=0.
         self%oz=rtmp(1); self%ox=rtmp(2); self%oy=rtmp(3)
 
         self%cell_volume = self%dz*self%dx*self%dy
@@ -82,7 +83,7 @@ use m_System
             self%cell_inv_diagonal=sqrt(self%dz**(-2) + self%dx**(-2))
         endif
 
-        self%file=setup%get_file('FILE_MODEL',o_mandatory=.true.) 
+        self%file=setup%get_file('FILE_MODEL')!,o_mandatory=.true.) 
 
         self%attributes_read =setup%get_strs('MODEL_ATTRIBUTES',o_default='vp rho')
         self%attributes_write=setup%get_strs('MODEL_ATTRIBUTES_WRITE',o_default='vp')
@@ -94,6 +95,14 @@ use m_System
 
         real,dimension(:,:,:),allocatable :: tmp
         character(:),allocatable :: file
+
+        if(self%file=='') then !no read
+            !freesurface
+            self%is_freesurface=setup%get_bool('IS_FREESURFACE',o_default='T')
+            !freeze zone
+            allocate(self%is_freeze_zone(self%nz,self%nx,self%ny),source=.false.)
+            return
+        endif
 
         open(12,file=self%file,access='direct',recl=4*self%n,action='read',status='old')
         

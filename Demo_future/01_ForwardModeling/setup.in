@@ -1,0 +1,35 @@
+MODEL_SIZE              '101   101    1'
+MODEL_SPACING           '20    20    1'
+MODEL_ORIGIN            '0     0     0'
+#FILE_MODEL              'model'
+#MODEL_ATTRIBUTES        rho
+
+IS_FREESURFACE          F
+
+ACQUI_GEOMETRY          spread
+FS                      '26 505 500'
+FR                      '46 10  0'
+DR                      '0 20'
+NR                      100
+
+WAVELET_TYPE            'ricker'
+                       # fsz   fsx  fsy  lsz   lsx    lsy  ns
+#SOURCE_LINE             '26    505  500  20    505    500  1'
+                       # frz   frx  fry  lrz   lrx    lry  nr
+#RECEIVER_LINE           '26    10    0   26    1990   0    100'
+
+SCOMP                   p
+RCOMP                   'p vz vx'
+
+#IF_HICKS		F
+
+NT           500
+DT           0.004
+FPEAK        7
+
+#SNAPSHOT     'p vz vx'
+
+IF_USE_CHECKPOINT   F
+
+
+#why the vz comp of dsyn is weird?

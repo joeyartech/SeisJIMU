@@ -377,6 +377,7 @@ use m_sysio
         integer :: ns !assume all traces have same number of samples
         real    :: dt !assume all traces have same time sampling interval
         contains
+        procedure :: init => init
         procedure :: read => read
         procedure :: write => write
         final     :: fin
@@ -384,6 +385,28 @@ use m_sysio
 
     contains
     
+    subroutine init(self,ns,ntr,o_dt,o_data)
+        class(t_suformat) :: self
+        real,optional :: o_dt
+        real,dimension(ns,ntr),optional :: o_data
+        
+        allocate(self%hdrs(ntr))
+        allocate(self%trs(ns,ntr))
+
+        self%ntr=ntr
+        self%ns=ns
+        if(present(o_dt)) self%dt=o_dt
+
+        self%hdrs(:)%tracl=[(i,i=1,ntr)]
+
+        if(present(o_data)) self%trs=o_data
+
+        self%hdrs(:)%ntr=self%ntr
+        self%hdrs(:)%ns=self%ns
+        if(present(o_dt)) self%hdrs(:)%dt=nint(self%dt*1e6)
+
+    end subroutine
+
     subroutine read(self,file,o_sindex)
         class(t_suformat) :: self
         character(*) :: file
@@ -442,39 +465,24 @@ use m_sysio
             open(12,file=dir_out//file//'.su',action='write',access='stream') !access='direct',recl=4*(ns+60))
         endif
 
-        self%hdrs(:)%ntr=self%ntr
-        self%hdrs(:)%ns=self%ns
-        self%hdrs(:)%dt=nint(self%dt*1e6)
-
-        !write(12) (self%hdrs(i),self%trs(:,i), i=1,self%ntr) !randomly cause issues, maybe this is too long?
-        do i=1,self%ntr
-            write(12) self%hdrs(i)
-            write(12) self%trs(:,i)
-        enddo
-
+        write(12) (self%hdrs(i),self%trs(:,i), i=1,self%ntr)
+        
         close(12)
 
         call hud('SU data write success.')
 
     end subroutine
 
-    subroutine suformat_write(file,data,ns,ntr,o_dt,o_sindex,o_mode)
+    subroutine suformat_write(file,data,nt,ntr,o_dt,o_sindex,o_mode)
         character(*) :: file
-        real,dimension(ns,ntr) :: data
+        real,dimension(nt,ntr) :: data
         real,optional :: o_dt
         character(*),optional :: o_sindex
         character(*),optional :: o_mode
 
         type(t_suformat) :: sudata
-
-        allocate(sudata%hdrs(ntr))
-        allocate(sudata%trs(ns,ntr))
-
-        sudata%ns=ns
-        sudata%ntr=ntr
-        sudata%dt=either(o_dt,0.,present(o_dt))
-        sudata%hdrs(:)%tracl=[(i,i=1,ntr)]
-        sudata%trs=data
+        
+        call sudata%init(ntr,ns,o_dt=o_dt,o_data=data)
 
         call sudata%write(file,o_sindex,o_mode)
 

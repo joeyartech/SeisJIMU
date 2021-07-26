@@ -96,16 +96,16 @@ use m_math, only : r_pi
 !  !!
 ! !!*************** end self doc **********************************!!
 
-    subroutine butterworth(ntr,nt,dt,trace,&
+    subroutine butterworth(trace,nt,dt,ntr,&
         ois_zerophase,oif_locut,oif_hicut,&
         o_fstoplo,o_fpasslo,o_fpasshi,o_fstophi,&
         o_astoplo,o_apasslo,o_apasshi,o_astophi,&
         o_npoleslo,o_npoleshi,&
         o_f3dblo,  o_f3dbhi)
-
-        integer ntr !number of traces
+    
         integer nt  !number of time samples
-        real,dimension(ntr,nt) :: trace
+        integer ntr !number of traces
+        real,dimension(nt,ntr) :: trace
         real dt     !sample spacing
         
         logical,optional :: ois_zerophase !flag for zero phase filtering
@@ -132,7 +132,6 @@ use m_math, only : r_pi
         
         real nyq        !nyquist frequency
         integer verbose        !design info flag
-
 
         nyq = 0.5/dt
 

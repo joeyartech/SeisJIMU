@@ -16,8 +16,6 @@ use m_cpml
     real :: c1x, c1y, c1z
     real :: c2x, c2y, c2z
 
-    logical :: if_hicks
-
     type,public :: t_propagator
         !info
         character(i_str_xxlen) :: info = &
@@ -84,6 +82,8 @@ use m_cpml
 
     type(t_propagator),public :: ppg
 
+    logical :: if_hicks
+
     contains
     
     !========= for FDSG O(dx4,dt2) ===================  
@@ -104,15 +104,18 @@ use m_cpml
         class(t_propagator) :: self
         
         if(index(self%info,'vp')>0  .and. .not. allocated(m%vp)) then
-            call error('vp model is NOT given.')
-            !allocate(m%vp(m%nz,m%nx,m%ny));  m%vp=2000.
-            !call hud('Constant vp model (2 km/s) is allocated by propagator.')
+            !call error('vp model is NOT given.')
+            call alloc(m%vp,m%nz,m%nx,m%ny,o_init=1500.)
+            call warn('Constant vp model (1.5 km/s) is allocated by propagator.')
         endif
 
         if(index(self%info,'rho')>0 .and. .not. allocated(m%rho)) then
-            allocate(m%rho(m%nz,m%nx,m%ny)); m%rho=1000.
-            call hud('Constant rho model (1 g/cc) is allocated by propagator.')
+            call alloc(m%rho,m%nz,m%nx,m%ny,o_init=1000.)
+            call warn('Constant rho model (1 g/cc) is allocated by propagator.')
         endif
+
+        m%ref_kpa=m%ref_rho*m%ref_vel**2
+
     end subroutine
     
     subroutine check_discretization(self)
@@ -180,6 +183,9 @@ use m_cpml
             self%buoy(:,:,iy)=0.5/cb%rho(:,:,iy)+0.5/cb%rho(:,:,iy-1)
         enddo
 
+        !initialize m_field
+        call field_init(.false.,self%nt,self%dt)
+
     end subroutine
 
     subroutine init_field(self,f,name,origin,oif_will_reconstruct)
@@ -190,7 +196,7 @@ use m_cpml
         logical,optional :: oif_will_reconstruct
 
         !field
-        call f%init(name,self%nt,self%dt,if_shear_in=.false.)
+        call f%init(name)
 
         call alloc(f%vz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%vx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -207,6 +213,7 @@ use m_cpml
         call f%init_bloom(origin)
 
         if(either(oif_will_reconstruct,.false.,present(oif_will_reconstruct))) then
+            f%if_will_reconstruct=.true.
             call f%init_boundary
         endif
         
@@ -235,19 +242,18 @@ use m_cpml
     ! vx(iz,ix,iy):=  vx[iz,ix-0.5,iy]^it,it+1,...
     ! vy(iz,ix,iy):=  vy[iz,ix,iy-0.5]^it,it+1,...
 
-    subroutine forward(self,f,oif_will_reconstruct)
+    subroutine forward(self,f)
         class(t_propagator) :: self
         type(t_field) :: f
-        logical,optional :: oif_will_reconstruct
 
-        integer,parameter :: time_dir=1 !time direction
-        logical :: if_will_reconstruct
-
-        if_will_reconstruct=either(oif_will_reconstruct,.false.,present(oif_will_reconstruct))
+        real,parameter :: time_dir=1. !time direction
 
         ift=1; ilt=self%nt
 
         tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.
+
+        !seismo
+        call alloc(f%seismo,shot%nrcv,self%nt)
         
         do it=ift,ilt
             if(mod(it,500)==0 .and. mpiworld%is_master) then
@@ -290,7 +296,7 @@ use m_cpml
             call f%write(it)
 
             !step 6: save v^it+1 in boundary layers
-            if(if_will_reconstruct) then
+            if(f%if_will_reconstruct) then
                 call cpu_time(tic)
                 call f%boundary_transport('save',it)
                 call cpu_time(toc)
@@ -310,9 +316,7 @@ use m_cpml
 
         call hud('Viewing the snapshots (if written) with ximage/xmovie:')
         write(*,'(a,i0.5,a)') 'ximage < snap_*  n1=',cb%nz,' perc=99'
-        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'                
-        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%mz,' n2=',cb%mx,' clip=?e-?? loop=2 title=%g'
-        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%mz,' n2=',cb%mx,' clip=?e-?? loop=2 title=%g'
+        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'
 
     end subroutine
 
@@ -320,7 +324,7 @@ use m_cpml
     subroutine inject_velocities(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
-        integer :: time_dir
+        real :: time_dir
         
         ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
         ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
@@ -362,7 +366,7 @@ use m_cpml
     subroutine update_velocities(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
-        integer :: time_dir, it
+        real :: time_dir
 
         ifz=f%bloom(1,it)+2
         ilz=f%bloom(2,it)-1
@@ -380,10 +384,10 @@ use m_cpml
                                  ifz,ilz,ifx,ilx,ify,ily,time_dir*self%dt)
         else
 
-            call fd2d_velocities(f%vz,f%vx,f%p,                           &
-                                 f%dp_dz,f%dp_dx,                         &
-                                 self%buoz,self%buox,                     &
-                                 ifz,ilz,ifx,ilx,time_dir*time_dir*self%dt)
+            call fd2d_velocities(f%vz,f%vx,f%p,                  &
+                                 f%dp_dz,f%dp_dx,                &
+                                 self%buoz,self%buox,            &
+                                 ifz,ilz,ifx,ilx,time_dir*self%dt)
 
         endif
 
@@ -396,7 +400,7 @@ use m_cpml
     subroutine inject_stresses(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
-        integer :: time_dir
+        real :: time_dir
         
         ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
         ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
@@ -423,7 +427,7 @@ use m_cpml
     subroutine update_stresses(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
-        integer :: time_dir, it
+        real :: time_dir
 
         ifz=f%bloom(1,it)+1
         ilz=f%bloom(2,it)-2
@@ -524,24 +528,32 @@ use m_cpml
     !G^T:  adjoint propagator,
     !A^T N:get adjoint fields
         
-    subroutine adjoint(self,rf,oif_record_seismo,o_sf,o_imag,o_grad)
+    subroutine adjoint(self,rf,oif_record_adjseismo,o_sf,o_imag,o_grad)
         class(t_propagator) :: self
         type(t_field) :: rf
-        logical,optional :: oif_record_seismo
+        logical,optional :: oif_record_adjseismo
         type(t_field),optional :: o_sf
         real,dimension(cb%mz,cb%mx,cb%my,self%nimag),optional :: o_imag
         real,dimension(cb%mz,cb%mx,cb%my,self%ngrad),optional :: o_grad
 
-        integer,parameter :: time_dir=-1 !time direction
-        
-        !reinitialize boundary component for incident wavefield reconstruction
+        real,parameter :: time_dir=-1. !time direction
+
+        logical :: if_record_adjseismo
+
+        !adjseismo
+        if_record_adjseismo=either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
+        if(if_record_adjseismo) then
+            call alloc(rf%seismo,1,self%nt)
+        endif
+
+        !reinitialize absorbing boundary for incident wavefield reconstruction
         if(present(o_sf)) then
-            o_sf%dvz_dz=0.
-            o_sf%dvx_dx=0.
-            o_sf%dvy_dy=0.
-            o_sf%dp_dz=0.
-            o_sf%dp_dx=0.
-            o_sf%dp_dy=0.
+                                        o_sf%dvz_dz=0.
+                                        o_sf%dvx_dx=0.
+            if(allocated(o_sf%dvy_dy))  o_sf%dvy_dy=0.
+                                        o_sf%dp_dz=0.
+                                        o_sf%dp_dx=0.
+            if(allocated(o_sf%dp_dy))   o_sf%dp_dy=0.
         endif
 
         !rectified interval for time integration
@@ -558,7 +570,7 @@ use m_cpml
         
         ift=1; ilt=self%nt
         
-        do it=ilt,ift,time_dir
+        do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
                 call rf%check_value
@@ -653,7 +665,7 @@ use m_cpml
             tt10=tt10+toc-tic
             
             !adjoint step 1: sample v^it or s^it+0.5 at source position
-            if(either(oif_record_seismo,.false.,present(oif_record_seismo))) then
+            if(if_record_adjseismo) then
                 call cpu_time(tic)
                 call self%extract_adjoint(rf,it)
                 call cpu_time(toc)
@@ -673,11 +685,10 @@ use m_cpml
             
             !snapshot
             call rf%write(it)
-            if(present(o_sf)) call o_sf%write(it,o_suffix='_back')
-            
-            if(present(o_grad)) call sysio_write('snap_grad',o_grad,size(o_grad),o_mode='append')
-            if(present(o_imag)) call sysio_write('snap_imag',o_imag,size(o_imag),o_mode='append')
-                        
+            if(present(o_sf))   call o_sf%write(it,o_suffix='_back')
+            if(present(o_grad)) call rf%write_ext(it,'grad',o_grad,size(o_grad))
+            if(present(o_imag)) call rf%write_ext(it,'imag',o_imag,size(o_imag))
+
         enddo
         
         !scale gradient
@@ -703,17 +714,15 @@ use m_cpml
 
         call hud('Viewing the snapshots (if written) with ximage/xmovie:')
         write(*,'(a,i0.5,a)') 'ximage < snap_*  n1=',cb%nz,' perc=99'
-        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'                
-        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%mz,' n2=',cb%mx,' clip=?e-?? loop=2 title=%g'
-        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%mz,' n2=',cb%mx,' clip=?e-?? loop=2 title=%g'
-
+        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'
+        
     end subroutine
 
     !add RHS to s^it+1.5
     subroutine inject_stresses_adjoint(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
-        integer :: time_dir
+        real :: time_dir
         
         do i=1,shot%nrcv
             ifz=shot%rcv(i)%ifz; iz=shot%rcv(i)%iz; ilz=shot%rcv(i)%ilz
@@ -740,7 +749,7 @@ use m_cpml
     subroutine update_stresses_adjoint(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
-        integer :: time_dir, it
+        real :: time_dir
         
         !same code with -dt
         call self%update_stresses(f,time_dir,it)
@@ -751,7 +760,7 @@ use m_cpml
     subroutine inject_velocities_adjoint(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
-        integer :: time_dir
+        real :: time_dir
 
         do i=1,shot%nrcv
             ifz=shot%rcv(i)%ifz; iz=shot%rcv(i)%iz; ilz=shot%rcv(i)%ilz
@@ -799,7 +808,7 @@ use m_cpml
     subroutine update_velocities_adjoint(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
-        integer :: time_dir, it
+        real :: time_dir
         
         !same code with -dt
         call self%update_velocities(f,time_dir,it)

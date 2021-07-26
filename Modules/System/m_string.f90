@@ -114,13 +114,15 @@ module m_string
 
     end function
     
-    function ints2strs(num,n,o_format) result(str)
-        integer,dimension(n) :: num
+    function ints2strs(num,o_format) result(str)
+        integer,dimension(:) :: num
         character(*),optional :: o_format
         type(t_string),dimension(:),allocatable :: str
 
         character(i_str_len) :: tmp
-                
+        
+        n=size(num)
+
         if(allocated(str)) deallocate(str)
         allocate(str(n))
 
@@ -153,12 +155,14 @@ module m_string
 
     end function
 
-    function reals2strs(num,n,o_format) result(str)
-        real,dimension(n) :: num
+    function reals2strs(num,o_format) result(str)
+        real,dimension(:) :: num
         character(*),optional :: o_format
         type(t_string),dimension(:),allocatable :: str
         
         character(i_str_len) :: tmp
+
+        n=size(num)
 
         if(allocated(str)) deallocate(str)
         allocate(str(n))
@@ -206,11 +210,13 @@ module m_string
         
     end function
 
-    function strs2ints(str,n,o_format) result(num)
-        type(t_string),dimension(n) :: str
+    function strs2ints(str,o_format) result(num)
+        type(t_string),dimension(:) :: str
         character(*),optional :: o_format
         integer,dimension(:),allocatable :: num
         
+        n=size(str)
+
         if(allocated(num)) deallocate(num)
         allocate(num(n))
 
@@ -251,10 +257,12 @@ module m_string
         
     end function
 
-    function strs2reals(str,n,o_format) result(num)
-        type(t_string),dimension(n) :: str
+    function strs2reals(str,o_format) result(num)
+        type(t_string),dimension(:) :: str
         character(*),optional :: o_format
         real,dimension(:),allocatable :: num
+
+        n=size(str)
         
         if(allocated(num)) deallocate(num)
         allocate(num(n))
@@ -356,8 +364,8 @@ module m_string
     end function
 
     !flatten a string array into a single long string glued by o_glue
-    function strcat(strs,n,o_glue) result(str)
-        type(t_string),dimension(n) :: strs
+    function strcat(strs,o_glue) result(str)
+        type(t_string),dimension(:) :: strs
         character(1),optional :: o_glue
         character(:),allocatable :: str
 
@@ -365,6 +373,8 @@ module m_string
         character(:),allocatable :: text
 
         glue=either(o_glue,' ',present(o_glue))
+
+        n=size(strs)
 
         maxlen=len(strs(1)%s)+1
         do k=2,either(n,1,n>1)

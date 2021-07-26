@@ -9,6 +9,8 @@ use, intrinsic :: ieee_arithmetic
 
     private
     
+    public :: field_init
+
     !boundary components for wavefield recontruction
     type t_boundary
 
@@ -32,6 +34,7 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:,:),allocatable :: shh,p
 
         !boundary components for wavefield recontruction
+        logical :: if_will_reconstruct=.false.
         type(t_boundary) :: bnd
 
         !cpml components for absorbing boundary wavefield
@@ -57,7 +60,7 @@ use, intrinsic :: ieee_arithmetic
         
         !blooming
         integer,dimension(:,:),allocatable :: bloom
-        
+
         !snapshot
 
         contains
@@ -65,9 +68,10 @@ use, intrinsic :: ieee_arithmetic
         procedure :: init_bloom    => init_bloom
         procedure :: init_boundary => init_boundary
         procedure :: check_value => check_value
-        procedure :: add_src => add_src
+        procedure :: ignite  => ignite
         procedure :: acquire => acquire
         procedure :: write => write
+        procedure :: write_ext => write_ext
         procedure :: boundary_transport => boundary_transport
         final :: fin
 
@@ -76,32 +80,32 @@ use, intrinsic :: ieee_arithmetic
 
     end type
 
-    !info shared by all t_field instances
+    !propagator's nt, dt
     integer :: nt
     real :: dt
 
+    !shear components
     logical :: if_shear
 
+    !bloombox
     logical :: if_bloom
     integer,parameter :: initial_half_bloomwidth=5 !half bloom width at ift, should involve hicks points
 
+    !snapshot
     logical :: if_snapshot
     type(t_string),dimension(:),allocatable :: snapshot
-    integer :: i_snapshot
+    integer :: i_snapshot, n_snapshot
     
     contains
-        
-    subroutine init(self,name,nt_in,dt_in,if_shear_in)
-        class(t_field) :: self
-        character(*) :: name
+    
+    subroutine field_init(if_shear_in,nt_in,dt_in)
         logical if_shear_in
 
-        self%name=name
+        logical,save :: is_first_in=.true.
 
+        if_shear=if_shear_in
         nt=nt_in
         dt=dt_in
-        
-        if_shear=if_shear_in
 
         !snapshot
         snapshot=setup%get_strs('SNAPSHOT')
@@ -112,12 +116,20 @@ use, intrinsic :: ieee_arithmetic
             i_snapshot=ceiling(nt*1./n_snapshot)
 
             !rm existing snap files
-            call execute_command_line('rm '//dir_out//'snap*', wait=.true.)
+            if(is_first_in) then
+                call execute_command_line('rm '//dir_out//'snap*', wait=.true.)
+                is_first_in=.false.
+            endif
 
         endif
 
-        !seismo
-        call alloc(self%seismo,shot%nrcv,nt)
+    end subroutine
+
+    subroutine init(self,name)
+        class(t_field) :: self
+        character(*) :: name
+
+        self%name=name
 
     end subroutine
 
@@ -216,7 +228,7 @@ use, intrinsic :: ieee_arithmetic
     subroutine check_value(self)
         class(t_field) :: self
         
-        if(mpiworld%is_master) write(*,*) self%name//' sample values:',minval(self%vz),maxval(self%vz)
+        if(mpiworld%is_master) write(*,*) self%name//' minmax values:',minval(self%vz),maxval(self%vz)
         
         if(any(.not. ieee_is_finite(self%vz))) then
             call error(self%name//' values become Infinity on Shot# '//shot%sindex//' !!')
@@ -242,6 +254,10 @@ use, intrinsic :: ieee_arithmetic
                     select case (snapshot(i)%s)
                     case ('vz')
                         call sysio_write('snap_'//self%name//'%vz'//suf,self%vz,size(self%vz),o_mode='append')
+                    case ('vx')
+                        call sysio_write('snap_'//self%name//'%vx'//suf,self%vx,size(self%vx),o_mode='append')
+                    case ('vy')
+                        call sysio_write('snap_'//self%name//'%vx'//suf,self%vy,size(self%vy),o_mode='append')
                     case ('p')
                         call sysio_write('snap_'//self%name//'%p'//suf,self%p,size(self%p),o_mode='append')
                     end select
@@ -251,27 +267,64 @@ use, intrinsic :: ieee_arithmetic
         endif
 
     end subroutine
+
+    subroutine write_ext(self,it,name,data,n)
+        class(t_field) :: self
+        character(*),optional :: name
+        real,dimension(n) :: data
+
+        if(if_snapshot) then
+
+            if(it==1 .or. mod(it,i_snapshot)==0 .or. it==nt) then
+                call sysio_write('snap_'//name,data,n,o_mode='append')
+            endif
+
+        endif
+
+    end subroutine
  
-    subroutine add_src(self,ois_adjoint)
+    subroutine ignite(self,ois_adjoint,o_wavelet)
         class(t_field) :: self
         logical,optional :: ois_adjoint
+        real,dimension(:,:),optional :: o_wavelet !use external wavelet instead of shot%wavelet or %dadj
 
         !add adjoint source
         if(either(ois_adjoint,.false.,present(ois_adjoint))) then
-            call alloc(self%wavelet,shot%nrcv,nt)
-            do i=1,shot%nrcv
-                call resampler(shot%dadj(:,i),self%wavelet(i,:),1,din=shot%dt,nin=shot%nt,dout=dt,nout=nt)
-            enddo
+
+            if(present(o_wavelet)) then
+                self%wavelet=o_wavelet !auto-allocation with shape=(nrcv,nt)
+                self%wavelet=self%wavelet*dt/m%cell_volume
+
+            else
+                call alloc(self%wavelet,shot%nrcv,nt)
+                do i=1,shot%nrcv !implicit transpose
+                    call resampler(shot%dadj(:,i),self%wavelet(i,:),1,&
+                        din=shot%dt,nin=shot%nt,&
+                        dout=dt,nout=nt)
+                enddo
+                !no need for dt/dx3 scaling,
+                !as shot%dadj already has that info
+
+            endif
 
             return
 
         endif
 
         !add source
-        call alloc(self%wavelet,1,nt)
-        call resampler(shot%wavelet,self%wavelet(1,:),1,din=shot%dt,nin=shot%nt,dout=dt,nout=nt)
-        self%wavelet(1,:)=self%wavelet(1,:)*dt/m%cell_volume
+        if(present(o_wavelet)) then
+            self%wavelet=o_wavelet !shape=(1,nt)
+
+        else
+            call alloc(self%wavelet,1,nt)
+            call resampler(shot%wavelet,self%wavelet(1,:),1,&
+                            din=shot%dt,nin=shot%nt,&
+                            dout=dt,nout=nt)
             
+        endif
+
+        self%wavelet=self%wavelet*dt/m%cell_volume
+
     end subroutine
 
     subroutine acquire(self)
@@ -279,7 +332,9 @@ use, intrinsic :: ieee_arithmetic
 
         call alloc(shot%dsyn,shot%nt,shot%nrcv)
         do i=1,shot%nrcv
-            call resampler(self%seismo(i,:), shot%dsyn(:,i),1,din=dt,nin=nt,dout=shot%dt,nout=shot%nt)
+            call resampler(self%seismo(i,:),shot%dsyn(:,i),1,&
+                            din=dt,nin=nt,&
+                            dout=shot%dt,nout=shot%nt)
         enddo
 
     end subroutine
@@ -307,9 +362,9 @@ use, intrinsic :: ieee_arithmetic
             call copy(action,self%vy,self%bnd%vy_rear(:,it), [1,nz],[1,nx],[ny-1,ny+1])
         else
             !top
-            call copy(action,self%vz,self%bnd%vz_top(:,it),[1,3],    [1,nx],[1,1])
+            call copy(action,self%vz,self%bnd%vz_top(:,it),  [1,3],    [1,nx],[1,1])
             !bottom
-            call copy(action,self%vz,self%bnd%vz_bot(:,it),[nz-1,nz+1],[1,nx],[1,1])
+            call copy(action,self%vz,self%bnd%vz_bot(:,it),  [nz-1,nz+1],[1,nx],[1,1])
             !left
             call copy(action,self%vx,self%bnd%vx_left(:,it), [1,nz],[1,3],    [1,1])
             !right
@@ -321,9 +376,9 @@ use, intrinsic :: ieee_arithmetic
             if(m%is_cubic) then
             else
                 !top
-                call copy(action,self%vx,self%bnd%vx_top(:,it),[1,3],    [1,nx],[1,1])
+                call copy(action,self%vx,self%bnd%vx_top(:,it),  [1,3],    [1,nx],[1,1])
                 !bottom
-                call copy(action,self%vx,self%bnd%vx_bot(:,it),[nz-2,nz  ],[1,nx],[1,1])
+                call copy(action,self%vx,self%bnd%vx_bot(:,it),  [nz-2,nz  ],[1,nx],[1,1])
                 !left
                 call copy(action,self%vz,self%bnd%vz_left(:,it), [1,nz],[1,3],    [1,1])
                 !right
@@ -343,16 +398,16 @@ use, intrinsic :: ieee_arithmetic
         ifx=iix(1); ilx=iix(2)
         ify=iiy(1); ily=iiy(2)
         
-        nz=iiz(2)-iiz(1)+1
-        nx=iix(2)-iix(1)+1
-        ny=iiy(2)-iiy(1)+1
+        nnz=iiz(2)-iiz(1)+1
+        nnx=iix(2)-iix(1)+1
+        nny=iiy(2)-iiy(1)+1
         
         if(action=='save') then !save
             do iy=ify,ily
             do ix=ifx,ilx
             do iz=ifz,ilz
                 i = (iz-cb%ifz) + (ix-cb%ifx)*cb%nz + (iy-cb%ify)*cb%nz*cb%nx +1 !field indexing
-                k = (iz-ifz)    + (ix-ifx)*nz       + (iy-ify)*nz*nx +1 !boundary_field indexing
+                k = (iz-ifz)    + (ix-ifx)*nnz      + (iy-ify)*nnz*nnx +1 !boundary_field indexing
                 
                 bv(k) = v(i)
             enddo
@@ -364,7 +419,7 @@ use, intrinsic :: ieee_arithmetic
             do ix=ifx,ilx
             do iz=ifz,ilz
                 i = (iz-cb%ifz) + (ix-cb%ifx)*cb%nz + (iy-cb%ify)*cb%nz*cb%nx +1
-                k = (iz-ifz)    + (ix-ifx)*nz      + (iy-ify)*nz*nx +1
+                k = (iz-ifz)    + (ix-ifx)*nnz      + (iy-ify)*nnz*nnx +1
                 
                 v(i) = bv(k)
             enddo

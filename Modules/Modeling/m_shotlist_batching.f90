@@ -153,7 +153,7 @@ use m_System
         select case (setup%get_str('ACQUI_GEOMETRY',o_default='spread'))
 
         case ('spread_irregular')
-            open(13,file=setup%get_file('FILE_SOURCE_POSITION','SPOS',o_mandatory=.true.),action='read')
+            open(13,file=setup%get_file('FILE_SOURCE_POSITION','SPOS',o_mandatory=1),action='read')
             !count number of sources
             self%nshot=0
             do
@@ -169,7 +169,7 @@ use m_System
             
         end select        
 
-        self%all=strcat(nums2strs([(i,i=1,self%nshot)],self%nshot),self%nshot)
+        self%all=strcat(nums2strs([(i,i=1,self%nshot)]))
 
         call hud('Will compute '//num2str(self%nshot)//' synthetic shots.')
 
@@ -200,7 +200,7 @@ use m_System
 
             self%nshot=i
 
-            self%all=strcat(nums2strs([(i,i=1,self%nshot)],self%nshot),self%nshot)
+            self%all=strcat(nums2strs([(i,i=1,self%nshot)]))
         
             call hud('Found '//num2str(self%nshot)//' sequential shots.')
 
@@ -245,7 +245,7 @@ use m_System
                 endif
             enddo
 
-            self%all=strcat(nums2strs(ishots,size(ishots)),size(ishots))
+            self%all=strcat(nums2strs(ishots))
 
             self%nshot=size(ishots)
 
@@ -416,7 +416,7 @@ use m_System
 
         !write shotlist to disk
         call mpiworld%write('shotlist', 'Proc# '//mpiworld%sproc//' has '//num2str(self%nshots_per_processor)//' assigned shots:'// &
-            strcat(self%shots_per_processor,self%nshots_per_processor))
+            strcat(self%shots_per_processor))
 
     end subroutine
 
@@ -451,7 +451,7 @@ use m_System
                 call chp%open('shotlist%sampled_shots')
                 call alloc(tmp,self%nlists)
                 call chp%read(a1=tmp,n1=self%nlists)
-                self%sampled_shots=nums2strs(tmp,self%nlists)
+                self%sampled_shots=nums2strs(tmp)
                 call chp%close
             end select
 
@@ -474,7 +474,7 @@ use m_System
             case ('sampled_shots')
                 call chp%open('shotlist%sampled_shots')
                 call alloc(tmp,self%nlists)
-                tmp=strs2reals(self%sampled_shots,self%nlists)
+                tmp=strs2reals(self%sampled_shots)
                 call chp%write(a1=tmp,n1=self%nlists)
                 call chp%close
             end select

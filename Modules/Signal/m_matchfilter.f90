@@ -7,6 +7,8 @@ use singleton
     
     real,parameter :: eps=1e-15
     
+    integer :: nt, ntr
+
     complex(fftkind),dimension(:),allocatable :: filter
     
     contains
@@ -16,9 +18,14 @@ use singleton
         integer,optional :: o_index
         logical,optional :: oif_stack
         
-        complex(fftkind),dimension(nt,ntr) :: dsynfft,dobsfft   !fftkind=double precision
-        complex(fftkind),dimension(nt)    :: nom, denom
+        complex(fftkind),dimension(:,:),allocatable :: dsynfft,dobsfft   !fftkind=double precision
+        complex(fftkind),dimension(:),allocatable   :: nom, denom
         
+        allocate(dsynfft(nt,ntr))
+        allocate(dobsfft(nt,ntr))
+
+        allocate(nom(nt), denom(nt))
+
         dsynfft = fft(dcmplx(dsyn),dim=[1])  !maybe this array is so large that require "ulimit -s unlimited"
         dobsfft = fft(dcmplx(dobs),dim=[1])
         
@@ -46,10 +53,12 @@ use singleton
         
     end subroutine
     
-    subroutine matchfilter_apply_to_wavelet(wavelet,nt)
+    subroutine matchfilter_apply_to_wavelet(wavelet)
         real,dimension(nt) :: wavelet
         
-        complex(fftkind),dimension(nt) :: wlfft
+        complex(fftkind),dimension(:),allocatable :: wlfft
+
+        allocate(wlfft(nt))
         
         wlfft=fft(dcmplx(wavelet),dim=[1])
         
@@ -59,11 +68,13 @@ use singleton
         
     end subroutine
     
-    subroutine matchfilter_apply_to_data(dsyn,nt,ntr)
+    subroutine matchfilter_apply_to_data(dsyn)
         real,dimension(nt,ntr) :: dsyn
         
-        complex(fftkind),dimension(nt,ntr) :: dsynfft
+        complex(fftkind),dimension(:,:),allocatable :: dsynfft
         
+        allocate(dsynfft(nt,ntr))
+
         dsynfft = fft(dcmplx(dsyn),dim=[1])
         
         do i=1,ntr
@@ -74,10 +85,12 @@ use singleton
         
     end subroutine
     
-    subroutine matchfilter_correlate_filter_residual(dres,nt,ntr)
+    subroutine matchfilter_correlate_filter_residual(dres)
         real,dimension(nt,ntr) :: dres
         
-        complex(fftkind),dimension(nt,ntr) :: dresfft
+        complex(fftkind),dimension(:,:),allocatable :: dresfft
+
+        allocate(dresfft(nt,ntr))
         
         dresfft=fft(dcmplx(dres),dim=[1])
         

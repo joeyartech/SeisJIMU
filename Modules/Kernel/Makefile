@@ -11,8 +11,8 @@ src = \
 	m_weighter.f90 \
 	m_parametrizer_$(Param).f90 \
 	m_fobjective.f90 \
-	m_nabla.f90 \
 	m_preconditioner.f90 \
+	m_nabla.f90 \
 	m_Kernel.f90
 
 ifeq '$(APP)' 'FWI'

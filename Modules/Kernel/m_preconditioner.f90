@@ -61,7 +61,7 @@ use m_parametrizer
             if(list(i)%s(1:6)=='custom') then
                 sublist=split(list(i)%s,o_sep=':')
                 if(size(sublist)==1) then !filename is not attached, ask for it
-                    file=setup%get_file('FILE_PRECONDITION_CUSTOM',o_mandatory=.true.)
+                    file=setup%get_file('FILE_PRECONDITION_CUSTOM',o_mandatory=1)
                 else !filename is attached
                     file=sublist(2)%s
                 endif

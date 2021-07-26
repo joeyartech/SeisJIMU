@@ -91,8 +91,8 @@ use m_model
         type(t_string),dimension(:),allocatable :: scomp
 
         if(is_first_in) then
-            self%nt=setup%get_int('TIME_STEP','NT',o_mandatory=.true.)
-            self%dt=setup%get_real('TIME_INTERVAL','DT',o_mandatory=.true.)
+            self%nt=setup%get_int('TIME_STEP','NT',o_mandatory=1)
+            self%dt=setup%get_real('TIME_INTERVAL','DT',o_mandatory=1)
             
             scomp=setup%get_strs('SOURCE_COMPONENT','SCOMP',o_default='p')
             if(size(scomp)>1) call hud('SeisJIMU only considers the 1st component from SOURCE_COMPONENT: '//scomp(1)%s)
@@ -110,7 +110,16 @@ use m_model
         case ('spread_irregular')
             call geometry_spread_irregular(self)
         case ('spread3D')
-        end select
+        end select        
+
+        !shift positions to be 0-based
+        !then m%oz,ox,oy is no longer of use before writing shots
+        self%src%z   =self%src%z    - m%oz
+        self%src%x   =self%src%x    - m%ox
+        self%src%y   =self%src%y    - m%oy
+        self%rcv(:)%z=self%rcv(:)%z - m%oz
+        self%rcv(:)%x=self%rcv(:)%x - m%ox
+        self%rcv(:)%y=self%rcv(:)%y - m%oy
 
         call check_range(self)
 
@@ -121,7 +130,7 @@ use m_model
 
         type(t_suformat) :: sudata
         
-        call sudata%read(setup%get_file('FILE_DATA',o_mandatory=.true.),self%sindex)
+        call sudata%read(setup%get_file('FILE_DATA',o_mandatory=1),self%sindex)
 
         self%nt=sudata%ns  !assume all traces have same ns
         self%dt=sudata%dt  !assume all traces have same dt
@@ -169,6 +178,18 @@ use m_model
         call alloc(self%dobs,self%nt,self%nrcv)
         self%dobs=sudata%trs
         
+
+        !shift positions to be 0-based
+        !then m%oz,ox,oy is no longer of use before writing shots
+        self%src%z   =self%src%z    - m%oz
+        self%src%x   =self%src%x    - m%ox
+        self%src%y   =self%src%y    - m%oy
+        self%rcv(:)%z=self%rcv(:)%z - m%oz
+        self%rcv(:)%x=self%rcv(:)%x - m%ox
+        self%rcv(:)%y=self%rcv(:)%y - m%oy
+
+        call check_range(self)
+
     end subroutine
 
     subroutine set_var_time(self)
@@ -203,7 +224,7 @@ use m_model
 
         str=setup%get_str('SCALING_WAVELET')
         if(str=='') then
-        elseif(str=='*dx3/dt' .or. str=='/dt*dx3') then
+        elseif(str=='by dx3dt' .or. str=='by dtdx3') then
             self%wavelet=self%wavelet/self%dt*m%cell_volume
         else
             self%wavelet=self%wavelet*str2real(str)
@@ -217,14 +238,7 @@ use m_model
         class(t_shot) :: self
         logical :: is_fdsg
 
-        !shift positions to be 0-based
-        !then m%oz,ox,oy is no longer of use
-        self%src%z   =self%src%z    - m%oz
-        self%src%x   =self%src%x    - m%ox
-        self%src%y   =self%src%y    - m%oy
-        self%rcv(:)%z=self%rcv(:)%z - m%oz
-        self%rcv(:)%x=self%rcv(:)%x - m%ox
-        self%rcv(:)%y=self%rcv(:)%y - m%oy
+        logical,save :: is_first_in=.true.
 
         !absolute offset
         do ir=1,self%nrcv
@@ -238,66 +252,69 @@ use m_model
         
         if(self%if_hicks) then
 
-            call hicks_init(m%dz,m%dx,m%dy,m%is_cubic,m%is_freesurface)
-            
+            if(is_first_in) then
+                call hicks_init(m%dz,m%dx,m%dy,m%is_cubic,m%is_freesurface)
 
-            !hicks coef for source point    
-            !for vx,vy,vz components, hicks%x,y,z should be added by m%dx/2,dy/2,dz/2, respectively,
-            !because v(1) is actually v[0.5], v(2) is v[1.5] etc.
-            halfz=either(m%dz/2.,0.,is_fdsg)
-            halfx=either(m%dx/2.,0.,is_fdsg)
-            halfy=either(m%dy/2.,0.,is_fdsg)
+                !to interpolate values on v(1) (actually v[0.5]), v(2) (actually v[1.5]) etc.
+                !we need add half grid size to s/r positions    
+                halfz=either(m%dz/2.,0.,is_fdsg)
+                halfx=either(m%dx/2.,0.,is_fdsg)
+                halfy=either(m%dy/2.,0.,is_fdsg)
 
-            select case (self%src%comp)
-            case('p')
-                call hicks_put_position(self%src%z,      self%src%x,      self%src%y)
-            case('vz')
-                call hicks_put_position(self%src%z+halfz,self%src%x,      self%src%y)
-            case('vx')
-                call hicks_put_position(self%src%z,      self%src%x+halfx,self%src%y)
-            case('vy')
-                call hicks_put_position(self%src%z,      self%src%x,      self%src%y+halfy)
-            end select
+                is_first_in=.false.
+
+            endif
 
             select case (self%src%comp)
             case('p') !explosive source or non-vertical force
-                call hicks_get_coef('antisymm', self%src%interp_coef)
+                call hicks_put_position(self%src%z,       self%src%x,       self%src%y)
             case('vz') !vertical force
-                call hicks_get_coef('symmetric',self%src%interp_coef)
-            case default
-                call hicks_get_coef('truncate', self%src%interp_coef)
+                call hicks_put_position(self%src%z+halfz, self%src%x,       self%src%y)
+            case('vx')
+                call hicks_put_position(self%src%z,       self%src%x+halfx, self%src%y)
+            case('vy')
+                call hicks_put_position(self%src%z,       self%src%x,       self%src%y+halfy)
             end select
 
-            call hicks_get_position(self%src%ifz, self%src%ifx, self%src%ify, &
-                                    self%src%iz,  self%src%ix,  self%src%iy , &
-                                    self%src%ilz, self%src%ilx, self%src%ily  )
+            call hicks_get_position(self%src%ifz, self%src%ifx, self%src%ify,&
+                                    self%src%iz , self%src%ix , self%src%iy ,&
+                                    self%src%ilz, self%src%ilx, self%src%ily )
+
+            select case (self%src%comp)
+            case('p') !explosive source or non-vertical force
+                call hicks_get_coefficient('antisymm', self%src%interp_coef)
+            case('vz') !vertical force
+                call hicks_get_coefficient('symmetric',self%src%interp_coef)
+            case default
+                call hicks_get_coefficient('truncate', self%src%interp_coef)
+            end select
 
             !hicks coef for receivers
             do i=1,self%nrcv
 
                 select case (self%rcv(i)%comp)
-                case('p')
-                    call hicks_put_position(self%rcv(i)%z      ,self%rcv(i)%x      ,self%rcv(i)%y)
-                case('vz')
-                    call hicks_put_position(self%rcv(i)%z+halfz,self%rcv(i)%x      ,self%rcv(i)%y)
+                case('p') !explosive source or non-vertical force
+                    call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y)
+                case('vz') !vertical force
+                    call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x,       self%rcv(i)%y)
                 case('vx')
-                    call hicks_put_position(self%rcv(i)%z      ,self%rcv(i)%x+halfx,self%rcv(i)%y)
+                    call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x+halfx, self%rcv(i)%y)
                 case('vy')
-                    call hicks_put_position(self%rcv(i)%z      ,self%rcv(i)%x      ,self%rcv(i)%y+halfy)
+                    call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y+halfy)
                 end select
+
+                call hicks_get_position(self%rcv(i)%ifz, self%rcv(i)%ifx, self%rcv(i)%ify,&
+                                        self%rcv(i)%iz , self%rcv(i)%ix , self%rcv(i)%iy ,&
+                                        self%rcv(i)%ilz, self%rcv(i)%ilx, self%rcv(i)%ily )
 
                 select case (self%rcv(i)%comp)
-                case ('p') !explosive source or non-vertical force
-                    call hicks_get_coef('antisymm', self%rcv(i)%interp_coef)
-                case ('vz') !vertical force
-                    call hicks_get_coef('symmetric',self%rcv(i)%interp_coef)
+                case('p') !explosive source or non-vertical force
+                    call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)
+                case('vz') !vertical force
+                    call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef)
                 case default
-                    call hicks_get_coef('truncate', self%rcv(i)%interp_coef)
+                    call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
                 end select
-
-                call hicks_get_position(self%rcv(i)%ifz, self%rcv(i)%ifx, self%rcv(i)%ify, &
-                                        self%rcv(i)%iz , self%rcv(i)%ix , self%rcv(i)%iy , &
-                                        self%rcv(i)%ilz, self%rcv(i)%ilx, self%rcv(i)%ily  )
 
             enddo
 
@@ -310,14 +327,15 @@ use m_model
             self%rcv(:)%iy=nint(self%rcv(:)%y/m%dy)+1
 
         endif
-                
+
+
         if(mpiworld%is_master) then
             write(*,*)'================================='
             write(*,*)'Shot# '//self%sindex//' info:'
             write(*,*)'================================='
             write(*,*)'  nt,dt:',self%nt,self%dt
             write(*,*)'---------------------------------'
-            write(*,*)'After removing m%oz,ox,iy,'
+            write(*,*)'S/R positions after removing m%oz,ox,iy,'
             write(*,*)'  sz,isz:',self%src%z,self%src%iz
             write(*,*)'  sx,isx:',self%src%x,self%src%ix
             write(*,*)'  sy,isy:',self%src%y,self%src%iy
@@ -342,9 +360,9 @@ use m_model
 
         call matchfilter_estimate(self%dsyn,self%dobs,self%nt,self%nrcv)!,self%index)
         
-        call matchfilter_apply_to_wavelet(self%wavelet,self%nt)
+        call matchfilter_apply_to_wavelet(self%wavelet)
         
-        call matchfilter_apply_to_data(self%dsyn,self%nt,self%nrcv)
+        call matchfilter_apply_to_data(self%dsyn)
 
         if(mpiworld%is_master) call suformat_write('wavelet',self%wavelet,self%nt,1,self%dt,o_mode='append')
 
@@ -353,13 +371,14 @@ use m_model
     subroutine update_adjsource(self)
         class(t_shot) :: self
 
-        call matchfilter_correlate_filter_residual(self%dadj,self%nt,self%nrcv)
+        call matchfilter_correlate_filter_residual(self%dadj)
 
     end subroutine
 
     subroutine geometry_spread(shot)
         type(t_shot) :: shot
-        logical :: is_first_in=.true.
+
+        logical,save :: is_first_in=.true.
         real,dimension(3),save :: fs=0.,fr=0.
         real,dimension(3),save :: ds=0.,dr=0.
         integer,save :: nr=1
@@ -375,13 +394,13 @@ use m_model
             nr=setup%get_int('NUMBER_RECEIVER','NR',o_default='1')
             rcomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',o_default='p')
 
+            if(.not.m%is_cubic) then
+                fs(3)=0.; fr(3)=0.
+                ds(3)=0.; dr(3)=0.
+            endif
+
             is_first_in=.false.
         
-        endif
-
-        if(.not.m%is_cubic) then
-            fs(3)=0.; fr(3)=0.
-            ds(3)=0.; dr(3)=0.
         endif
 
         !source side
@@ -408,7 +427,8 @@ use m_model
 
     subroutine geometry_streamer(shot)
         type(t_shot) :: shot
-        logical :: is_first_in=.true.
+
+        logical,save :: is_first_in=.true.
         real,dimension(3),save :: fs=0.,foff=0.
         real,dimension(3),save :: ds=0.,doff=0.
         integer,save :: noff=1
@@ -424,13 +444,13 @@ use m_model
             noff=setup%get_int('NUMBER_OFFSET','NOFF',o_default='1')
             rcomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',o_default='p')
 
+            if(.not.m%is_cubic) then
+                fs(3)=0.; foff(3)=0.
+                ds(3)=0.; doff(3)=0.
+            endif
+
             is_first_in=.false.
 
-        endif
-
-        if(.not.m%is_cubic) then
-            fs(3)=0.; foff(3)=0.
-            ds(3)=0.; doff(3)=0.
         endif
 
         !source side
@@ -457,19 +477,21 @@ use m_model
 
     subroutine geometry_spread_irregular(shot)
         type(t_shot) :: shot
-        logical :: is_first_in=.true.
+
+        logical,save :: is_first_in=.true.
         character(:),allocatable,save :: spos, rpos
         integer, save :: nr
         type(t_string),dimension(:),allocatable,save :: rcomp
 
         if(is_first_in) then            
-            spos=setup%get_file('FILE_SOURCE_POSITION','SPOS',o_mandatory=.true.)
-            rpos=setup%get_file('FILE_RECEIVER_POSITION','RPOS',o_mandatory=.true.)
+            spos=setup%get_file('FILE_SOURCE_POSITION','SPOS',o_mandatory=1)
+            rpos=setup%get_file('FILE_RECEIVER_POSITION','RPOS',o_mandatory=1)
 
             rcomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',o_default='p')
-        endif
 
-        is_first_in=.false.
+            is_first_in=.false.
+
+        endif
 
         !read source
         open(13,file=spos,action='read')
@@ -646,13 +668,7 @@ use m_model
 
         if(format=='su') then
 
-            !add headers
-            allocate(sudata%hdrs(self%nrcv))
-            allocate(sudata%trs(self%nt,self%nrcv))
-
-            sudata%ntr=self%nrcv
-            sudata%ns=self%nt
-            sudata%dt=self%dt
+            call sudata%init(self%nrcv,self%nt,o_dt=self%dt,o_data=self%dsyn)
 
             scalel=real(setup%get_int('SU_SCALEL',o_default='1000')) !assume same scalel for all traces
             scalco=real(setup%get_int('SU_SCALCO',o_default='1000')) !assume same scalco for all traces
@@ -688,8 +704,6 @@ use m_model
                 if(self%rcv(i)%is_badtrace) sudata%hdrs(i)%trid=3 !dummy trace
 
             enddo
-
-            sudata%trs=self%dsyn
 
             call sudata%write(file//self%sindex)
 

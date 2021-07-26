@@ -71,7 +71,7 @@ use m_Modeling
         call ppg%init_field(field,name='field',origin='src',oif_will_reconstruct=.true.)
         call ppg%init_abslayer
 
-        call field%add_src
+        call field%ignite
 
         !forward modeling
         if(.not.field%is_registered(chp,'seismo')) then

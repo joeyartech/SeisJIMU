@@ -19,8 +19,8 @@ use m_butterworth
         enddo
         
         !butterworth filtering to mitigate spectrum high-end tail
-        call butterworth(1,nt,dt,wavelet,&
-            ois_zerophase=.false.,oif_locut=.false.,&
+        call butterworth(wavelet,nt,dt,1, &
+            ois_zerophase=.false.,oif_locut=.false., &
             o_fpasshi=fpeak,o_fstophi=2.*fpeak,o_astophi=0.1)
         
     end function

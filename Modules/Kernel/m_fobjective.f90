@@ -246,12 +246,12 @@ use m_parametrizer
 
         enddo
 
-        self%xnorms = 0.5*m%ref_kpa*self%xnorms*param%cell_volume
+        self%xnorms = 0.5*self%xnorms*param%cell_volume_in_Pa
 
         where(param%is_freeze_zone) spatgrad=0.
 
         !add to dnorm's gradient wrt parameters
-        g = g + spatgrad*m%ref_kpa*param%cell_volume
+        g = g + spatgrad*param%cell_volume_in_Pa
 
     end subroutine
 

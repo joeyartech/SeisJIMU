@@ -4,6 +4,7 @@ use m_Modeling
 use m_smoother_laplacian_sparse
 use m_parametrizer
 use m_fobjective
+use m_preconditioner
 
     private
 
@@ -49,8 +50,8 @@ use m_fobjective
                 call hud('Laplacian smoothing')
                 call smoother_laplacian_init([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%fpeak)
                 do j=1,ppg%ngrad
-                    !call smoother_laplacian_extend_mirror(cb%gradient(:,:,:,i),m%itopo)
-                    call smoother_laplacian_pseudo_nonstationary(cb%grad(:,:,:,j),m%vp)
+                    !call smoother_laplacian_extend_mirror(m%gradient(:,:,:,i),m%itopo)
+                    call smoother_laplacian_pseudo_nonstationary(m%gradient(:,:,:,j),m%vp)
                 enddo    
             endif
         enddo
@@ -66,12 +67,17 @@ use m_fobjective
             ! call sysio_read(smask,mask,size(mask))
             
             do i=1,ppg%ngrad
-                cb%grad(:,:,:,i)=cb%grad(:,:,:,i)*mask
+                m%gradient(:,:,:,i)=m%gradient(:,:,:,i)*mask
             enddo
         endif
 
-        !reparameterization
+        !preconditioner
+        call preco%update
+        call preco%apply(m%gradient,m%pgradient)
+
+        !transform
         call param%transform(o_g=qp%g)
+        call param%transform(o_pg=qp%pg)
         !call param%transform_model('m->x',sfield%autocorr)
 
         !Tikhonov regularization

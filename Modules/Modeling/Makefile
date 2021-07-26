@@ -5,7 +5,7 @@ include ../../setup.inc
 
 src = \
 m_model.f90 \
-m_shotlist_$(Batch).f90 \
+m_shotlist_$(ShotDec).f90 \
 m_shot.f90 \
 m_computebox.f90 \
 m_field.f90 \

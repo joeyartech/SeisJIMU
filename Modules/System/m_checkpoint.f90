@@ -155,9 +155,9 @@ use m_setup
         endif
 
         file=self%name//'_'//&
-            strcat(          self%s_cnts,             self%n_cnts,o_glue=',')//'_'//&
-            strcat(nums2strs(self%i_cnts,self%n_cnts),self%n_cnts,o_glue=',')//'_'//&
-            strcat(          self%s_cnts_cond,        self%n_cnts,o_glue=',')//'_'//&
+            strcat(          self%s_cnts,     o_glue=',')//'_'//&
+            strcat(nums2strs(self%i_cnts),    o_glue=',')//'_'//&
+            strcat(          self%s_cnts_cond,o_glue=',')//'_'//&
             'Var:'//var
 
         inquire(file=dir_chp//file,exist=check) !,size=filesize)
@@ -190,9 +190,9 @@ use m_setup
         if(if_use_checkpoint.or.if_checkpoint) then
 
             file=self%name//'_'//&
-                strcat(          self%s_cnts,             self%n_cnts,o_glue=',')//'_'//&
-                strcat(nums2strs(self%i_cnts,self%n_cnts),self%n_cnts,o_glue=',')//'_'//&
-                strcat(          self%s_cnts_cond,        self%n_cnts,o_glue=',')//'_'//&
+                strcat(          self%s_cnts,     o_glue=',')//'_'//&
+                strcat(nums2strs(self%i_cnts),    o_glue=',')//'_'//&
+                strcat(          self%s_cnts_cond,o_glue=',')//'_'//&
                 'Var:'//var
 
             open(11,file=dir_chp//file,access='stream')

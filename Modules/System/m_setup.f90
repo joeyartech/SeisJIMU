@@ -74,14 +74,10 @@ use m_string
             read(text2,*)  tmp_key, tmp_val
             if(tmp_val=='!!') cycle !missing value
 
-            if(key==lalign(tmp_key)) then
-                tmp_res=tmp_val
-            endif
+            if(key==tmp_key) tmp_res=tmp_val
 
             if(present(o_alias)) then
-            if(o_alias==lalign(tmp_key)) then
-                tmp_res=tmp_val
-            endif
+                if(o_alias==tmp_key) tmp_res=tmp_val
             endif
 
         end do
@@ -155,15 +151,15 @@ use m_string
     function read(key,o_alias,o_default,o_mandatory) result(res)
         character(*) :: key
         character(*),optional :: o_alias, o_default
-        logical,optional :: o_mandatory
+        integer,optional :: o_mandatory
         character(:),allocatable :: res
 
         character(:),allocatable :: keys
-        logical :: mandatory
+        integer :: mandatory
         
         keys=key//either(' ('//o_alias//') ',' ',present(o_alias))
 
-        mandatory=either(o_mandatory,.false.,present(o_mandatory))
+        mandatory=either(o_mandatory,0,present(o_mandatory))
 
         res=find(key,o_alias)
 
@@ -175,7 +171,7 @@ use m_string
                 res=o_default
             endif
             
-            if(.not.present(o_default) .and. mandatory) then
+            if(.not.present(o_default) .and. mandatory>0) then
                 call error(keys//'is NOT found, but is MANDATORY.')
                 ! call hud(keys//'is NOT found, but is MANDATORY.'//s_NL &
                 !     'SeisJIMU has to ask for the value of this key before running further.'//s_NL &
@@ -188,7 +184,7 @@ use m_string
                 ! res=demand(key)
             endif
 
-            if(.not.present(o_default) .and. .not.mandatory) then
+            if(.not.present(o_default) .and. mandatory==0) then
                 call hud(keys//"is NOT found, take 0, '' or F for number, string/filename or boolean types.")
                 res=''
             endif
@@ -203,7 +199,7 @@ use m_string
         character(*) :: key
         character(*),optional :: o_alias !alias of inquired key
         character(*),optional :: o_default !default output value
-        logical,optional :: o_mandatory       
+        integer,optional :: o_mandatory       
         integer :: res
 
         res=str2int(read(key,o_alias,o_default,o_mandatory))
@@ -216,14 +212,20 @@ use m_string
         character(*),optional :: o_alias !alias of inquired key
         character(*),optional :: o_default !default output value
         character(1),optional :: o_sep
-        logical,optional :: o_mandatory
+        integer,optional :: o_mandatory
         integer,dimension(:),allocatable :: res
 
         type(t_string),dimension(:),allocatable :: tmp
 
         tmp=split(read(key,o_alias,o_default,o_mandatory),o_sep=o_sep)
 
-        res=strs2ints(tmp,size(tmp))
+        if(present(o_mandatory)) then
+            if(size(tmp)<o_mandatory) then
+                call error('NOT enough inputs for '//key//either(' ('//o_alias//') ',' ',present(o_alias))//', which requires >= '//num2str(o_mandatory)//' inputs.')
+            endif
+        endif
+
+        res=strs2ints(tmp)
 
         deallocate(tmp)
 
@@ -234,7 +236,7 @@ use m_string
         character(*) :: key
         character(*),optional :: o_alias !alias of inquired key
         character(*),optional :: o_default !default output value
-        logical,optional :: o_mandatory
+        integer,optional :: o_mandatory
         real :: res
 
         res=str2real(read(key,o_alias,o_default,o_mandatory))
@@ -247,14 +249,20 @@ use m_string
         character(*),optional :: o_alias !alias of inquired key
         character(*),optional :: o_default !default output value        
         character(1),optional :: o_sep
-        logical,optional :: o_mandatory
+        integer,optional :: o_mandatory
         real,dimension(:),allocatable :: res
         
         type(t_string),dimension(:),allocatable :: tmp
 
         tmp=split(read(key,o_alias,o_default,o_mandatory),o_sep=o_sep)
 
-        res=strs2reals(tmp,size(tmp))
+        if(present(o_mandatory)) then
+            if(size(tmp)<o_mandatory) then
+                call error('NOT enough inputs for '//key//either(' ('//o_alias//') ',' ',present(o_alias))//', which requires >= '//num2str(o_mandatory)//' inputs.')
+            endif
+        endif
+
+        res=strs2reals(tmp)
 
         deallocate(tmp)
 
@@ -265,7 +273,7 @@ use m_string
         character(*) :: key
         character(*),optional :: o_alias !alias of inquired key       
         character(*),optional :: o_default !default output value        
-        logical,optional :: o_mandatory
+        integer,optional :: o_mandatory
         character(:),allocatable :: res
 
         res=read(key,o_alias,o_default,o_mandatory)
@@ -278,10 +286,16 @@ use m_string
         character(*),optional :: o_alias !alias of inquired key
         character(*),optional :: o_default !default output value
         character(1),optional :: o_sep
-        logical,optional :: o_mandatory
+        integer,optional :: o_mandatory
         type(t_string),dimension(:),allocatable :: res
 
         res=split(read(key,o_alias,o_default,o_mandatory),o_sep=o_sep)
+
+        if(present(o_mandatory)) then
+            if(size(res)<o_mandatory) then
+                call error('NOT enough inputs for '//key//either(' ('//o_alias//') ',' ',present(o_alias))//', which requires >= '//num2str(o_mandatory)//' inputs.')
+            endif
+        endif
 
     end function
 
@@ -290,7 +304,7 @@ use m_string
         character(*) :: key
         character(*),optional :: o_alias !alias of inquired key
         character(*),optional :: o_default !default output value
-        logical,optional :: o_mandatory
+        integer,optional :: o_mandatory
         character(:),allocatable :: res
 
         logical :: exist
@@ -312,7 +326,7 @@ use m_string
         character(*) :: key
         character(*),optional :: o_alias !alias of inquired key
         character(*),optional :: o_default !default output value
-        logical,optional :: o_mandatory
+        integer,optional :: o_mandatory
         logical :: res
 
         res=str2bool(read(key,o_alias,o_default,o_mandatory))

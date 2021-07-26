@@ -53,16 +53,12 @@ use m_Optimization
         call shls%register(chp,'sampled_shots')
     endif
     call shls%assign
-
-    !only perform dotproduct test
-    if(setup%get_str('JOB')=='dotproduct') then
-        call dotproduct_test
-        call mpiworld%fin
-        stop
-    endif
-
+    
     !parametrizer
     call param%init
+
+    !preconditioner for basic gradients
+    call preco%init
 
     !initial (model) parameters as query point
     call qp0%init
@@ -79,12 +75,8 @@ use m_Optimization
     !scale problem
     call ls%scale(qp0)
 
-    !gradient preconditioner
-    call preco%init
-    call preco%apply(qp0%g,qp0%pg)
-
     call sysio_write('gradient',qp0%g,size(qp0%g))
-    call sysio_write('preco_gradient',qp0%pg,size(qp0%pg))
+    call sysio_write('pgradient',qp0%pg,size(qp0%pg))
 
     !if just estimate the wavelet or compute the gradient then this is it.
     if(setup%get_str('JOB')=='gradient') then
@@ -100,11 +92,7 @@ use m_Optimization
     
 end
 
-subroutine dotproduct_test
-    ! call gradient_modeling(o_adjseismo=adjseismo)
-end subroutine
-
-subroutine gradient_modeling(fobj,o_adjseismo)
+subroutine gradient_modeling(fobj)
 use m_System
 use m_Modeling
 use m_fobjective, only : t_fobjective
@@ -112,7 +100,6 @@ use m_matchfilter
 use m_smoother_laplacian_sparse
 
     type(t_fobjective) :: fobj
-    real,dimension(:,:),allocatable,optional :: o_adjseismo
 
     type(t_field) :: sfield, rfield
     character(:),allocatable :: update_wavelet
@@ -142,7 +129,7 @@ use m_smoother_laplacian_sparse
         call ppg%init_field(sfield,name='sfield',origin='src',oif_will_reconstruct=.true.)
         call ppg%init_abslayer
 
-        call sfield%add_src
+        call sfield%ignite
         
         !forward modeling
         if(.not.sfield%is_registered(chp,'seismo comp boundary')) then
@@ -168,9 +155,9 @@ use m_smoother_laplacian_sparse
         !adjoint source
         if(update_wavelet/='no') call shot%update_adjsource
 
-        call ppg%init_field(rfield,'rfield','rcv')
+        call ppg%init_field(rfield,name='rfield',origin='rcv')
 
-        call rfield%add_src(ois_adjoint=.true.)
+        call rfield%ignite(ois_adjoint=.true.)
         
         call alloc(cb%grad,cb%mz,cb%mx,cb%my,ppg%ngrad)
 

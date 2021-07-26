@@ -53,9 +53,9 @@ use m_math
 !  *
 !  */
 ! /************************ end self doc ***************************/
-    subroutine resampler(datain, dataout, ntr,  &
-                        o_fin, din, nin, &
-                        o_fout,dout,nout)
+    subroutine resampler(datain, dataout, ntr, &
+                         o_fin, din, nin, &
+                         o_fout,dout,nout)
         real,dimension(nin,ntr)  :: datain
         real,dimension(nout,ntr) :: dataout
         real,optional :: o_fin, o_fout
