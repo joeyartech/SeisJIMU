@@ -450,7 +450,7 @@ use m_System
             case ('sampled_shots')
                 call chp%open('shotlist%sampled_shots')
                 call alloc(tmp,self%nlists)
-                call chp%read(a1=tmp,n1=self%nlists)
+                call chp%read(tmp)
                 self%sampled_shots=nums2strs(tmp)
                 call chp%close
             end select
@@ -475,7 +475,7 @@ use m_System
                 call chp%open('shotlist%sampled_shots')
                 call alloc(tmp,self%nlists)
                 tmp=strs2reals(self%sampled_shots)
-                call chp%write(a1=tmp,n1=self%nlists)
+                call chp%write(tmp)
                 call chp%close
             end select
 

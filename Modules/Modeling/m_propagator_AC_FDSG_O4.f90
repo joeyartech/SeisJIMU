@@ -182,7 +182,7 @@ use m_cpml
         do iy=cb%ify+1,cb%ily
             self%buoy(:,:,iy)=0.5/cb%rho(:,:,iy)+0.5/cb%rho(:,:,iy-1)
         enddo
-
+        
         !initialize m_field
         call field_init(.false.,self%nt,self%dt)
 
@@ -1066,7 +1066,7 @@ use m_cpml
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
 
-            !!dir$ simd
+            !dir$ simd
             do iz=ifz,ilz
 
                 i=(iz-cb%ifz)+(ix-cb%ifx)*nz+1

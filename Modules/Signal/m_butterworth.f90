@@ -96,16 +96,16 @@ use m_math, only : r_pi
 !  !!
 ! !!*************** end self doc **********************************!!
 
-    subroutine butterworth(trace,nt,dt,ntr,&
+    subroutine butterworth(trace,nt,ntr,dt,&
         ois_zerophase,oif_locut,oif_hicut,&
         o_fstoplo,o_fpasslo,o_fpasshi,o_fstophi,&
         o_astoplo,o_apasslo,o_apasshi,o_astophi,&
         o_npoleslo,o_npoleshi,&
         o_f3dblo,  o_f3dbhi)
     
+        real,dimension(nt,ntr) :: trace
         integer nt  !number of time samples
         integer ntr !number of traces
-        real,dimension(nt,ntr) :: trace
         real dt     !sample spacing
         
         logical,optional :: ois_zerophase !flag for zero phase filtering
@@ -212,18 +212,18 @@ use m_math, only : r_pi
         !low-cut (high pass) filter
         if (locut) then
             do itr=1,ntr
-                call bfhighpass(npoleslo,f3dblo,nt,trace(itr,:))
+                call bfhighpass(npoleslo,f3dblo,nt,trace(:,itr))
                 if (zerophase) then
                     do i=1,nt/2 !reverse trace in place
-                        tmp = trace(itr,i)
-                        trace(itr,i) = trace(itr,nt-i)
-                        trace(itr,nt-i) = tmp
+                        tmp = trace(i,itr)
+                        trace(i,   itr) = trace(nt-i,itr)
+                        trace(nt-i,itr) = tmp
                     enddo
-                    call  bfhighpass(npoleslo,f3dblo,nt,trace(itr,:))
-                    do i=0,nt/2-1 !flip trace back
-                        tmp = trace(itr,i)
-                        trace(itr,i) = trace(itr,nt-i)
-                        trace(itr,nt-i) = tmp
+                    call  bfhighpass(npoleslo,f3dblo,nt,trace(:,itr))
+                    do i=1,nt/2 !flip trace back
+                        tmp = trace(i,itr)
+                        trace(i,   itr) = trace(nt-i,itr)
+                        trace(nt-i,itr) = tmp
                     enddo
                 endif
             enddo
@@ -232,18 +232,18 @@ use m_math, only : r_pi
         !high-cut (low pass) filter
         if (hicut) then
             do itr=1,ntr
-                call bflowpass(npoleshi,f3dbhi,nt,trace(itr,:))
+                call bflowpass(npoleshi,f3dbhi,nt,trace(:,itr))
                 if (zerophase) then
                     do i=1,nt/2 !reverse trace
-                        tmp = trace(itr,i)
-                        trace(itr,i) = trace(itr,nt-i)
-                        trace(itr,nt-i) = tmp
+                        tmp = trace(i,itr)
+                        trace(i,   itr) = trace(nt-i,itr)
+                        trace(nt-i,itr) = tmp
                     enddo
-                    call bflowpass(npoleshi,f3dbhi,nt,trace(itr,:))
+                    call bflowpass(npoleshi,f3dbhi,nt,trace(:,itr))
                     do i=1,nt/2 !flip trace back
-                        tmp = trace(itr,i)
-                        trace(itr,i) = trace(itr,nt-i)
-                        trace(itr,nt-i) = tmp
+                        tmp = trace(i,itr)
+                        trace(i,   itr) = trace(nt-i,itr)
+                        trace(nt-i,itr) = tmp
                     enddo
                 endif
             enddo

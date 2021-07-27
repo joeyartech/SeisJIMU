@@ -139,6 +139,7 @@ use m_linesearcher
                 !! Precond LBFGS !!
                 !!!!!!!!!!!!!!!!!!!
                 !update sk,yk pairs
+            !can use intrinsic function eoshift..
                 if(iterate<=l) then
                     sk(:,iterate)=current%x(:)-sk(:,iterate)
                     yk(:,iterate)=current%g(:)-yk(:,iterate)

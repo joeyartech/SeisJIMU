@@ -668,7 +668,7 @@ use m_model
 
         if(format=='su') then
 
-            call sudata%init(self%nrcv,self%nt,o_dt=self%dt,o_data=self%dsyn)
+            call sudata%init(self%nt,self%nrcv,o_dt=self%dt,o_data=self%dsyn)
 
             scalel=real(setup%get_int('SU_SCALEL',o_default='1000')) !assume same scalel for all traces
             scalco=real(setup%get_int('SU_SCALCO',o_default='1000')) !assume same scalco for all traces

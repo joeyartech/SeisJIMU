@@ -30,8 +30,10 @@ use m_setup
         procedure :: count => count
         procedure :: check => check
         procedure :: open => open
-        procedure :: read => read
-        procedure :: write => write
+        procedure :: read_real1,  read_real2,  read_real3,  read_real4
+        procedure :: write_real1, write_real2, write_real3, write_real4
+        generic :: read  =>  read_real1,  read_real2,  read_real3,  read_real4
+        generic :: write => write_real1, write_real2, write_real3, write_real4
         procedure :: close => close
 
     end type
@@ -202,33 +204,193 @@ use m_setup
 
     end subroutine
 
-    subroutine read(self,a1,n1,a2,n2,a3,n3,a4,n4)
+    subroutine read_real1(self,a,b,c,d,e,f,g)
         class(t_checkpoint) :: self
-        real,dimension(*) :: a1,a2,a3,a4
-        optional :: a2,a3,a4
-        optional :: n2,n3,n4
+        real,dimension(:),allocatable :: a,b,c,d,e,f,g
+        optional :: b,c,d,e,f,g
 
         if(if_use_checkpoint) then
-                            read(self%fp) a1(1:n1)
-            if(present(a2)) read(self%fp) a2(1:n2)
-            if(present(a3)) read(self%fp) a3(1:n3)
-            if(present(a4)) read(self%fp) a4(1:n4)
+                if(allocated(a)) read(self%fp) a
+            if(present(b)) then
+                if(allocated(b)) read(self%fp) b
+            endif
+            if(present(c)) then
+                if(allocated(c)) read(self%fp) c
+            endif
+            if(present(d)) then
+                if(allocated(d)) read(self%fp) d
+            endif
+            if(present(e)) then
+                if(allocated(e)) read(self%fp) e
+            endif
 
         endif
 
     end subroutine
-    
-    subroutine write(self,a1,n1,a2,n2,a3,n3,a4,n4)
-        class(t_checkpoint) :: self
-        real,dimension(*) :: a1,a2,a3,a4
-        optional :: a2,a3,a4
-        optional :: n2,n3,n4
 
-        if(if_checkpoint) then
-                            write(self%fp) a1(1:n1)
-            if(present(a2)) write(self%fp) a2(1:n1)
-            if(present(a3)) write(self%fp) a3(1:n1)
-            if(present(a4)) write(self%fp) a4(1:n1)
+    subroutine read_real2(self,a,b,c,d,e,f,g)
+        class(t_checkpoint) :: self
+        real,dimension(:,:),allocatable :: a,b,c,d,e,f,g
+        optional :: b,c,d,e,f,g
+
+        if(if_use_checkpoint) then
+                if(allocated(a)) read(self%fp) a
+            if(present(b)) then
+                if(allocated(b)) read(self%fp) b
+            endif
+            if(present(c)) then
+                if(allocated(c)) read(self%fp) c
+            endif
+            if(present(d)) then
+                if(allocated(d)) read(self%fp) d
+            endif
+            if(present(e)) then
+                if(allocated(e)) read(self%fp) e
+            endif
+
+        endif
+
+    end subroutine
+
+    subroutine read_real3(self,a,b,c,d,e,f,g)
+        class(t_checkpoint) :: self
+        real,dimension(:,:,:),allocatable :: a,b,c,d,e,f,g
+        optional :: b,c,d,e,f,g
+
+        if(if_use_checkpoint) then
+                if(allocated(a)) read(self%fp) a
+            if(present(b)) then
+                if(allocated(b)) read(self%fp) b
+            endif
+            if(present(c)) then
+                if(allocated(c)) read(self%fp) c
+            endif
+            if(present(d)) then
+                if(allocated(d)) read(self%fp) d
+            endif
+            if(present(e)) then
+                if(allocated(e)) read(self%fp) e
+            endif
+
+        endif
+
+    end subroutine
+
+    subroutine read_real4(self,a,b,c,d,e,f,g)
+        class(t_checkpoint) :: self
+        real,dimension(:,:,:,:),allocatable :: a,b,c,d,e,f,g
+        optional :: b,c,d,e,f,g
+
+        if(if_use_checkpoint) then
+                if(allocated(a)) read(self%fp) a
+            if(present(b)) then
+                if(allocated(b)) read(self%fp) b
+            endif
+            if(present(c)) then
+                if(allocated(c)) read(self%fp) c
+            endif
+            if(present(d)) then
+                if(allocated(d)) read(self%fp) d
+            endif
+            if(present(e)) then
+                if(allocated(e)) read(self%fp) e
+            endif
+
+        endif
+
+    end subroutine
+
+    subroutine write_real1(self,a,b,c,d,e,f,g)
+        class(t_checkpoint) :: self
+        real,dimension(:),allocatable :: a,b,c,d,e,f,g
+        optional :: b,c,d,e,f,g
+
+        if(if_use_checkpoint) then
+                if(allocated(a)) write(self%fp) a
+            if(present(b)) then
+                if(allocated(b)) write(self%fp) b
+            endif
+            if(present(c)) then
+                if(allocated(c)) write(self%fp) c
+            endif
+            if(present(d)) then
+                if(allocated(d)) write(self%fp) d
+            endif
+            if(present(e)) then
+                if(allocated(e)) write(self%fp) e
+            endif
+
+        endif
+
+    end subroutine
+
+    subroutine write_real2(self,a,b,c,d,e,f,g)
+        class(t_checkpoint) :: self
+        real,dimension(:,:),allocatable :: a,b,c,d,e,f,g
+        optional :: b,c,d,e,f,g
+
+        if(if_use_checkpoint) then
+                if(allocated(a)) write(self%fp) a
+            if(present(b)) then
+                if(allocated(b)) write(self%fp) b
+            endif
+            if(present(c)) then
+                if(allocated(c)) write(self%fp) c
+            endif
+            if(present(d)) then
+                if(allocated(d)) write(self%fp) d
+            endif
+            if(present(e)) then
+                if(allocated(e)) write(self%fp) e
+            endif
+
+        endif
+
+    end subroutine
+
+    subroutine write_real3(self,a,b,c,d,e,f,g)
+        class(t_checkpoint) :: self
+        real,dimension(:,:,:),allocatable :: a,b,c,d,e,f,g
+        optional :: b,c,d,e,f,g
+
+        if(if_use_checkpoint) then
+                if(allocated(a)) write(self%fp) a
+            if(present(b)) then
+                if(allocated(b)) write(self%fp) b
+            endif
+            if(present(c)) then
+                if(allocated(c)) write(self%fp) c
+            endif
+            if(present(d)) then
+                if(allocated(d)) write(self%fp) d
+            endif
+            if(present(e)) then
+                if(allocated(e)) write(self%fp) e
+            endif
+
+        endif
+
+    end subroutine
+
+    subroutine write_real4(self,a,b,c,d,e,f,g)
+        class(t_checkpoint) :: self
+        real,dimension(:,:,:,:),allocatable :: a,b,c,d,e,f,g
+        optional :: b,c,d,e,f,g
+
+        if(if_use_checkpoint) then
+                if(allocated(a)) write(self%fp) a
+            if(present(b)) then
+                if(allocated(b)) write(self%fp) b
+            endif
+            if(present(c)) then
+                if(allocated(c)) write(self%fp) c
+            endif
+            if(present(d)) then
+                if(allocated(d)) write(self%fp) d
+            endif
+            if(present(e)) then
+                if(allocated(e)) write(self%fp) e
+            endif
 
         endif
 

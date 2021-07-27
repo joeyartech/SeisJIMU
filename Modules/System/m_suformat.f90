@@ -422,22 +422,19 @@ use m_sysio
         
         read(11,pos=115) ns  !get number of samples from 1st trace
         if(ns<0) ns=ns+32768*2  !ns keyword is unsigned short in C
-        self%ns=ns
 
         read(11,pos=117) dt
         if(dt<0) dt=dt+32768*2  !dt keyword is unsigned short in C
-        self%dt=dt*1e-6
         
         close(11)
         
-        self%ntr=file_size/(self%ns+60)
+        ntr=file_size/(ns+60)
 
-        if(self%ntr*(self%ns+60)/=file_size) call error('ntr*(ns+60) /= file_size. Possibly ns is not same for all traces..')
+        if(ntr*(ns+60)/=file_size) call error('ntr*(ns+60) /= file_size. Possibly traces do not have same length (ns)..')
 
-        if(present(o_sindex)) write(*,*) 'Shot# '//o_sindex//' will read '//num2str(self%ntr)//' traces, each trace has '//num2str(self%ns)//' samples.'
-        
-        allocate(self%hdrs(self%ntr))
-        allocate(self%trs(self%ns,self%ntr))
+        call self%init(ns,ntr,dt*1e-6)
+
+        if(present(o_sindex)) write(*,*) 'Shot# '//o_sindex//' will read '//num2str(self%ntr)//' traces, each trace has '//num2str(self%ns)//' samples.'       
         
         open(11,file=dir_in//file,action='read',access='stream') !access='direct',recl=4*(ns+60))
         read(11) (self%hdrs(i),self%trs(:,i), i=1,self%ntr)
@@ -482,8 +479,8 @@ use m_sysio
 
         type(t_suformat) :: sudata
         
-        call sudata%init(ntr,ns,o_dt=o_dt,o_data=data)
-
+        call sudata%init(nt,ntr,o_dt=o_dt,o_data=data)
+        
         call sudata%write(file,o_sindex,o_mode)
 
     end subroutine

@@ -168,9 +168,10 @@ use m_string
         if(res=='') then
             if(present(o_default)) then
                 call hud(keys//'is NOT found, take default: '//o_default)
+                deallocate(res)
                 res=o_default
             endif
-            
+
             if(.not.present(o_default) .and. mandatory>0) then
                 call error(keys//'is NOT found, but is MANDATORY.')
                 ! call hud(keys//'is NOT found, but is MANDATORY.'//s_NL &

@@ -31,7 +31,9 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:,:),allocatable :: szz,szx,szy !stress tensor
         real,dimension(:,:,:),allocatable ::     sxx,sxy
         real,dimension(:,:,:),allocatable ::         syy
-        real,dimension(:,:,:),allocatable :: shh,p
+        real,dimension(:,:,:),allocatable :: shh !szz, sxx or syy
+        real,dimension(:,:,:),allocatable :: p !negated pressure
+        !N.B. pressure is defined >0 for inward stress, but here tobe compatible with szz etc, p is defined >0 for outward stress
 
         !boundary components for wavefield recontruction
         logical :: if_will_reconstruct=.false.
@@ -64,19 +66,18 @@ use, intrinsic :: ieee_arithmetic
         !snapshot
 
         contains
-        procedure :: init  => init
-        procedure :: init_bloom    => init_bloom
-        procedure :: init_boundary => init_boundary
-        procedure :: check_value => check_value
-        procedure :: ignite  => ignite
-        procedure :: acquire => acquire
-        procedure :: write => write
-        procedure :: write_ext => write_ext
-        procedure :: boundary_transport => boundary_transport
+        procedure :: init
+        procedure :: init_bloom
+        procedure :: init_boundary
+        procedure :: check_value
+        procedure :: ignite
+        procedure :: acquire
+        procedure :: write
+        procedure :: write_ext
+        procedure :: boundary_transport
+        procedure :: is_registered
+        procedure :: register
         final :: fin
-
-        procedure :: is_registered => is_registered
-        procedure :: register => register
 
     end type
 
@@ -320,7 +321,6 @@ use, intrinsic :: ieee_arithmetic
             call resampler(shot%wavelet,self%wavelet(1,:),1,&
                             din=shot%dt,nin=shot%nt,&
                             dout=dt,nout=nt)
-            
         endif
 
         self%wavelet=self%wavelet*dt/m%cell_volume
@@ -476,22 +476,22 @@ use, intrinsic :: ieee_arithmetic
             select case (list(i)%s)
             case ('seismo')
                 call chp%open(self%name//'%seismo')
-                if(allocated(self%seismo)) call chp%read(self%seismo,size(self%seismo))
+                if(allocated(self%seismo)) call chp%read(self%seismo)
                 call chp%close
             case ('comp')
                 call chp%open(self%name//'%comp')
-                call chp%read(self%vz,size(self%vz),self%vx,size(self%vx),self%vy,size(self%vy))
-                call chp%read(self%szz,size(self%szz),self%szx,size(self%szx),self%szy,size(self%szy))
-                call chp%read(self%sxx,size(self%sxx),self%sxy,size(self%sxy),self%syy,size(self%syy))
-                call chp%read(self%shh,size(self%shh),self%p  ,size(self%p  ))
+                call chp%read(self%vz, self%vx, self%vy )
+                call chp%read(self%szz,self%szx,self%szy)
+                call chp%read(self%sxx,self%sxy,self%syy)
+                call chp%read(self%shh,self%p)
                 call chp%close
             case ('boundary')
                 call chp%open(self%name//'%boundary')
-                call chp%read(self%bnd%vz_top,  size(self%bnd%vz_top),  self%bnd%vz_bot,  size(self%bnd%vz_bot  ))
-                call chp%read(self%bnd%vx_left, size(self%bnd%vx_left), self%bnd%vx_right,size(self%bnd%vx_right))
-                call chp%read(self%bnd%vy_front,size(self%bnd%vy_front),self%bnd%vy_rear ,size(self%bnd%vy_rear ))
-                call chp%read(self%bnd%vx_top  ,size(self%bnd%vx_top  ),self%bnd%vx_bot  ,size(self%bnd%vx_bot  ))
-                call chp%read(self%bnd%vz_left ,size(self%bnd%vz_left ),self%bnd%vz_right,size(self%bnd%vz_right))
+                call chp%read(self%bnd%vz_top,  self%bnd%vz_bot  )
+                call chp%read(self%bnd%vx_left, self%bnd%vx_right)
+                call chp%read(self%bnd%vy_front,self%bnd%vy_rear )
+                call chp%read(self%bnd%vx_top  ,self%bnd%vx_bot  )
+                call chp%read(self%bnd%vz_left ,self%bnd%vz_right)
                 call chp%close
             end select
 
@@ -512,22 +512,22 @@ use, intrinsic :: ieee_arithmetic
             select case (list(i)%s)
             case ('seismo')
                 call chp%open(self%name//'%seismo')
-                if(allocated(self%seismo)) call chp%write(self%seismo,size(self%seismo))
+                if(allocated(self%seismo)) call chp%write(self%seismo)
                 call chp%close
             case ('comp')
                 call chp%open(self%name//'%comp')
-                call chp%write(self%vz,size(self%vz),self%vx,size(self%vx),self%vy,size(self%vy))
-                call chp%write(self%szz,size(self%szz),self%szx,size(self%szx),self%szy,size(self%szy))
-                call chp%write(self%sxx,size(self%sxx),self%sxy,size(self%sxy),self%syy,size(self%syy))
-                call chp%write(self%shh,size(self%shh),self%p  ,size(self%p  ))
+                call chp%write(self%vz, self%vx, self%vy )
+                call chp%write(self%szz,self%szx,self%szy)
+                call chp%write(self%sxx,self%sxy,self%syy)
+                call chp%write(self%shh,self%p)
                 call chp%close
             case ('boundary')
                 call chp%open(self%name//'%boundary')
-                call chp%write(self%bnd%vz_top  ,size(self%bnd%vz_top  ),self%bnd%vz_bot  ,size(self%bnd%vz_bot  ))
-                call chp%write(self%bnd%vx_left ,size(self%bnd%vx_left ),self%bnd%vx_right,size(self%bnd%vx_right))
-                call chp%write(self%bnd%vy_front,size(self%bnd%vy_front),self%bnd%vy_rear ,size(self%bnd%vy_rear ))
-                call chp%write(self%bnd%vx_top  ,size(self%bnd%vx_top  ),self%bnd%vx_bot  ,size(self%bnd%vx_bot  ))
-                call chp%write(self%bnd%vz_left ,size(self%bnd%vz_left ),self%bnd%vz_right,size(self%bnd%vz_right))
+                call chp%write(self%bnd%vz_top  ,self%bnd%vz_bot  )
+                call chp%write(self%bnd%vx_left ,self%bnd%vx_right)
+                call chp%write(self%bnd%vy_front,self%bnd%vy_rear )
+                call chp%write(self%bnd%vx_top  ,self%bnd%vx_bot  )
+                call chp%write(self%bnd%vz_left ,self%bnd%vz_right)
                 call chp%close
             end select
 

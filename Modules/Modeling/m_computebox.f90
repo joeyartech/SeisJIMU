@@ -275,7 +275,7 @@ use m_shot
             select case (list(i)%s)
             case ('grad')
                 call chp%open('computebox%grad')
-                call chp%read(self%grad,size(self%grad))
+                call chp%read(self%grad)
                 call chp%close
             end select
 
@@ -296,7 +296,7 @@ use m_shot
             select case (list(i)%s)
             case ('grad')
                 call chp%open('computebox%grad')
-                call chp%write(self%grad,size(self%grad))
+                call chp%write(self%grad)
                 call chp%close
             end select
 

@@ -90,6 +90,8 @@ use m_Modeling
     
     call mpiworld%fin
     
+    ! stop
+    
 end
 
 
