@@ -16,6 +16,7 @@ use m_Optimization
              '======================================')
     
     call setup%init
+    call sysio_init
     
     if(.not. setup%exist) then
         if(mpiworld%is_master) then

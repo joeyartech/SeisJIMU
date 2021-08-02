@@ -17,7 +17,6 @@ use m_Modeling
 
     call setup%init
     call sysio_init
-    call setup%set_dir_in(dir_in)
     
     if(.not. setup%exist) then
         if(mpiworld%is_master) then

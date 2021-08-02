@@ -4,10 +4,11 @@ use m_message
 
     private
 
-    character(:),allocatable :: file, dir_in
+    character(:),allocatable :: file
 
     type,public :: t_setup
         logical :: exist=.true.
+        character(:),allocatable :: dir_in
 
         contains
         procedure :: init
@@ -18,7 +19,6 @@ use m_message
         procedure :: get_reals
         procedure :: get_str
         procedure :: get_strs
-        procedure :: set_dir_in
         procedure :: get_file
         !procedure :: get_files
         procedure :: get_bool
@@ -302,12 +302,6 @@ use m_message
 
     end function
 
-    subroutine set_dir_in(self,dir)
-        class(t_setup) :: self
-        character(*) :: dir
-        dir_in=dir
-    end subroutine
-
     function get_file(self,key,o_alias,o_default,o_mandatory) result(res)
         class(t_setup) :: self
         character(*) :: key
@@ -322,7 +316,7 @@ use m_message
         res=read(key,o_alias,o_default,o_mandatory)
 
         if(res/='') then
-            inquire(file=dir_in//res,exist=exist,size=size)
+            inquire(file=self%dir_in//res,exist=exist,size=size)
             if(size==0) exist=.false.
             if (.not. exist) then
                 call hud('File '//res//' has 0 size or does NOT exist, return empty filename.')

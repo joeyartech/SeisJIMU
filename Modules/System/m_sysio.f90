@@ -28,6 +28,8 @@ use m_setup
 
         call hud('Input directory: '//dir_in)
 
+        setup%dir_in=dir_in
+
         !output directory
         dir_out=setup%get_str('DIR_OUT',o_default='./results/')
 
