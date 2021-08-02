@@ -57,14 +57,14 @@ use m_model
         real,dimension(:,:),allocatable :: dadj !adjoint source seismogram
         
         contains
-        procedure :: init => init
-        procedure :: read_from_setup => read_from_setup
-        procedure :: read_from_data  => read_from_data
-        procedure :: set_var_time  => set_var_time
-        procedure :: set_var_space => set_var_space
-        procedure :: update_wavelet => update_wavelet
-        procedure :: update_adjsource => update_adjsource
-        procedure :: write => write
+        procedure :: init
+        procedure :: read_from_setup
+        procedure :: read_from_data
+        procedure :: set_var_time
+        procedure :: set_var_space
+        procedure :: update_wavelet
+        procedure :: update_adjsource
+        procedure :: write
         
     end type
     
@@ -215,6 +215,7 @@ use m_model
             endif
 
         else !wavelet file exists
+            call alloc(self%wavelet,self%nt)
             call wavelet%read(file)
             call resampler(wavelet%trs(:,1),self%wavelet,1,&
                             din=wavelet%dt,nin=wavelet%ns, &
@@ -249,21 +250,23 @@ use m_model
 
         !Hicks interpolation
         self%if_hicks=setup%get_bool('IF_HICKS',o_default='T')
-        
+
+        if(is_first_in) then
+            if(self%if_hicks) call hicks_init(m%dz,m%dx,m%dy,m%is_cubic,m%is_freesurface)
+            
+            !velocity grids are shift from normal stress grids by half grid length (staggered-grid FD)
+            !e.g. v(1) is actually v[0.5], v(2) is actually v[1.5],
+            !thus to correctly Hicks-interpolate the recorded s/r positions of forces,
+            !we need to artificially add 0.5 to the positions.
+            halfz=either(m%dz/2.,0.,is_fdsg)
+            halfx=either(m%dx/2.,0.,is_fdsg)
+            halfy=either(m%dy/2.,0.,is_fdsg)
+
+            is_first_in=.false.
+
+        endif
+
         if(self%if_hicks) then
-
-            if(is_first_in) then
-                call hicks_init(m%dz,m%dx,m%dy,m%is_cubic,m%is_freesurface)
-
-                !to interpolate values on v(1) (actually v[0.5]), v(2) (actually v[1.5]) etc.
-                !we need add half grid size to s/r positions    
-                halfz=either(m%dz/2.,0.,is_fdsg)
-                halfx=either(m%dx/2.,0.,is_fdsg)
-                halfy=either(m%dy/2.,0.,is_fdsg)
-
-                is_first_in=.false.
-
-            endif
 
             select case (self%src%comp)
             case('p') !explosive source or non-vertical force
@@ -390,7 +393,7 @@ use m_model
 
             ds=setup%get_reals('SOURCE_SPACING', 'DS',o_default='0. 0. 0.')
             dr=setup%get_reals('RECEIVER_SPACING','DR',o_default='0. 0. 0.')
-
+            
             nr=setup%get_int('NUMBER_RECEIVER','NR',o_default='1')
             rcomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',o_default='p')
 

@@ -77,7 +77,7 @@ use, intrinsic :: ieee_arithmetic
         procedure :: boundary_transport
         procedure :: is_registered
         procedure :: register
-        final :: fin
+        final :: final
 
     end type
 
@@ -293,20 +293,26 @@ use, intrinsic :: ieee_arithmetic
         if(either(ois_adjoint,.false.,present(ois_adjoint))) then
 
             if(present(o_wavelet)) then
-                self%wavelet=o_wavelet !auto-allocation with shape=(nrcv,nt)
-                self%wavelet=self%wavelet*dt/m%cell_volume
+                if(all(shape(o_wavelet)==[nt,shot%nrcv])) then
+                    self%wavelet=transpose(o_wavelet)
+                else
+                    call hud('shape(o_wavelet) = '    //strcat(nums2strs(shape(o_wavelet))))
+                    call hud('required shape = '//num2str(nt)//' , '//num2str(shot%nrcv))
+                    call error('External o_wavelet do NOT have the required shape!')
+                endif
 
             else
                 call alloc(self%wavelet,shot%nrcv,nt)
+
                 do i=1,shot%nrcv !implicit transpose
                     call resampler(shot%dadj(:,i),self%wavelet(i,:),1,&
-                        din=shot%dt,nin=shot%nt,&
-                        dout=dt,nout=nt)
+                                    din=shot%dt,nin=shot%nt,&
+                                    dout=dt,nout=nt)
                 enddo
-                !no need for dt/dx3 scaling,
-                !as shot%dadj already has that info
-
+                
             endif
+
+            self%wavelet=self%wavelet*dt/m%cell_volume
 
             return
 
@@ -314,7 +320,13 @@ use, intrinsic :: ieee_arithmetic
 
         !add source
         if(present(o_wavelet)) then
-            self%wavelet=o_wavelet !shape=(1,nt)
+            if(all(shape(o_wavelet)==[nt,1])) then
+                self%wavelet=transpose(o_wavelet)
+            else
+                call hud('shape(o_wavelet) = '//strcat(nums2strs(shape(o_wavelet))))
+                call hud('required shape = '//num2str(nt)//', 1')
+                call error('External o_wavelet do NOT have the required shape!')
+            endif
 
         else
             call alloc(self%wavelet,1,nt)
@@ -327,15 +339,23 @@ use, intrinsic :: ieee_arithmetic
 
     end subroutine
 
-    subroutine acquire(self)
+    subroutine acquire(self,o_seismo)
         class(t_field) :: self
+        real,dimension(:,:),allocatable,optional :: o_seismo
 
-        call alloc(shot%dsyn,shot%nt,shot%nrcv)
-        do i=1,shot%nrcv
-            call resampler(self%seismo(i,:),shot%dsyn(:,i),1,&
-                            din=dt,nin=nt,&
-                            dout=shot%dt,nout=shot%nt)
-        enddo
+        if(present(o_seismo)) then
+            o_seismo=transpose(self%seismo)
+
+        else
+
+            call alloc(shot%dsyn,shot%nt,shot%nrcv)
+            do i=1,shot%nrcv
+                call resampler(self%seismo(i,:),shot%dsyn(:,i),1,&
+                                din=dt,nin=nt,&
+                                dout=shot%dt,nout=shot%nt)
+            enddo
+
+        endif
 
     end subroutine
         
@@ -429,30 +449,33 @@ use, intrinsic :: ieee_arithmetic
         
     end subroutine
 
-    subroutine fin(s)
-        type(t_field) :: s
+    subroutine final(self)
+        type(t_field) :: self
         
-        deallocate(s%name)
+        deallocate(self%name)
 
-        call dealloc(s%vz,s%vx,s%vy)
-        call dealloc(s%szz,s%szx,s%szy,s%sxx,s%sxy,s%shh,s%p)
+        call dealloc(self%vz,self%vx,self%vy)
+        call dealloc(self%szz,self%szx,self%szy,self%sxx,self%sxy,self%shh,self%p)
 
-        call dealloc(s%bnd%vz_top,  s%bnd%vz_bot)
-        call dealloc(s%bnd%vx_left, s%bnd%vx_right)
-        call dealloc(s%bnd%vy_front,s%bnd%vy_rear)
-        call dealloc(s%bnd%vx_top,  s%bnd%vx_bot)
-        call dealloc(s%bnd%vz_left, s%bnd%vz_right)
-        
-        call dealloc(s%dvz_dz,s%dvz_dx,s%dvz_dy)
-        call dealloc(s%dvx_dz,s%dvx_dx,s%dvx_dy)
-        call dealloc(s%dvy_dz,s%dvy_dx,s%dvy_dy)
-        call dealloc(s%dszz_dz,s%dszx_dz)
-        call dealloc(s%dszx_dx,s%dsxx_dx)
-        call dealloc(s%dshh_dz,s%dshh_dx,s%dshh_dy)
-        call dealloc(s%dp_dz,s%dp_dx,s%dp_dy)
-        
-        call dealloc(s%wavelet,s%seismo)
-        deallocate(s%bloom)
+        call dealloc(self%bnd%vz_top,  self%bnd%vz_bot)
+        call dealloc(self%bnd%vx_left, self%bnd%vx_right)
+        call dealloc(self%bnd%vy_front,self%bnd%vy_rear)
+        call dealloc(self%bnd%vx_top,  self%bnd%vx_bot)
+        call dealloc(self%bnd%vz_left, self%bnd%vz_right)
+
+        call dealloc(self%dvz_dz,self%dvz_dx,self%dvz_dy)
+        call dealloc(self%dvx_dz,self%dvx_dx,self%dvx_dy)
+        call dealloc(self%dvy_dz,self%dvy_dx,self%dvy_dy)
+        call dealloc(self%dszz_dz,self%dszx_dz)
+        call dealloc(self%dszx_dx,self%dsxx_dx)
+        call dealloc(self%dshh_dz,self%dshh_dx,self%dshh_dy)
+        call dealloc(self%dp_dz,self%dp_dx,self%dp_dy)
+
+        call dealloc(self%wavelet)
+
+        call dealloc(self%seismo)
+
+        if(allocated(self%bloom)) deallocate(self%bloom)
 
         !snapshot
     end subroutine

@@ -51,9 +51,9 @@ use m_Kernel
         integer :: max_search   !max number of linesearch allowed per iteration
         
         contains
-        procedure :: init => init
-        procedure :: search => search
-        procedure :: scale => scale
+        procedure :: init
+        procedure :: search
+        procedure :: scale
     end type
 
     type(t_linesearcher),public :: ls

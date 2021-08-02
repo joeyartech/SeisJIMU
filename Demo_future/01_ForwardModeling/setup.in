@@ -1,4 +1,4 @@
-MODEL_SIZE              '101   101    1'
+MODEL_SIZE              '101   101   1'
 MODEL_SPACING           '20    20    1'
 MODEL_ORIGIN            '0     0     0'
 #FILE_MODEL              'model'
@@ -18,7 +18,7 @@ WAVELET_TYPE            'ricker'
                        # frz   frx  fry  lrz   lrx    lry  nr
 #RECEIVER_LINE           '26    10    0   26    1990   0    100'
 
-SCOMP                   p
+SCOMP                   vz
 RCOMP                   'p vz vx'
 
 #IF_HICKS		F
@@ -27,7 +27,9 @@ NT           500
 DT           0.004
 FPEAK        7
 
-#SNAPSHOT     'p vz vx'
+#DATA_FORMAT 'bin'
+
+SNAPSHOT     'p vz vx'
 
 IF_USE_CHECKPOINT   F
 

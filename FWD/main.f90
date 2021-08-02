@@ -16,6 +16,8 @@ use m_Modeling
              '======================================')
 
     call setup%init
+    call sysio_init
+    call setup%set_dir_in(dir_in)
     
     if(.not. setup%exist) then
         if(mpiworld%is_master) then
@@ -23,7 +25,7 @@ use m_Modeling
             call print_manual
             call ppg%print_info
         endif
-        call mpiworld%fin
+        call mpiworld%final
         stop
     endif
 
@@ -88,7 +90,7 @@ use m_Modeling
     
     call hud('        END LOOP OVER SHOTS        ')
     
-    call mpiworld%fin
+    call mpiworld%final
     
     ! stop
     

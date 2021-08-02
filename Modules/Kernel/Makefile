@@ -26,4 +26,4 @@ all : $(src:.f90=.o)
 
 clean :
 	-rm $(src:.f90=.o) 
-	-rm $(src:%.f90=$(mod_dir)%.mod) $(mod_dir)m_parametrizer.mod $(mod_dir)m_nabla.mod
+	-rm $(src:%.f90=$(mod_dir)%.mod) $(mod_dir)m_parametrizer.mod $(mod_dir)m_nabla.mod $(mod_dir)m_kernel.mod

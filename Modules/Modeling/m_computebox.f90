@@ -48,13 +48,13 @@ use m_shot
         real,dimension(:,:,:,:),allocatable :: grad, imag, autocorr
         
         contains
-        procedure :: init => init
-        procedure :: project => project
-        procedure :: project_back => project_back
-        final :: fin
+        procedure :: init
+        procedure :: project
+        procedure :: project_back
+        final :: final
 
-        procedure :: is_registered => is_registered
-        procedure :: register => register
+        procedure :: is_registered
+        procedure :: register
     end type
 
     type(t_computebox),public :: cb
@@ -172,14 +172,14 @@ use m_shot
         end associate
 
         !models in computebox
-                             call m2cb(m%vp ,self%vp )
-        if(allocated(m%vs )) call m2cb(m%vs ,self%vs )
-                             call m2cb(m%rho,self%rho)
-        if(allocated(m%eps)) call m2cb(m%eps,self%eps)
-        if(allocated(m%del)) call m2cb(m%del,self%del)
-        if(allocated(m%eta)) call m2cb(m%eta,self%eta)
-        if(allocated(m%qp )) call m2cb(m%qp ,self%qp )
-        if(allocated(m%qs )) call m2cb(m%qs ,self%qs )
+        call m2cb(m%vp ,self%vp )
+        call m2cb(m%vs ,self%vs )
+        call m2cb(m%rho,self%rho)
+        call m2cb(m%eps,self%eps)
+        call m2cb(m%del,self%del)
+        call m2cb(m%eta,self%eta)
+        call m2cb(m%qp ,self%qp )
+        call m2cb(m%qs ,self%qs )
 
         self%velmin=minval(self%vp)
         if(allocated(self%vs)) then
@@ -204,9 +204,11 @@ use m_shot
     end subroutine
     
     subroutine m2cb(big,small)
-        real,dimension(m%nz,m%nx,m%ny),intent(in) :: big
-        real,dimension(:,:,:),allocatable,intent(out) :: small
+        real,dimension(:,:,:),allocatable :: big
+        real,dimension(:,:,:),allocatable :: small
        
+        if(.not.allocated(big)) return
+
         call alloc(small, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
         !values inside..
@@ -244,18 +246,19 @@ use m_shot
                 self%iox:self%iox+self%mx-1,&
                 self%ioy:self%ioy+self%my-1,:) + small(:,:,:,:)
 
+            ! call final(self)
+
     end subroutine
     
-    subroutine fin(s)
-        type(t_computebox) :: s
+    subroutine final(self)
+        type(t_computebox) :: self
 
-        call dealloc(s%vp,s%vs,s%rho)
-        call dealloc(s%eps,s%del,s%eta)
-        call dealloc(s%qp,s%qs)
-        call dealloc(s%grad,s%imag,s%autocorr)
+        call dealloc(self%vp, self%vs, self%rho)
+        call dealloc(self%eps,self%del,self%eta)
+        call dealloc(self%qp,self%qs)
+        call dealloc(self%grad,self%imag,self%autocorr)
 
     end subroutine
-
 
     logical function is_registered(self,chp,str)
         class(t_computebox) :: self

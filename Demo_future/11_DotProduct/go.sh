@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [ "$1" == "compile" ]; then
-    (cd ../../Modules/Modeling ; make clean ; make ) ; make
+    make cleanall ; (cd ../../ ; make fwd ) ; make
 fi
 # 
 # makevel nz=50 nx=101 v000=1500 > c1
@@ -10,9 +10,9 @@ fi
 # rm c1 c2 tmp
 # 
 
-makevel nx=201 nz=201 v000=2000 > model
+# makevel nx=201 nz=201 v000=2000 > model
 
-../../exe/DotProduct  setup.in
+../../exe/DotProduct  setup_simple.in
 
 # suximage <  u.su  legend=1  title='u' &
 # suximage <  v.su  legend=1  title='v' &

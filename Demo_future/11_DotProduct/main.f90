@@ -10,10 +10,12 @@ use m_Modeling
              '======================================')
     
     call setup%init
+    call sysio_init
+    call setup%set_dir_in(dir_in)
     
     if(.not. setup%exist) then    
         call hud('No input setup file given. Stop.')
-        call mpiworld%fin
+        call mpiworld%final
         stop
     endif
 
@@ -27,23 +29,25 @@ use m_Modeling
 
     !shotlist
     call shls%read_from_setup
-    call shls%build
+    call shls%build(o_batchsize=shls%nshot)
     call shls%sample
     call shls%assign
     
-    call gradient_modeling
+    call modeling_gradient
 
     call sysio_write('gradient',m%gradient,size(m%gradient))
 
-    call mpiworld%fin
-    
-    stop
+    call mpiworld%final
+
+    ! stop
 
 end
 
-subroutine gradient_modeling
+subroutine modeling_gradient
 use m_System
 use m_Modeling
+
+    double precision :: LHS=0., RHS=0.
 
     real,dimension(:,:),allocatable :: u,v,Lu,Ladj_v
     type(t_field) :: sfield, rfield
@@ -73,10 +77,10 @@ use m_Modeling
         
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !variables for dotproduct test
-        call alloc(u     ,1,        ppg%nt)
-        call alloc(v     ,shot%nrcv,ppg%nt)
-        call alloc(Lu    ,shot%nrcv,ppg%nt)
-        call alloc(Ladj_v,1        ,ppg%nt)
+        call alloc(u     ,ppg%nt,1        )
+        call alloc(v     ,ppg%nt,shot%nrcv)
+        call alloc(Lu    ,ppg%nt,shot%nrcv)
+        call alloc(Ladj_v,ppg%nt,1        )
 
         if_use_random=setup%get_bool('IF_USE_RANDOM',o_default='T')
 
@@ -84,11 +88,11 @@ use m_Modeling
             call random_number(u)
             call random_number(v)
         else
-            u(1,:)=shot%wavelet
-            do ir=1,shot%nrcv; v(ir,:)=shot%wavelet; enddo
+            u(:,1)=shot%wavelet
+            do ir=1,shot%nrcv; v(:,ir)=shot%wavelet; enddo
         endif
-        call suformat_write('u',u,size(u,1),size(u,2))
-        call suformat_write('v',v,size(v,1),size(v,2))
+        call suformat_write('u',u,ppg%nt,1        ,o_dt=ppg%dt)
+        call suformat_write('v',v,ppg%nt,shot%nrcv,o_dt=ppg%dt)
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         
         call sfield%ignite(o_wavelet=u)
@@ -96,42 +100,62 @@ use m_Modeling
         !forward modeling
         call ppg%forward(sfield)
         
-        ! call sfield%acquire
-        Lu=sfield%seismo
+        call sfield%acquire(o_seismo=Lu)
 
         !call shot%write('dsyn_')
-        call suformat_write('Lu',Lu,size(Lu,1),size(Lu,2))
+        call suformat_write('Lu',Lu,ppg%nt,shot%nrcv,o_dt=ppg%dt)
 
         call ppg%init_field(rfield,name='rfield',origin='rcv')
 
         call rfield%ignite(o_wavelet=v,ois_adjoint=.true.)
 
-        call alloc(cb%grad,cb%mz,cb%mx,cb%my,ppg%ngrad)
-
         !adjoint modeling
         call ppg%adjoint(rfield,oif_record_adjseismo=.true.,o_sf=sfield,o_grad=cb%grad)
-        Ladj_v=rfield%seismo
-        call suformat_write('Ladj_v',Ladj_v,size(Ladj_v,1),size(Ladj_v,2))
+
+        call rfield%acquire(o_seismo=Ladj_v)
+        call suformat_write('Ladj_v',Ladj_v,ppg%nt,1,o_dt=ppg%dt)
         
         call cb%project_back(m%gradient,cb%grad,ppg%ngrad)
-        deallocate(cb%grad)
         
     enddo
     
     call hud('        END LOOP OVER SHOTS        ')
-    
-    print*,'shape(u),||u|| = ', shape(u), norm2(u)*sqrt(ppg%dt) !sqrt(int u^2*delta(x)*dx3*dt) = sqrt(u^2*dt) = norm2(u)*sqrt(dt)
-    print*,'shape(v),||v|| = ', shape(v), norm2(v)*sqrt(ppg%dt)
-    print*,'shape(Lu),    ||Lu|| = ',     shape(Lu),     norm2(Lu)*sqrt(ppg%dt)
-    print*,'shape(Ladj_v),||Ladj_v|| = ', shape(Ladj_v), norm2(Ladj_v)*sqrt(ppg%dt)
+
+    print*,'shape(u)=',     shape(u),    '||u||=',      norm2(u)*sqrt(ppg%dt)
+    !||u||=sqrt(int u^2*delta(x)*dx3*dt) = sqrt(u^2*dt) = norm2(u)*sqrt(dt)
+    print*,'shape(v)=',     shape(v),    '||v||=',      norm2(v)*sqrt(ppg%dt)
+    print*,'shape(Lu)=',    shape(Lu),   '||Lu||=',     norm2(Lu)*sqrt(ppg%dt)
+    print*,'shape(Ladj_v)=',shape(Ladj_v),'||Ladj_v||=',norm2(Ladj_v)*sqrt(ppg%dt)
 
     !<v|Lu> =?= <L^Tv|u>
-    LHS=sum(dprod(v,Lu))*ppg%dt  !int v*Lu*delta(x)*dx3*dt = sum(v*Lu)*dt
-    RHS=sum(dprod(Ladj_v,u))*ppg%dt
+
+    !some care about the units, e.g. <v|Lu>:
+    !if v & Lu are velocity compo [m/s], then
+    !<v|Lu> = int v*Lu*delta(x)*dx3*dt *dx3/dt*rho (*dx3/dt*rho is making unit in [Nm])
+    !       = sum(v*Lu)*dx3*rho
+    !if v & Lu are pressure comp [Pa], then
+    !<v|Lu> = int v*Lu*delta(x)*dx3*dt *dx3/dt/kpa (*dx3/dt/kpa is making unit in [Nm])
+    !       = sum(v*Lu)*dx3/kpa
+
+    do i=1,shot%nrcv
+        select case (shot%rcv(i)%comp(1:1))
+        case ('v')
+            LHS=LHS+sum(dprod(v(:,i),Lu(:,i)))*m%cell_volume*m%ref_rho
+        case ('p')
+            LHS=LHS+sum(dprod(v(:,i),Lu(:,i)))*m%cell_volume/m%ref_kpa
+        end select
+    enddo
+
+    select case (shot%src%comp)
+    case ('v')
+        RHS=sum(dprod(Ladj_v,u))*m%cell_volume*m%ref_rho
+    case ('p')
+        RHS=sum(dprod(Ladj_v,u))*m%cell_volume/m%ref_kpa
+    end select
+
     print*,'LHS = <   v|Lu> = ', LHS
     print*,'RHS = <L^Tv| u> = ', RHS
 
     call mpiworld%barrier
 
 end subroutine
-

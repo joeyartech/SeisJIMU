@@ -32,7 +32,7 @@ use m_computebox
         integer :: nlayer
 
         contains
-        procedure :: init => init
+        procedure :: init
 
     end type
         

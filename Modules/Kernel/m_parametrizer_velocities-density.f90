@@ -55,8 +55,8 @@ use m_Modeling
         real :: d1,d2,d3,cell_volume_in_Pa
         
         contains
-        procedure :: init => init
-        procedure :: transform => transform
+        procedure :: init
+        procedure :: transform
     end type
 
     type(t_parametrizer),public :: param

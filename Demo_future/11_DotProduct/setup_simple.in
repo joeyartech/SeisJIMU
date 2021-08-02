@@ -1,18 +1,15 @@
 MODEL_SIZE              '101 101 1'
 MODEL_SPACING           '20 20 1'
-#FILE_MODEL              'model'
-#MODEL_ATTRIBUTES        rho
+FILE_MODEL              'simple'
+MODEL_ATTRIBUTES        'vp rho'
 
 IS_FREESURFACE          F
 
 ACQUI_GEOMETRY          spread
-FS                      '26 505 500'
-FR                      '46 10  0'
+FS                      '50 505 500'
+FR                      '40 10  0'
 DR                      '0  20 0'
 NR                      100
-
-WAVELET_TYPE            ricker
-T0                       0.5
 
                        # fsz   fsx  fsy  lsz   lsx    lsy  ns
 #SOURCE_LINE             '26    505  500  20    505    500  1'
@@ -22,19 +19,25 @@ T0                       0.5
 SCOMP                   p
 RCOMP                   vz #'p vz'
 
+#WAVELET_TYPE            ricker                                                              
+#T0                      0.5                                                                 
+FILE_WAVELET            'fricker_dt6000.su' 
+
 IF_BLOOM        F
 IF_HICKS        F
 
 IF_USE_RANDOM   F
 
 NT           500
-DT           0.004
+DT           0.006
 FPEAK        7
 
 #SNAPSHOT     'p vz'
 #NSNAPSHOT    50
 
 IF_USE_CHECKPOINT   F
+
+DIR_OUT			'./'
 
 
 #why the vz comp of dsyn is weird?

@@ -377,10 +377,10 @@ use m_sysio
         integer :: ns !assume all traces have same number of samples
         real    :: dt !assume all traces have same time sampling interval
         contains
-        procedure :: init => init
-        procedure :: read => read
-        procedure :: write => write
-        final     :: fin
+        procedure :: init
+        procedure :: read
+        procedure :: write
+        final     :: final
     end type  
 
     contains
@@ -391,9 +391,10 @@ use m_sysio
         real,dimension(ns,ntr),optional :: o_data
         
         allocate(self%hdrs(ntr))
-        allocate(self%trs(ns,ntr))
+        
+        allocate(self%trs(ns,ntr),source=0.)
 
-        self%ntr=ntr
+        self%ntr=ntr       
         self%ns=ns
         if(present(o_dt)) self%dt=o_dt
 
@@ -414,25 +415,32 @@ use m_sysio
 
         integer file_size
         integer(2) :: dt
+
+        type(t_header) :: hdr1
         
         inquire(file=dir_in//file,size=file_size) !file_size in bytes
         file_size=file_size/4 !file_size in sizeof(float), single precision
         
         open(11,file=dir_in//file,action='read',access='stream')
-        
-        read(11,pos=115) ns  !get number of samples from 1st trace
-        if(ns<0) ns=ns+32768*2  !ns keyword is unsigned short in C
-
-        read(11,pos=117) dt
-        if(dt<0) dt=dt+32768*2  !dt keyword is unsigned short in C
-        
+        !this actually does not work
+        ! read(11,pos=115) ns  !get number of samples from 1st trace
+        ! if(ns<0) ns=ns+32768*2  !ns keyword is unsigned short in C
+        ! read(11,pos=117) dt
+        ! if(dt<0) dt=dt+32768*2  !dt keyword is unsigned short in C        
+        read(11) hdr1
         close(11)
+
+        if(hdr1%ns<0) hdr1%ns=hdr1%ns+32768*2  !ns keyword is unsigned short in C
+        if(hdr1%dt<0) hdr1%dt=hdr1%dt+32768*2  !dt keyword is unsigned short in C        
+        ns=hdr1%ns
         
-        ntr=file_size/(ns+60)
+        ntr=file_size/(hdr1%ns+60)
+
+        call hud('ntr, ns, file_size = '//num2str(ntr)//', '//num2str(ns)//', '//num2str(file_size))
 
         if(ntr*(ns+60)/=file_size) call error('ntr*(ns+60) /= file_size. Possibly traces do not have same length (ns)..')
 
-        call self%init(ns,ntr,dt*1e-6)
+        call self%init(ns,ntr,hdr1%dt*1e-6)
 
         if(present(o_sindex)) write(*,*) 'Shot# '//o_sindex//' will read '//num2str(self%ntr)//' traces, each trace has '//num2str(self%ns)//' samples.'       
         
@@ -472,20 +480,20 @@ use m_sysio
 
     subroutine suformat_write(file,data,nt,ntr,o_dt,o_sindex,o_mode)
         character(*) :: file
-        real,dimension(nt,ntr) :: data
+        real,dimension(*) :: data
         real,optional :: o_dt
         character(*),optional :: o_sindex
         character(*),optional :: o_mode
 
         type(t_suformat) :: sudata
-        
+
         call sudata%init(nt,ntr,o_dt=o_dt,o_data=data)
         
         call sudata%write(file,o_sindex,o_mode)
 
     end subroutine
     
-    subroutine fin(self)
+    subroutine final(self)
         type(t_suformat) :: self
         if(allocated(self%hdrs)) deallocate(self%hdrs)
         if(allocated(self%trs )) deallocate(self%trs )

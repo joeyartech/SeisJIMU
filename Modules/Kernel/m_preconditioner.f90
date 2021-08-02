@@ -14,12 +14,12 @@ use m_parametrizer
 
         contains
 
-        procedure :: init => init
-        procedure :: by_depth => by_depth
-        procedure :: by_sfield => by_sfield
-        procedure :: by_custom => by_custom
-        procedure :: update => update
-        procedure :: apply => apply
+        procedure :: init
+        procedure :: by_depth
+        procedure :: by_sfield
+        procedure :: by_custom
+        procedure :: update
+        procedure :: apply
 
     end type
 

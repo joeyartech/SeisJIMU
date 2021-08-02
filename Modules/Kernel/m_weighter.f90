@@ -12,12 +12,12 @@ use m_Modeling
 
         contains
 
-        procedure :: init => init
-        procedure :: by_components => by_components
-        procedure :: by_aoffset => by_aoffset
-        procedure :: by_polygon => by_polygon
-        procedure :: by_table   => by_table
-        procedure :: by_custom  => by_custom
+        procedure :: init
+        procedure :: by_components
+        procedure :: by_aoffset
+        procedure :: by_polygon
+        procedure :: by_table
+        procedure :: by_custom
 
     end type
 

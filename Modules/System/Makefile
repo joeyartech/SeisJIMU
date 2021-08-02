@@ -19,4 +19,4 @@ all : $(src:.f90=.o)
 
 clean :
 	-rm $(src:.f90=.o) 
-	-rm $(src:%.f90=$(mod_dir)%.mod)
+	-rm $(src:%.f90=$(mod_dir)%.mod) $(mod_dir)m_system.mod

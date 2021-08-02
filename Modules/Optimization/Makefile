@@ -12,4 +12,4 @@ all : $(src:.f90=.o)
 
 clean :
 	-rm $(src:.f90=.o) 
-	-rm $(src:%.f90=$(mod_dir)%.mod)  $(mod_dir)m_linesearcher.mod $(mod_dir)m_optimizer.mod
+	-rm $(src:%.f90=$(mod_dir)%.mod)  $(mod_dir)m_linesearcher.mod $(mod_dir)m_optimizer.mod $(mod_dir)m_optimization.mod

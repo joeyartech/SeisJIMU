@@ -33,10 +33,10 @@ use m_string
         integer :: max_threads
 
         contains
-        procedure :: init   => init
-        procedure :: barrier => barrier
-        procedure :: write  => write
-        procedure :: fin => fin
+        procedure :: init
+        procedure :: barrier
+        procedure :: write
+        procedure :: final
     end type
     
     type(t_mpienv),public :: mpiworld
@@ -117,7 +117,7 @@ use m_string
 
     end subroutine
     
-    subroutine fin(self)
+    subroutine final(self)
         class(t_mpienv) :: self
 
         if(self%is_master) then

@@ -10,7 +10,7 @@ use m_preconditioner
 
     type,public :: t_nabla
         contains
-        procedure :: act => act
+        procedure :: act
     end type
 
     type(t_nabla),public :: nabla
@@ -36,9 +36,9 @@ use m_preconditioner
 
         !compute dnorm's gradient by adjoint-state method
         if(either(oif_approx,.false.,present(oif_approx))) then
-            call gradient_modeling_approximate(fobj)
+            call modeling_gradient_approximate(fobj)
         else
-            call gradient_modeling(fobj)
+            call modeling_gradient(fobj)
         endif
 
         !post-modeling smoothing in physical (model) domain
@@ -190,10 +190,10 @@ use m_preconditioner
 
     ! end subroutine
 
-    subroutine gradient_modeling_approximate(fobj)
+    subroutine modeling_gradient_approximate(fobj)
         type(t_fobjective) :: fobj
 
-        call gradient_modeling(fobj)
+        call modeling_gradient(fobj)
 
     end subroutine
 

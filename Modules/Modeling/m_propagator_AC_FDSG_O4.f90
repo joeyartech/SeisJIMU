@@ -52,37 +52,36 @@ use m_cpml
         real :: dt, rdt
 
         contains
-        procedure :: print_info => print_info
-        procedure :: estim_RAM => estim_RAM
-        procedure :: check_model => check_model
-        procedure :: check_discretization => check_discretization
-        procedure :: init => init
-        procedure :: init_field => init_field
-        procedure :: init_abslayer => init_abslayer
+        procedure :: print_info
+        procedure :: estim_RAM
+        procedure :: check_model
+        procedure :: check_discretization
+        procedure :: init
+        procedure :: init_field
+        procedure :: init_abslayer
 
-        procedure :: forward => forward
-        procedure :: inject_velocities => inject_velocities
-        procedure :: update_velocities => update_velocities
-        procedure :: inject_stresses   => inject_stresses
-        procedure :: update_stresses   => update_stresses
-        procedure :: extract => extract
+        procedure :: forward
+        procedure :: inject_velocities
+        procedure :: update_velocities
+        procedure :: inject_stresses
+        procedure :: update_stresses
+        procedure :: extract
 
-        procedure :: adjoint => adjoint
-        procedure :: inject_stresses_adjoint   => inject_stresses_adjoint
-        procedure :: update_stresses_adjoint   => update_stresses_adjoint
-        procedure :: inject_velocities_adjoint => inject_velocities_adjoint
-        procedure :: update_velocities_adjoint => update_velocities_adjoint
-        procedure :: extract_adjoint => extract_adjoint
+        procedure :: adjoint
+        procedure :: inject_stresses_adjoint
+        procedure :: update_stresses_adjoint
+        procedure :: inject_velocities_adjoint
+        procedure :: update_velocities_adjoint
+        procedure :: extract_adjoint
 
-        procedure :: gradient_scaling => gradient_scaling
-
-        final :: fin
+        final :: final
 
     end type
 
     type(t_propagator),public :: ppg
 
     logical :: if_hicks
+    integer :: i_rdt
 
     contains
     
@@ -185,6 +184,12 @@ use m_cpml
         
         !initialize m_field
         call field_init(.false.,self%nt,self%dt)
+
+        !rectified interval for time integration
+        !default to Nyquist, and must be multiple of dt for practical reason
+        self%rdt=floor( setup%get_real('REF_RECT_TIME_INTEVAL','RDT',o_default=num2str(0.5/shot%fmax)) &
+                    /self%dt)*self%dt
+        i_rdt=nint(self%nt/self%rdt)+1
 
     end subroutine
 
@@ -324,13 +329,12 @@ use m_cpml
     subroutine inject_velocities(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
-        real :: time_dir
         
         ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
         ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
         ify=shot%src%ify; iy=shot%src%iy; ily=shot%src%ily
         
-        wl=time_dir*f%wavelet(1,it)
+        wl=f%wavelet(1,it)
         
         if(if_hicks) then
             select case (shot%src%comp)
@@ -366,7 +370,6 @@ use m_cpml
     subroutine update_velocities(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
-        real :: time_dir
 
         ifz=f%bloom(1,it)+2
         ilz=f%bloom(2,it)-1
@@ -400,13 +403,12 @@ use m_cpml
     subroutine inject_stresses(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
-        real :: time_dir
         
         ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
         ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
         ify=shot%src%ify; iy=shot%src%iy; ily=shot%src%ily
         
-        wl=time_dir*f%wavelet(1,it)
+        wl=f%wavelet(1,it)
         
         if(if_hicks) then
             if(shot%src%comp=='p') then
@@ -427,7 +429,6 @@ use m_cpml
     subroutine update_stresses(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
-        real :: time_dir
 
         ifz=f%bloom(1,it)+1
         ilz=f%bloom(2,it)-2
@@ -533,8 +534,7 @@ use m_cpml
         type(t_field) :: rf
         logical,optional :: oif_record_adjseismo
         type(t_field),optional :: o_sf
-        real,dimension(cb%mz,cb%mx,cb%my,self%nimag),optional :: o_imag
-        real,dimension(cb%mz,cb%mx,cb%my,self%ngrad),optional :: o_grad
+        real,dimension(:,:,:,:),allocatable,optional :: o_imag, o_grad
 
         real,parameter :: time_dir=-1. !time direction
 
@@ -546,6 +546,10 @@ use m_cpml
             call alloc(rf%seismo,1,self%nt)
         endif
 
+        !o_imag, o_grad
+        if(present(o_imag)) call alloc(o_imag,cb%mz,cb%mx,cb%my,self%nimag)
+        if(present(o_grad)) call alloc(o_grad,cb%mz,cb%mx,cb%my,self%ngrad)
+
         !reinitialize absorbing boundary for incident wavefield reconstruction
         if(present(o_sf)) then
                                         o_sf%dvz_dz=0.
@@ -555,12 +559,6 @@ use m_cpml
                                         o_sf%dp_dx=0.
             if(allocated(o_sf%dp_dy))   o_sf%dp_dy=0.
         endif
-
-        !rectified interval for time integration
-        !default to Nyquist, and must be multiple of dt for practical reason
-        tmp=setup%get_real('REF_RECT_TIME_INTEVAL','RDT',o_default=num2str(0.5/shot%fmax))
-        self%rdt=floor( tmp /self%dt)*self%dt
-        i_rdt=nint(self%nt/self%rdt)+1
         
         !timing
         tt1=0.; tt2=0.; tt3=0.
@@ -603,7 +601,7 @@ use m_cpml
 
             !--------------------------------------------------------!
 
-            !adjoint step 5: fill s^it+1.5 at receivers
+            !adjoint step 5: inject to s^it+1.5 at receivers
             call cpu_time(tic)
             call self%inject_stresses_adjoint(rf,time_dir,it) !,seismo(:,it))
             call cpu_time(toc)
@@ -652,7 +650,7 @@ use m_cpml
 
             !--------------------------------------------------------!
 
-            !adjoint step 5: fill v^it+1 at receivers
+            !adjoint step 5: inject to v^it+1 at receivers
             call cpu_time(tic)
             call self%inject_velocities_adjoint(rf,time_dir,it)
             call cpu_time(toc)
@@ -686,14 +684,14 @@ use m_cpml
             !snapshot
             call rf%write(it)
             if(present(o_sf))   call o_sf%write(it,o_suffix='_back')
-            if(present(o_grad)) call rf%write_ext(it,'grad',o_grad,size(o_grad))
             if(present(o_imag)) call rf%write_ext(it,'imag',o_imag,size(o_imag))
+            if(present(o_grad)) call rf%write_ext(it,'grad',o_grad,size(o_grad))
 
         enddo
         
         !scale gradient
         if(present(o_grad)) then
-            call self%gradient_scaling(o_grad)
+            call gradient_scaling(o_grad)
         endif       
         
         if(mpiworld%is_master) then
@@ -722,7 +720,6 @@ use m_cpml
     subroutine inject_stresses_adjoint(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
-        real :: time_dir
         
         do i=1,shot%nrcv
             ifz=shot%rcv(i)%ifz; iz=shot%rcv(i)%iz; ilz=shot%rcv(i)%ilz
@@ -749,7 +746,6 @@ use m_cpml
     subroutine update_stresses_adjoint(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
-        real :: time_dir
         
         !same code with -dt
         call self%update_stresses(f,time_dir,it)
@@ -760,7 +756,6 @@ use m_cpml
     subroutine inject_velocities_adjoint(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
-        real :: time_dir
 
         do i=1,shot%nrcv
             ifz=shot%rcv(i)%ifz; iz=shot%rcv(i)%iz; ilz=shot%rcv(i)%ilz
@@ -808,7 +803,6 @@ use m_cpml
     subroutine update_velocities_adjoint(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
-        real :: time_dir
         
         !same code with -dt
         call self%update_velocities(f,time_dir,it)
@@ -859,7 +853,7 @@ use m_cpml
         
     end subroutine
 
-    subroutine fin(self)
+    subroutine final(self)
         type(t_propagator) :: self
         call dealloc(self%buox, self%buoy, self%buoz, self%kpa, self%inv_kpa)
     end subroutine
@@ -923,15 +917,14 @@ use m_cpml
         
     end subroutine
     
-    subroutine gradient_scaling(self,grad)
-        class(t_propagator) :: self
-        real,dimension(cb%mz,cb%mx,cb%my,self%ngrad) :: grad
+    subroutine gradient_scaling(grad)
+        real,dimension(cb%mz,cb%mx,cb%my,ppg%ngrad) :: grad
         
         !grho, in [J/(kg/m3)]
-        grad(:,:,:,1)=-grad(:,:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)          *m%cell_volume*self%rdt
+        grad(:,:,:,1)=-grad(:,:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)         *m%cell_volume*ppg%rdt
 
         !gkpa, in [J/Pa]
-        grad(:,:,:,2)=-grad(:,:,:,2) * (-self%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my)) *m%cell_volume*self%rdt
+        grad(:,:,:,2)=-grad(:,:,:,2) * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my)) *m%cell_volume*ppg%rdt
 
         !preparing for cb%project_back
         grad(1,:,:,:) = grad(2,:,:,:)

@@ -1,27 +1,28 @@
 module m_setup
-use m_message
 use m_string
+use m_message
 
     private
 
-    character(:),allocatable :: file
+    character(:),allocatable :: file, dir_in
 
     type,public :: t_setup
         logical :: exist=.true.
 
         contains
-        procedure :: init => init
-        procedure,nopass :: check => check
-        procedure :: get_int   => get_int
-        procedure :: get_ints  => get_ints
-        procedure :: get_real  => get_real
-        procedure :: get_reals => get_reals
-        procedure :: get_str   => get_str
-        procedure :: get_strs  => get_strs
-        procedure :: get_file  => get_file
-        !procedure :: get_files => get_files
-        procedure :: get_bool  => get_bool
-        !procedure :: get_bools => get_bools
+        procedure :: init
+        procedure :: check
+        procedure :: get_int
+        procedure :: get_ints
+        procedure :: get_real
+        procedure :: get_reals
+        procedure :: get_str
+        procedure :: get_strs
+        procedure :: set_dir_in
+        procedure :: get_file
+        !procedure :: get_files
+        procedure :: get_bool
+        !procedure :: get_bools
 
     end type
     
@@ -137,7 +138,8 @@ use m_string
 
     ! end function
 
-    function check(key,o_alias) result(exist)
+    function check(self,key,o_alias) result(exist)
+        class(t_setup) :: self
         character(*) :: key
         character(*),optional :: o_alias !alias of inquired key
         logical :: exist
@@ -216,7 +218,7 @@ use m_string
         integer,optional :: o_mandatory
         integer,dimension(:),allocatable :: res
 
-        type(t_string),dimension(:),allocatable :: tmp
+        type(t_string),dimension(:),allocatable :: tmp, tmp2
 
         tmp=split(read(key,o_alias,o_default,o_mandatory),o_sep=o_sep)
 
@@ -300,6 +302,12 @@ use m_string
 
     end function
 
+    subroutine set_dir_in(self,dir)
+        class(t_setup) :: self
+        character(*) :: dir
+        dir_in=dir
+    end subroutine
+
     function get_file(self,key,o_alias,o_default,o_mandatory) result(res)
         class(t_setup) :: self
         character(*) :: key
@@ -309,13 +317,15 @@ use m_string
         character(:),allocatable :: res
 
         logical :: exist
+        integer :: size
 
         res=read(key,o_alias,o_default,o_mandatory)
 
         if(res/='') then
-            inquire(file=res,exist=exist)
+            inquire(file=dir_in//res,exist=exist,size=size)
+            if(size==0) exist=.false.
             if (.not. exist) then
-                call hud('File '//res//' does NOT exist, return empty filename.')
+                call hud('File '//res//' has 0 size or does NOT exist, return empty filename.')
                 res=''
             endif
         endif

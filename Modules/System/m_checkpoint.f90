@@ -26,15 +26,15 @@ use m_setup
         integer fp
 
         contains
-        procedure :: init => init
-        procedure :: count => count
-        procedure :: check => check
-        procedure :: open => open
+        procedure :: init
+        procedure :: count
+        procedure :: check
+        procedure :: open
         procedure :: read_real1,  read_real2,  read_real3,  read_real4
         procedure :: write_real1, write_real2, write_real3, write_real4
         generic :: read  =>  read_real1,  read_real2,  read_real3,  read_real4
         generic :: write => write_real1, write_real2, write_real3, write_real4
-        procedure :: close => close
+        procedure :: close
 
     end type
 
@@ -223,6 +223,12 @@ use m_setup
             if(present(e)) then
                 if(allocated(e)) read(self%fp) e
             endif
+            if(present(f)) then
+                if(allocated(f)) read(self%fp) f
+            endif
+            if(present(g)) then
+                if(allocated(g)) read(self%fp) g
+            endif
 
         endif
 
@@ -246,6 +252,12 @@ use m_setup
             endif
             if(present(e)) then
                 if(allocated(e)) read(self%fp) e
+            endif
+            if(present(f)) then
+                if(allocated(f)) read(self%fp) f
+            endif
+            if(present(g)) then
+                if(allocated(g)) read(self%fp) g
             endif
 
         endif
@@ -271,6 +283,12 @@ use m_setup
             if(present(e)) then
                 if(allocated(e)) read(self%fp) e
             endif
+            if(present(f)) then
+                if(allocated(f)) read(self%fp) f
+            endif
+            if(present(g)) then
+                if(allocated(g)) read(self%fp) g
+            endif
 
         endif
 
@@ -294,6 +312,12 @@ use m_setup
             endif
             if(present(e)) then
                 if(allocated(e)) read(self%fp) e
+            endif
+            if(present(f)) then
+                if(allocated(f)) read(self%fp) f
+            endif
+            if(present(g)) then
+                if(allocated(g)) read(self%fp) g
             endif
 
         endif
@@ -319,6 +343,12 @@ use m_setup
             if(present(e)) then
                 if(allocated(e)) write(self%fp) e
             endif
+            if(present(f)) then
+                if(allocated(f)) write(self%fp) f
+            endif
+            if(present(g)) then
+                if(allocated(g)) write(self%fp) g
+            endif
 
         endif
 
@@ -342,6 +372,12 @@ use m_setup
             endif
             if(present(e)) then
                 if(allocated(e)) write(self%fp) e
+            endif
+            if(present(f)) then
+                if(allocated(f)) write(self%fp) f
+            endif
+            if(present(g)) then
+                if(allocated(g)) write(self%fp) g
             endif
 
         endif
@@ -367,6 +403,12 @@ use m_setup
             if(present(e)) then
                 if(allocated(e)) write(self%fp) e
             endif
+            if(present(f)) then
+                if(allocated(f)) write(self%fp) f
+            endif
+            if(present(g)) then
+                if(allocated(g)) write(self%fp) g
+            endif
 
         endif
 
@@ -390,6 +432,12 @@ use m_setup
             endif
             if(present(e)) then
                 if(allocated(e)) write(self%fp) e
+            endif
+            if(present(f)) then
+                if(allocated(f)) write(self%fp) f
+            endif
+            if(present(g)) then
+                if(allocated(g)) write(self%fp) g
             endif
 
         endif

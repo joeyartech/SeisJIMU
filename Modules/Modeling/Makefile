@@ -18,4 +18,4 @@ all : $(src:.f90=.o)
 
 clean :
 	-rm $(src:.f90=.o) 
-	-rm $(src:%.f90=$(mod_dir)%.mod) $(mod_dir)m_shotlist.mod $(mod_dir)m_cpml.mod $(mod_dir)m_propagator.mod
+	-rm $(src:%.f90=$(mod_dir)%.mod) $(mod_dir)m_shotlist.mod $(mod_dir)m_cpml.mod $(mod_dir)m_propagator.mod $(mod_dir)m_modeling.mod

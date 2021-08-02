@@ -28,12 +28,12 @@ use m_System
         real,dimension(:,:,:,:),allocatable :: gradient, pgradient, image
 
         contains
-        procedure :: init => init
-        procedure :: estim_RAM => estim_RAM
-        procedure :: read => read
-        procedure :: read_prior => read_prior
-        procedure :: write => write
-        procedure :: apply_freeze_zone => apply_freeze_zone
+        procedure :: init
+        procedure :: estim_RAM
+        procedure :: read
+        procedure :: read_prior
+        procedure :: write
+        procedure :: apply_freeze_zone
 
     end type
     

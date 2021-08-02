@@ -130,15 +130,15 @@ use m_System
         integer :: nshots_per_processor
 
         contains
-        procedure :: read_from_setup => read_from_setup
-        procedure :: read_from_data  => read_from_data
-        procedure :: build => build
-        procedure :: sample => sample
-        procedure :: assign => assign
-        procedure :: yield => yield
+        procedure :: read_from_setup
+        procedure :: read_from_data
+        procedure :: build
+        procedure :: sample
+        procedure :: assign
+        procedure :: yield
 
-        procedure :: is_registered => is_registered
-        procedure :: register => register
+        procedure :: is_registered
+        procedure :: register
     end type
 
     type(t_shotlist),public :: shls

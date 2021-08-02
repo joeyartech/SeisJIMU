@@ -39,11 +39,11 @@ use m_parametrizer
         contains
 
         procedure :: init => fobjective_init
-        procedure :: compute_dnorms => compute_dnorms
-        procedure :: compute_xnorms => compute_xnorms
-        procedure :: total_loss => total_loss
-        procedure :: print_dnorms => print_dnorms
-        procedure :: print_xnorms => print_xnorms
+        procedure :: compute_dnorms
+        procedure :: compute_xnorms
+        procedure :: total_loss
+        procedure :: print_dnorms
+        procedure :: print_xnorms
 
     end type
 

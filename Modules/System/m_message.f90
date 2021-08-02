@@ -61,7 +61,7 @@ character(*), parameter :: reset = achar(27)//'[0m' ! Terminates an ANSI code.
                 either(s_NL//'Possible solutions:'//o_solution,'',present(o_solution))
         endif
 
-        call mpiworld%fin
+        call mpiworld%final
         error stop
         
     end subroutine

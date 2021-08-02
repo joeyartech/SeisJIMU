@@ -23,7 +23,7 @@ use m_Optimization
             call print_manual
             call ppg%print_info
         endif
-        call mpiworld%fin
+        call mpiworld%final
         stop
     endif
 
@@ -80,7 +80,7 @@ use m_Optimization
 
     !if just estimate the wavelet or compute the gradient then this is it.
     if(setup%get_str('JOB')=='gradient') then
-        call mpiworld%fin
+        call mpiworld%final
         stop
     endif
 
@@ -88,11 +88,11 @@ use m_Optimization
     call optimizer_init(qp0)
     call optimizer_loop
     
-    call mpiworld%fin
+    call mpiworld%final
     
 end
 
-subroutine gradient_modeling(fobj)
+subroutine modeling_gradient(fobj,oif_gradient)
 use m_System
 use m_Modeling
 use m_fobjective, only : t_fobjective
@@ -100,13 +100,17 @@ use m_matchfilter
 use m_smoother_laplacian_sparse
 
     type(t_fobjective) :: fobj
+    logical,optional :: oif_gradient
 
+    logical :: if_gradient
     type(t_field) :: sfield, rfield
     character(:),allocatable :: update_wavelet
 
     type(t_checkpoint),save :: chp
 
-    call alloc(m%gradient,m%nz,m%nx,m%ny,ppg%ngrad)
+    if_gradient=either(oif_gradient,.true.,present(oif_gradient))
+
+    if(if_gradient) call alloc(m%gradient,m%nz,m%nx,m%ny,ppg%ngrad)
             
     call hud('===== START LOOP OVER SHOTS =====')
     
@@ -148,27 +152,26 @@ use m_smoother_laplacian_sparse
         !write synthetic data
         call shot%write('dsyn_')
 
-        !objective function
+        !objective function and adjoint source
         call fobj%compute_dnorms
-        ! call fobj%compute_adjsource
     
-        !adjoint source
-        if(update_wavelet/='no') call shot%update_adjsource
+        if(if_gradient) then
+            !adjoint source
+            if(update_wavelet/='no') call shot%update_adjsource
 
-        call ppg%init_field(rfield,name='rfield',origin='rcv')
+            call ppg%init_field(rfield,name='rfield',origin='rcv')
 
-        call rfield%ignite(ois_adjoint=.true.)
-        
-        call alloc(cb%grad,cb%mz,cb%mx,cb%my,ppg%ngrad)
+            call rfield%ignite(ois_adjoint=.true.)
 
-        !adjoint modeling
-        if(.not.cb%is_registered(chp,'grad')) then
-            call ppg%adjoint(rfield,o_sf=sfield,o_grad=cb%grad)
-            call cb%register(chp,'grad')
+            !adjoint modeling
+            if(.not.cb%is_registered(chp,'grad')) then
+                call ppg%adjoint(rfield,o_sf=sfield,o_grad=cb%grad)
+                call cb%register(chp,'grad')
+            endif
+
+            call cb%project_back(m%gradient,cb%grad,ppg%ngrad)
+
         endif
-
-        call cb%project_back(m%gradient,cb%grad,ppg%ngrad)
-        deallocate(cb%grad)
         
     enddo
     
@@ -179,7 +182,9 @@ use m_smoother_laplacian_sparse
     call fobj%print_dnorms
 
     !collect global gradient
-    call mpi_allreduce(MPI_IN_PLACE, m%gradient,  m%n*ppg%ngrad, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    if(if_gradient) then
+        call mpi_allreduce(MPI_IN_PLACE, m%gradient,  m%n*ppg%ngrad, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    endif
 
     call mpiworld%barrier
 
