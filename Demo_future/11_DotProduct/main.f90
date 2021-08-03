@@ -128,38 +128,15 @@ use m_Modeling
     call hud('        END LOOP OVER SHOTS        ')
 
     print*,'shape(u)=',     shape(u),    '||u||=',      norm2(u)*sqrt(ppg%dt)
-    !||u||=sqrt(int u^2*delta(x)*dx3*dt) = sqrt(u^2*dt) = norm2(u)*sqrt(dt)
+    !||u||=sqrt(int u^2*dt) = sqrt(sum(u^2)*dt) = norm2(u)*sqrt(dt)
     print*,'shape(v)=',     shape(v),    '||v||=',      norm2(v)*sqrt(ppg%dt)
     print*,'shape(Lu)=',    shape(Lu),   '||Lu||=',     norm2(Lu)*sqrt(ppg%dt)
     print*,'shape(Ladj_v)=',shape(Ladj_v),'||Ladj_v||=',norm2(Ladj_v)*sqrt(ppg%dt)
 
     !<v|Lu> =?= <L^Tv|u>
+    !<v|Lu>=int v*Lu*dt = sum(v*Lu)*dt
     LHS=sum(dprod(v    ,Lu))*ppg%dt
     RHS=sum(dprod(Ladj_v,u))*ppg%dt
-
-    !some care about the units, e.g. <v|Lu>:
-    !if v & Lu are velocity compo [m/s], then
-    !<v|Lu> = int v*Lu*dt *dx3/dt*rho (*dx3/dt*rho is making unit in [Nm])
-    !       = sum(v*Lu)*dx3*rho
-    !if v & Lu are pressure comp [Pa], then
-    !<v|Lu> = int v*Lu*dt *dx3/dt/kpa (*dx3/dt/kpa is making unit in [Nm])
-    !       = sum(v*Lu)*dx3/kpa
-
-    ! do i=1,shot%nrcv
-    !     select case (shot%rcv(i)%comp(1:1))
-    !     case ('v')
-    !         LHS=LHS+sum(dprod(v(:,i),Lu(:,i)))*m%cell_volume*m%ref_rho
-    !     case ('p')
-    !         LHS=LHS+sum(dprod(v(:,i),Lu(:,i)))*m%cell_volume*/m%ref_kpa
-    !     end select
-    ! enddo
-
-    ! select case (shot%src%comp(1:1))
-    ! case ('v')
-    !     RHS=sum(dprod(Ladj_v,u))*m%cell_volume*m%ref_rho
-    ! case ('p')
-    !     RHS=sum(dprod(Ladj_v,u))*m%cell_volume/m%ref_kpa
-    ! end select
 
     print*,'LHS = <   v|Lu> = ', LHS
     print*,'RHS = <L^Tv| u> = ', RHS
