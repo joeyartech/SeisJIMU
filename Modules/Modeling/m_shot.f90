@@ -248,11 +248,11 @@ use m_model
                                       +(self%src%y-self%rcv(ir)%y)**2 )
         enddo
 
-        !Hicks interpolation
-        self%if_hicks=setup%get_bool('IF_HICKS',o_default='T')
-
         if(is_first_in) then
-            if(self%if_hicks) call hicks_init(m%dz,m%dx,m%dy,m%is_cubic,m%is_freesurface)
+            !Hicks interpolation
+            self%if_hicks=setup%get_bool('IF_HICKS',o_default='T')
+
+            call hicks_init(m%dz,m%dx,m%dy,m%is_cubic,m%is_freesurface)
             
             !velocity grids are shift from normal stress grids by half grid length (staggered-grid FD)
             !e.g. v(1) is actually v[0.5], v(2) is actually v[1.5],
@@ -266,71 +266,68 @@ use m_model
 
         endif
 
-        if(self%if_hicks) then
+        !source
+        select case (self%src%comp)
+        case('p') !explosive source or non-vertical force
+            call hicks_put_position(self%src%z,       self%src%x,       self%src%y)
+        case('vz') !vertical force
+            call hicks_put_position(self%src%z+halfz, self%src%x,       self%src%y)
+        case('vx')
+            call hicks_put_position(self%src%z,       self%src%x+halfx, self%src%y)
+        case('vy')
+            call hicks_put_position(self%src%z,       self%src%x,       self%src%y+halfy)
+        end select
 
-            select case (self%src%comp)
+        call hicks_get_position(self%src%ifz, self%src%ifx, self%src%ify,&
+                                self%src%iz , self%src%ix , self%src%iy ,&
+                                self%src%ilz, self%src%ilx, self%src%ily )
+
+        select case (self%src%comp)
+        case('p') !explosive source or non-vertical force
+            call hicks_get_coefficient('antisymm', self%src%interp_coef)
+        case('vz') !vertical force
+            call hicks_get_coefficient('symmetric',self%src%interp_coef)
+        case default
+            call hicks_get_coefficient('truncate', self%src%interp_coef)
+        end select
+
+        !receivers
+        do i=1,self%nrcv
+
+            select case (self%rcv(i)%comp)
             case('p') !explosive source or non-vertical force
-                call hicks_put_position(self%src%z,       self%src%x,       self%src%y)
+                call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y)
             case('vz') !vertical force
-                call hicks_put_position(self%src%z+halfz, self%src%x,       self%src%y)
+                call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x,       self%rcv(i)%y)
             case('vx')
-                call hicks_put_position(self%src%z,       self%src%x+halfx, self%src%y)
+                call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x+halfx, self%rcv(i)%y)
             case('vy')
-                call hicks_put_position(self%src%z,       self%src%x,       self%src%y+halfy)
+                call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y+halfy)
             end select
 
-            call hicks_get_position(self%src%ifz, self%src%ifx, self%src%ify,&
-                                    self%src%iz , self%src%ix , self%src%iy ,&
-                                    self%src%ilz, self%src%ilx, self%src%ily )
+            call hicks_get_position(self%rcv(i)%ifz, self%rcv(i)%ifx, self%rcv(i)%ify,&
+                                    self%rcv(i)%iz , self%rcv(i)%ix , self%rcv(i)%iy ,&
+                                    self%rcv(i)%ilz, self%rcv(i)%ilx, self%rcv(i)%ily )
 
-            select case (self%src%comp)
+            select case (self%rcv(i)%comp)
             case('p') !explosive source or non-vertical force
-                call hicks_get_coefficient('antisymm', self%src%interp_coef)
+                call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)
             case('vz') !vertical force
-                call hicks_get_coefficient('symmetric',self%src%interp_coef)
+                call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef)
             case default
-                call hicks_get_coefficient('truncate', self%src%interp_coef)
+                call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
             end select
 
-            !hicks coef for receivers
-            do i=1,self%nrcv
+        enddo
 
-                select case (self%rcv(i)%comp)
-                case('p') !explosive source or non-vertical force
-                    call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y)
-                case('vz') !vertical force
-                    call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x,       self%rcv(i)%y)
-                case('vx')
-                    call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x+halfx, self%rcv(i)%y)
-                case('vy')
-                    call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y+halfy)
-                end select
-
-                call hicks_get_position(self%rcv(i)%ifz, self%rcv(i)%ifx, self%rcv(i)%ify,&
-                                        self%rcv(i)%iz , self%rcv(i)%ix , self%rcv(i)%iy ,&
-                                        self%rcv(i)%ilz, self%rcv(i)%ilx, self%rcv(i)%ily )
-
-                select case (self%rcv(i)%comp)
-                case('p') !explosive source or non-vertical force
-                    call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)
-                case('vz') !vertical force
-                    call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef)
-                case default
-                    call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
-                end select
-
-            enddo
-
-        else
-            self%src%iz=nint(self%src%z/m%dz)+1
-            self%src%ix=nint(self%src%x/m%dx)+1
-            self%src%iy=nint(self%src%y/m%dy)+1
-            self%rcv(:)%iz=nint(self%rcv(:)%z/m%dz)+1
-            self%rcv(:)%ix=nint(self%rcv(:)%x/m%dx)+1
-            self%rcv(:)%iy=nint(self%rcv(:)%y/m%dy)+1
-
+        if(.not.self%if_hicks) then
+            self%src%ifz=0; self%src%ilz=0
+            self%src%ifx=0; self%src%ilx=0
+            self%src%ify=0; self%src%ily=0
+            self%rcv(:)%ifz=0; self%rcv(:)%ilz=0
+            self%rcv(:)%ifx=0; self%rcv(:)%ilx=0
+            self%rcv(:)%ify=0; self%rcv(:)%ily=0
         endif
-
 
         if(mpiworld%is_master) then
             write(*,*)'================================='
@@ -339,16 +336,16 @@ use m_model
             write(*,*)'  nt,dt:',self%nt,self%dt
             write(*,*)'---------------------------------'
             write(*,*)'S/R positions after removing m%oz,ox,iy,'
-            write(*,*)'  sz,isz:',self%src%z,self%src%iz
-            write(*,*)'  sx,isx:',self%src%x,self%src%ix
-            write(*,*)'  sy,isy:',self%src%y,self%src%iy
+            write(*,*)'  sz,iz:',self%src%z,self%src%iz
+            write(*,*)'  sx,ix:',self%src%x,self%src%ix
+            write(*,*)'  sy,iy:',self%src%y,self%src%iy
             write(*,*)'  ifz,ilz:',self%src%ifz,self%src%ilz
             write(*,*)'  ifx,ilx:',self%src%ifx,self%src%ilx
             write(*,*)'  ify,ily:',self%src%ify,self%src%ily
             write(*,*)'---------------------------------'
-            write(*,*)'  minmax rz,irz:',minval(self%rcv(:)%z),maxval(self%rcv(:)%z),minval(self%rcv(:)%iz),maxval(self%rcv(:)%iz)
-            write(*,*)'  minmax rx,irx:',minval(self%rcv(:)%x),maxval(self%rcv(:)%x),minval(self%rcv(:)%ix),maxval(self%rcv(:)%ix)
-            write(*,*)'  minmax ry,iry:',minval(self%rcv(:)%y),maxval(self%rcv(:)%y),minval(self%rcv(:)%iy),maxval(self%rcv(:)%iy)
+            write(*,*)'  minmax rz,iz:',minval(self%rcv(:)%z),maxval(self%rcv(:)%z),minval(self%rcv(:)%iz),maxval(self%rcv(:)%iz)
+            write(*,*)'  minmax rx,ix:',minval(self%rcv(:)%x),maxval(self%rcv(:)%x),minval(self%rcv(:)%ix),maxval(self%rcv(:)%ix)
+            write(*,*)'  minmax ry,iy:',minval(self%rcv(:)%y),maxval(self%rcv(:)%y),minval(self%rcv(:)%iy),maxval(self%rcv(:)%iy)
             write(*,*)'  minmax ifz,ilz:',minval(self%rcv(:)%ifz),maxval(self%rcv(:)%ifz),minval(self%rcv(:)%ilz),maxval(self%rcv(:)%ilz)
             write(*,*)'  minmax ifx,ilx:',minval(self%rcv(:)%ifx),maxval(self%rcv(:)%ifx),minval(self%rcv(:)%ilx),maxval(self%rcv(:)%ilx)
             write(*,*)'  minmax ify,ily:',minval(self%rcv(:)%ify),maxval(self%rcv(:)%ify),minval(self%rcv(:)%ily),maxval(self%rcv(:)%ily)

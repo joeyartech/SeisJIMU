@@ -603,7 +603,7 @@ use m_cpml
 
             !adjoint step 5: inject to s^it+1.5 at receivers
             call cpu_time(tic)
-            call self%inject_stresses_adjoint(rf,time_dir,it) !,seismo(:,it))
+            call self%inject_stresses_adjoint(rf,time_dir,it)
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
@@ -720,24 +720,30 @@ use m_cpml
     subroutine inject_stresses_adjoint(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
-        
-        do i=1,shot%nrcv
-            ifz=shot%rcv(i)%ifz; iz=shot%rcv(i)%iz; ilz=shot%rcv(i)%ilz
-            ifx=shot%rcv(i)%ifx; ix=shot%rcv(i)%ix; ilx=shot%rcv(i)%ilx
-            ify=shot%rcv(i)%ify; iy=shot%rcv(i)%iy; ily=shot%rcv(i)%ily
-            
-            !adjsource for pressure
-            wl=f%wavelet(i,it)
-            
-            if(if_hicks) then 
-                f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef
 
-            else           
-                !p[iz,ix,iy]
-                f%p(iz,ix,iy) = f%p(iz,ix,iy) +wl*self%kpa(iz,ix,iy)
-            
+        do i=1,shot%nrcv
+
+            if(shot%rcv(i)%comp=='p') then
+
+                ifz=shot%rcv(i)%ifz; iz=shot%rcv(i)%iz; ilz=shot%rcv(i)%ilz
+                ifx=shot%rcv(i)%ifx; ix=shot%rcv(i)%ix; ilx=shot%rcv(i)%ilx
+                ify=shot%rcv(i)%ify; iy=shot%rcv(i)%iy; ily=shot%rcv(i)%ily
+                
+                !adjsource for pressure
+                wl=f%wavelet(i,it)
+                
+                if(if_hicks) then 
+
+                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef
+
+                else           
+                    !p[iz,ix,iy]
+                    f%p(iz,ix,iy) = f%p(iz,ix,iy) +wl*self%kpa(iz,ix,iy)
+
+                endif
+
             endif
-            
+
         enddo
         
     end subroutine

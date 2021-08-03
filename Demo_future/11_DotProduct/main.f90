@@ -74,24 +74,19 @@ use m_Modeling
         call ppg%init_abslayer
 
         
+        if_use_random=setup%get_bool('IF_USE_RANDOM',o_default='T')
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !variables for dotproduct test
         call alloc(u     ,ppg%nt,1        )
-        call alloc(v     ,ppg%nt,shot%nrcv)
         call alloc(Lu    ,ppg%nt,shot%nrcv)
-        call alloc(Ladj_v,ppg%nt,1        )
-
-        if_use_random=setup%get_bool('IF_USE_RANDOM',o_default='T')
 
         if(if_use_random) then
             call random_number(u)
-            call random_number(v)
         else
             u(:,1)=shot%wavelet
-            do ir=1,shot%nrcv; v(:,ir)=shot%wavelet; enddo
         endif
         call suformat_write('u',u,ppg%nt,1        ,o_dt=ppg%dt)
-        call suformat_write('v',v,ppg%nt,shot%nrcv,o_dt=ppg%dt)
+        ! call suformat_write('v',v,ppg%nt,shot%nrcv,o_dt=ppg%dt)
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         
         call sfield%ignite(o_wavelet=u)
@@ -105,6 +100,18 @@ use m_Modeling
         call suformat_write('Lu',Lu,ppg%nt,shot%nrcv,o_dt=ppg%dt)
 
         call ppg%init_field(rfield,name='rfield',origin='rcv')
+
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        !variables for dotproduct test
+        call alloc(v     ,ppg%nt,shot%nrcv)
+        call alloc(Ladj_v,ppg%nt,1        )
+        if(if_use_random) then
+            call random_number(v)
+        else
+            v=Lu
+        endif
+        call suformat_write('v',v,ppg%nt,shot%nrcv,o_dt=ppg%dt)
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
         call rfield%ignite(o_wavelet=v,ois_adjoint=.true.)
 
@@ -127,33 +134,36 @@ use m_Modeling
     print*,'shape(Ladj_v)=',shape(Ladj_v),'||Ladj_v||=',norm2(Ladj_v)*sqrt(ppg%dt)
 
     !<v|Lu> =?= <L^Tv|u>
+    LHS=sum(dprod(v    ,Lu))*ppg%dt
+    RHS=sum(dprod(Ladj_v,u))*ppg%dt
 
     !some care about the units, e.g. <v|Lu>:
     !if v & Lu are velocity compo [m/s], then
-    !<v|Lu> = int v*Lu*delta(x)*dx3*dt *dx3/dt*rho (*dx3/dt*rho is making unit in [Nm])
+    !<v|Lu> = int v*Lu*dt *dx3/dt*rho (*dx3/dt*rho is making unit in [Nm])
     !       = sum(v*Lu)*dx3*rho
     !if v & Lu are pressure comp [Pa], then
-    !<v|Lu> = int v*Lu*delta(x)*dx3*dt *dx3/dt/kpa (*dx3/dt/kpa is making unit in [Nm])
+    !<v|Lu> = int v*Lu*dt *dx3/dt/kpa (*dx3/dt/kpa is making unit in [Nm])
     !       = sum(v*Lu)*dx3/kpa
 
-    do i=1,shot%nrcv
-        select case (shot%rcv(i)%comp(1:1))
-        case ('v')
-            LHS=LHS+sum(dprod(v(:,i),Lu(:,i)))*m%cell_volume*m%ref_rho
-        case ('p')
-            LHS=LHS+sum(dprod(v(:,i),Lu(:,i)))*m%cell_volume/m%ref_kpa
-        end select
-    enddo
+    ! do i=1,shot%nrcv
+    !     select case (shot%rcv(i)%comp(1:1))
+    !     case ('v')
+    !         LHS=LHS+sum(dprod(v(:,i),Lu(:,i)))*m%cell_volume*m%ref_rho
+    !     case ('p')
+    !         LHS=LHS+sum(dprod(v(:,i),Lu(:,i)))*m%cell_volume*/m%ref_kpa
+    !     end select
+    ! enddo
 
-    select case (shot%src%comp)
-    case ('v')
-        RHS=sum(dprod(Ladj_v,u))*m%cell_volume*m%ref_rho
-    case ('p')
-        RHS=sum(dprod(Ladj_v,u))*m%cell_volume/m%ref_kpa
-    end select
+    ! select case (shot%src%comp(1:1))
+    ! case ('v')
+    !     RHS=sum(dprod(Ladj_v,u))*m%cell_volume*m%ref_rho
+    ! case ('p')
+    !     RHS=sum(dprod(Ladj_v,u))*m%cell_volume/m%ref_kpa
+    ! end select
 
     print*,'LHS = <   v|Lu> = ', LHS
     print*,'RHS = <L^Tv| u> = ', RHS
+    print*,'relative difference = ', (LHS-RHS)/LHS
 
     call mpiworld%barrier
 

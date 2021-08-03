@@ -51,6 +51,8 @@ use m_message
         endif
         
         call hud('Setup file: '//file)
+
+        self%dir_in='./'
         
     end subroutine
 

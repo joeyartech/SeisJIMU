@@ -11,13 +11,8 @@ FR                      '40 10  0'
 DR                      '0  20 0'
 NR                      100
 
-                       # fsz   fsx  fsy  lsz   lsx    lsy  ns
-#SOURCE_LINE             '26    505  500  20    505    500  1'
-                       # frz   frx  fry  lrz   lrx    lry  nr
-#RECEIVER_LINE           '26    10    0   26    1990   0    100'
-
 SCOMP                   p
-RCOMP                   vz #'p vz'
+RCOMP                   vz 'p vz'
 
 #WAVELET_TYPE            ricker                                                              
 #T0                      0.5                                                                 
@@ -38,6 +33,3 @@ FPEAK        7
 IF_USE_CHECKPOINT   F
 
 DIR_OUT			'./'
-
-
-#why the vz comp of dsyn is weird?
