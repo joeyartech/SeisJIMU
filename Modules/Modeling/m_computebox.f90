@@ -30,12 +30,12 @@ use m_shot
         integer :: ioz,iox,ioy
         
         !C's index in Computebox
-        integer :: mz,mx,my
+        integer :: mz,mx,my !=m%nz,nx,ny
         
         !C+D's index in Computebox
         integer :: ifz,ifx,ify
         integer :: ilz,ilx,ily
-        integer :: nz,nx,ny,n        
+        integer :: nz,nx,ny,n !>m%nz,nx,ny,n
 
         ! real :: cell_volume, cell_diagonal, cell_inv_diagonal
 
@@ -239,14 +239,14 @@ use m_shot
         real,dimension(m%nz,m%nx,m%ny,n) :: big
         real,dimension(cb%mz,cb%mx,cb%my, n) :: small
 
-            big(self%ioz:self%ioz+self%mz-1,&
-                self%iox:self%iox+self%mx-1,&
-                self%ioy:self%ioy+self%my-1,:) = &
-            big(self%ioz:self%ioz+self%mz-1,&
-                self%iox:self%iox+self%mx-1,&
-                self%ioy:self%ioy+self%my-1,:) + small(:,:,:,:)
+        big(self%ioz:self%ioz+self%mz-1,&
+            self%iox:self%iox+self%mx-1,&
+            self%ioy:self%ioy+self%my-1,:) = &
+        big(self%ioz:self%ioz+self%mz-1,&
+            self%iox:self%iox+self%mx-1,&
+            self%ioy:self%ioy+self%my-1,:) + small(:,:,:,:)
 
-            ! call final(self)
+        call final(self)
 
     end subroutine
     

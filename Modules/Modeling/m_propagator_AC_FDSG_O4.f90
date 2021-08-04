@@ -49,7 +49,7 @@ use m_cpml
 
         !time frames
         integer :: nt
-        real :: dt, rdt
+        real :: dt
 
         contains
         procedure :: print_info
@@ -81,7 +81,8 @@ use m_cpml
     type(t_propagator),public :: ppg
 
     logical :: if_hicks
-    integer :: i_rdt
+    integer :: irdt
+    real :: rdt
 
     contains
     
@@ -186,10 +187,11 @@ use m_cpml
         call field_init(.false.,self%nt,self%dt)
 
         !rectified interval for time integration
-        !default to Nyquist, and must be multiple of dt for practical reason
-        self%rdt=floor( setup%get_real('REF_RECT_TIME_INTEVAL','RDT',o_default=num2str(0.5/shot%fmax)) &
-                    /self%dt)*self%dt
-        i_rdt=nint(self%nt/self%rdt)+1
+        !default to Nyquist, and must be a multiple of dt
+        rdt=setup%get_real('REF_RECT_TIME_INTEVAL','RDT',o_default=num2str(0.5/shot%fmax))
+        irdt=floor(rdt/self%dt)
+        rdt=irdt*self%dt
+        call hud('rdt, irdt = '//num2str(rdt)//', '//num2str(irdt))
 
     end subroutine
 
@@ -529,26 +531,24 @@ use m_cpml
     !G^T:  adjoint propagator,
     !A^T N:get adjoint fields
         
-    subroutine adjoint(self,rf,oif_record_adjseismo,o_sf,o_imag,o_grad)
+    subroutine adjoint(self,rf,oif_record_adjseismo,o_sf,oif_compute_imag,oif_compute_grad)
         class(t_propagator) :: self
         type(t_field) :: rf
-        logical,optional :: oif_record_adjseismo
+        logical,optional :: oif_record_adjseismo, oif_compute_imag, oif_compute_grad
         type(t_field),optional :: o_sf
-        real,dimension(:,:,:,:),allocatable,optional :: o_imag, o_grad
 
         real,parameter :: time_dir=-1. !time direction
 
-        logical :: if_record_adjseismo
+        logical :: if_record_adjseismo, if_compute_imag, if_compute_grad
 
-        !adjseismo
         if_record_adjseismo=either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
-        if(if_record_adjseismo) then
-            call alloc(rf%seismo,1,self%nt)
-        endif
+        if(if_record_adjseismo) call alloc(rf%seismo,1,self%nt)
 
-        !o_imag, o_grad
-        if(present(o_imag)) call alloc(o_imag,cb%mz,cb%mx,cb%my,self%nimag)
-        if(present(o_grad)) call alloc(o_grad,cb%mz,cb%mx,cb%my,self%ngrad)
+        if_compute_imag=either(if_compute_imag,.false.,present(oif_compute_imag))
+        if(if_compute_imag)     call alloc(cb%imag,cb%mz,cb%mx,cb%my,self%nimag)
+
+        if_compute_grad=either(if_compute_grad,.false.,present(oif_compute_grad))
+        if(if_compute_grad)     call alloc(cb%grad,cb%mz,cb%mx,cb%my,self%ngrad)
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
         if(present(o_sf)) then
@@ -615,17 +615,17 @@ use m_cpml
 
             !gkpa: sfield%s_dt^it+0.5 \dot rfield%s^it+0.5
             !use sfield%v^it+1 to compute sfield%s_dt^it+0.5, as backward step 4
-            if(present(o_sf).and.mod(it,i_rdt)==0) then
-                if(present(o_grad)) then
+            if(present(o_sf).and.mod(it,irdt)==0) then
+                if(if_compute_grad) then
                     call cpu_time(tic)
-                    call gradient_moduli(o_sf,rf,it,o_grad(:,:,:,2))
+                    call gradient_moduli(o_sf,rf,it,cb%grad(:,:,:,2))
                     call cpu_time(toc)
                 endif
                 tt6=tt6+toc-tic
 
-                if(present(o_imag)) then
+                if(if_compute_imag) then
                     call cpu_time(tic)
-                    call imaging(o_sf,rf,it,o_imag)
+                    call imaging(o_sf,rf,it,cb%imag)
                     call cpu_time(toc)
                 endif
                 tt6=tt6+toc-tic
@@ -672,10 +672,10 @@ use m_cpml
             
             !grho: sfield%v_dt^it \dot rfield%v^it
             !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
-            if(present(o_sf).and.mod(it,i_rdt)==0) then
-                if(present(o_grad)) then
+            if(present(o_sf).and.mod(it,irdt)==0) then
+                if(if_compute_grad) then
                     call cpu_time(tic)
-                    call gradient_density(o_sf,rf,it,o_grad(:,:,:,1))
+                    call gradient_density(o_sf,rf,it,cb%grad(:,:,:,1))
                     call cpu_time(toc)
                     tt12=tt12+toc-tic
                 endif
@@ -684,15 +684,18 @@ use m_cpml
             !snapshot
             call rf%write(it)
             if(present(o_sf))   call o_sf%write(it,o_suffix='_back')
-            if(present(o_imag)) call rf%write_ext(it,'imag',o_imag,size(o_imag))
-            if(present(o_grad)) call rf%write_ext(it,'grad',o_grad,size(o_grad))
+            if(if_compute_imag) call rf%write_ext(it,'imag' ,cb%imag,size(cb%imag))
+            if(if_compute_grad) then
+                call rf%write_ext(it,'grad1',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
+                call rf%write_ext(it,'grad2',cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+            endif
 
         enddo
         
         !scale gradient
-        if(present(o_grad)) then
-            call gradient_scaling(o_grad)
-        endif       
+        if(if_compute_grad) then
+            call gradient_scaling(cb%grad)
+        endif
         
         if(mpiworld%is_master) then
             write(*,*) 'time load boundary            ',tt1/mpiworld%max_threads
@@ -927,24 +930,24 @@ use m_cpml
         real,dimension(cb%mz,cb%mx,cb%my,ppg%ngrad) :: grad
         
         !grho, in [J/(kg/m3)]
-        grad(:,:,:,1)=-grad(:,:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)         *m%cell_volume*ppg%rdt
+        cb%grad(:,:,:,1)=-cb%grad(:,:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)         *m%cell_volume*rdt
 
         !gkpa, in [J/Pa]
-        grad(:,:,:,2)=-grad(:,:,:,2) * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my)) *m%cell_volume*ppg%rdt
+        cb%grad(:,:,:,2)=-cb%grad(:,:,:,2) * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my)) *m%cell_volume*rdt
 
         !preparing for cb%project_back
-        grad(1,:,:,:) = grad(2,:,:,:)
-        grad(cb%mz-1,:,:,:) = grad(cb%mz-2,:,:,:)
-        grad(cb%mz,  :,:,:) = grad(cb%mz-2,:,:,:)
+        cb%grad(1,:,:,:) = cb%grad(2,:,:,:)
+        cb%grad(cb%mz-1,:,:,:) = cb%grad(cb%mz-2,:,:,:)
+        cb%grad(cb%mz,  :,:,:) = cb%grad(cb%mz-2,:,:,:)
 
-        grad(:,1,:,:) = grad(:,2,:,:)
-        grad(:,cb%mx-1,:,:) = grad(:,cb%mx-2,:,:)
-        grad(:,cb%mx  ,:,:) = grad(:,cb%mx-2,:,:)
+        cb%grad(:,1,:,:) = cb%grad(:,2,:,:)
+        cb%grad(:,cb%mx-1,:,:) = cb%grad(:,cb%mx-2,:,:)
+        cb%grad(:,cb%mx  ,:,:) = cb%grad(:,cb%mx-2,:,:)
 
         if(m%is_cubic) then
-            grad(:,:,1,:) = grad(:,2,:,:)
-            grad(:,:,cb%my-1,:) = grad(:,:,cb%my-2,:)
-            grad(:,:,cb%my  ,:) = grad(:,:,cb%my-2,:)
+            cb%grad(:,:,1,:) = cb%grad(:,2,:,:)
+            cb%grad(:,:,cb%my-1,:) = cb%grad(:,:,cb%my-2,:)
+            cb%grad(:,:,cb%my  ,:) = cb%grad(:,:,cb%my-2,:)
         endif
                 
     end subroutine
