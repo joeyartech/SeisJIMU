@@ -199,7 +199,7 @@ use m_model
         type(t_suformat) :: wavelet
 
         self%fpeak=setup%get_real('PEAK_FREQUENCY','FPEAK')
-        self%fmax=setup%get_real('MAX_FREQUENCY','FMAX',o_default=num2str(self%fpeak*2.5))
+        self%fmax=setup%get_real('MAX_FREQUENCY','FMAX',o_default=num2str(self%fpeak*2.))
         !self%fmin=setup%get_real('MIN_FREQUENCY','FMIN',o_default='1')
 
         !source time function, which should not have dt, dx info

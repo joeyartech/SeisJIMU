@@ -303,7 +303,6 @@ use, intrinsic :: ieee_arithmetic
 
             else
                 call alloc(self%wavelet,shot%nrcv,nt)
-
                 do i=1,shot%nrcv !implicit transpose
                     call resampler(shot%dadj(:,i),self%wavelet(i,:),1,&
                                     din=shot%dt,nin=shot%nt,&

@@ -5,10 +5,10 @@ use m_System
 
     type,public :: t_model
         integer :: nx,ny,nz, n
-        real    :: dx,dy,dz
+        real    :: dx,dy,dz, dmin
         real    :: ox,oy,oz
 
-        real :: cell_volume, cell_diagonal, cell_inv_diagonal
+        real :: cell_volume, cell_diagonal, rev_cell_diagonal
                 
         character(:),allocatable :: file
         type(t_string),dimension(:),allocatable :: attributes_read, attributes_write
@@ -58,6 +58,9 @@ use m_System
 
         self%n=self%nx*self%ny*self%nz
 
+        rtmp=setup%get_reals('MODEL_SPACING','DZXY',o_mandatory=3)
+        self%dz=rtmp(1); self%dx=rtmp(2); self%dy=rtmp(3)
+
         if(self%ny==1) then
             call hud('2D geometry')
             self%is_cubic=.false.
@@ -67,8 +70,8 @@ use m_System
             self%is_cubic=.true.
         endif
 
-        rtmp=setup%get_reals('MODEL_SPACING','DZXY',o_mandatory=3)
-        self%dz=rtmp(1); self%dx=rtmp(2); self%dy=rtmp(3)
+        self%dmin=min(self%dz,self%dx)
+        if(self%is_cubic) self%dmin=min(self%dmin,self%dy)
 
         rtmp=setup%get_reals('MODEL_ORIGIN','OZXY',o_default='0. 0. 0.')
         rtmp=0.
@@ -77,10 +80,10 @@ use m_System
         self%cell_volume = self%dz*self%dx*self%dy
         if(self%is_cubic) then
             self%cell_diagonal=sqrt(self%dz**2+self%dx**2+self%dy**2)
-            self%cell_inv_diagonal=sqrt(self%dz**(-2) + self%dx**(-2) + self%dy**(-2))
+            self%rev_cell_diagonal=sqrt(self%dz**(-2) + self%dx**(-2) + self%dy**(-2))
         else
             self%cell_diagonal=sqrt(self%dz**2+self%dx**2)
-            self%cell_inv_diagonal=sqrt(self%dz**(-2) + self%dx**(-2))
+            self%rev_cell_diagonal=sqrt(self%dz**(-2) + self%dx**(-2))
         endif
 
         self%file=setup%get_file('FILE_MODEL')!,o_mandatory=.true.) 

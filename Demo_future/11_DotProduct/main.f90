@@ -34,8 +34,6 @@ use m_Modeling
     
     call modeling_gradient
 
-    call sysio_write('gradient',m%gradient,size(m%gradient))
-
     call mpiworld%final
 
     ! stop
@@ -116,7 +114,7 @@ use m_Modeling
         call rfield%ignite(o_wavelet=v,ois_adjoint=.true.)
 
         !adjoint modeling
-        call ppg%adjoint(rfield,oif_record_adjseismo=.true.,o_sf=sfield,o_grad=cb%grad)
+        call ppg%adjoint(rfield,oif_record_adjseismo=.true.,o_sf=sfield,oif_compute_grad=.true.)
 
         call rfield%acquire(o_seismo=Ladj_v)
         call suformat_write('Ladj_v',Ladj_v,ppg%nt,1,o_dt=ppg%dt)
@@ -126,6 +124,9 @@ use m_Modeling
     enddo
     
     call hud('        END LOOP OVER SHOTS        ')
+
+    call sysio_write('grho',m%gradient(:,:,:,1),size(m%gradient(:,:,:,1)))
+    call sysio_write('gkpa',m%gradient(:,:,:,2),size(m%gradient(:,:,:,2)))
 
     print*,'shape(u)=',     shape(u),    '||u||=',      norm2(u)*sqrt(ppg%dt)
     !||u||=sqrt(int u^2*dt) = sqrt(sum(u^2)*dt) = norm2(u)*sqrt(dt)

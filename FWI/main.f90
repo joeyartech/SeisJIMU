@@ -9,7 +9,7 @@ use m_Optimization
     character(:),allocatable :: job
 
     !mpiworld lives in t_mpienv
-    call mpiworld%init(name='MPIWorld',o_communicator=MPI_COMM_WORLD)
+    call mpiworld%init(name='MPIWorld')
 
     call hud('======================================'//s_NL// &
              '       WELCOME TO SeisJIMU FWI        '//s_NL// &
@@ -166,7 +166,7 @@ use m_smoother_laplacian_sparse
 
             !adjoint modeling
             if(.not.cb%is_registered(chp,'grad')) then
-                call ppg%adjoint(rfield,o_sf=sfield,o_grad=cb%grad)
+                call ppg%adjoint(rfield,o_sf=sfield,oif_compute_grad=.true.)
                 call cb%register(chp,'grad')
             endif
 
@@ -183,9 +183,7 @@ use m_smoother_laplacian_sparse
     call fobj%print_dnorms
 
     !collect global gradient
-    if(if_gradient) then
-        call mpi_allreduce(MPI_IN_PLACE, m%gradient,  m%n*ppg%ngrad, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-    endif
+    if(if_gradient) call mpi_allreduce(MPI_IN_PLACE, m%gradient,  m%n*ppg%ngrad, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
 
     call mpiworld%barrier
 

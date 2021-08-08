@@ -10,8 +10,8 @@ use m_cpml
 
     private
 
-    !FD coeff
-    real,dimension(2),parameter :: coef = [1.125,      -1./24.]
+    !FD coef
+    real,dimension(2),parameter :: coef = [9./8.,-1./24.] !Fornberg,1988,Generation of Finite-Difference Formulas on Arbitrary Spaced Grids.
     
     real :: c1x, c1y, c1z
     real :: c2x, c2y, c2z
@@ -19,15 +19,17 @@ use m_cpml
     type,public :: t_propagator
         !info
         character(i_str_xxlen) :: info = &
-            'Time-domain ISOtropic 2D/3D ACoustic system'//s_NL// &
+            'Time-domain ISOtropic 2D/3D ACoustic propagation'//s_NL// &
             '1st-order Velocity-Stress formulation'//s_NL// &
+            'Vireux-Levandar Staggered-Grid Finite-Difference (FDSG) method'//s_NL// &
+            'Cartesian O(x4,t2) stencil'//s_NL// &
+            'CFL=Sum|coef|*Vmax*dt/rev_cell_volume'//s_NL// &
+            '   -> dt <= 0.606(2D) or 0.494(3D) *Vmax/dx'//s_NL// &
             'Required model attributes: vp, rho'//s_NL// &
             'Required field components: vx, vy, vz, p'//s_NL// &
-            'Staggered-Grid Finite-Difference (FDSG) method'//s_NL// &
-            'Cartesian O(x4,t2) stencil'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
-            'basic gradients: grho gkpa'//s_NL// &
-            'imaging condition: P-Pxcorr'
+            'Basic gradients: grho gkpa'//s_NL// &
+            'Imaging condition: P-Pxcorr'
 
         integer :: nbndlayer=max(2,hicks_r) !minimum absorbing layer thickness
         integer :: ngrad=2 !number of basic gradients
@@ -122,10 +124,9 @@ use m_cpml
         class(t_propagator) :: self
 
         !grid dispersion condition
-        ! if (5.*m%cell_diagonal > cb%velmin/shot%fpeak/2.) then  !FDTD O4 rule
-        if (5.*m%dz > cb%velmin/shot%fmax) then  !FDTD O4 rule
+        if (5.*m%dmin > cb%velmin/shot%fmax) then  !O(x4) rule: 5 points per wavelength
             call warn('Shot# '//shot%sindex//' can have grid dispersion!'//s_NL// &
-                ' 5*dz, velmin, fmax = '//num2str(5.*m%dz)//', '//num2str(cb%velmin)//', '//num2str(shot%fmax))
+                ' 5*dz, velmin, fmax = '//num2str(5.*m%dmin)//', '//num2str(cb%velmin)//', '//num2str(shot%fmax))
         endif
         
         !time frames
@@ -133,15 +134,18 @@ use m_cpml
         self%dt=shot%dt
         time_window=(shot%nt-1)*shot%dt
 
-        CFL = cb%velmax*self%dt*m%cell_inv_diagonal*sum(abs(coef))! ~0.494 (3D); ~0.606 (2D)
+        sumcoef=sum(abs(coef))
+
+        CFL = sumcoef*cb%velmax*self%dt*m%rev_cell_diagonal
+
         call hud('CFL value: '//num2str(CFL))
         
         if(CFL>1.) then
             call warn('CFL > 1 on Shot# '//shot%sindex//'!'//s_NL//&
-                'velmax, dt, 1/dx = '//num2str(cb%velmax)//', '//num2str(shot%dt)//', '//num2str(1./m%dz) //s_NL//&
+                'vmax, dt, 1/dx = '//num2str(cb%velmax)//', '//num2str(self%dt)//', '//num2str(m%rev_cell_diagonal) //s_NL//&
                 'Will adjust dt s.t. CFL < 1')
 
-            self%dt = setup%get_real('CFL',o_default='0.9')/ (cb%velmax*m%cell_inv_diagonal*sum(abs(coef)))
+            self%dt = setup%get_real('CFL',o_default='0.9')/(sumcoef*cb%velmax*m%rev_cell_diagonal)
             self%nt=nint(time_window/self%dt)+1
 
             write(*,*) 'Adjusted dt, nt =',self%dt,self%nt,'on shot# '//shot%sindex
@@ -322,8 +326,8 @@ use m_cpml
         endif
 
         call hud('Viewing the snapshots (if written) with ximage/xmovie:')
-        write(*,'(a,i0.5,a)') 'ximage < snap_*  n1=',cb%nz,' perc=99'
-        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'
+        write(*,'(a,i0.5,a)') 'ximage < snap_sfield%*  n1=',cb%nz,' perc=99'
+        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_sfield%*  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'
 
     end subroutine
 
@@ -336,7 +340,7 @@ use m_cpml
         ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
         ify=shot%src%ify; iy=shot%src%iy; ily=shot%src%ily
         
-        wl=f%wavelet(1,it)
+        wl=time_dir*f%wavelet(1,it)
         
         if(if_hicks) then
             select case (shot%src%comp)
@@ -410,7 +414,7 @@ use m_cpml
         ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
         ify=shot%src%ify; iy=shot%src%iy; ily=shot%src%ily
         
-        wl=f%wavelet(1,it)
+        wl=time_dir*f%wavelet(1,it)
         
         if(if_hicks) then
             if(shot%src%comp=='p') then
@@ -686,8 +690,8 @@ use m_cpml
             if(present(o_sf))   call o_sf%write(it,o_suffix='_back')
             if(if_compute_imag) call rf%write_ext(it,'imag' ,cb%imag,size(cb%imag))
             if(if_compute_grad) then
-                call rf%write_ext(it,'grad1',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
-                call rf%write_ext(it,'grad2',cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+                call rf%write_ext(it,'corr_velocities',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
+                call rf%write_ext(it,'corr_stresses',cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
             endif
 
         enddo
@@ -714,8 +718,10 @@ use m_cpml
         endif
 
         call hud('Viewing the snapshots (if written) with ximage/xmovie:')
-        write(*,'(a,i0.5,a)') 'ximage < snap_*  n1=',cb%nz,' perc=99'
-        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'
+        write(*,'(a,i0.5,a)') 'ximage < snap_rfield%*  n1=',cb%nz,' perc=99'
+        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_rfield%*  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'
+        write(*,'(a,i0.5,a)') 'ximage < snap_*  n1=',cb%mz,' perc=99'
+        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%mz,' n2=',cb%mx,' clip=?e-?? loop=2 title=%g'
         
     end subroutine
 
