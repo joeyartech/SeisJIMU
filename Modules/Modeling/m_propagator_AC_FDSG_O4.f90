@@ -698,7 +698,7 @@ use m_cpml
         
         !scale gradient
         if(if_compute_grad) then
-            call gradient_scaling(cb%grad)
+            call gradient_scaling
         endif
         
         if(mpiworld%is_master) then
@@ -932,13 +932,12 @@ use m_cpml
         
     end subroutine
     
-    subroutine gradient_scaling(grad)
-        real,dimension(cb%mz,cb%mx,cb%my,ppg%ngrad) :: grad
-        
-        !grho, in [J/(kg/m3)]
+    subroutine gradient_scaling
+
+        !grho, in [Nm/(kg/m3)]
         cb%grad(:,:,:,1)=-cb%grad(:,:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)         *m%cell_volume*rdt
 
-        !gkpa, in [J/Pa]
+        !gkpa, in [Nm/Pa]
         cb%grad(:,:,:,2)=-cb%grad(:,:,:,2) * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my)) *m%cell_volume*rdt
 
         !preparing for cb%project_back

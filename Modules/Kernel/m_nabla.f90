@@ -57,11 +57,12 @@ use m_preconditioner
         enddo
 
         !freeze_zone as hard mask
-        !deprecated, hard mask is now applied on the model side
-        !where(m%is_freeze_zone) fobj%gradient=0.
+        do i=1,ppg%ngrad
+            where(m%is_freeze_zone) m%gradient(:,:,:,i)=0.
+        enddo
 
         !soft mask
-        smask=setup%get_file('GRADIENT_SOFT_MASK')
+        smask=setup%get_file('GRADIENT_SOFT_MASK','MASK')
         if(smask/='') then
             call alloc(mask,m%nz,m%nx,m%ny)
             ! call sysio_read(smask,mask,size(mask))
@@ -71,21 +72,26 @@ use m_preconditioner
             enddo
         endif
 
-        !preconditioner
+        !preconditioning
+        call alloc(m%pgradient,m%nz,m%nx,m%ny,ppg%ngrad)
         call preco%update
         call preco%apply(m%gradient,m%pgradient)
 
         !transform
-        call param%transform(o_g=qp%g)
-        call param%transform(o_pg=qp%pg)
+        call alloc(qp%g ,param%n1,param%n2,param%n3,param%npars)
+        call alloc(qp%pg,param%n1,param%n2,param%n3,param%npars)
+        call param%transform(o_g=qp%g,o_pg=qp%pg)
         !call param%transform_model('m->x',sfield%autocorr)
 
-        !Tikhonov regularization
-        if(either(oif_approx,.false.,present(oif_approx))) then
-            call regularize_approximate(fobj,qp)
-        else
-            call regularize(fobj,qp)
-        endif
+        !save some RAM
+        call dealloc(m%gradient,m%pgradient)
+
+        ! !Tikhonov regularization
+        ! if(either(oif_approx,.false.,present(oif_approx))) then
+        !     call regularize_approximate(fobj,qp)
+        ! else
+        !     call regularize(fobj,qp)
+        ! endif
 
         qp%f=fobj%total_loss()
 

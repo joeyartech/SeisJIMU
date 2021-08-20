@@ -5,6 +5,7 @@ module m_math
     double precision,parameter :: d_pi = 3.1415926535897932d0
     !real,parameter :: r_epsilon = epsilon(r_pi)
     real,parameter :: r_epsilon=1e-3
+    real,parameter :: r_eps=1e-15
     
     contains
 

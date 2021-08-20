@@ -15,9 +15,6 @@ use m_parametrizer
         contains
 
         procedure :: init
-        procedure :: by_depth
-        procedure :: by_sfield
-        procedure :: by_custom
         procedure :: update
         procedure :: apply
 
@@ -38,27 +35,25 @@ use m_parametrizer
         list=setup%get_strs('PRECONDITIONING','PRECO',o_default='z^1')
 
         do i=1,size(list)
-            if(list(i)%s(1:2)=='z^') then
+            select case (list(i)%s)
+            case ('z^')
                 sublist=split(list(i)%s,o_sep='^')
                 call hud('Will precondition the gradient by z^'//sublist(2)%s)
-                call self%by_depth(o_power=str2real(sublist(2)%s))
-            endif
+                call by_depth(self%preco,o_power=str2real(sublist(2)%s))
 
-            if(list(i)%s(1:2)=='z*') then
+            case ('z*')
                 sublist=split(list(i)%s,o_sep='*')
                 call hud('Will precondition the gradient by z*'//sublist(2)%s)
-                call self%by_depth(o_factor=str2real(sublist(2)%s))
-            endif
+                call by_depth(self%preco,o_factor=str2real(sublist(2)%s))
 
-            if(list(i)%s(1:2)=='sfield') then
+            case ('sfield')
                 sublist=split(list(i)%s,o_sep='/')
                 call hud('Will precondition the gradient by autocorrelation of sfield')
                 if_will_update=.true.
                 depth=str2real(sublist(2)%s)
-                call self%by_sfield
-            endif
+                call by_sfield(self%preco)
 
-            if(list(i)%s(1:6)=='custom') then
+            case ('custom')
                 sublist=split(list(i)%s,o_sep=':')
                 if(size(sublist)==1) then !filename is not attached, ask for it
                     file=setup%get_file('FILE_PRECONDITION_CUSTOM',o_mandatory=1)
@@ -67,9 +62,9 @@ use m_parametrizer
                 endif
 
                 call hud('Will precondition the gradient in a custom way defined in '//file)
-                call self%by_custom(file)
+                call by_custom(self%preco,file)
 
-            endif
+            end select
 
         enddo
 
@@ -77,31 +72,31 @@ use m_parametrizer
 
     subroutine update(self)
         class(t_preconditioner) :: self
-        call self%by_sfield
+        call by_sfield(self%preco)
     end subroutine
 
-    subroutine by_depth(self,o_power,o_factor)
-        class(t_preconditioner) :: self
+    subroutine by_depth(preco,o_power,o_factor)
+        real,dimension(m%nz,m%nx,m%ny) :: preco
         real,optional :: o_power, o_factor
 
         if(present(o_power)) then
-            self%preco(:,1,1)=[(((iz-1)*m%dz)**o_power,iz=1,m%nz)]
+            preco(:,1,1)=[(((iz-1)*m%dz)**o_power,iz=1,m%nz)]
             do iy=1,m%ny; do ix=1,m%nx
-                self%preco(:,ix,iy)=self%preco(:,1,1)
+                preco(:,ix,iy)=preco(:,1,1)
             enddo; enddo
         endif
 
         if(present(o_factor)) then
-            self%preco(:,1,1)=[(((iz-1)*m%dz)*o_factor,iz=1,m%nz)]
+            preco(:,1,1)=[(((iz-1)*m%dz)*o_factor,iz=1,m%nz)]
             do iy=1,m%ny; do ix=1,m%nx
-                self%preco(:,ix,iy)=self%preco(:,1,1)
+                preco(:,ix,iy)=preco(:,1,1)
             enddo; enddo
         endif
         
     end subroutine
 
-    subroutine by_custom(self,file)
-        class(t_preconditioner) :: self
+    subroutine by_custom(preco,file)
+        real,dimension(m%nz,m%nx,m%ny) :: preco
         character(*) :: file
 
         integer :: file_size
@@ -114,14 +109,14 @@ use m_parametrizer
 
         call sysio_read(file,tmp,size(tmp))
 
-        self%preco=self%preco*tmp
+        preco=preco*tmp
 
         deallocate(tmp)
 
     end subroutine
 
-    subroutine by_sfield(self)
-        class(t_preconditioner) :: self
+    subroutine by_sfield(preco)
+        real,dimension(m%nz,m%nx,m%ny) :: preco
 
         ! !convert gradient wrt model to gradient wrt parameters
         ! call param%transform_gradient('m->x',fobj%gradient)
@@ -135,7 +130,7 @@ use m_parametrizer
         
         ! idepth=nint(depth/m%dz)
 
-        ! do i=1,param%npars
+        ! do i=1,ppg%ngrad
         !     do iy=1,m%ny; do ix=1,m%nx
         !     self%preco(1:idepth,ix,iy)=[(i-1)*m%dz,i=1,idepth)] &
         !         /(depth*sfield%amp(1:idepth,ix,iy))
@@ -152,7 +147,7 @@ use m_parametrizer
     
     subroutine apply(self,g,pg)
         class(t_preconditioner) :: self
-        real,dimension(m%nz,m%nx,m%ny,param%npars) :: g,pg
+        real,dimension(m%nz,m%nx,m%ny,ppg%ngrad) :: g,pg
         
         real :: old_norm
 
@@ -169,11 +164,11 @@ use m_parametrizer
 
         !precond whole grediant
         old_norm = norm2(g)
-        do i=1,param%npars
-            pg(:,:,:,i)=g(:,:,:,i)*self%preco
+        do i=1,ppg%ngrad
+            pg(:,:,:,i)=g(:,:,:,i)*self%preco(:,:,:)
         enddo
         pg = pg * old_norm / norm2(pg)
-
+        
     end subroutine
 
 end

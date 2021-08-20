@@ -188,21 +188,21 @@ use m_System
         
         if(size(list)==0) then !not given
             call hud('SHOT_INDEX is not given. Now count how many data files exist in the directory..')
-            file=setup%get_file('FILE_DATA')
+            file=setup%get_str('FILE_DATA')
 
             i=0; exist=.true.
             do
-                i=i+1
-                inquire(file=file//num2str(i,'(i0.4)')//'.su', size=file_size, exist=exist)
+                inquire(file=file//num2str(i+1,'(i0.4)')//'.su', size=file_size, exist=exist)
                 if(file_size==0) exist=.false.
                 if(.not.exist) exit
+                i=i+1
             enddo
 
             self%nshot=i
 
-            self%all=strcat(nums2strs([(i,i=1,self%nshot)]))
-        
             call hud('Found '//num2str(self%nshot)//' sequential shots.')
+
+            self%all=strcat(nums2strs([(i,i=1,self%nshot)]))
 
         endif
 
@@ -253,7 +253,9 @@ use m_System
             
         endif
 
-        deallocate(list, sublist, ishots)
+        if(allocated(   list)) deallocate(   list)
+        if(allocated(sublist)) deallocate(sublist)
+        if(allocated( ishots)) deallocate( ishots)
 
         call hud('No. of processors: '//num2str(mpiworld%nproc)//s_NL// &
                 'No. of shots: '//num2str(self%nshot))

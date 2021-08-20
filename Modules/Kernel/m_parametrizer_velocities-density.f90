@@ -114,7 +114,8 @@ use m_Modeling
 
         endif
 
-        deallocate(list,sublist)
+        if(allocated(   list)) deallocate(   list)
+        if(allocated(sublist)) deallocate(sublist)
         
         
         !PDE info
@@ -239,30 +240,34 @@ use m_Modeling
     end subroutine
 
     subroutine transform_gradient(gradient,g)
-        real,dimension(param%n1,param%n2,param%n3,param%npars) :: gradient, g
+        real,dimension(m%nz,m%nx,m%ny,ppg%ngrad) :: gradient
+        real,dimension(param%n1,param%n2,param%n3,param%npars) :: g
+        !gradient(:,:,:,1) = grho
+        !gradient(:,:,:,2) = gkpa or glda
+        !gradient(:,:,:,3) = gmu
 
         !acoustic
         if(is_AC .and. .not. is_empirical) then
             do i=1,param%npars
                 select case (param%pars(i)%name)
-                case ('vp' ); g(:,:,:,i) = gradient(:,:,:,1)*2*m%rho*m%vp
-                case ('rho'); g(:,:,:,i) = gradient(:,:,:,1)*m%vp**2 + gradient(:,:,:,2)
+                case ('vp' ); g(:,:,:,i) = gradient(:,:,:,2)*2*m%rho*m%vp
+                case ('rho'); g(:,:,:,i) = gradient(:,:,:,2)*m%vp**2 + gradient(:,:,:,1)
                 end select
             enddo
         endif
 
         !acoustic + gardner
         if(is_AC .and. is_gardner) then
-            g(:,:,:,1) =(gradient(:,:,:,1)*(b+2)/b*m%vp**2 + gradient(:,:,:,2))*a*b*m%vp**(b-1)
+            g(:,:,:,1) =(gradient(:,:,:,2)*(b+2)/b*m%vp**2 + gradient(:,:,:,1))*a*b*m%vp**(b-1)
         endif
 
         !elastic
         if(is_EL .and. .not. is_empirical) then
             do i=1,param%npars
                 select case (param%pars(i)%name)
-                case ('vp' ); g(:,:,:,i) = gradient(:,:,:,1)*2*m%rho*m%vp
-                case ('vs' ); g(:,:,:,i) =(gradient(:,:,:,1)*(-2) + gradient(:,:,:,2))*2*m%rho*m%vs
-                case ('rho'); g(:,:,:,i) = gradient(:,:,:,1)*m%vp**2 + (-2*gradient(:,:,:,1)+gradient(:,:,:,2))*m%vs**2 + gradient(:,:,:,3)
+                case ('vp' ); g(:,:,:,i) = gradient(:,:,:,2)*2*m%rho*m%vp
+                case ('vs' ); g(:,:,:,i) =(gradient(:,:,:,2)*(-2) + gradient(:,:,:,3))*2*m%rho*m%vs
+                case ('rho'); g(:,:,:,i) = gradient(:,:,:,2)*m%vp**2 + (-2*gradient(:,:,:,2)+gradient(:,:,:,3))*m%vs**2 + gradient(:,:,:,1)
                 end select
             enddo
         endif
@@ -271,8 +276,8 @@ use m_Modeling
         if(is_EL .and. is_gardner) then
             do i=1,param%npars
                 select case (param%pars(i)%name)
-                case ('vp' ); g(:,:,:,i) =(gradient(:,:,:,1)*(b+2)/b*m%vp + (-2*gradient(:,:,:,1)+gradient(:,:,:,2))*m%vs**2 + gradient(:,:,:,3))*a*b*m%vp**(b-1)
-                case ('vs' ); g(:,:,:,i) =(gradient(:,:,:,1)*(-2) + gradient(:,:,:,2))*2*a*m%vp**b*m%vs
+                case ('vp' ); g(:,:,:,i) =(gradient(:,:,:,2)*(b+2)/b*m%vp + (-2*gradient(:,:,:,2)+gradient(:,:,:,3))*m%vs**2 + gradient(:,:,:,1))*a*b*m%vp**(b-1)
+                case ('vs' ); g(:,:,:,i) =(gradient(:,:,:,2)*(-2) + gradient(:,:,:,3))*2*a*m%vp**b*m%vs
                 end select
             enddo
         endif
@@ -282,9 +287,9 @@ use m_Modeling
         do i=1,param%npars
             g(:,:,:,i)=g(:,:,:,i)*param%pars(i)%range
         enddo
-
-        where (param%is_freeze_zone) g=0.
         
+        ! where (param%is_freeze_zone) g=0.
+
     end subroutine
 
 end module

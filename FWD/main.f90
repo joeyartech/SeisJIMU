@@ -83,7 +83,7 @@ use m_Modeling
         call field%acquire
 
         !write synthetic data
-        call shot%write('dsyn_')
+        call shot%write('dsyn_',shot%dsyn)
 
     enddo
     

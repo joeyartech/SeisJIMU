@@ -112,6 +112,10 @@ use m_linesearcher
                 exit loop
             endif
             
+            !reinitialize linesearch
+            ! ls%alphaL=0.
+            ! ls%alphaR=huge(1.)
+            !ls%alpha=ls%alpha0 !reinitialize alpha in each iterate may help convergence for LBFGS method..
             !linesearcher finds steplength
             call ls%search(iterate,curr,pert,gradient_history)
             

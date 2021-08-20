@@ -33,6 +33,7 @@ test
 *.backup
 *.toc
 *.odp
+*.su
 
 
 

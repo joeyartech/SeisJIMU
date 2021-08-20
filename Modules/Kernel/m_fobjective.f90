@@ -13,7 +13,7 @@ use m_parametrizer
         real,dimension(:,:,:,:),allocatable :: pg !preconditioned gradient
         real,dimension(:,:,:,:),allocatable :: d  !descent direction
         real :: f !objective function value, unit in [Nm]
-        real :: gdotd  !g.d
+        real :: gdotd  !projection of g onto d
 
         contains
         procedure :: init => querypoint_init
@@ -61,21 +61,27 @@ use m_parametrizer
 
         logical,save :: is_first_in=.true.
 
-                    call alloc(self%x, param%n1,param%n2,param%n3,param%npars)
-        if(oif_g)   call alloc(self%g, param%n1,param%n2,param%n3,param%npars)
-        if(oif_pg)  call alloc(self%pg,param%n1,param%n2,param%n3,param%npars)
-        if(oif_d)   call alloc(self%d, param%n1,param%n2,param%n3,param%npars)
-        
+        logical :: if_g,if_pg,if_d
+
+        if_g =either(oif_g, .false.,present(oif_g))
+        if_pg=either(oif_pg,.false.,present(oif_pg))
+        if_d =either(oif_d, .false.,present(oif_d))
+
+                   call alloc(self%x, param%n1,param%n2,param%n3,param%npars)
+        if(if_g)   call alloc(self%g, param%n1,param%n2,param%n3,param%npars)
+        if(if_pg)  call alloc(self%pg,param%n1,param%n2,param%n3,param%npars)
+        if(if_d)   call alloc(self%d, param%n1,param%n2,param%n3,param%npars)
+
         self%f=0.
         self%gdotd=0.
 
-                    call param%transform('m->x',o_x=self%x)
-
-        if(oif_g)   call param%transform(o_g=self%g)
+                   call param%transform('m->x',o_x=self%x)
+        if(if_g)   call param%transform(o_g=self%g)
 
         if(is_first_in) then
             !prior models
             call m%read_prior
+
             if(m%if_has_prior) then
                 call alloc(xprior,param%n1,param%n2,param%n3,param%npars)
                 !transform prior models
@@ -102,7 +108,7 @@ use m_parametrizer
         class(t_fobjective) :: self
         
         !data norms
-        self%s_dnorms=setup%get_strs('DATA_NORMS','DNORMS',o_default='L1 =>L2 Linf')
+        self%s_dnorms=setup%get_strs('DATA_NORMS','DNORMS',o_default='L1 =>L2')
         self%n_dnorms=size(self%s_dnorms)
         call alloc(self%dnorms,self%n_dnorms)
 
@@ -130,7 +136,7 @@ use m_parametrizer
         class(t_fobjective) :: self
         
         call alloc(Wdres,shot%nt,shot%nrcv)
-
+        
         self%dnorms=0.
 
         do i=1,self%n_dnorms
@@ -138,26 +144,24 @@ use m_parametrizer
             case ('L2')
                 Wdres = (shot%dsyn-shot%dobs)*wei%weight
 
-                if(mpiworld%is_master) call shot%write('Wdres')
+                if(mpiworld%is_master) call shot%write('Wdres_',Wdres)
 
                 do ir=1,shot%nrcv
                     if(shot%rcv(ir)%is_badtrace) cycle
 
-                    self%dnorms(i) = self%dnorms(i) + 0.5*m%cell_volume*sum(Wdres(:,ir)**2)
-
                     !set unit of dnorm to be [Nm], same as Lagrangian
                     !this also help balance contributions from different component data
                     if(shot%rcv(ir)%comp=='p') then !for pressure data
-                        self%dnorms(i) = self%dnorms(i) /m%ref_kpa
+                        self%dnorms(i) = self%dnorms(i) + 0.5*m%cell_volume*sum(Wdres(:,ir)**2) /m%ref_kpa
                     else !for velocities data
-                        self%dnorms(i) = self%dnorms(i) *m%ref_rho
+                        self%dnorms(i) = self%dnorms(i) + 0.5*m%cell_volume*sum(Wdres(:,ir)**2) *m%ref_rho
                     endif
 
                 enddo
 
                 !compute adjoint source and set proper units
                 if(i==self%i_dnorm_4adjsource) then
-                    shot%dadj = -wei%weight*Wdres*m%cell_volume
+                    shot%dadj = -wei%weight*Wdres*m%cell_volume/shot%dt
 
                     do ir=1,shot%nrcv
                         if(shot%rcv(ir)%comp=='p') then !for pressure data
@@ -168,7 +172,7 @@ use m_parametrizer
 
                     enddo
 
-                    call shot%write('dadj')
+                    call shot%write('dadj_',shot%dadj)
 
                 endif
                 
@@ -257,7 +261,7 @@ use m_parametrizer
 
     real function total_loss(self)
         class(t_fobjective) :: self
-
+        
         total_loss = self%dnorms(self%i_dnorm_4adjsource) + sum(self%xnorms)
 
     end function

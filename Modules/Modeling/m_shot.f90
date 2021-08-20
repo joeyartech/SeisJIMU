@@ -129,8 +129,8 @@ use m_model
         class(t_shot) :: self
 
         type(t_suformat) :: sudata
-        
-        call sudata%read(setup%get_file('FILE_DATA',o_mandatory=1),self%sindex)
+
+        call sudata%read(setup%get_str('FILE_DATA')//self%sindex//'.su',self%sindex)
 
         self%nt=sudata%ns  !assume all traces have same ns
         self%dt=sudata%dt  !assume all traces have same dt
@@ -146,7 +146,7 @@ use m_model
         if(scalco<0) scalco=-1./scalco
 
         !source & receiver geometry
-        self%src%z=sudata%hdrs(1)%sdepth*scalel !assume singal shot
+        self%src%z=sudata%hdrs(1)%sdepth*scalel !assume single shot
         self%src%x=sudata%hdrs(1)%sx    *scalco
         self%src%y=sudata%hdrs(1)%sy    *scalco
         
@@ -467,9 +467,9 @@ use m_model
         do j=0,size(rcomp)-1
             do i=0,noff-1
                 shot%rcv(1+i+j*noff)%comp = rcomp(j+1)%s
-                shot%rcv(1+i+j*noff)%z = shot%src%z + foff(1) + (i-1)*doff(1)
-                shot%rcv(1+i+j*noff)%x = shot%src%x + foff(2) + (i-1)*doff(2)
-                shot%rcv(1+i+j*noff)%y = shot%src%y + foff(3) + (i-1)*doff(3)
+                shot%rcv(1+i+j*noff)%z =              foff(1) + i*doff(1)
+                shot%rcv(1+i+j*noff)%x = shot%src%x + foff(2) + i*doff(2)
+                shot%rcv(1+i+j*noff)%y = shot%src%y + foff(3) + i*doff(3)
             enddo
         enddo
 
@@ -657,9 +657,10 @@ use m_model
 
     ! end subroutine
 
-    subroutine write(self,file)
+    subroutine write(self,file,data)
         class(t_shot) :: self
         character(*) :: file
+        real,dimension(shot%nt,shot%nrcv) :: data
         
         character(:),allocatable :: format
         type(t_suformat) :: sudata
@@ -668,27 +669,29 @@ use m_model
 
         if(format=='su') then
 
-            call sudata%init(self%nt,self%nrcv,o_dt=self%dt,o_data=self%dsyn)
+            call sudata%init(self%nt,self%nrcv,o_dt=self%dt,o_data=data)
 
-            scalel=real(setup%get_int('SU_SCALEL',o_default='1000')) !assume same scalel for all traces
-            scalco=real(setup%get_int('SU_SCALCO',o_default='1000')) !assume same scalco for all traces
+            scalel=real(setup%get_int('SU_SCALEL',o_default='1')) !assume same scalel for all traces
+            scalco=real(setup%get_int('SU_SCALCO',o_default='1')) !assume same scalco for all traces
 
             sudata%hdrs(:)%scalel=int(scalel)
             sudata%hdrs(:)%scalco=int(scalco)
 
-            if(scalel<0) scalel=-1./scalel
-            if(scalco<0) scalco=-1./scalco
+            if(scalel<0. ) scalel=-1./scalel
+            if(scalel==0.) scalel=1.
+            if(scalco<0. ) scalco=-1./scalco
+            if(scalco==0.) scalco=1.
 
             do i=1,self%nrcv
                 sudata%hdrs(i)%tracl=i
 
-                sudata%hdrs(i)%sdepth= (self%src%z+m%oz)    *scalel 
-                sudata%hdrs(i)%gelev =-(self%rcv(i)%z+m%oz) *scalel
+                sudata%hdrs(i)%sdepth= (self%src%z+m%oz)    /scalel 
+                sudata%hdrs(i)%gelev =-(self%rcv(i)%z+m%oz) /scalel
 
-                sudata%hdrs(i)%sx=(self%src%x+m%ox)         *scalco
-                sudata%hdrs(i)%sy=(self%src%y+m%oy)         *scalco
-                sudata%hdrs(i)%gx=(self%rcv(i)%x+m%ox)      *scalco
-                sudata%hdrs(i)%gy=(self%rcv(i)%y+m%oy)      *scalco
+                sudata%hdrs(i)%sx=(self%src%x+m%ox)         /scalco
+                sudata%hdrs(i)%sy=(self%src%y+m%oy)         /scalco
+                sudata%hdrs(i)%gx=(self%rcv(i)%x+m%ox)      /scalco
+                sudata%hdrs(i)%gy=(self%rcv(i)%y+m%oy)      /scalco
 
                 select case (self%rcv(i)%comp)
                 case ('p') !pressure
@@ -710,7 +713,7 @@ use m_model
         endif
 
         if(format/='su') then !binary format
-            call sysio_write(file//self%sindex,self%dsyn,size(self%dsyn))
+            call sysio_write(file//self%sindex,data,size(data))
             
         endif
 

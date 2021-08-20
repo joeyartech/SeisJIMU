@@ -174,11 +174,12 @@ use m_System
             open(12,file=file,access='direct',recl=4*self%n,action='read')
             read(12,rec=1) tmp
             close(12)
-            call hud('topo minmax value:'//num2str(minval(tmp))//num2str(maxval(tmp)))
+            call hud('topo minmax value: '//num2str(minval(tmp))//' , '//num2str(maxval(tmp)))
 
             do iy=1,self%ny; do ix=1,self%nx
                 self%is_freeze_zone(1:nint(tmp(ix,iy,1)/self%dz)+1,ix,iy)=.true.
             enddo; enddo
+            
             call hud('Freeze zone is set from FILE_TOPO.')
         endif
 

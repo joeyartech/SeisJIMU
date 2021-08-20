@@ -48,7 +48,7 @@ use m_string
         character(*) :: name
         integer,optional :: o_communicator,o_thread_level
         
-        self%communicator=either(o_communicator,MPI_COMM_WORLD,   present(o_communicator))
+        self%communicator=either(o_communicator,MPI_COMM_WORLD,present(o_communicator))
         
         call mpi_init_thread(either(o_thread_level,MPI_THREAD_SINGLE,present(o_thread_level)),self%thread_level,self%ierr)
         self%max_threads=OMP_GET_MAX_THREADS()

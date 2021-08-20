@@ -29,17 +29,14 @@ use m_Kernel
     !Bracketting parameter (Gilbert value)
     integer,parameter :: multiplier=10
     
-    !default
-    real,parameter :: alpha0=1. !steplength
-    logical :: if_reinit_alpha=.false. !reset alpha=1 in each new iterate
-
     !thresholding
     real,parameter :: thres=0.
 
     type,public :: t_linesearcher
-        real :: alpha=alpha0 !steplength initializd to alpha0
-        real :: alphaL=0., alphaR=0.
-        real :: scaler=1.
+        real :: alpha0 !initial steplength
+        real :: alpha  !steplength
+        real :: alphaL, alphaR !search interval: [ ]
+        real :: scaler
         logical :: if_has_scaler=.false.
         character(7) :: result
         
@@ -60,8 +57,9 @@ use m_Kernel
 
     contains
     
-    subroutine init(self)
+    subroutine init(self,oif_reinit_alpha)
         class(t_linesearcher) :: self
+        logical,optional :: oif_reinit_alpha
 
         call hud(info)
 
@@ -69,21 +67,21 @@ use m_Kernel
         self%max_search=setup%get_int('MAX_SEARCH',o_default='12')
         self%max_gradient=setup%get_int('MAX_GRADIENT',o_default=num2str(max_iterate+30))
         
-        if_reinit_alpha=setup%get_bool('IF_REINIT_ALPHA',o_default='F')
+        self%alpha0=setup%get_real('ALPHA0',o_default='1.')
+        self%alpha=self%alpha0
+        self%alphaL=0.
+        self%alphaR=huge(1.)
 
     end subroutine
     
     subroutine search(self,iterate,curr,pert,o_gradient_history)
+        use mpi
         class(t_linesearcher) :: self
         type(t_querypoint) :: curr,pert
         real,dimension(:,:,:,:,:),optional :: o_gradient_history
 
         logical :: if_1st_cond, if_2nd_cond
         
-        !initialize
-        alphaL=0.
-        alphaR=0.
-        if(if_reinit_alpha) self%alpha=alpha0 !reinitialize alpha in each iterate may help convergence for LBFGS method..
         ! if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Initial alphaL/alpha/alphaR =',alphaL,alpha,alphaR
         call hud('Initial alpha = '//num2str(self%alpha))
         call hud('Initial f, ||g|| = '//num2str(curr%f)//', '//num2str(norm2(curr%g)))
@@ -111,8 +109,6 @@ use m_Kernel
             call hud('Modeling with perturbed models')
             call nabla%act(fobj,pert,oif_update_m=.true.,oif_approx=.true.)
             call self%scale(pert)
-            call preco%update
-            call preco%apply(pert%g,pert%pg)
             self%igradient=self%igradient+1
             
             call hud('Judge alpha by Wolfe conditions')
@@ -122,7 +118,7 @@ use m_Kernel
             !Wolfe conditions
             if_1st_cond = (pert%f <= (curr%f+c1*self%alpha*curr%gdotd))
             !if_2nd_cond = (abs(pert%gdotd) >= c2*abs(curr%gdotd)) !strong Wolfe condition
-            if_2nd_cond = (pert%gdotd >= c2*curr%gdotd) !strong Wolfe condition
+            if_2nd_cond = (pert%gdotd >= c2*curr%gdotd) !Wolfe condition
             
             ! print*,'1st cond',pert%f,curr%f,curr%gdotd, if_1st_cond
             ! print*,'2nd cond',pert%gdotd, if_2nd_cond
@@ -132,6 +128,8 @@ use m_Kernel
             !try to avoid this by broadcast controlling logicals.
             call mpi_bcast(if_1st_cond, 1, mpi_logical, 0, mpiworld%communicator, mpiworld%ierr)
             call mpi_bcast(if_2nd_cond, 1, mpi_logical, 0, mpiworld%communicator, mpiworld%ierr)
+            ! call mpi_bcast(if_1st_cond, 1, mpi_logical, 0, mpi_comm_world, mpiworld%ierr)
+            ! call mpi_bcast(if_2nd_cond, 1, mpi_logical, 0, mpi_comm_world, mpiworld%ierr)
 
             !1st condition OK, 2nd condition OK => use alpha
             if(if_1st_cond .and. if_2nd_cond) then
@@ -143,23 +141,23 @@ use m_Kernel
             
             if(self%isearch<self%max_search) then
             
-                !1st condition BAD => shrink alpha
+                !1st condition BAD => [ <-]
                 if(.not. if_1st_cond) then
-                    call hud("Armijo condition is not satified. Now try a smaller alpha")
+                    call hud("Sufficient decrease condition is not satified. Now try a smaller alpha")
                     self%result='perturb'
                     self%alphaR=self%alpha
-                    self%alpha=0.5*(self%alphaL+self%alphaR)
+                    self%alpha=0.5*(self%alphaL+self%alphaR) !shrink the search interval
                 endif
                 
-                !2nd condition BAD => increase alpha unless alphaR=0.
+                !2nd condition BAD => [-> ]
                 if(if_1st_cond .and. .not. if_2nd_cond) then
                     call hud("Curvature condition is not satified. Now try a larger alpha")
                     self%result='perturb'
                     self%alphaL=self%alpha
-                    if(abs(self%alphaR) > tiny(1.e0)) then
-                        self%alpha=0.5*(self%alphaL+self%alphaR)
+                    if(self%alphaR < huge(1.)) then
+                        self%alpha=0.5*(self%alphaL+self%alphaR) !shrink the search interval
                     else
-                        self%alpha=self%alpha*multiplier
+                        self%alpha=self%alpha*multiplier !extend search interval
                     endif
                 endif
 
@@ -221,20 +219,15 @@ use m_Kernel
         type(t_querypoint) :: qp
         
         if(.not.self%if_has_scaler) then
-
             !self%scaler=1e3* 1e-2*m%n/ (sum(abs(qp%g(1:m%n)))) / (par_vp_max -par_vp_min)  !=1e3* |gp1|_L1 / |gvp|_L1 / (vpmax-vpmin)
-
             self%scaler=1e3* 1e-2*m%n/ (sum(abs(qp%g(:,:,:,1)))) / (param%pars(1)%range)  !=1e3* |gpar1|_L1 / |gpar|_L1 / par1_range
-
             if(mpiworld%is_master) write(*,*) 'Linesearch scaler:', self%scaler
-
             self%if_has_scaler=.true.
-
         endif
-        
+
         qp%f=qp%f*self%scaler
         qp%g=qp%g*self%scaler
-        
+
     end subroutine
     
 
