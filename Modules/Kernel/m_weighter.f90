@@ -36,65 +36,65 @@ use m_Modeling
         list=setup%get_strs('WEIGHTING','WEI',o_default=either('aoffset^1','aoffset^0.5',m%is_cubic))
 
         do i=1,size(list)
-            select case (list(i)%s)
-            
-            !weight pressure components
-            case ('p*')
+            if(index(list(i)%s,'p*')>0) then !weight pressure components
                 sublist=split(list(i)%s,o_sep='*')
                 call hud('Will multiply pressure component by '//sublist(2)%s)
                 call by_components(self%weight,o_p=str2real(sublist(2)%s))
+            endif
 
-            case ('vz*')
+            if (index(list(i)%s,'vz*')>0) then
                 sublist=split(list(i)%s,o_sep='*')
                 call hud('Will multiply vz component by '//sublist(2)%s)
                 call by_components(self%weight,o_vz=str2real(sublist(2)%s))
+            endif
 
-            case ('vx*')
+            if (index(list(i)%s,'vx*')>0) then
                 sublist=split(list(i)%s,o_sep='*')
                 call hud('Will multiply vx component by '//sublist(2)%s)
                 call by_components(self%weight,o_vx=str2real(sublist(2)%s))
+            endif
 
-            case ('vy*')
+            if (index(list(i)%s,'vy*')>0) then
                 sublist=split(list(i)%s,o_sep='*')
                 call hud('Will multiply vy component by '//sublist(2)%s)
                 call by_components(self%weight,o_vy=str2real(sublist(2)%s))
+            endif
 
-            !weight traces based on power of aoffset
-            case ('aoffset^')
+            if (index(list(i)%s,'aoffset^')>0) then !weight traces based on power of aoffset
                 sublist=split(list(i)%s,o_sep='^')
                 call hud('Will weight traces by aoffset^'//sublist(2)%s)
                 call by_aoffset(self%weight,o_power=str2real(sublist(2)%s))
-
-            !use aoffset to multiply on traces
-            case ('aoffset*')
+            endif
+            
+            if (index(list(i)%s,'aoffset*')>0) then !use aoffset to multiply on traces
                 sublist=split(list(i)%s,o_sep='*')
                 call hud('Will weight traces by aoffset*'//sublist(2)%s)
                 call by_aoffset(self%weight,o_factor=str2real(sublist(2)%s))
-
-            !polygon defined weights to multiply on traces
-            case ('polygon')
+            endif
+            
+            select case (list(i)%s)
+            case ('polygon') !polygon defined weights to multiply on traces
                 sublist=split(list(i)%s,o_sep=':')
                 if(size(sublist)==1) then !filename is not attached, ask for it
                     file=setup%get_file('FILE_WEIGHT_POLYGON',o_mandatory=1)
                 else !filename is attached
                     file=sublist(2)%s
                 endif
-
+                
                 call hud('Will weight traces with polygons defined in '//file)
                 call by_polygon(self%weight,file)
-
-            !table defined weights to multiply on traces
-            case ('table')
+            
+            case ('table') !table defined weights to multiply on traces
                 sublist=split(list(i)%s,o_sep=':')
                 if(size(sublist)==1) then !filename is not attached, ask for it
                     file=setup%get_file('FILE_WEIGHT_TABLE',o_mandatory=1)
                 else !filename is attached
                     file=sublist(2)%s
                 endif
-
+                
                 call hud('Will weight traces with tables defined in '//file)
                 call by_table(self%weight,file)
-
+                
             case ('custom')
                 sublist=split(list(i)%s,o_sep=':')
                 if(size(sublist)==1) then !filename is not attached, ask for it

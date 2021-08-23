@@ -1,27 +1,13 @@
 module m_fobjective
 use m_System
 use m_Modeling
-use m_weighter
+use m_smoother_laplacian_sparse
 use m_parametrizer
+use m_querypoint
+use m_weighter
+use m_preconditioner
 
     private
-
-    type,public :: t_querypoint
-        
-        real,dimension(:,:,:,:),allocatable :: x  !point in parameter space X (unitless)
-        real,dimension(:,:,:,:),allocatable :: g  !gradient, unit in [1/Nm]
-        real,dimension(:,:,:,:),allocatable :: pg !preconditioned gradient
-        real,dimension(:,:,:,:),allocatable :: d  !descent direction
-        real :: f !objective function value, unit in [Nm]
-        real :: gdotd  !projection of g onto d
-
-        contains
-        procedure :: init => querypoint_init
-        final :: querypoint_fin
-
-    end type
-
-    real,dimension(:,:,:,:),allocatable :: xprior !prior parameter
 
     type,public :: t_fobjective
 
@@ -38,12 +24,12 @@ use m_parametrizer
 
         contains
 
-        procedure :: init => fobjective_init
+        procedure :: init
         procedure :: compute_dnorms
         procedure :: compute_xnorms
-        procedure :: total_loss
         procedure :: print_dnorms
         procedure :: print_xnorms
+        procedure :: eval
 
     end type
 
@@ -51,60 +37,12 @@ use m_parametrizer
 
     real,dimension(:,:),allocatable :: Wdres
     real,dimension(:,:,:,:),allocatable :: Wxres
+    real,dimension(:,:,:,:),allocatable :: xprior !prior parameter
     real :: xnorms_weights(4) !weights on 1st, 2nd, 3rd & 4th dimensions
 
     contains
 
-    subroutine querypoint_init(self,oif_g,oif_pg,oif_d)
-        class(t_querypoint) :: self
-        logical,optional :: oif_g,oif_pg,oif_d
-
-        logical,save :: is_first_in=.true.
-
-        logical :: if_g,if_pg,if_d
-
-        if_g =either(oif_g, .false.,present(oif_g))
-        if_pg=either(oif_pg,.false.,present(oif_pg))
-        if_d =either(oif_d, .false.,present(oif_d))
-
-                   call alloc(self%x, param%n1,param%n2,param%n3,param%npars)
-        if(if_g)   call alloc(self%g, param%n1,param%n2,param%n3,param%npars)
-        if(if_pg)  call alloc(self%pg,param%n1,param%n2,param%n3,param%npars)
-        if(if_d)   call alloc(self%d, param%n1,param%n2,param%n3,param%npars)
-
-        self%f=0.
-        self%gdotd=0.
-
-                   call param%transform('m->x',o_x=self%x)
-        if(if_g)   call param%transform(o_g=self%g)
-
-        if(is_first_in) then
-            !prior models
-            call m%read_prior
-
-            if(m%if_has_prior) then
-                call alloc(xprior,param%n1,param%n2,param%n3,param%npars)
-                !transform prior models
-                call param%transform('m->x',o_xprior=xprior)
-                !save some RAM
-                call dealloc(m%vp_prior,m%vs_prior,m%rho_prior)
-            endif
-
-            is_first_in=.false.
-
-        endif
-
-    end subroutine
-
-    subroutine querypoint_fin(self)
-        type(t_querypoint) :: self
-
-        call dealloc(self%x,self%g,self%pg,self%d)
-
-    end subroutine
-
-
-    subroutine fobjective_init(self)
+    subroutine init(self)
         class(t_fobjective) :: self
         
         !data norms
@@ -128,6 +66,17 @@ use m_parametrizer
 
         if(self%n_xnorms>0) then
             xnorms_weights=setup%get_reals('PARAMETER_NORMS_WEIGHTS','XNORMS_WEI',o_default='1. 1. 1. 1.')
+        endif
+
+        !prior models
+        call m%read_prior
+
+        if(m%if_has_prior) then
+            call alloc(xprior,param%n1,param%n2,param%n3,param%npars)
+            !transform prior models
+            call param%transform('m->x',o_xprior=xprior)
+            !save some RAM
+            call dealloc(m%vp_prior,m%vs_prior,m%rho_prior)
         endif
         
     end subroutine
@@ -259,13 +208,6 @@ use m_parametrizer
 
     end subroutine
 
-    real function total_loss(self)
-        class(t_fobjective) :: self
-        
-        total_loss = self%dnorms(self%i_dnorm_4adjsource) + sum(self%xnorms)
-
-    end function
-
     subroutine print_dnorms(self)
         class(t_fobjective) :: self
     end subroutine
@@ -273,5 +215,92 @@ use m_parametrizer
     subroutine print_xnorms(self)
         class(t_fobjective) :: self
     end subroutine
+
+    subroutine eval(self,qp,oif_update_m,oif_approx,oif_gradient)
+        class(t_fobjective) :: self
+        type(t_querypoint) :: qp
+        logical,optional :: oif_update_m,oif_approx,oif_gradient
+
+        type(t_string),dimension(:),allocatable :: smoothings
+        character(:),allocatable :: smask
+        real,dimension(:,:,:),allocatable :: mask
+
+        !update model
+        if(either(oif_update_m,.true.,present(oif_update_m))) then
+            call param%transform(o_dir='x->m',o_x=qp%x)
+        endif
+
+        !compute dnorm's gradient by adjoint-state method
+        ! if(either(oif_approx,.false.,present(oif_approx))) then
+        !     call modeling_gradient_approximate(fobj)
+        ! else
+            call modeling_gradient(oif_gradient)
+        ! endif
+
+        qp%f = self%dnorms(self%i_dnorm_4adjsource) + sum(self%xnorms)
+
+        if(.not. either(oif_gradient,.true.,present(oif_gradient))) return
+
+        !post-modeling smoothing in physical (model) domain
+        smoothings=setup%get_strs('SMOOTHING','SMTH',o_default='Laplacian')
+
+        do i=1,size(smoothings)
+            !Laplacian smoothing
+            if(smoothings(i)%s=='Laplacian') then
+                call hud('Laplacian smoothing')
+                call smoother_laplacian_init([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%fpeak)
+                do j=1,ppg%ngrad
+                    !call smoother_laplacian_extend_mirror(m%gradient(:,:,:,i),m%itopo)
+                    call smoother_laplacian_pseudo_nonstationary(m%gradient(:,:,:,j),m%vp)
+                enddo    
+            endif
+        enddo
+
+        !freeze_zone as hard mask
+        do i=1,ppg%ngrad
+            where(m%is_freeze_zone) m%gradient(:,:,:,i)=0.
+        enddo
+
+        !soft mask
+        smask=setup%get_file('GRADIENT_SOFT_MASK','MASK')
+        if(smask/='') then
+            call alloc(mask,m%nz,m%nx,m%ny)
+            ! call sysio_read(smask,mask,size(mask))
+            
+            do i=1,ppg%ngrad
+                m%gradient(:,:,:,i)=m%gradient(:,:,:,i)*mask
+            enddo
+        endif
+
+        !preconditioning
+        call alloc(m%pgradient,m%nz,m%nx,m%ny,ppg%ngrad)
+        call preco%update
+        call preco%apply(m%gradient,m%pgradient)
+
+        !transform
+        call alloc(qp%g ,param%n1,param%n2,param%n3,param%npars)
+        call alloc(qp%pg,param%n1,param%n2,param%n3,param%npars)
+        call param%transform(o_g=qp%g,o_pg=qp%pg)
+        !call param%transform_model('m->x',sfield%autocorr)
+
+        !save some RAM
+        call dealloc(m%gradient,m%pgradient)
+
+        ! !Tikhonov regularization
+        ! if(either(oif_approx,.false.,present(oif_approx))) then
+        !     call regularize_approximate(fobj,qp)
+        ! else
+        !     call regularize(fobj,qp)
+        ! endif
+
+    end subroutine
+
+    ! subroutine regularize(fobj,qp)
+    !     type(t_fobjective) :: fobj
+    !     type(t_querypoint) :: qp
+
+    !     call fobj%compute_xnorms(qp%x,qp%g)
+
+    ! end subroutine
 
 end

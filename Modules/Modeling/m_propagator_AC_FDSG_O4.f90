@@ -690,16 +690,14 @@ use m_cpml
             if(present(o_sf))   call o_sf%write(it,o_suffix='_back')
             if(if_compute_imag) call rf%write_ext(it,'imag' ,cb%imag,size(cb%imag))
             if(if_compute_grad) then
-                call rf%write_ext(it,'corr_velocities',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
-                call rf%write_ext(it,'corr_stresses',cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+                call rf%write_ext(it,'grad_moduli', cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
+                call rf%write_ext(it,'grad_density',cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
             endif
 
         enddo
         
-        !scale gradient
-        if(if_compute_grad) then
-            call gradient_scaling
-        endif
+        !postprocess gradient
+        if(if_compute_grad) call gradient_postprocess
         
         if(mpiworld%is_master) then
             write(*,*) 'time load boundary            ',tt1/mpiworld%max_threads
@@ -932,14 +930,13 @@ use m_cpml
         
     end subroutine
     
-    subroutine gradient_scaling
-
+    subroutine gradient_postprocess
         !grho, in [Nm/(kg/m3)]
         cb%grad(:,:,:,1)=-cb%grad(:,:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)         *m%cell_volume*rdt
 
         !gkpa, in [Nm/Pa]
         cb%grad(:,:,:,2)=-cb%grad(:,:,:,2) * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my)) *m%cell_volume*rdt
-
+                
         !preparing for cb%project_back
         cb%grad(1,:,:,:) = cb%grad(2,:,:,:)
         cb%grad(cb%mz-1,:,:,:) = cb%grad(cb%mz-2,:,:,:)
@@ -954,7 +951,7 @@ use m_cpml
             cb%grad(:,:,cb%my-1,:) = cb%grad(:,:,cb%my-2,:)
             cb%grad(:,:,cb%my  ,:) = cb%grad(:,:,cb%my-2,:)
         endif
-                
+
     end subroutine
 
     subroutine imaging(sf,rf,it,imag)
@@ -1478,7 +1475,7 @@ use m_cpml
         
         dsvz=0.; dsvx=0.
          rvz=0.; rvx=0.
-        
+
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
@@ -1510,7 +1507,7 @@ use m_cpml
                 dsvx = (c1x*(sf_p(iz_ix  )-sf_p(iz_ixm1)) +c2x*(sf_p(iz_ixp1)-sf_p(iz_ixm2))) &
                       +(c1x*(sf_p(iz_ixp1)-sf_p(iz_ix  )) +c2x*(sf_p(iz_ixp2)-sf_p(iz_ixm1)))
                 !complete equation with unnecessary terms e.g. sf_p(iz_ix) for better understanding
-                !with flag -O, the compiler should automatically detect such possibilities of simplification
+                !with flag -Ox, the compiler should automatically detect such possible simplification
                 
                 rvz = rf_vz(iz_ix) +rf_vz(izp1_ix)
                 rvx = rf_vx(iz_ix) +rf_vx(iz_ixp1)

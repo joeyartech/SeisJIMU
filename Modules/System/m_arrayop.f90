@@ -34,10 +34,11 @@ use m_mpienv
     
     contains
     
-    subroutine alloc_int1_ubound(a,n1,old2,o_init)
+    subroutine alloc_int1_ubound(a,n1,old2,oif_protect,o_init)
         integer n1
         integer,dimension(:),allocatable :: a
         integer,dimension(:),optional :: old2
+        logical,optional :: oif_protect
         integer,optional :: o_init
         
         if(n1<1.or.n1>max_array_size) then
@@ -46,6 +47,8 @@ use m_mpienv
         endif
         
         if (allocated(a)) then
+            if(either(oif_protect,.false.,present(oif_protect))) return
+
             if(present(old2)) then
                 old2=a
             endif
@@ -56,10 +59,11 @@ use m_mpienv
         
     end subroutine
     
-    subroutine alloc_int2_ubound(a,n1,n2,old2,o_init)
+    subroutine alloc_int2_ubound(a,n1,n2,old2,oif_protect,o_init)
         integer n1,n2
         integer,dimension(:,:),allocatable :: a
         integer,dimension(:,:),optional :: old2
+        logical,optional :: oif_protect
         integer,optional :: o_init
 
         if(n1<1.or.n1>max_array_size) then
@@ -73,6 +77,8 @@ use m_mpienv
         endif
         
         if (allocated(a)) then
+            if(either(oif_protect,.false.,present(oif_protect))) return
+
             if(present(old2)) then
                 old2=a
             endif
@@ -83,10 +89,11 @@ use m_mpienv
         
     end subroutine
     
-    subroutine alloc_real1_ubound(a,n1,old2,o_init)
+    subroutine alloc_real1_ubound(a,n1,old2,oif_protect,o_init)
         integer n1
         real,dimension(:),allocatable :: a
         real,dimension(:),optional :: old2
+        logical,optional :: oif_protect
         real,optional :: o_init
         
         if(n1<1.or.n1>max_array_size) then
@@ -95,6 +102,8 @@ use m_mpienv
         endif
          
         if (allocated(a)) then
+            if(either(oif_protect,.false.,present(oif_protect))) return
+
             if(present(old2)) then
                 old2=a
             endif
@@ -105,10 +114,11 @@ use m_mpienv
         
     end subroutine
     
-    subroutine alloc_real2_ubound(a,n1,n2,old2,o_init)
+    subroutine alloc_real2_ubound(a,n1,n2,old2,oif_protect,o_init)
         integer n1,n2
         real,dimension(:,:),allocatable :: a
         real,dimension(:,:),optional :: old2
+        logical,optional :: oif_protect
         real,optional :: o_init
         
         if(n1<1.or.n1>max_array_size) then
@@ -122,6 +132,8 @@ use m_mpienv
         endif
         
         if (allocated(a)) then
+            if(either(oif_protect,.false.,present(oif_protect))) return
+
             if(present(old2)) then
                 old2=a
             endif
@@ -132,10 +144,11 @@ use m_mpienv
         
     end subroutine
     
-    subroutine alloc_real3_ubound(a,n1,n2,n3,old2,o_init)
+    subroutine alloc_real3_ubound(a,n1,n2,n3,old2,oif_protect,o_init)
         integer n1,n2,n3
         real,dimension(:,:,:),allocatable :: a
         real,dimension(:,:,:),optional :: old2
+        logical,optional :: oif_protect
         real,optional :: o_init
         
         if(n1<1.or.n1>max_array_size) then
@@ -154,6 +167,8 @@ use m_mpienv
         endif
 
         if (allocated(a)) then
+            if(either(oif_protect,.false.,present(oif_protect))) return
+
             if(present(old2)) then
                 old2=a
             endif
@@ -164,10 +179,11 @@ use m_mpienv
         
     end subroutine
     
-    subroutine alloc_real4_ubound(a,n1,n2,n3,n4,old2,o_init)
+    subroutine alloc_real4_ubound(a,n1,n2,n3,n4,old2,oif_protect,o_init)
         integer n1,n2,n3,n4
         real,dimension(:,:,:,:),allocatable :: a
         real,dimension(:,:,:,:),optional :: old2
+        logical,optional :: oif_protect
         real,optional :: o_init
         
         if(n1<1.or.n1>max_array_size) then
@@ -191,6 +207,8 @@ use m_mpienv
         endif
 
         if (allocated(a)) then
+            if(either(oif_protect,.false.,present(oif_protect))) return
+
             if(present(old2)) then
                 old2=a
             endif
@@ -201,10 +219,11 @@ use m_mpienv
         
     end subroutine
 
-    subroutine alloc_real5_ubound(a,n1,n2,n3,n4,n5,old2,o_init)
+    subroutine alloc_real5_ubound(a,n1,n2,n3,n4,n5,old2,oif_protect,o_init)
         integer n1,n2,n3,n4,n5
         real,dimension(:,:,:,:,:),allocatable :: a
         real,dimension(:,:,:,:,:),optional :: old2
+        logical,optional :: oif_protect
         real,optional :: o_init
         
         if(n1<1.or.n1>max_array_size) then
@@ -233,6 +252,8 @@ use m_mpienv
         endif
 
         if (allocated(a)) then
+            if(either(oif_protect,.false.,present(oif_protect))) return
+
             if(present(old2)) then
                 old2=a
             endif
@@ -243,10 +264,11 @@ use m_mpienv
         
     end subroutine
 
-    subroutine alloc_real1(a,n1,old2,o_init)
+    subroutine alloc_real1(a,n1,old2,oif_protect,o_init)
         integer,dimension(2) :: n1
         real,dimension(:),allocatable :: a
         real,dimension(:),optional :: old2
+        logical,optional :: oif_protect
         real,optional :: o_init
         
         if(n1(1)>n1(2)) then
@@ -255,6 +277,8 @@ use m_mpienv
         endif
         
         if (allocated(a)) then
+            if(either(oif_protect,.false.,present(oif_protect))) return
+
             if(present(old2)) then
                 old2=a
             endif
@@ -265,10 +289,11 @@ use m_mpienv
         
     end subroutine
     
-    subroutine alloc_real2(a,n1,n2,old2,o_init)
+    subroutine alloc_real2(a,n1,n2,old2,oif_protect,o_init)
         integer,dimension(2) :: n1,n2
         real,dimension(:,:),allocatable :: a
         real,dimension(:,:),optional :: old2
+        logical,optional :: oif_protect
         real,optional :: o_init
         
         if(n1(1)>n1(2)) then
@@ -282,6 +307,8 @@ use m_mpienv
         endif
 
         if (allocated(a)) then
+            if(either(oif_protect,.false.,present(oif_protect))) return
+
             if(present(old2)) then
                 old2=a
             endif
@@ -292,10 +319,11 @@ use m_mpienv
         
     end subroutine
     
-    subroutine alloc_real3(a,n1,n2,n3,old2,o_init)
+    subroutine alloc_real3(a,n1,n2,n3,old2,oif_protect,o_init)
         integer,dimension(2) :: n1,n2,n3
         real,dimension(:,:,:),allocatable :: a
         real,dimension(:,:,:),optional :: old2
+        logical,optional :: oif_protect
         real,optional :: o_init
         
         if(n1(1)>n1(2)) then
@@ -314,6 +342,8 @@ use m_mpienv
         endif
         
         if (allocated(a)) then
+            if(either(oif_protect,.false.,present(oif_protect))) return
+            
             if(present(old2)) then
                 old2=a
             endif

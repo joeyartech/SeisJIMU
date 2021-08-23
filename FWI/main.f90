@@ -54,30 +54,28 @@ use m_Optimization
         call shls%register(chp,'sampled_shots')
     endif
     call shls%assign
+
+    !preconditioner for model gradient
+    call preco%init
     
     !parametrizer
     call param%init
 
-    !preconditioner for gradients
-    call preco%init
-
-    !initial (model) parameters as query point
+    !initial (model) parameters as querypoint
     call qp0%init
 
-    !objective function
+    !objective function and gradient
     call fobj%init
+    call fobj%eval(qp0,oif_update_m=.false.)
 
-    !value and gradient of the objective function
-    call nabla%act(fobj,qp0)
+    call sysio_write('qp0%gradient',qp0%g,size(qp0%g))
+    call sysio_write('qp0%pgradient',qp0%pg,size(qp0%pg))
 
     !linesearcher
     call ls%init
 
     !scale problem
     call ls%scale(qp0)
-
-    call sysio_write('gradient',qp0%g,size(qp0%g))
-    call sysio_write('pgradient',qp0%pg,size(qp0%pg))
 
     !if just estimate the wavelet or compute the gradient then this is it.
     if(setup%get_str('JOB')=='gradient') then
@@ -93,23 +91,21 @@ use m_Optimization
     
 end
 
-subroutine modeling_gradient(fobj)
+subroutine modeling_gradient(oif_gradient)
 use mpi
 use m_System
 use m_Modeling
 use m_weighter
-use m_fobjective, only : t_fobjective
+use m_fobjective
 use m_matchfilter
 use m_smoother_laplacian_sparse
 
-    type(t_fobjective) :: fobj
+    logical,optional :: oif_gradient
 
     type(t_field) :: sfield, rfield
     character(:),allocatable :: update_wavelet
 
     type(t_checkpoint),save :: chp
-
-    call alloc(m%gradient,m%nz,m%nx,m%ny,ppg%ngrad)
             
     call hud('===== START LOOP OVER SHOTS =====')
     
@@ -155,35 +151,41 @@ use m_smoother_laplacian_sparse
         call wei%init
 
         !objective function and adjoint source
-        call fobj%compute_dnorms    
+        call fobj%compute_dnorms
 
-        !adjoint source
-        if(update_wavelet/='no') call shot%update_adjsource
+        if(either(oif_gradient,.true.,present(oif_gradient))) then
 
-        call ppg%init_field(rfield,name='rfield',origin='rcv')
+            call alloc(m%gradient,m%nz,m%nx,m%ny,ppg%ngrad,oif_protect=.true.)
 
-        call rfield%ignite(ois_adjoint=.true.)
+            !adjoint source
+            if(update_wavelet/='no') call shot%update_adjsource
 
-        !adjoint modeling
-        if(.not.cb%is_registered(chp,'grad')) then
-            call ppg%adjoint(rfield,o_sf=sfield,oif_compute_grad=.true.)
-            call cb%register(chp,'grad')
+            call ppg%init_field(rfield,name='rfield',origin='rcv')
+
+            call rfield%ignite(ois_adjoint=.true.)
+
+            !adjoint modeling
+            if(.not.cb%is_registered(chp,'grad')) then
+                call ppg%adjoint(rfield,o_sf=sfield,oif_compute_grad=.true.)
+                call cb%register(chp,'grad')
+            endif
+
+            call cb%project_back(m%gradient,cb%grad,ppg%ngrad)
+
         endif
 
-        call cb%project_back(m%gradient,cb%grad,ppg%ngrad)
-    
     enddo
     
     call hud('        END LOOP OVER SHOTS        ')
 
     !collect global objective function value
     call mpi_allreduce(mpi_in_place, fobj%dnorms, fobj%n_dnorms, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-    ! call mpi_allreduce(mpi_in_place, fobj%dnorms, fobj%n_dnorms, mpi_real, mpi_sum, mpi_comm_world, mpiworld%ierr)
     call fobj%print_dnorms
 
-    !collect global gradient
-    call mpi_allreduce(mpi_in_place, m%gradient,  m%n*ppg%ngrad, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-    ! call mpi_allreduce(mpi_in_place, m%gradient,  m%n*ppg%ngrad, mpi_real, mpi_sum, mpi_comm_world, mpiworld%ierr)
+    if(either(oif_gradient,.true.,present(oif_gradient))) then
+        !collect global gradient
+        call mpi_allreduce(mpi_in_place, m%gradient,  m%n*ppg%ngrad, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    endif
 
     call mpiworld%barrier
 

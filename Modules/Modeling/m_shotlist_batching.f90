@@ -202,6 +202,8 @@ use m_System
 
             call hud('Found '//num2str(self%nshot)//' sequential shots.')
 
+            if(self%nshot==0) call error('No shots are found!')
+
             self%all=strcat(nums2strs([(i,i=1,self%nshot)]))
 
         endif

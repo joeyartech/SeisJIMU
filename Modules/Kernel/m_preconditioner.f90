@@ -35,17 +35,19 @@ use m_parametrizer
         list=setup%get_strs('PRECONDITIONING','PRECO',o_default='z^1')
 
         do i=1,size(list)
-            select case (list(i)%s)
-            case ('z^')
+            if(index(list(i)%s,'z^')>0) then
                 sublist=split(list(i)%s,o_sep='^')
                 call hud('Will precondition the gradient by z^'//sublist(2)%s)
                 call by_depth(self%preco,o_power=str2real(sublist(2)%s))
+            endif
 
-            case ('z*')
+            if(index(list(i)%s,'z*')>0) then
                 sublist=split(list(i)%s,o_sep='*')
                 call hud('Will precondition the gradient by z*'//sublist(2)%s)
                 call by_depth(self%preco,o_factor=str2real(sublist(2)%s))
-
+            endif
+            
+            select case (list(i)%s)
             case ('sfield')
                 sublist=split(list(i)%s,o_sep='/')
                 call hud('Will precondition the gradient by autocorrelation of sfield')

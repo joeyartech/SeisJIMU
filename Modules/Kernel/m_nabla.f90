@@ -6,22 +6,12 @@ use m_parametrizer
 use m_fobjective
 use m_preconditioner
 
-    private
-
-    type,public :: t_nabla
-        contains
-        procedure :: act
-    end type
-
-    type(t_nabla),public :: nabla
-
     real,dimension(:,:,:),allocatable :: mask
 
     contains
 
     !nabla f: gradient of f
-    subroutine act(self,fobj,qp,oif_update_m,oif_approx)
-        class(t_nabla) :: self
+    subroutine nabla(fobj,qp,oif_update_m,oif_approx)
         type(t_fobjective) :: fobj
         type(t_querypoint) :: qp
         logical,optional :: oif_update_m,oif_approx
@@ -97,17 +87,17 @@ use m_preconditioner
 
     end subroutine
     
-    !nabla^2 f: Hessian of f
-    subroutine act2
-    end subroutine
+    ! !nabla^2 f: Hessian of f
+    ! subroutine act2
+    ! end subroutine
 
-    !nabla dot v: divergence of vector v
-    subroutine dot
-    end subroutine
+    ! !nabla dot v: divergence of vector v
+    ! subroutine dot
+    ! end subroutine
 
-    !nabla curl v: curl (rotation) of vector v
-    subroutine curl
-    end subroutine
+    ! !nabla curl v: curl (rotation) of vector v
+    ! subroutine curl
+    ! end subroutine
 
     ! subroutine gradient_modeling(fobj)
     !     type(t_fobjective) :: fobj

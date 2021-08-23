@@ -52,9 +52,7 @@ use m_linesearcher
     !history of computed gradients
     real,dimension(:,:,:,:,:),allocatable :: gradient_history
     integer,parameter :: l=1 !save one previous gradient in history
-    
-    logical :: debug
-    
+        
     contains
 
     subroutine optimizer_init(qp0)
@@ -85,6 +83,7 @@ use m_linesearcher
         !read setup
         min_update=setup%get_real('MIN_UPDATE',o_default='1e-8')
         max_iterate=setup%get_int('MAX_ITERATE',o_default='30')
+        ls%max_gradient=setup%get_int('MAX_GRADIENT',o_default=num2str(max_iterate+30))
         
     end subroutine
     
@@ -117,7 +116,7 @@ use m_linesearcher
             ! ls%alphaR=huge(1.)
             !ls%alpha=ls%alpha0 !reinitialize alpha in each iterate may help convergence for LBFGS method..
             !linesearcher finds steplength
-            call ls%search(iterate,curr,pert,gradient_history)
+            call ls%search(.false.,iterate,curr,pert,gradient_history)
             
             select case(ls%result)
                 case('success')
