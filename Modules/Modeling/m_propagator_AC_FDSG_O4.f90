@@ -546,12 +546,11 @@ use m_cpml
         logical :: if_record_adjseismo, if_compute_imag, if_compute_grad
 
         if_record_adjseismo=either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
+        if_compute_imag    =either(oif_compute_imag,    .false.,present(oif_compute_imag))    .and.present(o_sf)
+        if_compute_grad    =either(oif_compute_grad,    .false.,present(oif_compute_grad))    .and.present(o_sf)
+        
         if(if_record_adjseismo) call alloc(rf%seismo,1,self%nt)
-
-        if_compute_imag=either(if_compute_imag,.false.,present(oif_compute_imag))
         if(if_compute_imag)     call alloc(cb%imag,cb%mz,cb%mx,cb%my,self%nimag)
-
-        if_compute_grad=either(if_compute_grad,.false.,present(oif_compute_grad))
         if(if_compute_grad)     call alloc(cb%grad,cb%mz,cb%mx,cb%my,self%ngrad)
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
@@ -619,21 +618,18 @@ use m_cpml
 
             !gkpa: sfield%s_dt^it+0.5 \dot rfield%s^it+0.5
             !use sfield%v^it+1 to compute sfield%s_dt^it+0.5, as backward step 4
-            if(present(o_sf).and.mod(it,irdt)==0) then
-                if(if_compute_grad) then
-                    call cpu_time(tic)
-                    call gradient_moduli(o_sf,rf,it,cb%grad(:,:,:,2))
-                    call cpu_time(toc)
-                endif
+            if(if_compute_grad.and.mod(it,irdt)==0) then
+                call cpu_time(tic)
+                call gradient_moduli(o_sf,rf,it,cb%grad(:,:,:,2))
+                call cpu_time(toc)
                 tt6=tt6+toc-tic
+            endif
 
-                if(if_compute_imag) then
-                    call cpu_time(tic)
-                    call imaging(o_sf,rf,it,cb%imag)
-                    call cpu_time(toc)
-                endif
+            if(if_compute_imag.and.mod(it,irdt)==0) then
+                call cpu_time(tic)
+                call imaging(o_sf,rf,it,cb%imag)
+                call cpu_time(toc)
                 tt6=tt6+toc-tic
-
             endif
 
             !========================================================!
@@ -676,22 +672,22 @@ use m_cpml
             
             !grho: sfield%v_dt^it \dot rfield%v^it
             !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
-            if(present(o_sf).and.mod(it,irdt)==0) then
-                if(if_compute_grad) then
-                    call cpu_time(tic)
-                    call gradient_density(o_sf,rf,it,cb%grad(:,:,:,1))
-                    call cpu_time(toc)
-                    tt12=tt12+toc-tic
-                endif
+            if(if_compute_grad.and.mod(it,irdt)==0) then
+                call cpu_time(tic)
+                call gradient_density(o_sf,rf,it,cb%grad(:,:,:,1))
+                call cpu_time(toc)
+                tt2=tt12+toc-tic
             endif
             
             !snapshot
             call rf%write(it)
             if(present(o_sf))   call o_sf%write(it,o_suffix='_back')
-            if(if_compute_imag) call rf%write_ext(it,'imag' ,cb%imag,size(cb%imag))
+            if(if_compute_imag) then
+                call rf%write_ext(it,'imag' ,cb%imag,size(cb%imag))
+            endif
             if(if_compute_grad) then
-                call rf%write_ext(it,'grad_moduli', cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
-                call rf%write_ext(it,'grad_density',cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+                call rf%write_ext(it,'grad_density',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
+                call rf%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
             endif
 
         enddo

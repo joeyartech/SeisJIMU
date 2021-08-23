@@ -272,6 +272,9 @@ use m_preconditioner
             enddo
         endif
 
+        ! call sysio_write('grho',m%gradient(:,:,:,1),size(m%gradient(:,:,:,1)))
+        ! call sysio_write('gkpa',m%gradient(:,:,:,2),size(m%gradient(:,:,:,2)))
+
         !preconditioning
         call alloc(m%pgradient,m%nz,m%nx,m%ny,ppg%ngrad)
         call preco%update
