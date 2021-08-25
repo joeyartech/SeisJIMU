@@ -27,7 +27,7 @@ use m_Kernel
     !Wolfe conditions parameters (Nocedal value)
     real,parameter :: c1=1e-4, c2=0.9 !c2=0.9 for (quasi-)Newton method, 0.1 for NLCG
     !Bracketting parameter (Gilbert value)
-    integer,parameter :: multiplier=10
+    real,parameter :: multiplier=10.
     
     !thresholding
     real,parameter :: thres=0.
@@ -35,12 +35,12 @@ use m_Kernel
     type,public :: t_linesearcher
         real :: alpha0 !initial steplength
         real :: alpha  !steplength
-        real :: alphaL, alphaR !search interval: [ ]
+        real :: alphaL, alphaR !search interval: alpha \in [alphaL, alphaR]
         real :: scaler
         character(7) :: result
         
         !counter
-        integer :: isearch=0 !number of linesearch performed in each iterate
+        integer :: isearch !number of linesearch performed in each iterate
         integer :: max_search=12 !max number of linesearch allowed per iteration
         integer :: igradient=1 !total number of gradient computed
         integer :: max_gradient=30 !max total number of gradient computation allowed
@@ -95,11 +95,10 @@ use m_Kernel
             i=i+1; if(i>l) i=1
         endif
         
+        call hud('------------ START LINESEARCH ------------')
         !linesearch loop
         loop: do isearch=1,self%max_search
             self%isearch=isearch !gfortran requires so
-
-            if(mpiworld%is_master) write(*,'(a,3(2x,i5))') '  Iterate.Linesearch.Gradient#',iterate,self%isearch,self%igradient
 
             !perturb current point
             pert%x = curr%x + self%alpha*curr%d
@@ -118,9 +117,11 @@ use m_Kernel
                 i=i+1; if(i>l) i=1
             endif
 
+            call hud('Iterate.Linesearch.Gradient# = '//num2str(iterate)//'.'//num2str(self%isearch)//'.'//num2str(self%igradient))
+
             !if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Linesearch alphaL/alpha/alphaR =',alphaL,alpha,alphaR
-            if(mpiworld%is_master) write(*,'(a, 2x,es8.2)')   ' Linesearch alpha =',self%alpha
-            if(mpiworld%is_master) write(*,*) 'Perturb f, ||g|| =',pert%f,norm2(pert%g)
+            call hud('alpha = '//num2str(self%alpha)//' in ['//num2str(self%alphaL)//','//num2str(self%alphaR)//']')
+            call hud('Perturb f, ||g|| = '//num2str(pert%f)//', '//num2str(norm2(pert%g)))
             
             !Wolfe conditions
             if_1st_cond = (pert%f <= curr%f+c1*self%alpha*curr%g_dot_d) !sufficient descent condition

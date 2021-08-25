@@ -25,4 +25,4 @@ APP=FWI
 ################
 LineS=Wolfe
 Optim=NLCG
-#Optim=LBFGS
+#Optim=lBFGS
