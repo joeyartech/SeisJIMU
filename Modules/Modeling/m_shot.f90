@@ -130,7 +130,7 @@ use m_model
 
         type(t_suformat) :: sudata
 
-        call sudata%read(setup%get_str('FILE_DATA')//self%sindex//'.su',self%sindex)
+        call sudata%read(setup%get_str('FILE_DATA_PREFIX')//self%sindex//'.su',self%sindex)
 
         self%nt=sudata%ns  !assume all traces have same ns
         self%dt=sudata%dt  !assume all traces have same dt
@@ -223,7 +223,7 @@ use m_model
 
         endif
 
-        str=setup%get_str('SCALING_WAVELET')
+        str=setup%get_str('WAVELET_SCALING')
         if(str=='') then
         elseif(str=='by dx3dt' .or. str=='by dtdx3') then
             self%wavelet=self%wavelet/self%dt*m%cell_volume

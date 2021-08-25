@@ -101,9 +101,9 @@ use m_preconditioner
                     !set unit of dnorm to be [Nm], same as Lagrangian
                     !this also help balance contributions from different component data
                     if(shot%rcv(ir)%comp=='p') then !for pressure data
-                        self%dnorms(i) = self%dnorms(i) + 0.5*m%cell_volume*sum(Wdres(:,ir)**2) /m%ref_kpa
+                        self%dnorms(i) = self%dnorms(i) + 0.5*m%cell_volume*norm2(Wdres(:,ir)) /m%ref_kpa
                     else !for velocities data
-                        self%dnorms(i) = self%dnorms(i) + 0.5*m%cell_volume*sum(Wdres(:,ir)**2) *m%ref_rho
+                        self%dnorms(i) = self%dnorms(i) + 0.5*m%cell_volume*norm2(Wdres(:,ir)) *m%ref_rho
                     endif
 
                 enddo
@@ -229,7 +229,7 @@ use m_preconditioner
         if(either(oif_update_m,.true.,present(oif_update_m))) then
             call param%transform(o_dir='x->m',o_x=qp%x)
         endif
-
+        
         !compute dnorm's gradient by adjoint-state method
         ! if(either(oif_approx,.false.,present(oif_approx))) then
         !     call modeling_gradient_approximate(fobj)

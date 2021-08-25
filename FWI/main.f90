@@ -5,7 +5,7 @@ use m_Kernel
 use m_Optimization
 
     type(t_checkpoint) :: chp
-    type(t_querypoint) :: qp0
+    type(t_querypoint),target :: qp0
     character(:),allocatable :: job
 
     !mpiworld lives in t_mpienv

@@ -188,7 +188,7 @@ use m_System
         
         if(size(list)==0) then !not given
             call hud('SHOT_INDEX is not given. Now count how many data files exist in the directory..')
-            file=setup%get_str('FILE_DATA')
+            file=setup%get_str('FILE_DATA_PREFIX')
 
             i=0; exist=.true.
             do

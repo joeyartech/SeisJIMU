@@ -5,12 +5,12 @@ use m_parametrizer
     private
 
     type,public :: t_querypoint
-        real,dimension(:,:,:,:),allocatable :: x  !point in parameter space X (unitless)
-        real,dimension(:,:,:,:),allocatable :: g  !gradient, unit in [1/Nm]
-        real,dimension(:,:,:,:),allocatable :: pg !preconditioned gradient
-        real,dimension(:,:,:,:),allocatable :: d  !descent direction
+        real,dimension(:,:,:,:),allocatable :: x  !point in parameter space X, unit in [1]
+        real,dimension(:,:,:,:),allocatable :: g  !gradient, in [Nm]
+        real,dimension(:,:,:,:),allocatable :: pg !preconditioned gradient, in [Nm]
+        real,dimension(:,:,:,:),allocatable :: d  !descent direction, same unit as x
         real :: f !objective function value, unit in [Nm]
-        real :: gdotd  !projection of g onto d
+        real :: g_dot_d !projection of g onto d, in [Nm]
 
         contains
         procedure :: init

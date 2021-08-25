@@ -317,15 +317,15 @@ use m_cpml
         enddo
 
         if(mpiworld%is_master) then
-            write(*,*) 'time add source velocities',tt1/mpiworld%max_threads
-            write(*,*) 'time update velocities    ',tt2/mpiworld%max_threads
-            write(*,*) 'time add source stresses  ',tt3/mpiworld%max_threads
-            write(*,*) 'time update stresses      ',tt4/mpiworld%max_threads
-            write(*,*) 'time extract field        ',tt5/mpiworld%max_threads
-            write(*,*) 'time save boundary        ',tt6/mpiworld%max_threads
+            write(*,*) 'Elapsed time to add source velocities',tt1/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update velocities    ',tt2/mpiworld%max_threads
+            write(*,*) 'Elapsed time to add source stresses  ',tt3/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update stresses      ',tt4/mpiworld%max_threads
+            write(*,*) 'Elapsed time to extract field        ',tt5/mpiworld%max_threads
+            write(*,*) 'Elapsed time to save boundary        ',tt6/mpiworld%max_threads
         endif
 
-        call hud('Viewing the snapshots (if written) with ximage/xmovie:')
+        call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
         write(*,'(a,i0.5,a)') 'ximage < snap_sfield%*  n1=',cb%nz,' perc=99'
         write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_sfield%*  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'
 
@@ -696,22 +696,22 @@ use m_cpml
         if(if_compute_grad) call gradient_postprocess
         
         if(mpiworld%is_master) then
-            write(*,*) 'time load boundary            ',tt1/mpiworld%max_threads
-            write(*,*) 'time update stresses          ',tt2/mpiworld%max_threads
-            write(*,*) 'time rm source stresses       ',tt3/mpiworld%max_threads
-            write(*,*) 'time update velocities        ',tt7/mpiworld%max_threads
-            write(*,*) 'time rm source velocities     ',tt8/mpiworld%max_threads
-            write(*,*) 'time -------------------------'
-            write(*,*) 'time add adjsource stresses   ',tt4/mpiworld%max_threads
-            write(*,*) 'time update adj stresses      ',tt5/mpiworld%max_threads
-            write(*,*) 'time add adjsource velocities ',tt9/mpiworld%max_threads
-            write(*,*) 'time update adj velocities    ',tt10/mpiworld%max_threads
-            write(*,*) 'time extract&write fields     ',tt11/mpiworld%max_threads
-            write(*,*) 'time correlation              ',(tt6+tt12)/mpiworld%max_threads
+            write(*,*) 'Elapsed time to load boundary            ',tt1/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update stresses          ',tt2/mpiworld%max_threads
+            write(*,*) 'Elapsed time to rm source stresses       ',tt3/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update velocities        ',tt7/mpiworld%max_threads
+            write(*,*) 'Elapsed time to rm source velocities     ',tt8/mpiworld%max_threads
+            write(*,*) 'Elapsed time ----------------------------'
+            write(*,*) 'Elapsed time to add adjsource stresses   ',tt4/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update adj stresses      ',tt5/mpiworld%max_threads
+            write(*,*) 'Elapsed time to add adjsource velocities ',tt9/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update adj velocities    ',tt10/mpiworld%max_threads
+            write(*,*) 'Elapsed time to extract&write fields     ',tt11/mpiworld%max_threads
+            write(*,*) 'Elapsed time to correlation              ',(tt6+tt12)/mpiworld%max_threads
 
         endif
 
-        call hud('Viewing the snapshots (if written) with ximage/xmovie:')
+        call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
         write(*,'(a,i0.5,a)') 'ximage < snap_rfield%*  n1=',cb%nz,' perc=99'
         write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_rfield%*  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'
         write(*,'(a,i0.5,a)') 'ximage < snap_*  n1=',cb%mz,' perc=99'
@@ -1326,7 +1326,7 @@ use m_cpml
                 dsp = dvz_dz +dvx_dx +dvy_dy
                  rp = rf_p(i)
                 
-                grad(j)=grad(j) + dsp*rp
+                grad(j)=grad(j) - dsp*rp
                 
             end do
             
@@ -1381,7 +1381,7 @@ use m_cpml
                 dsp = dvz_dz +dvx_dx
                  rp = rf_p(i)
                 
-                grad(j)=grad(j) + dsp*rp
+                grad(j)=grad(j) - dsp*rp
                 
             end do
             
@@ -1450,7 +1450,7 @@ use m_cpml
                 rvx = rf_vx(iz_ixp1_iy) +rf_vx(iz_ix_iy)
                 rvy = rf_vy(iz_ix_iyp1) +rf_vy(iz_ix_iy)
                 
-                grad(j)=grad(j) + 0.25*( dsvz*rvz + dsvx*rvx + dsvy*rvy )
+                grad(j)=grad(j) - 0.25*( dsvz*rvz + dsvx*rvx + dsvy*rvy )
                 
             enddo
             
@@ -1508,7 +1508,7 @@ use m_cpml
                 rvz = rf_vz(iz_ix) +rf_vz(izp1_ix)
                 rvx = rf_vx(iz_ix) +rf_vx(iz_ixp1)
                 
-                grad(j)=grad(j) + 0.25*( dsvz*rvz + dsvx*rvx )
+                grad(j)=grad(j) - 0.25*( dsvz*rvz + dsvx*rvx )
                 
             enddo
             

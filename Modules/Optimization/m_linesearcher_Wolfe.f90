@@ -25,7 +25,7 @@ use m_Kernel
                                    'Steplength (alpha) judged by Wolfe conditions'
 
     !Wolfe conditions parameters (Nocedal value)
-    real,parameter :: c1=1e-4, c2=0.9 !for (quasi-)Newton method, 0.1 for NLCG
+    real,parameter :: c1=1e-4, c2=0.9 !c2=0.9 for (quasi-)Newton method, 0.1 for NLCG
     !Bracketting parameter (Gilbert value)
     integer,parameter :: multiplier=10
     
@@ -37,7 +37,6 @@ use m_Kernel
         real :: alpha  !steplength
         real :: alphaL, alphaR !search interval: [ ]
         real :: scaler
-        logical :: if_has_scaler=.false.
         character(7) :: result
         
         !counter
@@ -61,12 +60,11 @@ use m_Kernel
         class(t_linesearcher) :: self
 
         call hud(info)
+        call hud('Wolfe condition parameters: c1='//num2str(c1)//', c2='//num2str(c2))
 
         !read setup        
         self%alpha0=setup%get_real('ALPHA0',o_default='1.')
         self%alpha=self%alpha0
-        self%alphaL=0.
-        self%alphaR=huge(1.)
 
         self%max_search=setup%get_int('MAX_SEARCH',o_default='12')
 
@@ -81,6 +79,8 @@ use m_Kernel
 
         logical :: if_1st_cond, if_2nd_cond
 
+        self%alphaL=0.
+        self%alphaR=huge(1.)
         if(if_reinit_alpha) self%alpha=self%alpha0
         
         ! if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Initial alphaL/alpha/alphaR =',alphaL,alpha,alphaR
@@ -103,11 +103,12 @@ use m_Kernel
 
             !perturb current point
             pert%x = curr%x + self%alpha*curr%d
+            ! call sysio_write('pert%x',pert%x,size(pert%x),o_mode='append')
             call threshold(pert%x,size(pert%x))
             call hud('Modeling with perturbed models')
             call fobj%eval(pert)
             call self%scale(pert)
-            pert%gdotd=sum(pert%g*curr%d)  
+            pert%g_dot_d = sum(pert%g*curr%d)
 
             self%igradient=self%igradient+1
 
@@ -119,15 +120,15 @@ use m_Kernel
 
             !if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Linesearch alphaL/alpha/alphaR =',alphaL,alpha,alphaR
             if(mpiworld%is_master) write(*,'(a, 2x,es8.2)')   ' Linesearch alpha =',self%alpha
-            if(mpiworld%is_master) write(*,*) 'f,||g|| =',pert%f,norm2(pert%g)
+            if(mpiworld%is_master) write(*,*) 'Perturb f, ||g|| =',pert%f,norm2(pert%g)
             
             !Wolfe conditions
-            if_1st_cond = (pert%f <= (curr%f+c1*self%alpha*curr%gdotd)) !sufficient descent condition
-            !if_2nd_cond = (abs(pert%gdotd) >= c2*abs(curr%gdotd)) !strong curvature condition
-            if_2nd_cond = (pert%gdotd >= c2*curr%gdotd) !weak curvature condition
+            if_1st_cond = (pert%f <= curr%f+c1*self%alpha*curr%g_dot_d) !sufficient descent condition
+            !if_2nd_cond = (abs(pert%g_dot_d) >= c2*abs(curr%g_dot_d)) !strong curvature condition
+            if_2nd_cond = (pert%g_dot_d >= c2*curr%g_dot_d) !weak curvature condition
             
-            ! print*,'1st cond',pert%f,curr%f,curr%gdotd, if_1st_cond
-            ! print*,'2nd cond',pert%gdotd, if_2nd_cond
+            ! print*,'1st cond',pert%f,curr%f,curr%g_dot_d, if_1st_cond
+            ! print*,'2nd cond',pert%g_dot_d, if_2nd_cond
             ! print*,'alpha(3)',alphaL,alpha,alpha_R
 
             !occasionally optimizers on processors don't have same behavior
@@ -188,7 +189,7 @@ use m_Kernel
 
         enddo loop
         
-        if (self%igradient>=self%max_gradient) then
+        if(self%igradient>=self%max_gradient) then
             call hud('Maximum number of gradients reached. Finalize program now..')
             self%result='maximum'
         endif       
@@ -198,25 +199,61 @@ use m_Kernel
     subroutine threshold(x,n)
         real,dimension(n) :: x
 
-        !x should be inside [0,1] due to scaling
-        where (x<0.) x=thres
-        where (x>1.) x=1.-thres
+        logical,dimension(n) :: is_reached
+
+        is_reached=.false.
+
+        !x should reside in [0,1]
+        where (x<0.) 
+            is_reached=.true.
+            x=thres
+        endwhere
+
+        where (x>1.)
+            is_reached=.true.
+            x=1.-thres
+        endwhere
+
+        if( size(pack(is_reached,.false.))>n/10 ) then
+            call warn('x significantly reaches {0,1}. Something might be wrong.')
+        endif
 
     end subroutine
-        
+    
+    !scale the problem s.t. 
+    !qp%g, qp%pg, to be negated as qp%d, have a similar scale(unit) as qp%x, 
+    !and alpha0 can be 1 (unitless).
+    !update=alpha*qp%d=-alpha*qp%pg
     subroutine scale(self,qp)
         class(t_linesearcher) :: self
         type(t_querypoint) :: qp
+
+        logical,save :: is_first_in=.true.
+        character(:),allocatable :: str
         
-        if(.not.self%if_has_scaler) then
-            !self%scaler=1e3* 1e-2*m%n/ (sum(abs(qp%g(1:m%n)))) / (par_vp_max -par_vp_min)  !=1e3* |gp1|_L1 / |gvp|_L1 / (vpmax-vpmin)
-            self%scaler=1e3* 1e-2*m%n/ (sum(abs(qp%g(:,:,:,1)))) / (param%pars(1)%range)  !=1e3* |gpar1|_L1 / |gpar|_L1 / par1_range
-            if(mpiworld%is_master) write(*,*) 'Linesearch scaler:', self%scaler
-            self%if_has_scaler=.true.
+        if(is_first_in) then
+
+            str=setup%get_str('REF_LINESEARCHER_SCALING','REF_LS_SCALING',o_default='by total_volume/|pg1|_L1')
+
+            if(str=='by total_volume/|pg1|_L1') then
+                eps=param%n1*param%n2*param%n3/sum(abs(qp%pg(:,:,:,1))) !=total_volume/|pg1|_L1, total_volume = int dy^3
+            else
+                eps=str2real(str)
+                eps=eps/maxval(abs(qp%pg(:,:,:,1))) !e.g., =0.05/|g1|_inf i.e. maximum 50m/s perturbation on velocity
+
+            endif
+
+            self%scaler=eps/param%pars(1)%range
+            
+            call hud('Linesearch scaler= '//num2str(self%scaler))
+
+            is_first_in=.false.
+
         endif
 
         qp%f=qp%f*self%scaler
         qp%g=qp%g*self%scaler
+        qp%pg=qp%pg*self%scaler
 
     end subroutine
     

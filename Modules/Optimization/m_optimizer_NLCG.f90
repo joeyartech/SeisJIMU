@@ -36,8 +36,6 @@ use m_linesearcher
     character(*),parameter :: info='Optimization: NonLinear Conjugate Gradient'//s_NL// &
                                    'with Dai-Yuan formula'
     
-    real min_update !minimum parameter updates allowed
- 
     type(t_querypoint),pointer :: curr, pert
     type(t_querypoint),target  :: qp1
     real,dimension(:,:,:,:),allocatable :: prev_d  !descent direction of previous point (no need for another t_querypoint instance)
@@ -48,6 +46,8 @@ use m_linesearcher
     !counter
     integer :: iterate=0 !number of iteration performed 
     integer :: max_iterate  !max number of iteration allowed
+
+    real min_descent !minimum descent allowed
 
     !history of computed gradients
     real,dimension(:,:,:,:,:),allocatable :: gradient_history
@@ -61,9 +61,9 @@ use m_linesearcher
         call hud(info)
 
         !current point
-        curr=>qp0       
+        curr=>qp0
         curr%d=-curr%pg
-        curr%gdotd=sum(curr%g*curr%d)
+        curr%g_dot_d = sum(curr%g*curr%d)
 
         !initial values
         f0=curr%f
@@ -74,14 +74,14 @@ use m_linesearcher
         call pert%init
 
         !descent direction of previous point
-        call alloc(prev_d,param%n1,param%n2,param%n3,param%npars); prev_d=curr%d
+        prev_d=curr%d
 
         !gradient history
         call alloc(gradient_history,param%n1,param%n2,param%n3,param%npars,l)
         gradient_history(:,:,:,:,l)=curr%g
 
         !read setup
-        min_update=setup%get_real('MIN_UPDATE',o_default='1e-8')
+        min_descent=setup%get_real('MIN_DESCENT',o_default='1e-8')
         max_iterate=setup%get_int('MAX_ITERATE',o_default='30')
         ls%max_gradient=setup%get_int('MAX_GRADIENT',o_default=num2str(max_iterate+30))
         
@@ -95,6 +95,8 @@ use m_linesearcher
         call hud('============ START OPTIMIZATON ============')
         call chp%init('FWI_shotlist_optim','Iter#',oif_fuse=.true.)
 
+        call optimizer_write('start')
+
         !iteration loop
         loop: do iterate=1,max_iterate
             call chp%count
@@ -105,12 +107,12 @@ use m_linesearcher
             endif
             call shls%assign
 
-            if (norm2(curr%d) < min_update) then
-                call hud('Maximum iteration number reached or convergence criteria met')
+            if (maxval(abs(curr%d)) < min_descent) then
+                call hud('Maximum descent is met')
                 call optimizer_write('criteria')
                 exit loop
             endif
-            
+
             !reinitialize linesearch
             ! ls%alphaL=0.
             ! ls%alphaR=huge(1.)
@@ -120,32 +122,32 @@ use m_linesearcher
             
             select case(ls%result)
                 case('success')
-                !update point
+
+                !previous descent direction
                 prev_d=curr%d
                 
+                !switch curr & pert
                 tmp=>curr
                 curr=>pert
-                pert=>tmp               
+                pert=>tmp
                 
                 !!!!!!!!!!!!!!!!!!!!!!!!!!!
                 !! NLCG, Dai-Yuan's beta !!
                 !!!!!!!!!!!!!!!!!!!!!!!!!!!
                 !compute beta
-                nom=sum(pert%g*pert%pg)
-                denom=sum((pert%g-gradient_history(:,:,:,:,l))*prev_d)
+                nom=sum(curr%g*curr%pg)
+                denom=sum((curr%g-gradient_history(:,:,:,:,l))*prev_d)
                 beta=nom/denom
                 
                 !Safeguard 
-                if((beta.ge.1e5).or.(beta.le.-1e5)) then     
-                    beta=0.
-                endif
+                if((beta.ge.1e5).or.(beta.le.-1e5)) beta=0.
                 
                 !new descent direction
-                curr%d=-pert%pg+beta*prev_d
+                curr%d=-curr%pg+beta*prev_d
                 
                 !inner product of g and d for Wolfe condition
-                curr%gdotd=sum(curr%g*curr%d)
-                
+                curr%g_dot_d = sum(curr%g*curr%d)
+
                 call optimizer_write('update')
 
                 case('failure')
@@ -172,16 +174,17 @@ use m_linesearcher
         
             select case (message)
             case('start')
+                ! call execute_command_line('rm '//dir_out//'iterate.log', wait=.true.)
                 open(16,file=dir_out//'iterate.log',position='append',action='write')
                 write(16,'(a)'      ) ' **********************************************************************'
                 write(16,'(a)'      ) '                 NONLINEAR CONJUGATE GRADIENT ALGORITHM                '
                 write(16,'(a)'      ) ' **********************************************************************'
-                write(16,'(a,es8.2)') '     Min update allowed          : ',  min_update
-                write(16,'(a,i5)'   ) '     Max iterates allowed        : ',  max_iterate
-                write(16,'(a,i5)'   ) '     Max linesearches allowed    : ',  ls%max_search
-                write(16,'(a,i5)'   ) '     Max gradients allowed       : ',  ls%max_gradient
-                write(16,'(a,es8.2)') '     Initial fobjective (f0)         : ',  f0
-                write(16,'(a,es8.2)') '     Initial gradient norm (||g0||)  : ',  g0norm
+                write(16,'(a,es8.2)') '     Min descent allowed      =',  min_descent
+                write(16,'(a,i5)'   ) '     Max iterates allowed     =',  max_iterate
+                write(16,'(a,i5)'   ) '     Max linesearches allowed =',  ls%max_search
+                write(16,'(a,i5)'   ) '     Max gradients allowed    =',  ls%max_gradient
+                write(16,'(a,es8.2)') '     Initial fobjective (f0)        =',  f0
+                write(16,'(a,es8.2)') '     Initial gradient norm (||g0||) =',  g0norm
                 write(16,'(a)'      ) ' **********************************************************************'
                 write(16,'(a)'      ) '  Iter#      f         f/f0    ||g||/||g0||    alpha     nls  Modeling#'
                                !e.g.  !    0    1.00E+00    1.00E+00    1.00E+00    1.00E+00      0       1
@@ -194,7 +197,9 @@ use m_linesearcher
                 close(16)
                 
                 call param%transform('x->m',o_x=curr%x)
-                call m%write(o_suffix='Iter'//int2str(iterate))
+                call m%write(o_suffix='_Iter'//int2str(iterate))
+
+                call sysio_write('pg_Iter'//int2str(iterate),curr%pg,size(curr%pg))
 
             case('maximum')
                 open(16,file=dir_out//'iterate.log',position='append',action='write')
@@ -225,11 +230,9 @@ use m_linesearcher
                 close(16)
                 
                 call param%transform('x->m',o_x=pert%x)
-                call m%write(o_suffix='Iter'//int2str(iterate))
-                
-                call param%transform('x->m',o_x=curr%x)
-                call m%write(o_suffix='final')
-                
+                call m%write(o_suffix='_Iter'//int2str(iterate))
+                call sysio_write('pg_Iter'//int2str(iterate),curr%pg,size(curr%pg))
+
                 write(*,'(a,i0.4)') 'ximage < model_final n1=',m%nz
                 write(*,'(a,i0.4,a,i0.4)') 'xmovie < model_update loop=1 title=%g n1=',m%nz,' n2=',m%nx
 

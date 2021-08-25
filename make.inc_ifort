@@ -18,6 +18,8 @@ MOD=-module $(mod_dir)
 
 %.o : %.f90
 	mpif90 $(FPP) $(FLAGF90) $(MOD) -c $^ -o $@
+	@printf "\n" 
 
 %.o : %.f
 	mpif77        $(FLAGF77)        -c $^ -o $@
+	@printf "\n" 
