@@ -25,7 +25,7 @@ use m_System
 
         logical,dimension(:,:,:),allocatable :: is_freeze_zone
 
-        real,dimension(:,:,:,:),allocatable :: gradient, pgradient, image
+        real,dimension(:,:,:,:),allocatable :: gradient, pgradient, image, energy
 
         contains
         procedure :: init

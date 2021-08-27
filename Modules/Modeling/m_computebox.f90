@@ -45,7 +45,7 @@ use m_shot
         real,dimension(:,:,:),allocatable :: eps,del,eta
         real,dimension(:,:,:),allocatable :: qp,qs
         
-        real,dimension(:,:,:,:),allocatable :: grad, imag, autocorr
+        real,dimension(:,:,:,:),allocatable :: grad, imag, engy
         
         contains
         procedure :: init
@@ -204,8 +204,7 @@ use m_shot
     end subroutine
     
     subroutine m2cb(big,small)
-        real,dimension(:,:,:),allocatable :: big
-        real,dimension(:,:,:),allocatable :: small
+        real,dimension(:,:,:),allocatable :: big, small
        
         if(.not.allocated(big)) return
 
@@ -234,19 +233,30 @@ use m_shot
 
     end subroutine
 
-    subroutine project_back(self,big,small,n)
+    subroutine project_back(self)
         class(t_computebox) :: self
-        real,dimension(m%nz,m%nx,m%ny,n) :: big
-        real,dimension(cb%mz,cb%mx,cb%my, n) :: small
-
-        big(self%ioz:self%ioz+self%mz-1,&
-            self%iox:self%iox+self%mx-1,&
-            self%ioy:self%ioy+self%my-1,:) = &
-        big(self%ioz:self%ioz+self%mz-1,&
-            self%iox:self%iox+self%mx-1,&
-            self%ioy:self%ioy+self%my-1,:) + small(:,:,:,:)
+        
+        call cb2m(m%gradient,cb%grad)
+        call cb2m(m%image   ,cb%imag)
+        call cb2m(m%energy  ,cb%engy)
 
         call final(self)
+
+    end subroutine
+
+    subroutine cb2m(big,small)
+        real,dimension(:,:,:,:),allocatable :: big, small
+
+        if(.not. allocated(small)) return
+
+        call alloc(big,m%nz,m%nx,m%ny,size(small,4),oif_protect=.true.)
+
+        big(cb%ioz:cb%ioz+cb%mz-1,&
+            cb%iox:cb%iox+cb%mx-1,&
+            cb%ioy:cb%ioy+cb%my-1,:) = &
+        big(cb%ioz:cb%ioz+cb%mz-1,&
+            cb%iox:cb%iox+cb%mx-1,&
+            cb%ioy:cb%ioy+cb%my-1,:) + small(:,:,:,:)
 
     end subroutine
     
@@ -256,7 +266,7 @@ use m_shot
         call dealloc(self%vp, self%vs, self%rho)
         call dealloc(self%eps,self%del,self%eta)
         call dealloc(self%qp,self%qs)
-        call dealloc(self%grad,self%imag,self%autocorr)
+        call dealloc(self%grad,self%imag,self%engy)
 
     end subroutine
 
@@ -280,6 +290,10 @@ use m_shot
                 call chp%open('computebox%grad')
                 call chp%read(self%grad)
                 call chp%close
+            case ('engy')
+                call chp%open('computebox%engy')
+                call chp%read(self%engy)
+                call chp%close
             end select
 
         enddo
@@ -300,6 +314,10 @@ use m_shot
             case ('grad')
                 call chp%open('computebox%grad')
                 call chp%write(self%grad)
+                call chp%close
+            case ('engy')
+                call chp%open('computebox%engy')
+                call chp%write(self%engy)
                 call chp%close
             end select
 

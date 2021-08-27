@@ -1,6 +1,6 @@
 mod_dir=../../mod/
-include ../../make.inc
-include ../../setup.inc
+include ../../compiler.inc
+include ../../modules.inc
 
 
 ifeq '$(APP)' 'RTM'
@@ -22,8 +22,12 @@ ifeq '$(APP)' 'RWI'
 	src += m_separator.f90
 endif
 
+
 all : $(src:.f90=.o)
+	@printf "\n"
 
 clean :
-	-rm $(src:.f90=.o) 
-	-rm $(src:%.f90=$(mod_dir)%.mod) $(mod_dir)m_parametrizer.mod $(mod_dir)m_nabla.mod $(mod_dir)m_kernel.mod
+	-rm $(src:.f90=.o)
+	@printf "\n"
+	-rm $(src:%.f90=$(mod_dir)%.mod) $(mod_dir)m_parametrizer.mod $(mod_dir)m_kernel.mod
+	@printf "\n"

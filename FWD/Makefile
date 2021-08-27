@@ -1,13 +1,20 @@
 mod_dir=../mod/
-include ../make.inc
-include ../setup.inc
+include ../compiler.inc
+include ../modules.inc
 
 
 obj = \
 ../Modules/System/*.o \
 ../Modules/Etc/*.o \
 ../Modules/Signal/*.o \
-../Modules/Modeling/*.o
+../Modules/Modeling/m_model.o \
+../Modules/Modeling/m_shotlist_$(ShotDec).o \
+../Modules/Modeling/m_shot.o \
+../Modules/Modeling/m_computebox.o \
+../Modules/Modeling/m_field.o \
+../Modules/Modeling/m_cpml_$(Solver).o \
+../Modules/Modeling/m_propagator_$(WaveEq)_$(Solver)_$(Order).o \
+../Modules/Modeling/m_Modeling.f90
 
 
 all : mod exe

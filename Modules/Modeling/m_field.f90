@@ -498,7 +498,7 @@ use, intrinsic :: ieee_arithmetic
             select case (list(i)%s)
             case ('seismo')
                 call chp%open(self%name//'%seismo')
-                if(allocated(self%seismo)) call chp%read(self%seismo)
+                call chp%read(self%seismo)
                 call chp%close
             case ('comp')
                 call chp%open(self%name//'%comp')

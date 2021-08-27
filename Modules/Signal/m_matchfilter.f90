@@ -12,26 +12,29 @@ use singleton
     
     contains
     
-    subroutine matchfilter_estimate(dsyn,dobs,nt_,ntr_,o_index,oif_stack)
+    subroutine matchfilter_estimate(dsyn,dobs,nt_,ntr_,o_index,oif_stack,o_filter_time)
         real,dimension(nt_,ntr_) :: dsyn,dobs
         integer,optional :: o_index
         logical,optional :: oif_stack
+        real,dimension(nt_),optional :: o_filter_time
         
         complex(fftkind),dimension(nt_,ntr_) :: dsynfft,dobsfft   !fftkind=double precision
-        complex(fftkind),dimension(nt_)     :: nom, denom
+        complex(fftkind),dimension(nt_)     :: numer, denom
 
         nt=nt_; ntr=ntr_
         
         dsynfft = fft(dcmplx(dsyn),dim=[1])  !maybe this array is so large that require "ulimit -s unlimited"
         dobsfft = fft(dcmplx(dobs),dim=[1])
         
-        nom  =sum(conjg(dsynfft)*dobsfft,2)
+        numer=sum(conjg(dsynfft)*dobsfft,2)
         denom=sum(conjg(dsynfft)*dsynfft,2)
 
         if(allocated(filter)) deallocate(filter)
         allocate(filter(nt))
         
-        filter = nom/(denom+r_eps)
+        ! filter = numer/(denom+r_eps)
+
+        filter = numer/(denom+1e-5*maxval(abs(denom)))
 
         if(present(o_index)) then
             call sysio_write('matchfilters_amp',real(abs (filter),kind=4),nt) !for purpose of quality control of results
@@ -41,6 +44,10 @@ use singleton
         if(either(oif_stack,.false.,present(oif_stack))) then
             call mpi_allreduce(MPI_IN_PLACE, filter, nt, MPI_DOUBLE_COMPLEX, MPI_SUM, mpiworld%communicator, mpiworld%ierr)
             filter =filter /mpiworld%nproc
+        endif
+
+        if(present(o_filter_time)) then
+            o_filter_time=real(fft(dcmplx(filter),dim=[1],inv=.true.),kind=4)
         endif
 
     end subroutine

@@ -31,6 +31,10 @@ use m_mpienv
     interface rm
         module procedure rm_int1
     end interface
+
+    interface rsign
+        module procedure rsign_real2
+    end interface
     
     contains
     
@@ -512,5 +516,22 @@ use m_mpienv
 
     ! function unify_int1
     ! end function
+
+
+    pure function rsign_real2(a) result(res)
+        real,dimension(:,:),intent(in) :: a
+        real,dimension(:,:),allocatable :: res
+        
+        allocate(res,source=a)
+
+        where (a>0.)
+            res=1.
+        elsewhere (a<0.)
+            res=-1.
+        elsewhere
+            res=0.
+        endwhere
+    end function
+
 
 end

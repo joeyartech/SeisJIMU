@@ -1,8 +1,8 @@
-compiler=gfortran
+Compiler=gfortran
 
 prepare :
-	mkdir mod exe
-	ln -sf make.inc_$(compiler) make.inc
+	-mkdir mod exe
+	ln -sf compiler.inc_$(Compiler) compiler.inc
 
 mod : system etc signal modeling kernel optimization
 
@@ -28,9 +28,11 @@ exe : fwd fwi
 
 fwd :
 	(cd FWD; make)
+	@printf "\n"
 
 fwi :
 	(cd FWI; make)
+	@printf "\n"
 
 clean :
 	-rm FWD/*.o FWI/*.o

@@ -1,6 +1,6 @@
 mod_dir=../../mod/
-include ../../make.inc
-include ../../setup.inc
+include ../../compiler.inc
+include ../../modules.inc
 
 
 src = \
@@ -13,7 +13,10 @@ m_smoother_laplacian_sparse.f90
 
 
 all : $(src:.f90=.o)
+	@printf "\n"
 
 clean :
-	-rm $(src:.f90=.o) 
+	-rm $(src:.f90=.o)
+	@printf "\n"
 	-rm $(src:%.f90=$(mod_dir)%.mod)
+	@printf "\n"

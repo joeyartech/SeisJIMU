@@ -85,7 +85,7 @@ use m_Kernel
         
         ! if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Initial alphaL/alpha/alphaR =',alphaL,alpha,alphaR
         call hud('Initial alpha = '//num2str(self%alpha))
-        call hud('Initial f, ||g|| = '//num2str(curr%f)//', '//num2str(norm2(curr%g)))
+        call hud('Current f, ||g|| = '//num2str(curr%f)//', '//num2str(norm2(curr%g)))
 
         !save gradients
         if(present(o_gradient_history)) then
@@ -223,7 +223,7 @@ use m_Kernel
     
     !scale the problem s.t. 
     !qp%g, qp%pg, to be negated as qp%d, have a similar scale(unit) as qp%x, 
-    !and alpha0 can be 1 (unitless).
+    !and alpha0 can be simply 1 (unitless).
     !update=alpha*qp%d=-alpha*qp%pg
     subroutine scale(self,qp)
         class(t_linesearcher) :: self

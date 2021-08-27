@@ -48,16 +48,13 @@ use m_Optimization
     !shotlist
     call shls%read_from_data
     call shls%build
-    call chp%init('FWI_shotlist_grad',oif_fuse=.true.)
-    if(.not.shls%is_registered(chp,'sampled_shots')) then
+    ! call chp%init('FWI_shotlist_grad',oif_fuse=.true.)
+    ! if(.not.shls%is_registered(chp,'sampled_shots')) then
         call shls%sample
-        call shls%register(chp,'sampled_shots')
-    endif
+        ! call shls%register(chp,'sampled_shots')
+    ! endif
     call shls%assign
 
-    !preconditioner for model gradient
-    call preco%init
-    
     !parametrizer
     call param%init
 
@@ -68,14 +65,16 @@ use m_Optimization
     call fobj%init
     call fobj%eval(qp0,oif_update_m=.false.)
 
-    call sysio_write('qp0%gradient',qp0%g,size(qp0%g))
-    call sysio_write('qp0%pgradient',qp0%pg,size(qp0%pg))
+    call sysio_write('qp0%g',qp0%g,size(qp0%g))
+    call sysio_write('qp0%pg',qp0%pg,size(qp0%pg))
 
     !linesearcher
     call ls%init
 
     !scale problem
     call ls%scale(qp0)
+
+    call hud('qp0%f, ||g|| = '//num2str(qp0%f)//', '//num2str(norm2(qp0%g)))
 
     !if just estimate the wavelet or compute the gradient then this is it.
     if(setup%get_str('JOB')=='gradient') then
@@ -153,9 +152,9 @@ use m_smoother_laplacian_sparse
         !objective function and adjoint source
         call fobj%compute_dnorms
 
-        if(either(oif_gradient,.true.,present(oif_gradient))) then
+        call fobj%print_dnorms
 
-            call alloc(m%gradient,m%nz,m%nx,m%ny,ppg%ngrad,oif_protect=.true.)
+        if(either(oif_gradient,.true.,present(oif_gradient))) then
 
             !adjoint source
             if(update_wavelet/='no') call shot%update_adjsource
@@ -165,12 +164,12 @@ use m_smoother_laplacian_sparse
             call rfield%ignite(ois_adjoint=.true.)
 
             !adjoint modeling
-            if(.not.cb%is_registered(chp,'grad')) then
+            if(.not.cb%is_registered(chp,'grad engy')) then
                 call ppg%adjoint(rfield,o_sf=sfield,oif_compute_grad=.true.)
-                call cb%register(chp,'grad')
+                call cb%register(chp,'grad engy')
             endif
 
-            call cb%project_back(m%gradient,cb%grad,ppg%ngrad)
+            call cb%project_back
 
         endif
 
@@ -185,6 +184,7 @@ use m_smoother_laplacian_sparse
     if(either(oif_gradient,.true.,present(oif_gradient))) then
         !collect global gradient
         call mpi_allreduce(mpi_in_place, m%gradient,  m%n*ppg%ngrad, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+        call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     endif
 
     call mpiworld%barrier

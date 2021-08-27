@@ -662,36 +662,37 @@ use m_model
         character(*) :: file
         real,dimension(shot%nt,shot%nrcv) :: data
         
-        character(:),allocatable :: format
+        character(:),allocatable,save :: format
         type(t_suformat) :: sudata
+        logical,save :: is_first_in=.true.
+        real,save :: scalel, scalco
 
-        format=setup%get_str('DATA_FORMAT',o_default='su')
+        if(is_first_in) format=setup%get_str('DATA_FORMAT',o_default='su')
 
         if(format=='su') then
 
             call sudata%init(self%nt,self%nrcv,o_dt=self%dt,o_data=data)
 
-            scalel=real(setup%get_int('SU_SCALEL',o_default='1')) !assume same scalel for all traces
-            scalco=real(setup%get_int('SU_SCALCO',o_default='1')) !assume same scalco for all traces
+            !assume all shots share same same scalel & scalco
+            !or given by user
+            if(is_first_in) then
+                scalel=setup%get_real('SU_SCALEL',o_default=num2str(find_proper_scalel()))
+                scalco=setup%get_real('SU_SCALCO',o_default=num2str(find_proper_scalco()))
+            endif
 
-            sudata%hdrs(:)%scalel=int(scalel)
-            sudata%hdrs(:)%scalco=int(scalco)
-
-            if(scalel<0. ) scalel=-1./scalel
-            if(scalel==0.) scalel=1.
-            if(scalco<0. ) scalco=-1./scalco
-            if(scalco==0.) scalco=1.
+            sudata%hdrs(:)%scalel=int(-scalel)
+            sudata%hdrs(:)%scalco=int(-scalco)
 
             do i=1,self%nrcv
                 sudata%hdrs(i)%tracl=i
 
-                sudata%hdrs(i)%sdepth= (self%src%z+m%oz)    /scalel 
-                sudata%hdrs(i)%gelev =-(self%rcv(i)%z+m%oz) /scalel
+                sudata%hdrs(i)%sdepth= (self%src%z+m%oz)    *scalel 
+                sudata%hdrs(i)%gelev =-(self%rcv(i)%z+m%oz) *scalel
 
-                sudata%hdrs(i)%sx=(self%src%x+m%ox)         /scalco
-                sudata%hdrs(i)%sy=(self%src%y+m%oy)         /scalco
-                sudata%hdrs(i)%gx=(self%rcv(i)%x+m%ox)      /scalco
-                sudata%hdrs(i)%gy=(self%rcv(i)%y+m%oy)      /scalco
+                sudata%hdrs(i)%sx=(self%src%x+m%ox)         *scalco
+                sudata%hdrs(i)%sy=(self%src%y+m%oy)         *scalco
+                sudata%hdrs(i)%gx=(self%rcv(i)%x+m%ox)      *scalco
+                sudata%hdrs(i)%gy=(self%rcv(i)%y+m%oy)      *scalco
 
                 select case (self%rcv(i)%comp)
                 case ('p') !pressure
@@ -717,7 +718,97 @@ use m_model
             
         endif
 
+        is_first_in=.false.
+
     end subroutine
+
+    function find_proper_scalel() result(scalel)
+
+        scalel=1
+        
+        do
+            test=(shot%src%z+m%oz)*scalel
+            if(floor(test) == ceiling(test)) exit
+            scalel=scalel*10.
+
+            if(scalel>1e7) then
+                call warn('scalel > 1e7! Will have to lose some precision in the SU header.')
+                return
+            endif
+        enddo
+
+        do i=1,shot%nrcv
+            do
+                test=(shot%rcv(i)%z+m%oz)*scalel
+                if(floor(test) == ceiling(test)) exit
+                scalel=scalel*10.
+
+                if(scalel>1e7) then
+                    call warn('scalel > 1e7! Will have to lose some precision in the SU header.')
+                    return
+                endif
+            enddo
+        enddo
+
+        call hud('Found proper SU scalel = '//num2str(scalel))
+
+    end function
+
+    function find_proper_scalco() result(scalco)
+
+        scalco=1
+        
+        do
+            test=(shot%src%x+m%ox)*scalco
+            if(floor(test) == ceiling(test)) exit
+            scalco=scalco*10.
+
+            if(scalco>1e7) then
+                call warn('scalco > 1e7! Will have to lose some precision in the SU header.')
+                return
+            endif
+        enddo
+
+        do
+            test=(shot%src%y+m%oy)*scalco
+            if(floor(test) == ceiling(test)) exit
+            scalco=scalco*10.
+
+            if(scalco>1e7) then
+                call warn('scalco > 1e7! Will have to lose some precision in the SU header.')
+                return
+            endif
+        enddo
+
+        do i=1,shot%nrcv
+            do
+                test=(shot%rcv(i)%x+m%ox)*scalco
+                if(floor(test) == ceiling(test)) exit
+                scalco=scalco*10.
+
+                if(scalco>1e7) then
+                    call warn('scalco > 1e7! Will have to lose some precision in the SU header.')
+                    return
+                endif
+            enddo
+        enddo
+
+        do i=1,shot%nrcv
+            do
+                test=(shot%rcv(i)%y+m%oy)*scalco
+                if(floor(test) == ceiling(test)) exit
+                scalco=scalco*10.
+
+                if(scalco>1e7) then
+                    call warn('scalco > 1e7! Will have to lose some precision in the SU header.')
+                    return
+                endif
+            enddo
+        enddo
+
+        call hud('Found proper SU scalco = '//num2str(scalco))
+
+    end function
 
     subroutine check_range(shot)
         type(t_shot) :: shot

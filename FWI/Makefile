@@ -1,15 +1,29 @@
 mod_dir=../mod/
-include ../make.inc
-include ../setup.inc
+include ../compiler.inc
+include ../modules.inc
 
 
 obj = \
 ../Modules/System/*.o \
 ../Modules/Etc/*.o \
 ../Modules/Signal/*.o \
-../Modules/Modeling/*.o \
-../Modules/Kernel/*.o \
-../Modules/Optimization/*.o
+../Modules/Modeling/m_model.o \
+../Modules/Modeling/m_shotlist_$(ShotDec).o \
+../Modules/Modeling/m_shot.o \
+../Modules/Modeling/m_computebox.o \
+../Modules/Modeling/m_field.o \
+../Modules/Modeling/m_cpml_$(Solver).o \
+../Modules/Modeling/m_propagator_$(WaveEq)_$(Solver)_$(Order).o \
+../Modules/Modeling/m_Modeling.f90 \
+../Modules/Kernel/m_parametrizer_$(Param).o \
+../Modules/Kernel/m_querypoint.o \
+../Modules/Kernel/m_weighter.o \
+../Modules/Kernel/m_preconditioner.o \
+../Modules/Kernel/m_fobjective.o \
+../Modules/Kernel/m_Kernel.o \
+../Modules/Optimization/m_linesearcher_$(LineS).o \
+../Modules/Optimization/m_optimizer_$(Optim).o \
+../Modules/Optimization/m_Optimization.o
 
 
 all : mod exe

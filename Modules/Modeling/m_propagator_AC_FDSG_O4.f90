@@ -29,11 +29,13 @@ use m_cpml
             'Required field components: vx, vy, vz, p'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
             'Basic gradients: grho gkpa'//s_NL// &
-            'Imaging condition: P-Pxcorr'
+            'Imaging conditions: P-Pxcorr'//s_NL// &
+            'Energy terms: Sum_shot int sfield%P^2 dt'
 
         integer :: nbndlayer=max(2,hicks_r) !minimum absorbing layer thickness
         integer :: ngrad=2 !number of basic gradients
         integer :: nimag=1 !number of basic images
+        integer :: nengy=1 !number of energy terms
 
         !shorthand for greek letters
         !alfa bta gma del(dta) eps
@@ -259,13 +261,13 @@ use m_cpml
 
         real,parameter :: time_dir=1. !time direction
 
-        ift=1; ilt=self%nt
-
-        tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.
-
         !seismo
         call alloc(f%seismo,shot%nrcv,self%nt)
+
+        tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.
         
+        ift=1; ilt=self%nt
+
         do it=ift,ilt
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
@@ -543,15 +545,17 @@ use m_cpml
 
         real,parameter :: time_dir=-1. !time direction
 
-        logical :: if_record_adjseismo, if_compute_imag, if_compute_grad
+        logical :: if_record_adjseismo, if_compute_imag, if_compute_grad, if_compute_engy
 
         if_record_adjseismo=either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
         if_compute_imag    =either(oif_compute_imag,    .false.,present(oif_compute_imag))    .and.present(o_sf)
         if_compute_grad    =either(oif_compute_grad,    .false.,present(oif_compute_grad))    .and.present(o_sf)
+        if_compute_engy    =if_compute_imag.or.if_compute_grad
         
         if(if_record_adjseismo) call alloc(rf%seismo,1,self%nt)
         if(if_compute_imag)     call alloc(cb%imag,cb%mz,cb%mx,cb%my,self%nimag)
         if(if_compute_grad)     call alloc(cb%grad,cb%mz,cb%mx,cb%my,self%ngrad)
+        if(if_compute_engy)     call alloc(cb%engy,cb%mz,cb%mx,cb%my,self%nengy)
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
         if(present(o_sf)) then
@@ -583,6 +587,7 @@ use m_cpml
             !step# conforms with forward time stepping
 
             if(present(o_sf)) then
+
                 !backward step 6: retrieve v^it+1 at boundary layers (BC)
                 call cpu_time(tic)
                 call o_sf%boundary_transport('load',it)
@@ -632,6 +637,14 @@ use m_cpml
                 tt6=tt6+toc-tic
             endif
 
+            !energy term of sfield
+            if(if_compute_engy.and.mod(it,irdt)==0) then
+                call cpu_time(tic)
+                call energy(o_sf,it,cb%engy)
+                call cpu_time(toc)
+                tt6=tt6+toc-tic
+            endif
+                
             !========================================================!
 
             if(present(o_sf)) then
@@ -676,7 +689,7 @@ use m_cpml
                 call cpu_time(tic)
                 call gradient_density(o_sf,rf,it,cb%grad(:,:,:,1))
                 call cpu_time(toc)
-                tt2=tt12+toc-tic
+                tt6=tt6+toc-tic
             endif
             
             !snapshot
@@ -688,6 +701,9 @@ use m_cpml
             if(if_compute_grad) then
                 call rf%write_ext(it,'grad_density',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
                 call rf%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+            endif
+            if(if_compute_engy) then
+                call rf%write_ext(it,'engy',cb%engy(:,:,:,1),size(cb%engy(:,:,:,1)))
             endif
 
         enddo
@@ -707,7 +723,7 @@ use m_cpml
             write(*,*) 'Elapsed time to add adjsource velocities ',tt9/mpiworld%max_threads
             write(*,*) 'Elapsed time to update adj velocities    ',tt10/mpiworld%max_threads
             write(*,*) 'Elapsed time to extract&write fields     ',tt11/mpiworld%max_threads
-            write(*,*) 'Elapsed time to correlation              ',(tt6+tt12)/mpiworld%max_threads
+            write(*,*) 'Elapsed time to correlate                ',tt6/mpiworld%max_threads
 
         endif
 
@@ -969,6 +985,30 @@ use m_cpml
         else
             call imag2d_xcorr(sf%p,rf%p,&
                               imag,            &
+                              ifz,ilz,ifx,ilx)
+        endif
+
+    end subroutine
+
+    subroutine energy(sf,it,engy)
+        type(t_field),intent(in) :: sf
+        real,dimension(cb%mz,cb%mx,cb%my) :: engy
+        
+        !nonzero only when sf touches rf
+        ifz=max(sf%bloom(1,it),2)
+        ilz=min(sf%bloom(2,it),cb%mz-2)
+        ifx=max(sf%bloom(3,it),2)
+        ilx=min(sf%bloom(4,it),cb%mx-2)
+        ify=max(sf%bloom(5,it),2)
+        ily=min(sf%bloom(6,it),cb%my-2)
+        
+        if(m%is_cubic) then
+            call engy3d_xcorr(sf%p,&
+                              engy,                  &
+                              ifz,ilz,ifx,ilx,ify,ily)
+        else
+            call engy2d_xcorr(sf%p,&
+                              engy,            &
                               ifz,ilz,ifx,ilx)
         endif
 
@@ -1585,6 +1625,77 @@ use m_cpml
                 rp = rf_p(i)
                 
                 imag(j)=imag(j) + sp*rp
+                
+            end do
+            
+        end do
+        !$omp end do
+        !$omp end parallel
+
+    end subroutine
+
+    subroutine engy3d_xcorr(sf_p,          &
+                            engy,          &
+                            ifz,ilz,ifx,ilx,ify,ily)
+        real,dimension(*) :: sf_p
+        real,dimension(*) :: engy
+        
+        nz=cb%nz
+        nx=cb%nx
+        
+        sp=0.
+        
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,iy,i,j,&
+        !$omp         sp)
+        !$omp do schedule(dynamic) collapse(2)
+        do iy=ify,ily
+        do ix=ifx,ilx
+        
+            !dir$ simd
+            do iz=ifz,ilz
+                
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !grad has no boundary layers
+                
+                sp = sf_p(i)
+                
+                engy(j)=engy(j) + sp*sp
+                
+            end do
+            
+        end do
+        end do
+        !$omp end do
+        !$omp end parallel
+
+    end subroutine
+
+    subroutine engy2d_xcorr(sf_p,          &
+                            engy,          &
+                            ifz,ilz,ifx,ilx)
+        real,dimension(*) :: sf_p
+        real,dimension(*) :: engy
+        
+        nz=cb%nz
+        
+        sp=0.
+        
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,j,&
+        !$omp         sp)
+        !$omp do schedule(dynamic)
+        do ix=ifx,ilx
+        
+            !dir$ simd
+            do iz=ifz,ilz
+                
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                
+                sp = sf_p(i)
+                
+                engy(j)=engy(j) + sp*sp
                 
             end do
             

@@ -53,7 +53,7 @@ module m_either
             allocate(res,source=r2)
         endif
     end function
-
+    
     pure function either2_str(s1,s2,switch) result(res)
         character(*),intent(in) :: s1,s2
         logical,intent(in) :: switch

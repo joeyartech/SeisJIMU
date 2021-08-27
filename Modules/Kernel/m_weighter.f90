@@ -293,12 +293,12 @@ use m_Modeling
                     
                     k=it-itime_start-1
 
-                    wei%weight(it,itr) = wei%weight(it,itr)* ( gain_old*(ntaper-k) + gain*k ) / ntaper
+                    weight(it,itr) = weight(it,itr)* ( gain_old*(ntaper-k) + gain*k ) / ntaper
                 end do               
 
                 !apply constant gain from itime+1 to nt
                 it = min(max(itime+1,1),wei%nt)
-                wei%weight(it:wei%nt,itr) = wei%weight(it:wei%nt,itr)* gain
+                weight(it:wei%nt,itr) = weight(it:wei%nt,itr)* gain
                 
             end do
             
@@ -452,7 +452,7 @@ use m_Modeling
                 endif
 
                 
-                wei%weight(it,itr) = wei%weight(it,itr) * ( &
+                weight(it,itr) = weight(it,itr) * ( &
                       ( table(jt1,jx1)*dt2 + table(jt2,jx1)*dt1 ) *dx2  &
                     + ( table(jt1,jx2)*dt2 + table(jt2,jx2)*dt1 ) *dx1  )
 
@@ -478,7 +478,7 @@ use m_Modeling
 
         call sysio_read(file,tmp,size(tmp))
 
-        wei%weight=wei%weight*tmp
+        weight=weight*tmp
 
         deallocate(tmp)
 

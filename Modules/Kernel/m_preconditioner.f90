@@ -5,16 +5,12 @@ use m_parametrizer
 
     private
 
-    logical :: if_will_update=.false.
-    real :: depth
-
     type,public :: t_preconditioner
 
         real,dimension(:,:,:),allocatable :: preco
 
         contains
 
-        procedure :: init
         procedure :: update
         procedure :: apply
 
@@ -24,7 +20,7 @@ use m_parametrizer
     
     contains
     
-    subroutine init(self)
+    subroutine update(self)
         class(t_preconditioner) :: self
 
         type(t_string),dimension(:),allocatable :: list, sublist
@@ -48,12 +44,15 @@ use m_parametrizer
             endif
             
             select case (list(i)%s)
-            case ('sfield')
-                sublist=split(list(i)%s,o_sep='/')
-                call hud('Will precondition the gradient by autocorrelation of sfield')
-                if_will_update=.true.
-                depth=str2real(sublist(2)%s)
-                call by_sfield(self%preco)
+            case ('1/energy')
+                sublist=split(list(i)%s,o_sep=':')
+                iengy=either(str2int(sublist(2)%s),1,len(sublist(2)%s)>0)
+                call hud('Will precondition the gradient by '//num2str(iengy)//"'th energy term")
+                if((iengy) > size(m%energy,4)) then
+                    call warn('The chosen energy term does NOT exist! Use instead the 1st term provided from propagator.')
+                    iengy=1
+                endif
+                call by_energy(self%preco,iengy)
 
             case ('custom')
                 sublist=split(list(i)%s,o_sep=':')
@@ -70,11 +69,6 @@ use m_parametrizer
 
         enddo
 
-    end subroutine
-
-    subroutine update(self)
-        class(t_preconditioner) :: self
-        call by_sfield(self%preco)
     end subroutine
 
     subroutine by_depth(preco,o_power,o_factor)
@@ -97,28 +91,11 @@ use m_parametrizer
         
     end subroutine
 
-    subroutine by_custom(preco,file)
+    subroutine by_energy(preco,iengy)
         real,dimension(m%nz,m%nx,m%ny) :: preco
-        character(*) :: file
 
-        integer :: file_size
-        real,dimension(:,:,:),allocatable :: tmp
 
-        inquire(file=file,size=file_size)
-        if(file_size < 4*m%n) call warn('FILE_PRECONDITION_CUSTOM has size '//num2str(file_size/4)//' < nz*nx*ny. Some where of the gradient will not be preconditioned.')
-        
-        call alloc(tmp,m%nz,m%nx,m%ny,o_init=1.)
-
-        call sysio_read(file,tmp,size(tmp))
-
-        preco=preco*tmp
-
-        deallocate(tmp)
-
-    end subroutine
-
-    subroutine by_sfield(preco)
-        real,dimension(m%nz,m%nx,m%ny) :: preco
+        preco=1./m%energy(:,:,:,iengy)
 
         ! !convert gradient wrt model to gradient wrt parameters
         ! call param%transform_gradient('m->x',fobj%gradient)
@@ -146,6 +123,26 @@ use m_parametrizer
         ! endwhere
 
     end subroutine
+
+    subroutine by_custom(preco,file)
+        real,dimension(m%nz,m%nx,m%ny) :: preco
+        character(*) :: file
+
+        integer :: file_size
+        real,dimension(:,:,:),allocatable :: tmp
+
+        inquire(file=file,size=file_size)
+        if(file_size < 4*m%n) call warn('FILE_PRECONDITION_CUSTOM has size '//num2str(file_size/4)//' < nz*nx*ny. Some where of the gradient will not be preconditioned.')
+        
+        call alloc(tmp,m%nz,m%nx,m%ny,o_init=1.)
+
+        call sysio_read(file,tmp,size(tmp))
+
+        preco=preco*tmp
+
+        deallocate(tmp)
+
+    end subroutine
     
     subroutine apply(self,g,pg)
         class(t_preconditioner) :: self
@@ -164,7 +161,7 @@ use m_parametrizer
         !    pg(:,:,:,i) = pg(:,:,:,i) * old_norm / norm2(pg(:,:,:,i))
         ! enddo
 
-        !precond whole grediant
+        !precond whole grediant to keep the gradient norm
         old_norm = norm2(g)
         do i=1,ppg%ngrad
             pg(:,:,:,i)=g(:,:,:,i)*self%preco(:,:,:)

@@ -1,6 +1,6 @@
 mod_dir=../../mod/
-include ../../make.inc
-include ../../setup.inc
+include ../../compiler.inc
+include ../../modules.inc
 
 
 src = \
@@ -15,8 +15,12 @@ m_checkpoint.f90 \
 m_suformat.f90 \
 m_System.f90
 
+
 all : $(src:.f90=.o)
+	@printf "\n"
 
 clean :
-	-rm $(src:.f90=.o) 
+	-rm $(src:.f90=.o)
+	@printf "\n"
 	-rm $(src:%.f90=$(mod_dir)%.mod) $(mod_dir)m_system.mod
+	@printf "\n"

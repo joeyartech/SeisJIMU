@@ -1,6 +1,7 @@
 module m_fobjective
 use m_System
 use m_Modeling
+use m_matchfilter
 use m_smoother_laplacian_sparse
 use m_parametrizer
 use m_querypoint
@@ -51,12 +52,18 @@ use m_preconditioner
         call alloc(self%dnorms,self%n_dnorms)
 
         do i=1,self%n_dnorms
+            self%i_dnorm_4adjsource=1 !default
+
             if(self%s_dnorms(i)%s(1:2)=='=>') then
                 self%i_dnorm_4adjsource=i
-                self%s_dnorms(i)%s(1:2)='  '; self%s_dnorms(i)%s=lalign(self%s_dnorms(i)%s) !remove the indicator '=>'
+                !remove the indicator '=>'
+                self%s_dnorms(i)%s(1:2)='  '; self%s_dnorms(i)%s=lalign(self%s_dnorms(i)%s)
                 exit
             endif
+
         enddo
+
+        call hud(self%s_dnorms(self%i_dnorm_4adjsource)%s//' will be used for the adjoint source.')
 
         !parameter norms
         self%s_xnorms=setup%get_strs('PARAMETER_NORMS','XNORMS',o_default='none')
@@ -83,6 +90,10 @@ use m_preconditioner
     
     subroutine compute_dnorms(self)
         class(t_fobjective) :: self
+
+        logical,save :: is_first_in=.true.
+        real,save :: ref_p,ref_v
+        real :: numer, denom, time(shot%nt), w(shot%nt)
         
         call alloc(Wdres,shot%nt,shot%nrcv)
         
@@ -121,16 +132,104 @@ use m_preconditioner
 
                     enddo
 
-                    call shot%write('dadj_',shot%dadj)
-
                 endif
                 
             case ('L1')
-                !call Lp(dres,shot,wei,1)
+
+                Wdres = (shot%dsyn-shot%dobs)*wei%weight
+
+                if(mpiworld%is_master) call shot%write('Wdres_',Wdres)
+
+                if(is_first_in) then
+                    ref_p = 1.
+                    ref_v = 1.
+                    do ir=1,shot%nrcv
+                        if(shot%rcv(ir)%is_badtrace) cycle
+                        if(shot%rcv(ir)%comp=='p') then !for pressure data
+                            tmp=maxval(abs(Wdres(:,ir)))
+                            ref_p=either(ref_p,tmp,ref_p>tmp)
+                        else !for velocities data
+                            tmp=maxval(abs(Wdres(:,ir)))
+                            ref_v=either(ref_v,tmp,ref_v>tmp)
+                        endif
+                    enddo
+                endif
+                    
+                do ir=1,shot%nrcv
+                    if(shot%rcv(ir)%is_badtrace) cycle
+
+                    !set unit of dnorm to be [Nm], same as Lagrangian
+                    !this also help balance contributions from different component data
+                    if(shot%rcv(ir)%comp=='p') then !for pressure data
+                        self%dnorms(i) = self%dnorms(i) + 0.5*m%cell_volume*sum(abs(Wdres(:,ir))) *ref_p/m%ref_kpa
+                    else !for velocities data
+                        self%dnorms(i) = self%dnorms(i) + 0.5*m%cell_volume*sum(abs(Wdres(:,ir))) *ref_v*m%ref_rho
+                    endif
+
+                enddo
+
+                !compute adjoint source and set proper units
+                if(i==self%i_dnorm_4adjsource) then
+                    shot%dadj = -wei%weight*rsign(Wdres)*m%cell_volume/shot%dt
+
+                    do ir=1,shot%nrcv
+                        if(shot%rcv(ir)%comp=='p') then !for pressure data
+                            shot%dadj(:,ir) = shot%dadj(:,ir) *ref_p/m%ref_kpa
+                        else !for velocities data
+                            shot%dadj(:,ir) = shot%dadj(:,ir) *ref_v*m%ref_rho
+                        endif
+
+                    enddo
+
+                endif
+
+            ! case ('ndecon') !aka AWI
+
+                ! numer=0.
+                ! denom=0.
+                ! time=[(it-1.,it=1,shot%nt)]*shot%nt !why *shot%nt ?
+
+                ! do ir=1,shot%nrcv
+                !     call matchfilter_estimate(shot%dsyn(:,ir),shot%dobs(:,ir),shot%nt,1,o_filter_time=w)
+                !     numer=numer+sum(time*w) 
+                !     denom=denom+sum(w*w)
+                ! enddo
+
+                ! self%dnorms(ir) = 0.5*numer/denom
+
+                ! if(i==self%i_dnorm_4adjsource) then
+
+                !     do ir=1,shot%nrcv
+
+                !         ffttmp[it] = -(time*time - 2.*self%dnorms(i))/denom*w
+                        
+
+                !         fftw_execute(fft);
+                !         memcpy(&ft_dcal[ntpow2*irec], ffttmp, ntpow2*sizeof(fftw_complex));
+                !         maxval = 0;
+
+                !         for(it=0; it<ntpow2; it++){
+                !         num[it] = ft_dcal[it+ntpow2*irec]*ft_dobs[it+ntpow2*irec];
+                !         den[it] = conj(ft_dobs[it+ntpow2*irec])*ft_dobs[it+ntpow2*irec];
+                !         if(maxval<fabs(den[it])) maxval = fabs(den[it]);
+                !         }
+
+                !         eps=1.e-5*maxval(abs(den))
+
+                !         for(it=0; it<ntpow2; it++) ffttmp[it]=num[it]/(den[it]+eps);//freq domain Wiener filter
+
+                !         Wdres(:,ir) = real(ffttmp(:))
+                !     enddo
+
+                ! endif
 
             end select
 
         enddo
+
+        call shot%write('dadj_',shot%dadj)
+
+        is_first_in=.false.
 
     end subroutine
 
@@ -210,10 +309,20 @@ use m_preconditioner
 
     subroutine print_dnorms(self)
         class(t_fobjective) :: self
+
+        if(mpiworld%is_master) then
+            write(*,*) 'fobj dnorms values:', (' ',self%s_dnorms(i)%s,' ',self%dnorms(i),i=1,self%n_dnorms)
+        endif
+
     end subroutine
 
     subroutine print_xnorms(self)
         class(t_fobjective) :: self
+
+        if(mpiworld%is_master) then
+            write(*,*) 'fobj xnorms values:', (' ',self%s_xnorms(i)%s,' ',self%xnorms(i),i=1,self%n_xnorms)
+        endif
+
     end subroutine
 
     subroutine eval(self,qp,oif_update_m,oif_approx,oif_gradient)
@@ -287,7 +396,7 @@ use m_preconditioner
         !call param%transform_model('m->x',sfield%autocorr)
 
         !save some RAM
-        call dealloc(m%gradient,m%pgradient)
+        call dealloc(m%energy,m%gradient,m%pgradient)
 
         ! !Tikhonov regularization
         ! if(either(oif_approx,.false.,present(oif_approx))) then

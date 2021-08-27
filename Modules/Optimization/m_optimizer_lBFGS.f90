@@ -86,7 +86,7 @@ use m_linesearcher
     subroutine optimizer_loop
         type(t_checkpoint),save :: chp
         type(t_querypoint),pointer :: tmp
-        real nom, denom
+        ! real nom, denom
 
         integer m !declaration here can avoid conflict with m in m_model.f90
         real,dimension(:),allocatable :: q, alpha, rho, r             
@@ -100,14 +100,14 @@ use m_linesearcher
         loop: do iterate=1,max_iterate
             call chp%count
 
-            if(.not.shls%is_registered(chp,'sampled_shots')) then
+            ! if(.not.shls%is_registered(chp,'sampled_shots')) then
                 call shls%sample
-                call shls%register(chp,'sampled_shots')
-            endif
+                ! call shls%register(chp,'sampled_shots')
+            ! endif
             call shls%assign
 
             if (maxval(abs(curr%d)) < min_descent) then
-                call hud('Maximum descent is met')
+                call hud('Minimum descent is met')
                 call optimizer_write('criteria')
                 exit loop
             endif
@@ -243,8 +243,8 @@ use m_linesearcher
                 
                 call param%transform('x->m',o_x=curr%x)
                 call m%write(o_suffix='_Iter'//int2str(iterate))
-
                 call sysio_write('pg_Iter'//int2str(iterate),curr%pg,size(curr%pg))
+                call shot%write('dsyn_Iter'//int2str(iterate)//'_',shot%dsyn)
 
             case('maximum')
                 open(16,file=dir_out//'iterate.log',position='append',action='write')
@@ -277,6 +277,7 @@ use m_linesearcher
                 call param%transform('x->m',o_x=pert%x)
                 call m%write(o_suffix='_Iter'//int2str(iterate))
                 call sysio_write('pg_Iter'//int2str(iterate),curr%pg,size(curr%pg))
+                call shot%write('dsyn_Iter'//int2str(iterate)//'_',shot%dsyn)
 
                 write(*,'(a,i0.4)') 'ximage < model_final n1=',m%nz
                 write(*,'(a,i0.4,a,i0.4)') 'xmovie < model_update loop=1 title=%g n1=',m%nz,' n2=',m%nx
