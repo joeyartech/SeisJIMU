@@ -93,19 +93,16 @@ use m_preconditioner
 
         logical,save :: is_first_in=.true.
         real,save :: ref_p,ref_v
-        real :: numer, denom, time(shot%nt), w(shot%nt)
+        real :: numer, denom, time(shot%nt), v(shot%nt)
         
         call alloc(Wdres,shot%nt,shot%nrcv)
-        
-        self%dnorms=0.
+        Wdres = (shot%dsyn-shot%dobs)*wei%weight       
+        if(mpiworld%is_master) call shot%write('Wdres_',Wdres)
 
+        self%dnorms=0.
         do i=1,self%n_dnorms
             select case (self%s_dnorms(i)%s)
             case ('L2')
-                Wdres = (shot%dsyn-shot%dobs)*wei%weight
-
-                if(mpiworld%is_master) call shot%write('Wdres_',Wdres)
-
                 do ir=1,shot%nrcv
                     if(shot%rcv(ir)%is_badtrace) cycle
 
@@ -122,7 +119,6 @@ use m_preconditioner
                 !compute adjoint source and set proper units
                 if(i==self%i_dnorm_4adjsource) then
                     shot%dadj = -wei%weight*Wdres*m%cell_volume/shot%dt
-
                     do ir=1,shot%nrcv
                         if(shot%rcv(ir)%comp=='p') then !for pressure data
                             shot%dadj(:,ir) = shot%dadj(:,ir) /m%ref_kpa
@@ -136,13 +132,9 @@ use m_preconditioner
                 
             case ('L1')
 
-                Wdres = (shot%dsyn-shot%dobs)*wei%weight
-
-                if(mpiworld%is_master) call shot%write('Wdres_',Wdres)
-
                 if(is_first_in) then
-                    ref_p = 1.
-                    ref_v = 1.
+                    ref_p = 0.
+                    ref_v = 0.
                     do ir=1,shot%nrcv
                         if(shot%rcv(ir)%is_badtrace) cycle
                         if(shot%rcv(ir)%comp=='p') then !for pressure data
@@ -154,7 +146,7 @@ use m_preconditioner
                         endif
                     enddo
                 endif
-                    
+
                 do ir=1,shot%nrcv
                     if(shot%rcv(ir)%is_badtrace) cycle
 
@@ -171,7 +163,6 @@ use m_preconditioner
                 !compute adjoint source and set proper units
                 if(i==self%i_dnorm_4adjsource) then
                     shot%dadj = -wei%weight*rsign(Wdres)*m%cell_volume/shot%dt
-
                     do ir=1,shot%nrcv
                         if(shot%rcv(ir)%comp=='p') then !for pressure data
                             shot%dadj(:,ir) = shot%dadj(:,ir) *ref_p/m%ref_kpa
@@ -183,45 +174,40 @@ use m_preconditioner
 
                 endif
 
-            ! case ('ndecon') !aka AWI
+            case ('ndecon') !aka Reverse AWI
 
-                ! numer=0.
-                ! denom=0.
-                ! time=[(it-1.,it=1,shot%nt)]*shot%nt !why *shot%nt ?
-
-                ! do ir=1,shot%nrcv
-                !     call matchfilter_estimate(shot%dsyn(:,ir),shot%dobs(:,ir),shot%nt,1,o_filter_time=w)
-                !     numer=numer+sum(time*w) 
-                !     denom=denom+sum(w*w)
-                ! enddo
-
-                ! self%dnorms(ir) = 0.5*numer/denom
-
-                ! if(i==self%i_dnorm_4adjsource) then
-
+                ! if(is_first_in) then
+                !     ref_p = 0.
                 !     do ir=1,shot%nrcv
-
-                !         ffttmp[it] = -(time*time - 2.*self%dnorms(i))/denom*w
-                        
-
-                !         fftw_execute(fft);
-                !         memcpy(&ft_dcal[ntpow2*irec], ffttmp, ntpow2*sizeof(fftw_complex));
-                !         maxval = 0;
-
-                !         for(it=0; it<ntpow2; it++){
-                !         num[it] = ft_dcal[it+ntpow2*irec]*ft_dobs[it+ntpow2*irec];
-                !         den[it] = conj(ft_dobs[it+ntpow2*irec])*ft_dobs[it+ntpow2*irec];
-                !         if(maxval<fabs(den[it])) maxval = fabs(den[it]);
-                !         }
-
-                !         eps=1.e-5*maxval(abs(den))
-
-                !         for(it=0; it<ntpow2; it++) ffttmp[it]=num[it]/(den[it]+eps);//freq domain Wiener filter
-
-                !         Wdres(:,ir) = real(ffttmp(:))
+                !         if(shot%rcv(ir)%is_badtrace) cycle
+                !         if(shot%rcv(ir)%comp=='p') then !for pressure data
+                !             tmp=maxval(abs(Wdres(:,ir)))
+                !             ref_p=either(ref_p,tmp,ref_p>tmp)
+                !         endif
                 !     enddo
-
                 ! endif
+
+                numer=0.
+                denom=0.
+                time=[(it-1.,it=1,shot%nt)]*shot%dt !why shot%nt?
+
+                do ir=1,shot%nrcv
+                    if(shot%rcv(ir)%is_badtrace) cycle
+                    if(shot%rcv(ir)%comp=='p') then
+                        call matchfilter_estimate(shot%dobs(:,ir),shot%dsyn(:,ir),shot%nt,1,o_filter_time=v)
+                        numer=numer+norm2(time*v) 
+                        denom=denom+norm2(v*v)
+
+                        self%dnorms(i) = self%dnorms(i) + 0.5*numer/denom !/shot%dt*m%cell_volume*ref_p*ref_p/m%ref_kpa
+                    
+                        if(i==self%i_dnorm_4adjsource) then
+                            call matchfilter_adjointsrc(shot%dobs(:,ir),shot%dadj(:,ir), &
+                                -(time*time-2.*self%dnorms(i))/denom*v)
+
+                        endif
+                
+                    endif
+                enddo               
 
             end select
 
@@ -307,11 +293,12 @@ use m_preconditioner
 
     end subroutine
 
-    subroutine print_dnorms(self)
+    subroutine print_dnorms(self,prefix,suffix)
         class(t_fobjective) :: self
+        character(*) :: prefix,suffix
 
         if(mpiworld%is_master) then
-            write(*,*) 'fobj dnorms values:', (' ',self%s_dnorms(i)%s,' ',self%dnorms(i),i=1,self%n_dnorms)
+            write(*,*) prefix//' fobj%dnorms '//suffix//': ', (' ',self%s_dnorms(i)%s,' ',self%dnorms(i),i=1,self%n_dnorms)
         endif
 
     end subroutine
@@ -320,7 +307,7 @@ use m_preconditioner
         class(t_fobjective) :: self
 
         if(mpiworld%is_master) then
-            write(*,*) 'fobj xnorms values:', (' ',self%s_xnorms(i)%s,' ',self%xnorms(i),i=1,self%n_xnorms)
+            write(*,*) 'fobj%xnorms:', (' ',self%s_xnorms(i)%s,' ',self%xnorms(i),i=1,self%n_xnorms)
         endif
 
     end subroutine

@@ -44,6 +44,9 @@ use m_System
     subroutine estim_RAM(self)
         class(t_model) :: self
 
+        call hud('stack size:')
+        if(mpiworld%is_master) call execute_command_line('ulimit -s', wait=.true.)
+
     end subroutine
 
     subroutine init(self)

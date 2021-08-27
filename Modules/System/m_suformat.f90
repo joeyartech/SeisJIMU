@@ -471,9 +471,9 @@ use m_sysio
         endif
 
         write(12) (self%hdrs(i),self%trs(:,i), i=1,self%ntr)
-        
-        close(12)
 
+        close(12)
+        
         call hud('SU data write success.')
 
     end subroutine

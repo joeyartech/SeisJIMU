@@ -186,7 +186,7 @@ use m_linesearcher
                 write(16,'(a,es8.2)') '     Initial fobjective (f0)        =',  f0
                 write(16,'(a,es8.2)') '     Initial gradient norm (||g0||) =',  g0norm
                 write(16,'(a)'      ) ' **********************************************************************'
-                write(16,'(a)'      ) '  Iter#      f         f/f0    ||g||/||g0||    alpha     nls  Modeling#'
+                write(16,'(a)'      ) '  Iter#      f         f/f0    ||g||/||g0||    alpha     nls  Gradient#'
                                !e.g.  !    0    1.00E+00    1.00E+00    1.00E+00    1.00E+00      0       1
                 write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, curr%f, curr%f/f0, norm2(curr%g)/g0norm, ls%alpha, ls%isearch, ls%igradient
                 close(16)

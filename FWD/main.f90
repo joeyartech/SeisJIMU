@@ -2,8 +2,6 @@ program main
 use m_System
 use m_Modeling
 
-    type(t_checkpoint) :: chp
-
     type(t_field) :: field
 
     !character(:),allocatable :: job  
@@ -53,9 +51,7 @@ use m_Modeling
 
     call hud('===== START LOOP OVER SHOTS =====')
 
-    call chp%init('FWD_shotloop','Shot#','given')
     do i=1,shls%nshots_per_processor
-        call chp%count(shls%yield(i))
 
         call shot%init(shls%yield(i))
         call shot%read_from_setup
@@ -69,16 +65,13 @@ use m_Modeling
 
         call ppg%check_discretization
         call ppg%init
-        call ppg%init_field(field,name='field',origin='src',oif_will_reconstruct=.true.)
+        call ppg%init_field(field,name='field',origin='src')
         call ppg%init_abslayer
 
         call field%ignite
 
         !forward modeling
-        if(.not.field%is_registered(chp,'seismo')) then
-            call ppg%forward(field)
-            call field%register(chp,'seismo')
-        endif
+        call ppg%forward(field,1,shls%yield(i))
 
         call field%acquire
 

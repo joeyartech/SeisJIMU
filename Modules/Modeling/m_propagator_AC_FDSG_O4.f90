@@ -37,6 +37,8 @@ use m_cpml
         integer :: nimag=1 !number of basic images
         integer :: nengy=1 !number of energy terms
 
+        logical :: if_compute_engy=.false.
+
         !shorthand for greek letters
         !alfa bta gma del(dta) eps
         !zta eta thta iota 
@@ -255,81 +257,93 @@ use m_cpml
     ! vx(iz,ix,iy):=  vx[iz,ix-0.5,iy]^it,it+1,...
     ! vy(iz,ix,iy):=  vy[iz,ix,iy-0.5]^it,it+1,...
 
-    subroutine forward(self,f)
+    subroutine forward(self,f,igradient,ishot)
         class(t_propagator) :: self
         type(t_field) :: f
 
         real,parameter :: time_dir=1. !time direction
 
+        type(t_checkpoint),save :: chp
+        call chp%init('ppg%forward','Gradient# Shot#','given given')
+        call chp%assign('Gradient#',igradient)
+        call chp%assign('Shot#',ishot)
+
         !seismo
         call alloc(f%seismo,shot%nrcv,self%nt)
 
-        tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.
-        
-        ift=1; ilt=self%nt
+        if(.not.f%is_registered(chp,'seismo comp boundary')) then
+            
+            tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.
+            
+            ift=1; ilt=self%nt
 
-        do it=ift,ilt
-            if(mod(it,500)==0 .and. mpiworld%is_master) then
-                write(*,*) 'it----',it
-                call f%check_value
-            endif
+            do it=ift,ilt
+                if(mod(it,500)==0 .and. mpiworld%is_master) then
+                    write(*,*) 'it----',it
+                    call f%check_value
+                endif
 
-            !do forward time stepping (step# conforms with backward & adjoint time stepping)
-            !step 1: add forces to v^it
-            call cpu_time(tic)
-            call self%inject_velocities(f,time_dir,it)
-            call cpu_time(toc)
-            tt1=tt1+toc-tic
-
-            !step 2: from v^it to v^it+1 by differences of s^it+0.5
-            call cpu_time(tic)
-            call self%update_velocities(f,time_dir,it)
-            call cpu_time(toc)
-            tt2=tt2+toc-tic
-
-            !step 3: add pressure to s^it+0.5
-            call cpu_time(tic)
-            call self%inject_stresses(f,time_dir,it)
-            call cpu_time(toc)
-            tt3=tt3+toc-tic
-
-            !step 4: from s^it+0.5 to s^it+1.5 by differences of v^it+1
-            call cpu_time(tic)
-            call self%update_stresses(f,time_dir,it)
-            call cpu_time(toc)
-            tt4=tt4+toc-tic
-
-            !step 5: sample v^it+1 or s^it+1.5 at receivers
-            call cpu_time(tic)
-            call self%extract(f,it)
-            call cpu_time(toc)
-            tt5=tt5+toc-tic
-
-            !snapshot
-            call f%write(it)
-
-            !step 6: save v^it+1 in boundary layers
-            if(f%if_will_reconstruct) then
+                !do forward time stepping (step# conforms with backward & adjoint time stepping)
+                !step 1: add forces to v^it
                 call cpu_time(tic)
-                call f%boundary_transport('save',it)
+                call self%inject_velocities(f,time_dir,it)
                 call cpu_time(toc)
-                tt6=tt6+toc-tic
+                tt1=tt1+toc-tic
+
+                !step 2: from v^it to v^it+1 by differences of s^it+0.5
+                call cpu_time(tic)
+                call self%update_velocities(f,time_dir,it)
+                call cpu_time(toc)
+                tt2=tt2+toc-tic
+
+                !step 3: add pressure to s^it+0.5
+                call cpu_time(tic)
+                call self%inject_stresses(f,time_dir,it)
+                call cpu_time(toc)
+                tt3=tt3+toc-tic
+
+                !step 4: from s^it+0.5 to s^it+1.5 by differences of v^it+1
+                call cpu_time(tic)
+                call self%update_stresses(f,time_dir,it)
+                call cpu_time(toc)
+                tt4=tt4+toc-tic
+
+                !step 5: sample v^it+1 or s^it+1.5 at receivers
+                call cpu_time(tic)
+                call self%extract(f,it)
+                call cpu_time(toc)
+                tt5=tt5+toc-tic
+
+                !snapshot
+                call f%write(it)
+
+                !step 6: save v^it+1 in boundary layers
+                if(f%if_will_reconstruct) then
+                    call cpu_time(tic)
+                    call f%boundary_transport('save',it)
+                    call cpu_time(toc)
+                    tt6=tt6+toc-tic
+                endif
+
+            enddo
+
+            if(mpiworld%is_master) then
+                write(*,*) 'Elapsed time to add source velocities',tt1/mpiworld%max_threads
+                write(*,*) 'Elapsed time to update velocities    ',tt2/mpiworld%max_threads
+                write(*,*) 'Elapsed time to add source stresses  ',tt3/mpiworld%max_threads
+                write(*,*) 'Elapsed time to update stresses      ',tt4/mpiworld%max_threads
+                write(*,*) 'Elapsed time to extract field        ',tt5/mpiworld%max_threads
+                write(*,*) 'Elapsed time to save boundary        ',tt6/mpiworld%max_threads
             endif
 
-        enddo
+            call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
+            write(*,'(a,i0.5,a)') 'ximage < snap_sfield%*  n1=',cb%nz,' perc=99'
+            write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_sfield%*  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'
 
-        if(mpiworld%is_master) then
-            write(*,*) 'Elapsed time to add source velocities',tt1/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update velocities    ',tt2/mpiworld%max_threads
-            write(*,*) 'Elapsed time to add source stresses  ',tt3/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update stresses      ',tt4/mpiworld%max_threads
-            write(*,*) 'Elapsed time to extract field        ',tt5/mpiworld%max_threads
-            write(*,*) 'Elapsed time to save boundary        ',tt6/mpiworld%max_threads
+
+            call f%register(chp,'seismo comp boundary')
+
         endif
-
-        call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
-        write(*,'(a,i0.5,a)') 'ximage < snap_sfield%*  n1=',cb%nz,' perc=99'
-        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_sfield%*  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'
 
     end subroutine
 
@@ -537,25 +551,29 @@ use m_cpml
     !G^T:  adjoint propagator,
     !A^T N:get adjoint fields
         
-    subroutine adjoint(self,rf,oif_record_adjseismo,o_sf,oif_compute_imag,oif_compute_grad)
+    subroutine adjoint(self,rf,oif_record_adjseismo,o_sf,oif_compute_imag,oif_compute_grad,igradient,ishot)
         class(t_propagator) :: self
         type(t_field) :: rf
         logical,optional :: oif_record_adjseismo, oif_compute_imag, oif_compute_grad
         type(t_field),optional :: o_sf
 
         real,parameter :: time_dir=-1. !time direction
+        logical :: if_record_adjseismo, if_compute_imag, if_compute_grad
 
-        logical :: if_record_adjseismo, if_compute_imag, if_compute_grad, if_compute_engy
+        type(t_checkpoint),save :: chp
+        call chp%init('ppg%adjoint','Gradient# Shot#','given given')
+        call chp%assign('Gradient#',igradient)
+        call chp%assign('Shot#',ishot)
 
-        if_record_adjseismo=either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
-        if_compute_imag    =either(oif_compute_imag,    .false.,present(oif_compute_imag))    .and.present(o_sf)
-        if_compute_grad    =either(oif_compute_grad,    .false.,present(oif_compute_grad))    .and.present(o_sf)
-        if_compute_engy    =if_compute_imag.or.if_compute_grad
+        if_record_adjseismo =either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
+        if_compute_imag     =either(oif_compute_imag,    .false.,present(oif_compute_imag))    .and.present(o_sf)
+        if_compute_grad     =either(oif_compute_grad,    .false.,present(oif_compute_grad))    .and.present(o_sf)
+        self%if_compute_engy=self%if_compute_engy.and.(if_compute_imag.or.if_compute_grad)
         
-        if(if_record_adjseismo) call alloc(rf%seismo,1,self%nt)
-        if(if_compute_imag)     call alloc(cb%imag,cb%mz,cb%mx,cb%my,self%nimag)
-        if(if_compute_grad)     call alloc(cb%grad,cb%mz,cb%mx,cb%my,self%ngrad)
-        if(if_compute_engy)     call alloc(cb%engy,cb%mz,cb%mx,cb%my,self%nengy)
+        if(if_record_adjseismo)  call alloc(rf%seismo,1,self%nt)
+        if(if_compute_imag)      call alloc(cb%imag,cb%mz,cb%mx,cb%my,self%nimag)
+        if(if_compute_grad)      call alloc(cb%grad,cb%mz,cb%mx,cb%my,self%ngrad)
+        if(self%if_compute_engy) call alloc(cb%engy,cb%mz,cb%mx,cb%my,self%nengy)
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
         if(present(o_sf)) then
@@ -567,171 +585,179 @@ use m_cpml
             if(allocated(o_sf%dp_dy))   o_sf%dp_dy=0.
         endif
         
-        !timing
-        tt1=0.; tt2=0.; tt3=0.
-        tt4=0.; tt5=0.; tt6=0.
-        tt7=0.; tt8=0.; tt9=0.
-        tt10=0.;tt11=0.; tt12=0.; tt13=0.
-        
-        ift=1; ilt=self%nt
-        
-        do it=ilt,ift,int(time_dir)
-            if(mod(it,500)==0 .and. mpiworld%is_master) then
-                write(*,*) 'it----',it
-                call rf%check_value
-                if(present(o_sf)) call o_sf%check_value
-            endif            
 
-            !do backward time stepping to reconstruct the source (incident) wavefield
-            !and adjoint time stepping to compute the receiver (adjoint) field
-            !step# conforms with forward time stepping
+        if(.not.cb%is_registered(chp,'corr')) then
+                    
+            !timing
+            tt1=0.; tt2=0.; tt3=0.
+            tt4=0.; tt5=0.; tt6=0.
+            tt7=0.; tt8=0.; tt9=0.
+            tt10=0.;tt11=0.; tt12=0.; tt13=0.
+            
+            ift=1; ilt=self%nt
+            
+            do it=ilt,ift,int(time_dir)
+                if(mod(it,500)==0 .and. mpiworld%is_master) then
+                    write(*,*) 'it----',it
+                    call rf%check_value
+                    if(present(o_sf)) call o_sf%check_value
+                endif            
 
-            if(present(o_sf)) then
+                !do backward time stepping to reconstruct the source (incident) wavefield
+                !and adjoint time stepping to compute the receiver (adjoint) field
+                !step# conforms with forward time stepping
 
-                !backward step 6: retrieve v^it+1 at boundary layers (BC)
+                if(present(o_sf)) then
+
+                    !backward step 6: retrieve v^it+1 at boundary layers (BC)
+                    call cpu_time(tic)
+                    call o_sf%boundary_transport('load',it)
+                    call cpu_time(toc)
+                    tt1=tt1+toc-tic
+                    
+                    !backward step 4: s^it+1.5 -> s^it+0.5 by FD of v^it+1
+                    call cpu_time(tic)
+                    call self%update_stresses(o_sf,time_dir,it)
+                    call cpu_time(toc)
+                    tt2=tt2+toc-tic
+
+                    !backward step 3: rm pressure from s^it+0.5
+                    call cpu_time(tic)
+                    call self%inject_stresses(o_sf,time_dir,it)
+                    call cpu_time(toc)
+                    tt3=tt3+toc-tic
+                endif
+
+                !--------------------------------------------------------!
+
+                !adjoint step 5: inject to s^it+1.5 at receivers
                 call cpu_time(tic)
-                call o_sf%boundary_transport('load',it)
+                call self%inject_stresses_adjoint(rf,time_dir,it)
                 call cpu_time(toc)
-                tt1=tt1+toc-tic
+                tt4=tt4+toc-tic
+
+                !adjoint step 4: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
+                call cpu_time(tic)
+                call self%update_stresses_adjoint(rf,time_dir,it)
+                call cpu_time(toc)
+                tt5=tt5+toc-tic
+
+                !gkpa: sfield%s_dt^it+0.5 \dot rfield%s^it+0.5
+                !use sfield%v^it+1 to compute sfield%s_dt^it+0.5, as backward step 4
+                if(if_compute_grad.and.mod(it,irdt)==0) then
+                    call cpu_time(tic)
+                    call gradient_moduli(o_sf,rf,it,cb%grad(:,:,:,2))
+                    call cpu_time(toc)
+                    tt6=tt6+toc-tic
+                endif
+
+                if(if_compute_imag.and.mod(it,irdt)==0) then
+                    call cpu_time(tic)
+                    call imaging(o_sf,rf,it,cb%imag)
+                    call cpu_time(toc)
+                    tt6=tt6+toc-tic
+                endif
+
+                !energy term of sfield
+                if(self%if_compute_engy.and.mod(it,irdt)==0) then
+                    call cpu_time(tic)
+                    call energy(o_sf,it,cb%engy)
+                    call cpu_time(toc)
+                    tt6=tt6+toc-tic
+                endif
+                    
+                !========================================================!
+
+                if(present(o_sf)) then
+                    !backward step 2: v^it+1 -> v^it by FD of s^it+0.5
+                    call cpu_time(tic)
+                    call self%update_velocities(o_sf,time_dir,it)
+                    call cpu_time(toc)
+                    tt7=tt7+toc-tic
+
+                    !backward step 1: rm forces from v^it
+                    call cpu_time(tic)
+                    call self%inject_velocities(o_sf,time_dir,it)
+                    call cpu_time(toc)
+                    tt8=tt8+toc-tic
+                endif
+
+                !--------------------------------------------------------!
+
+                !adjoint step 5: inject to v^it+1 at receivers
+                call cpu_time(tic)
+                call self%inject_velocities_adjoint(rf,time_dir,it)
+                call cpu_time(toc)
+                tt9=tt9+toc-tic
+
+                !adjoint step 2: v^it+1 -> v^it by FD^T of s^it+0.5
+                call cpu_time(tic)
+                call self%update_velocities_adjoint(rf,time_dir,it)
+                call cpu_time(toc)
+                tt10=tt10+toc-tic
                 
-                !backward step 4: s^it+1.5 -> s^it+0.5 by FD of v^it+1
-                call cpu_time(tic)
-                call self%update_stresses(o_sf,time_dir,it)
-                call cpu_time(toc)
-                tt2=tt2+toc-tic
-
-                !backward step 3: rm pressure from s^it+0.5
-                call cpu_time(tic)
-                call self%inject_stresses(o_sf,time_dir,it)
-                call cpu_time(toc)
-                tt3=tt3+toc-tic
-            endif
-
-            !--------------------------------------------------------!
-
-            !adjoint step 5: inject to s^it+1.5 at receivers
-            call cpu_time(tic)
-            call self%inject_stresses_adjoint(rf,time_dir,it)
-            call cpu_time(toc)
-            tt4=tt4+toc-tic
-
-            !adjoint step 4: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
-            call cpu_time(tic)
-            call self%update_stresses_adjoint(rf,time_dir,it)
-            call cpu_time(toc)
-            tt5=tt5+toc-tic
-
-            !gkpa: sfield%s_dt^it+0.5 \dot rfield%s^it+0.5
-            !use sfield%v^it+1 to compute sfield%s_dt^it+0.5, as backward step 4
-            if(if_compute_grad.and.mod(it,irdt)==0) then
-                call cpu_time(tic)
-                call gradient_moduli(o_sf,rf,it,cb%grad(:,:,:,2))
-                call cpu_time(toc)
-                tt6=tt6+toc-tic
-            endif
-
-            if(if_compute_imag.and.mod(it,irdt)==0) then
-                call cpu_time(tic)
-                call imaging(o_sf,rf,it,cb%imag)
-                call cpu_time(toc)
-                tt6=tt6+toc-tic
-            endif
-
-            !energy term of sfield
-            if(if_compute_engy.and.mod(it,irdt)==0) then
-                call cpu_time(tic)
-                call energy(o_sf,it,cb%engy)
-                call cpu_time(toc)
-                tt6=tt6+toc-tic
-            endif
+                !adjoint step 1: sample v^it or s^it+0.5 at source position
+                if(if_record_adjseismo) then
+                    call cpu_time(tic)
+                    call self%extract_adjoint(rf,it)
+                    call cpu_time(toc)
+                    tt11=tt11+toc-tic
+                endif
                 
-            !========================================================!
+                !grho: sfield%v_dt^it \dot rfield%v^it
+                !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
+                if(if_compute_grad.and.mod(it,irdt)==0) then
+                    call cpu_time(tic)
+                    call gradient_density(o_sf,rf,it,cb%grad(:,:,:,1))
+                    call cpu_time(toc)
+                    tt6=tt6+toc-tic
+                endif
+                
+                !snapshot
+                call rf%write(it)
+                if(present(o_sf))   call o_sf%write(it,o_suffix='_back')
+                if(if_compute_imag) then
+                    call rf%write_ext(it,'imag' ,cb%imag,size(cb%imag))
+                endif
+                if(if_compute_grad) then
+                    call rf%write_ext(it,'grad_density',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
+                    call rf%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+                endif
+                if(self%if_compute_engy) then
+                    call rf%write_ext(it,'engy',cb%engy(:,:,:,1),size(cb%engy(:,:,:,1)))
+                endif
 
-            if(present(o_sf)) then
-                !backward step 2: v^it+1 -> v^it by FD of s^it+0.5
-                call cpu_time(tic)
-                call self%update_velocities(o_sf,time_dir,it)
-                call cpu_time(toc)
-                tt7=tt7+toc-tic
-
-                !backward step 1: rm forces from v^it
-                call cpu_time(tic)
-                call self%inject_velocities(o_sf,time_dir,it)
-                call cpu_time(toc)
-                tt8=tt8+toc-tic
-            endif
-
-            !--------------------------------------------------------!
-
-            !adjoint step 5: inject to v^it+1 at receivers
-            call cpu_time(tic)
-            call self%inject_velocities_adjoint(rf,time_dir,it)
-            call cpu_time(toc)
-            tt9=tt9+toc-tic
-
-            !adjoint step 2: v^it+1 -> v^it by FD^T of s^it+0.5
-            call cpu_time(tic)
-            call self%update_velocities_adjoint(rf,time_dir,it)
-            call cpu_time(toc)
-            tt10=tt10+toc-tic
+            enddo
             
-            !adjoint step 1: sample v^it or s^it+0.5 at source position
-            if(if_record_adjseismo) then
-                call cpu_time(tic)
-                call self%extract_adjoint(rf,it)
-                call cpu_time(toc)
-                tt11=tt11+toc-tic
-            endif
+            !postprocess gradient
+            if(if_compute_grad) call gradient_postprocess
             
-            !grho: sfield%v_dt^it \dot rfield%v^it
-            !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
-            if(if_compute_grad.and.mod(it,irdt)==0) then
-                call cpu_time(tic)
-                call gradient_density(o_sf,rf,it,cb%grad(:,:,:,1))
-                call cpu_time(toc)
-                tt6=tt6+toc-tic
-            endif
-            
-            !snapshot
-            call rf%write(it)
-            if(present(o_sf))   call o_sf%write(it,o_suffix='_back')
-            if(if_compute_imag) then
-                call rf%write_ext(it,'imag' ,cb%imag,size(cb%imag))
-            endif
-            if(if_compute_grad) then
-                call rf%write_ext(it,'grad_density',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
-                call rf%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
-            endif
-            if(if_compute_engy) then
-                call rf%write_ext(it,'engy',cb%engy(:,:,:,1),size(cb%engy(:,:,:,1)))
+            if(mpiworld%is_master) then
+                write(*,*) 'Elapsed time to load boundary            ',tt1/mpiworld%max_threads
+                write(*,*) 'Elapsed time to update stresses          ',tt2/mpiworld%max_threads
+                write(*,*) 'Elapsed time to rm source stresses       ',tt3/mpiworld%max_threads
+                write(*,*) 'Elapsed time to update velocities        ',tt7/mpiworld%max_threads
+                write(*,*) 'Elapsed time to rm source velocities     ',tt8/mpiworld%max_threads
+                write(*,*) 'Elapsed time ----------------------------'
+                write(*,*) 'Elapsed time to add adjsource stresses   ',tt4/mpiworld%max_threads
+                write(*,*) 'Elapsed time to update adj stresses      ',tt5/mpiworld%max_threads
+                write(*,*) 'Elapsed time to add adjsource velocities ',tt9/mpiworld%max_threads
+                write(*,*) 'Elapsed time to update adj velocities    ',tt10/mpiworld%max_threads
+                write(*,*) 'Elapsed time to extract&write fields     ',tt11/mpiworld%max_threads
+                write(*,*) 'Elapsed time to correlate                ',tt6/mpiworld%max_threads
+
             endif
 
-        enddo
-        
-        !postprocess gradient
-        if(if_compute_grad) call gradient_postprocess
-        
-        if(mpiworld%is_master) then
-            write(*,*) 'Elapsed time to load boundary            ',tt1/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update stresses          ',tt2/mpiworld%max_threads
-            write(*,*) 'Elapsed time to rm source stresses       ',tt3/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update velocities        ',tt7/mpiworld%max_threads
-            write(*,*) 'Elapsed time to rm source velocities     ',tt8/mpiworld%max_threads
-            write(*,*) 'Elapsed time ----------------------------'
-            write(*,*) 'Elapsed time to add adjsource stresses   ',tt4/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update adj stresses      ',tt5/mpiworld%max_threads
-            write(*,*) 'Elapsed time to add adjsource velocities ',tt9/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update adj velocities    ',tt10/mpiworld%max_threads
-            write(*,*) 'Elapsed time to extract&write fields     ',tt11/mpiworld%max_threads
-            write(*,*) 'Elapsed time to correlate                ',tt6/mpiworld%max_threads
+            call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
+            write(*,'(a,i0.5,a)') 'ximage < snap_rfield%*  n1=',cb%nz,' perc=99'
+            write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_rfield%*  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'
+            write(*,'(a,i0.5,a)') 'ximage < snap_*  n1=',cb%mz,' perc=99'
+            write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%mz,' n2=',cb%mx,' clip=?e-?? loop=2 title=%g'
+
+
+            call cb%register(chp,'corr')
 
         endif
-
-        call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
-        write(*,'(a,i0.5,a)') 'ximage < snap_rfield%*  n1=',cb%nz,' perc=99'
-        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_rfield%*  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'
-        write(*,'(a,i0.5,a)') 'ximage < snap_*  n1=',cb%mz,' perc=99'
-        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%mz,' n2=',cb%mx,' clip=?e-?? loop=2 title=%g'
         
     end subroutine
 

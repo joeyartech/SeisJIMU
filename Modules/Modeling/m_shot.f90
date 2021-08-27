@@ -708,7 +708,7 @@ use m_model
                 if(self%rcv(i)%is_badtrace) sudata%hdrs(i)%trid=3 !dummy trace
 
             enddo
-
+            
             call sudata%write(file//self%sindex)
 
         endif
@@ -717,7 +717,7 @@ use m_model
             call sysio_write(file//self%sindex,data,size(data))
             
         endif
-
+        
         is_first_in=.false.
 
     end subroutine

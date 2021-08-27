@@ -4,7 +4,7 @@ use m_math
 use singleton
 
     private
-    public matchfilter_estimate,matchfilter_apply_to_wavelet,matchfilter_apply_to_data,matchfilter_correlate_filter_residual
+    public matchfilter_estimate,matchfilter_apply_to_wavelet,matchfilter_apply_to_data,matchfilter_correlate_filter_residual,matchfilter_adjointsrc
         
     integer :: nt, ntr
 
@@ -19,11 +19,11 @@ use singleton
         real,dimension(nt_),optional :: o_filter_time
         
         complex(fftkind),dimension(nt_,ntr_) :: dsynfft,dobsfft   !fftkind=double precision
-        complex(fftkind),dimension(nt_)     :: numer, denom
+        complex(fftkind),dimension(nt_)      :: numer, denom
 
         nt=nt_; ntr=ntr_
         
-        dsynfft = fft(dcmplx(dsyn),dim=[1])  !maybe this array is so large that require "ulimit -s unlimited"
+        dsynfft = fft(dcmplx(dsyn),dim=[1])  !may require "ulimit -s unlimited"
         dobsfft = fft(dcmplx(dobs),dim=[1])
         
         numer=sum(conjg(dsynfft)*dobsfft,2)
@@ -82,7 +82,7 @@ use singleton
     
     subroutine matchfilter_correlate_filter_residual(dres)
         real,dimension(nt,ntr) :: dres
-        
+            
         complex(fftkind),dimension(nt,ntr) :: dresfft
         
         dresfft=fft(dcmplx(dres),dim=[1])
@@ -94,6 +94,24 @@ use singleton
         dres= real(fft(dresfft,dim=[1],inv=.true.),kind=4)
         
     end subroutine
-    
+
+    subroutine matchfilter_adjointsrc(dobs,dadj,scaled_w)
+        real,dimension(nt) :: dobs,dadj
+        real,dimension(nt) :: scaled_w
+        
+        complex(fftkind),dimension(nt) :: dobsfft   !fftkind=double precision
+        complex(fftkind),dimension(nt) :: dadjfft
+        complex(fftkind),dimension(nt) :: numer, denom
+        
+        dobsfft = fft(dcmplx(dobs),dim=[1])
+        
+        numer=fft(dcmplx(scaled_w),dim=[1])*dobsfft
+        denom=conjg(dobsfft)*dobsfft
+
+        dadjfft = numer/(denom+1e-5*maxval(abs(denom)))
+
+        dadj = real(fft(dadjfft,dim=[1],inv=.true.),kind=4)
+
+    end subroutine
     
 end

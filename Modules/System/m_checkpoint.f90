@@ -28,6 +28,7 @@ use m_setup
         contains
         procedure :: init
         procedure :: count
+        procedure :: assign
         procedure :: check
         procedure :: open
         procedure :: read_real1,  read_real2,  read_real3,  read_real4
@@ -126,9 +127,8 @@ use m_setup
 
     end subroutine
 
-    subroutine count(self,o_given)
+    subroutine count(self)
         class(t_checkpoint) :: self
-        integer,optional :: o_given
 
         if(.not.if_checkpoint) return
 
@@ -136,10 +136,22 @@ use m_setup
             select case (self%s_cnts_cond(i)%s)
             case ('per_cycle')
                 self%i_cnts(i)=self%i_cnts(i)+1
-
-            case ('given')
-                self%i_cnts(i)=either(o_given,0,present(o_given))
             end select
+        enddo
+
+    end subroutine
+
+    subroutine assign(self,cnt_name,number)
+        class(t_checkpoint) :: self
+        character(*) :: cnt_name
+        integer :: number
+
+        if(.not.if_checkpoint) return
+
+        do i=1,self%n_cnts
+            if(self%s_cnts_cond(i)%s == cnt_name) then
+                self%i_cnts(i)=number
+            end if
         enddo
 
     end subroutine
@@ -156,10 +168,10 @@ use m_setup
             return
         endif
 
-        file=self%name//'_'//&
-            strcat(          self%s_cnts,     o_glue=',')//'_'//&
-            strcat(nums2strs(self%i_cnts),    o_glue=',')//'_'//&
-            strcat(          self%s_cnts_cond,o_glue=',')//'_'//&
+        file=self%name//'-'//&
+            strcat(          self%s_cnts,     o_glue=',')//'-'//&
+            strcat(nums2strs(self%i_cnts),    o_glue=',')//'-'//&
+            strcat(          self%s_cnts_cond,o_glue=',')//'-'//&
             'Var:'//var
 
         inquire(file=dir_chp//file,exist=check) !,size=filesize)
@@ -191,10 +203,10 @@ use m_setup
 
         if(if_use_checkpoint.or.if_checkpoint) then
 
-            file=self%name//'_'//&
-                strcat(          self%s_cnts,     o_glue=',')//'_'//&
-                strcat(nums2strs(self%i_cnts),    o_glue=',')//'_'//&
-                strcat(          self%s_cnts_cond,o_glue=',')//'_'//&
+            file=self%name//'-'//&
+                strcat(          self%s_cnts,     o_glue=',')//'-'//&
+                strcat(nums2strs(self%i_cnts),    o_glue=',')//'-'//&
+                strcat(          self%s_cnts_cond,o_glue=',')//'-'//&
                 'Var:'//var
 
             open(11,file=dir_chp//file,access='stream')

@@ -286,14 +286,11 @@ use m_shot
 
         do i=1,size(list)
             select case (list(i)%s)
-            case ('grad')
-                call chp%open('computebox%grad')
-                call chp%read(self%grad)
+            case ('corr')
+                call chp%open('computebox%corr')
+                call chp%read(self%imag,self%grad,self%engy)
                 call chp%close
-            case ('engy')
-                call chp%open('computebox%engy')
-                call chp%read(self%engy)
-                call chp%close
+                call hud('Read computebox%corr from '//chp%name//', size='//num2str(total_size(self%imag,self%grad,self%engy)))
             end select
 
         enddo
@@ -311,13 +308,9 @@ use m_shot
 
         do i=1,size(list)
             select case (list(i)%s)
-            case ('grad')
-                call chp%open('computebox%grad')
-                call chp%write(self%grad)
-                call chp%close
-            case ('engy')
-                call chp%open('computebox%engy')
-                call chp%write(self%engy)
+            case ('corr')
+                call chp%open('computebox%corr')
+                call chp%write(self%imag,self%grad,self%engy)
                 call chp%close
             end select
 

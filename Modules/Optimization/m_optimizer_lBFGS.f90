@@ -100,10 +100,10 @@ use m_linesearcher
         loop: do iterate=1,max_iterate
             call chp%count
 
-            ! if(.not.shls%is_registered(chp,'sampled_shots')) then
+            if(.not.shls%is_registered(chp,'sampled_shots')) then
                 call shls%sample
-                ! call shls%register(chp,'sampled_shots')
-            ! endif
+                call shls%register(chp,'sampled_shots')
+            endif
             call shls%assign
 
             if (maxval(abs(curr%d)) < min_descent) then
@@ -124,25 +124,23 @@ use m_linesearcher
 
                 !previous descent direction
                 prev_d=curr%d
-                
+
                 !switch curr & pert
                 tmp=>curr
                 curr=>pert
-                pert=>tmp            
+                pert=>tmp
 
                 !!!!!!!!!!!!!!!!!!!
                 !! Precond LBFGS !!
                 !!!!!!!!!!!!!!!!!!!
                 !update sk,yk pairs
-                i=either(iterate,l,iterate<=l)
-                sk(:,i)=reshape(curr%x,[param%n])-sk(:,i)
-                yk(:,i)=reshape(curr%g,[param%n])-yk(:,i)
-                
                 m=min(iterate,l)
+                sk(:,m)=reshape(curr%x,[param%n])-sk(:,m)
+                yk(:,m)=reshape(curr%g,[param%n])-yk(:,m)
+
                 call alloc(q,    param%n)
                 call alloc(alpha,m)
                 call alloc(rho,  m)
-
                 q = reshape(curr%g,[param%n])
 
                 !1st part of two-loop recursion
@@ -151,7 +149,7 @@ use m_linesearcher
                     alpha(i) = rho(i)*dot_product(sk(:,i),q)
                     q = q - alpha(i)*yk(:,i)
                 enddo
-                
+
 ! print*,yk
 ! print*,sk
 ! print*,rho
@@ -160,13 +158,10 @@ use m_linesearcher
                 
                 !preconditioner provides seed for initial guess of inv Hessian
                 call preco%apply(q,q)
-
                 gamma_num   = dot_product(sk(:,m),yk(:,m))
                 gamma_denom = norm2(yk(:,m))
                 gamma_denom = gamma_denom*gamma_denom
-
                 gamma=gamma_num/gamma_denom
-
                 r = gamma*q
 
                 !2nd part of two-loop recursion
@@ -174,8 +169,9 @@ use m_linesearcher
                     beta = rho(i)*dot_product(yk(:,i),r(:))
                     r    = r + (alpha(i)-beta)*sk(:,i)
                 enddo
+
                 curr%d = reshape(-r,[param%n1,param%n2,param%n3,param%npars])
-                
+
 ! print*,gamma,gamma_num,gamma_denom
 ! print*,beta
 ! print*,current%d
@@ -186,15 +182,19 @@ use m_linesearcher
                     sk(:,iterate+1)=reshape(curr%x,[param%n])
                     yk(:,iterate+1)=reshape(curr%g,[param%n])
                 else !shift and replace oldest pairs
-                    sk=eoshift(sk,dim=2,shift=1,boundary=reshape(curr%x,[param%n]))
-                    yk=eoshift(sk,dim=2,shift=1,boundary=reshape(curr%g,[param%n]))
+                    ! sk=eoshift(sk,dim=2,shift=1,boundary=reshape(curr%x,[param%n]))
+                    ! yk=eoshift(sk,dim=2,shift=1,boundary=reshape(curr%g,[param%n]))
+                    !use eoshift may require "ulimit -s unlimited"
+                    !so use vectorized expressions instead
+                    sk(:,1:l-1)=sk(:,2:l);  sk(:,l)=reshape(curr%x,[param%n])
+                    yk(:,1:l-1)=yk(:,2:l);  yk(:,l)=reshape(curr%g,[param%n])
                 endif
-                
+
                 !inner product of g and d for Wolfe condition
                 curr%g_dot_d=sum(curr%g*curr%d)
-                
+
                 call optimizer_write('update')
-                
+
                 case('failure')
                 call optimizer_write('failure')
                 exit loop
@@ -231,7 +231,7 @@ use m_linesearcher
                 write(16,'(a,es8.2)') '     Initial fobjective (f0)        =',  f0
                 write(16,'(a,es8.2)') '     Initial gradient norm (||g0||) =',  g0norm
                 write(16,'(a)'      ) ' **********************************************************************'
-                write(16,'(a)'      ) '  Iter#      f         f/f0    ||g||/||g0||    alpha     nls  Modeling#'
+                write(16,'(a)'      ) '  Iter#      f         f/f0    ||g||/||g0||    alpha     nls  Gradient#'
                                !e.g.  !    0    1.00E+00    1.00E+00    1.00E+00    1.00E+00      0       1
                 write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, curr%f, curr%f/f0, norm2(curr%g)/g0norm, ls%alpha, ls%isearch, ls%igradient
                 close(16)

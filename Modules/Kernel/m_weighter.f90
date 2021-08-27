@@ -12,7 +12,7 @@ use m_Modeling
 
         contains
 
-        procedure :: init
+        procedure :: update
 
     end type
 
@@ -20,7 +20,7 @@ use m_Modeling
     
     contains
 
-    subroutine init(self,o_nt,o_dt,o_ntr)
+    subroutine update(self,o_nt,o_dt,o_ntr)
         class(t_weighter) :: self
         integer,optional :: o_nt, o_ntr
         real,optional :: o_dt

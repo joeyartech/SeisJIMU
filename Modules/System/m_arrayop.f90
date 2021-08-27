@@ -35,6 +35,12 @@ use m_mpienv
     interface rsign
         module procedure rsign_real2
     end interface
+
+    interface total_size
+        module procedure total_size_real2
+        module procedure total_size_real3
+        module procedure total_size_real4
+    end interface
     
     contains
     
@@ -531,6 +537,84 @@ use m_mpienv
         elsewhere
             res=0.
         endwhere
+    end function
+
+    pure function total_size_real2(a,b,c,d,e,f,g) result(n)
+        real,dimension(:,:),allocatable,intent(in) :: a,b,c,d,e,f,g
+        optional :: b,c,d,e,f,g
+        
+            if(allocated(a)) n=size(a)
+        if(present(b)) then
+            if(allocated(b)) n=n+size(b)
+        endif
+        if(present(c)) then
+            if(allocated(c)) n=n+size(c)
+        endif
+        if(present(d)) then
+            if(allocated(d)) n=n+size(d)
+        endif
+        if(present(e)) then
+            if(allocated(e)) n=n+size(e)
+        endif
+        if(present(f)) then
+            if(allocated(f)) n=n+size(f)
+        endif
+        if(present(g)) then
+            if(allocated(g)) n=n+size(g)
+        endif
+
+    end function
+
+    pure function total_size_real3(a,b,c,d,e,f,g) result(n)
+        real,dimension(:,:,:),allocatable,intent(in) :: a,b,c,d,e,f,g
+        optional :: b,c,d,e,f,g
+        
+            if(allocated(a)) n=size(a)
+        if(present(b)) then
+            if(allocated(b)) n=n+size(b)
+        endif
+        if(present(c)) then
+            if(allocated(c)) n=n+size(c)
+        endif
+        if(present(d)) then
+            if(allocated(d)) n=n+size(d)
+        endif
+        if(present(e)) then
+            if(allocated(e)) n=n+size(e)
+        endif
+        if(present(f)) then
+            if(allocated(f)) n=n+size(f)
+        endif
+        if(present(g)) then
+            if(allocated(g)) n=n+size(g)
+        endif
+
+    end function
+
+    pure function total_size_real4(a,b,c,d,e,f,g) result(n)
+        real,dimension(:,:,:,:),allocatable,intent(in) :: a,b,c,d,e,f,g
+        optional :: b,c,d,e,f,g
+        
+            if(allocated(a)) n=size(a)
+        if(present(b)) then
+            if(allocated(b)) n=n+size(b)
+        endif
+        if(present(c)) then
+            if(allocated(c)) n=n+size(c)
+        endif
+        if(present(d)) then
+            if(allocated(d)) n=n+size(d)
+        endif
+        if(present(e)) then
+            if(allocated(e)) n=n+size(e)
+        endif
+        if(present(f)) then
+            if(allocated(f)) n=n+size(f)
+        endif
+        if(present(g)) then
+            if(allocated(g)) n=n+size(g)
+        endif
+
     end function
 
 

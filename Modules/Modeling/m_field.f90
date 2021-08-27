@@ -500,6 +500,7 @@ use, intrinsic :: ieee_arithmetic
                 call chp%open(self%name//'%seismo')
                 call chp%read(self%seismo)
                 call chp%close
+                call hud('Read '//self%name//'%seismo from '//chp%name//', size='//num2str(size(self%seismo)))
             case ('comp')
                 call chp%open(self%name//'%comp')
                 call chp%read(self%vz, self%vx, self%vy )
@@ -507,6 +508,10 @@ use, intrinsic :: ieee_arithmetic
                 call chp%read(self%sxx,self%sxy,self%syy)
                 call chp%read(self%shh,self%p)
                 call chp%close
+                call hud('Read '//self%name//'%vz,vx,vy from '//chp%name//', size='//num2str(total_size(self%vz,self%vx,self%vy)))
+                call hud('Read '//self%name//'%szz,szx,szy from '//chp%name//', size='//num2str(total_size(self%szz,self%szx,self%szy)))
+                call hud('Read '//self%name//'%sxx,sxy,syy from '//chp%name//', size='//num2str(total_size(self%sxx,self%sxy,self%syy)))
+                call hud('Read '//self%name//'%shh,p from '//chp%name//', size='//num2str(total_size(self%shh,self%p)))
             case ('boundary')
                 call chp%open(self%name//'%boundary')
                 call chp%read(self%bnd%vz_top,  self%bnd%vz_bot  )
@@ -515,6 +520,7 @@ use, intrinsic :: ieee_arithmetic
                 call chp%read(self%bnd%vx_top  ,self%bnd%vx_bot  )
                 call chp%read(self%bnd%vz_left ,self%bnd%vz_right)
                 call chp%close
+                call hud('Read '//self%name//'%boundary vz_top, vz_bot from '//chp%name//', size='//num2str(total_size(self%bnd%vz_top,self%bnd%vz_bot)))
             end select
 
         enddo
@@ -534,7 +540,7 @@ use, intrinsic :: ieee_arithmetic
             select case (list(i)%s)
             case ('seismo')
                 call chp%open(self%name//'%seismo')
-                if(allocated(self%seismo)) call chp%write(self%seismo)
+                call chp%write(self%seismo)
                 call chp%close
             case ('comp')
                 call chp%open(self%name//'%comp')

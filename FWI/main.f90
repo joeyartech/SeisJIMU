@@ -14,7 +14,7 @@ use m_Optimization
     call hud('======================================'//s_NL// &
              '       WELCOME TO SeisJIMU FWI        '//s_NL// &
              '======================================')
-    
+
     call setup%init
     call sysio_init
     
@@ -48,12 +48,17 @@ use m_Optimization
     !shotlist
     call shls%read_from_data
     call shls%build
-    ! call chp%init('FWI_shotlist_grad',oif_fuse=.true.)
-    ! if(.not.shls%is_registered(chp,'sampled_shots')) then
+    call chp%init('FWI_shotlist_grad',oif_fuse=.true.)
+    if(.not.shls%is_registered(chp,'sampled_shots')) then
         call shls%sample
-        ! call shls%register(chp,'sampled_shots')
-    ! endif
+        call shls%register(chp,'sampled_shots')
+    endif
     call shls%assign
+
+    !if preconditioner needs energy terms
+    if(index(strcat(setup%get_strs('PRECONDITIONING','PRECO')),'energy')>0) then
+        ppg%if_compute_engy=.true.
+    endif
 
     !parametrizer
     call param%init
@@ -103,14 +108,11 @@ use m_smoother_laplacian_sparse
 
     type(t_field) :: sfield, rfield
     character(:),allocatable :: update_wavelet
+    integer,save :: igradient=1
 
-    type(t_checkpoint),save :: chp
-            
     call hud('===== START LOOP OVER SHOTS =====')
     
-    call chp%init('FWI_shotloop','Init# Shot#','per_init given')
     do i=1,shls%nshots_per_processor
-        call chp%count(shls%yield(i))
 
         call shot%init(shls%yield(i))
         call shot%read_from_data
@@ -130,10 +132,7 @@ use m_smoother_laplacian_sparse
         call sfield%ignite
         
         !forward modeling
-        if(.not.sfield%is_registered(chp,'seismo comp boundary')) then
-            call ppg%forward(sfield)
-            call sfield%register(chp,'seismo comp boundary')
-        endif
+        call ppg%forward(sfield,igradient,shls%yield(i))
 
         call sfield%acquire
 
@@ -147,12 +146,12 @@ use m_smoother_laplacian_sparse
         call shot%write('dsyn_',shot%dsyn)
 
         !data weighting
-        call wei%init
+        call wei%update
 
         !objective function and adjoint source
         call fobj%compute_dnorms
 
-        call fobj%print_dnorms
+        if(mpiworld%is_master) call fobj%print_dnorms('Unscaled','on Shot#'//shot%sindex)
 
         if(either(oif_gradient,.true.,present(oif_gradient))) then
 
@@ -164,11 +163,8 @@ use m_smoother_laplacian_sparse
             call rfield%ignite(ois_adjoint=.true.)
 
             !adjoint modeling
-            if(.not.cb%is_registered(chp,'grad engy')) then
-                call ppg%adjoint(rfield,o_sf=sfield,oif_compute_grad=.true.)
-                call cb%register(chp,'grad engy')
-            endif
-
+            call ppg%adjoint(rfield,o_sf=sfield,oif_compute_grad=.true.,igradient=igradient,ishot=ishot)
+                
             call cb%project_back
 
         endif
@@ -179,13 +175,15 @@ use m_smoother_laplacian_sparse
 
     !collect global objective function value
     call mpi_allreduce(mpi_in_place, fobj%dnorms, fobj%n_dnorms, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-    call fobj%print_dnorms
+    call fobj%print_dnorms('Unscaled stacked','')
 
     if(either(oif_gradient,.true.,present(oif_gradient))) then
         !collect global gradient
         call mpi_allreduce(mpi_in_place, m%gradient,  m%n*ppg%ngrad, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
         call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     endif
+
+    igradient=igradient+1
 
     call mpiworld%barrier
 
