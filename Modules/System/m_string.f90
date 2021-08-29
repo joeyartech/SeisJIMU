@@ -395,4 +395,28 @@ module m_string
 
     end function
 
+    function read_key(str_in,key,o_sep,o_default) result(str_out)
+        character(*) :: str_in, key
+        character(1),optional :: o_sep
+        character(*),optional :: o_default
+        character(:),allocatable :: str_out
+
+        type(t_string),dimension(:),allocatable :: strs
+        type(t_string),dimension(2) :: tmp
+
+        strs=split(str_in,o_sep=o_sep)
+
+        do i=1,size(strs)
+            if(index(strs(i)%s,key)>0) then
+                tmp=split(strs(i)%s,o_sep='=')
+                str_out=tmp(2)%s
+                return
+            endif
+        enddo
+
+        !default
+        str_out=either(o_default,str_out,present(o_default))
+
+    end function
+
 end

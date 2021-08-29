@@ -129,12 +129,12 @@ use m_model
         class(t_shot) :: self
 
         type(t_suformat) :: sudata
+        character(:),allocatable :: str, zerophase, locut, hicut
+        character(:),allocatable :: fstoplo,fpasslo,fpasshi,fstophi
+        character(:),allocatable :: astoplo,apasslo,apasshi,astophi
 
         call sudata%read(setup%get_str('FILE_DATA_PREFIX')//self%sindex//'.su',self%sindex)
 
-        self%nt=sudata%ns  !assume all traces have same ns
-        self%dt=sudata%dt  !assume all traces have same dt
-        
         shot%nrcv=sudata%ntr
         if(allocated(self%rcv))deallocate(self%rcv)
         allocate(self%rcv(shot%nrcv))
@@ -174,11 +174,6 @@ use m_model
             
         enddo
 
-        !load traces
-        call alloc(self%dobs,self%nt,self%nrcv)
-        self%dobs=sudata%trs
-        
-
         !shift positions to be 0-based
         !then m%oz,ox,oy is no longer of use before writing shots
         self%src%z   =self%src%z    - m%oz
@@ -189,6 +184,52 @@ use m_model
         self%rcv(:)%y=self%rcv(:)%y - m%oy
 
         call check_range(self)
+
+
+        !if want to filter the traces
+        str=setup%get_str('FILTER_DATA','BFILT',o_default='none')
+
+        if(str/='none') then
+            
+            !default
+            zerophase=read_key(str,'zerophase',o_default='1')
+            locut=read_key(str,'locut',o_default='1')
+            hicut=read_key(str,'hicut',o_default='1')
+            rdt = 0.5/sudata%dt
+            fstoplo=read_key(str,'fstoplo',o_default=num2str(.10*rdt))
+            fpasslo=read_key(str,'fpasslo',o_default=num2str(.15*rdt))
+            fpasshi=read_key(str,'fpasshi',o_default=num2str(.40*rdt))
+            fstophi=read_key(str,'fstophi',o_default=num2str(.55*rdt))
+
+            astoplo=read_key(str,'astoplo',o_default=num2str(.05))
+            apasslo=read_key(str,'apasslo',o_default=num2str(.95))
+            apasshi=read_key(str,'apasshi',o_default=num2str(.95))
+            astophi=read_key(str,'astophi',o_default=num2str(.05))
+
+            !butterworth filtering
+            call hud('subfilt < data > data_filt '//&
+                'zerophase='//zerophase//' locut='//locut//' hicut='//hicut// &
+                'fstoplo='//fstoplo//' fpasslo='//fpasslo//' fpasshi='//fpasshi//' fstophi='//fstophi// &
+                'astoplo='//astoplo//' apasslo='//apasslo//' apasshi='//apasshi//' astophi='//astophi   )
+            
+            call butterworth(sudata%trs,sudata%ns,sudata%ntr,sudata%dt, &
+                ois_zerophase=either(.true.,.false.,zerophase=='1'),oif_locut=either(.true.,.false.,locut=='1'),oif_hicut=either(.true.,.false.,hicut=='1'),       &
+                o_fstoplo=str2real(fstoplo),o_fpasslo=str2real(fpasslo),o_fpasshi=str2real(fpasshi),o_fstophi=str2real(fstophi), &
+                o_astoplo=str2real(astoplo),o_apasslo=str2real(apasslo),o_apasshi=str2real(apasshi),o_astophi=str2real(astophi)  )
+
+            sudata%hdrs(:)%lcf=str2real(fstoplo)
+            sudata%hdrs(:)%hcf=str2real(fstophi)
+            
+            call sudata%write('dobs_filt_'//self%sindex)
+
+        endif
+
+        !load traces
+        self%nt=sudata%ns !assume all traces have same ns
+        self%dt=sudata%dt !assume all traces have same dt
+
+        call alloc(self%dobs,self%nt,self%nrcv)
+        self%dobs=sudata%trs
 
     end subroutine
 
