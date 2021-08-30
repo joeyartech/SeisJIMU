@@ -226,6 +226,7 @@ use m_preconditioner
         class(t_fobjective) :: self
         real,dimension(param%n1,param%n2,param%n3,param%npars) :: x,g
 
+        real,dimension(:,:,:,:),allocatable :: Wxres !weighted residuals of x
         real,dimension(:,:,:,:),allocatable :: spatgrad !spatial gradient of x
 
         call alloc(spatgrad,param%n1,param%n2,param%n3,param%npars,o_init=0.)
@@ -243,27 +244,29 @@ use m_preconditioner
                     Wxres=x
                 endif
 
-                self%xnorms(i) = sum(Wxres*Wxres, .not.param%is_freeze_zone)
+                self%xnorms(i) = self%xnorms(i) + sum(Wxres*Wxres)
+                !self%xnorms(i) = sum(Wxres*Wxres, .not.param%is_freeze_zone)
 
                 !spatial gradient
                 spatgrad = spatgrad + Wxres
 
             case ('Lasso','L1')
+                !to be implemented..
 
-            case ('1st-ord_Ridge')
+            case ('1st_Ridge','1-L2')
 
-                !fcost
                 do j=1,param%n1
-                    self%xnorms(i) = self%xnorms(i) + xnorms_weights(1)*sum((x(j+1,:,:,:)-x(j,:,:,:))**2,.not.param%is_freeze_zone(j,:,:,:))
+                    !self%xnorms(i) = self%xnorms(i) + xnorms_weights(1)*sum((x(j+1,:,:,:)-x(j,:,:,:))**2,.not.param%is_freeze_zone(j,:,:,:))
+                    self%xnorms(i) = self%xnorms(i) + sum((x(j+1,:,:,:)-x(j,:,:,:))**2)
                 enddo
 
                 do j=1,param%n2
-                    self%xnorms(i) = self%xnorms(i) + xnorms_weights(2)*sum((x(:,j+1,:,:)-x(:,j,:,:))**2,.not.param%is_freeze_zone(:,j,:,:))
+                    self%xnorms(i) = self%xnorms(i) + sum((x(:,j+1,:,:)-x(:,j,:,:))**2)
                 enddo
 
                 if(m%is_cubic) then
                 do j=1,param%n3
-                    self%xnorms(i) = self%xnorms(i) + xnorms_weights(3)*sum((x(:,:,j+1,:)-x(:,:,j,:))**2,.not.param%is_freeze_zone(:,:,j,:))
+                    self%xnorms(i) = self%xnorms(i) + sum((x(:,:,j+1,:)-x(:,:,j,:))**2)
                 enddo
                 endif
 
@@ -272,16 +275,21 @@ use m_preconditioner
                 do i3=1,param%n3
                 do i2=1,param%n2
                 do i1=1,param%n1
+                    ! spatgrad(i1,i2,i3,i4) = spatgrad(i1,i2,i3,i4) &
+                    !     -xnorms_weights(1)*(x(i1-1,i2,i3,i4)-2.*x(i1,i2,i3,i4)+x(i1+1,i2,i3,i4)) &
+                    !     -xnorms_weights(2)*(x(i1,i2-1,i3,i4)-2.*x(i1,i2,i3,i4)+x(i1,i2+1,i3,i4)) &
+                    !     -xnorms_weights(3)*(x(i1,i2,i3-1,i4)-2.*x(i1,i2,i3,i4)+x(i1,i2,i3+1,i4))
                     spatgrad(i1,i2,i3,i4) = spatgrad(i1,i2,i3,i4) &
-                        -xnorms_weights(1)*(x(i1-1,i2,i3,i4)-2.*x(i1,i2,i3,i4)+x(i1+1,i2,i3,i4)) &
-                        -xnorms_weights(2)*(x(i1,i2-1,i3,i4)-2.*x(i1,i2,i3,i4)+x(i1,i2+1,i3,i4)) &
-                        -xnorms_weights(3)*(x(i1,i2,i3-1,i4)-2.*x(i1,i2,i3,i4)+x(i1,i2,i3+1,i4))
+                        -x(i1-1,i2,i3,i4)-2.*x(i1,i2,i3,i4)+x(i1+1,i2,i3,i4) &
+                        -x(i1,i2-1,i3,i4)-2.*x(i1,i2,i3,i4)+x(i1,i2+1,i3,i4) &
+                        -x(i1,i2,i3-1,i4)-2.*x(i1,i2,i3,i4)+x(i1,i2,i3+1,i4)
                 enddo
                 enddo
                 enddo
                 enddo
 
             case ('TV')
+                !to be implementedl
 
             end select
 
@@ -289,7 +297,7 @@ use m_preconditioner
 
         self%xnorms = 0.5*self%xnorms*param%cell_volume_in_Pa
 
-        where(param%is_freeze_zone) spatgrad=0.
+        !where(param%is_freeze_zone) spatgrad=0.
 
         !add to dnorm's gradient wrt parameters
         g = g + spatgrad*param%cell_volume_in_Pa
@@ -374,35 +382,31 @@ use m_preconditioner
         ! call sysio_write('grho',m%gradient(:,:,:,1),size(m%gradient(:,:,:,1)))
         ! call sysio_write('gkpa',m%gradient(:,:,:,2),size(m%gradient(:,:,:,2)))
 
-        !preconditioning
-        call alloc(m%pgradient,m%nz,m%nx,m%ny,ppg%ngrad)
-        call preco%update
-        call preco%apply(m%gradient,m%pgradient)
+        !transform to x-space
+        call param%transform(o_g=qp%g)
 
-        !transform
-        call alloc(qp%g ,param%n1,param%n2,param%n3,param%npars)
-        call alloc(qp%pg,param%n1,param%n2,param%n3,param%npars)
-        call param%transform(o_g=qp%g,o_pg=qp%pg)
-        !call param%transform_model('m->x',sfield%autocorr)
-
-        !save some RAM
-        call dealloc(m%energy,m%gradient,m%pgradient)
-
-        ! !Tikhonov regularization
+        !Regularization in x-space
         ! if(either(oif_approx,.false.,present(oif_approx))) then
         !     call regularize_approximate(fobj,qp)
         ! else
-        !     call regularize(fobj,qp)
+            call regularize(self,qp)
         ! endif
+
+        !preconditioner
+        call preco%update
+        call preco%apply(qp%g,qp%pg)
+
+        !save some RAM
+        call dealloc(m%gradient,m%energy)
 
     end subroutine
 
-    ! subroutine regularize(fobj,qp)
-    !     type(t_fobjective) :: fobj
-    !     type(t_querypoint) :: qp
+    subroutine regularize(fobj,qp)
+        type(t_fobjective) :: fobj
+        type(t_querypoint) :: qp
 
-    !     call fobj%compute_xnorms(qp%x,qp%g)
+        if(mpiworld%is_master) call fobj%compute_xnorms(qp%x,qp%g)
 
-    ! end subroutine
+    end subroutine
 
 end

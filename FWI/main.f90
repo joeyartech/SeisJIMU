@@ -151,7 +151,7 @@ use m_smoother_laplacian_sparse
         !objective function and adjoint source
         call fobj%compute_dnorms
 
-        if(mpiworld%is_master) call fobj%print_dnorms('Unscaled','on Shot#'//shot%sindex)
+        if(mpiworld%is_master) call fobj%print_dnorms('Linesearch unscaled','on Shot#'//shot%sindex)
 
         if(either(oif_gradient,.true.,present(oif_gradient))) then
 
@@ -175,7 +175,7 @@ use m_smoother_laplacian_sparse
 
     !collect global objective function value
     call mpi_allreduce(mpi_in_place, fobj%dnorms, fobj%n_dnorms, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-    call fobj%print_dnorms('Unscaled stacked','')
+    call fobj%print_dnorms('Linesearch unscaled stacked','')
 
     if(either(oif_gradient,.true.,present(oif_gradient))) then
         !collect global gradient

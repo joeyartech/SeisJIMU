@@ -57,6 +57,7 @@ use m_Modeling
         contains
         procedure :: init
         procedure :: transform
+        procedure :: transform_preconditioner
     end type
 
     type(t_parametrizer),public :: param
@@ -190,12 +191,14 @@ use m_Modeling
 
     ! end subroutine
 
-    subroutine transform(self,o_dir,o_x,o_xprior,o_g,o_pg)
+    subroutine transform(self,o_dir,o_x,o_xprior,o_g)
         class(t_parametrizer) :: self
         character(4),optional :: o_dir
-        real,dimension(self%n1,self%n2,self%n3,self%npars),optional :: o_x,o_xprior,o_g,o_pg
+        real,dimension(:,:,:,:),allocatable,optional :: o_x,o_xprior,o_g
 
         if(present(o_x)) then
+            call alloc(o_x,self%n1,self%n2,self%n3,self%npars,oif_protect=.true.)
+
             if(either(o_dir,'m->x',present(o_dir))=='m->x') then
                 do i=1,self%npars
                         select case (self%pars(i)%name)
@@ -204,6 +207,7 @@ use m_Modeling
                         case ('rho'); o_x(:,:,:,i) = (m%rho-self%pars(i)%min)/self%pars(i)%range
                         end select
                 enddo
+
             else
                 do i=1,self%npars
                     select case (self%pars(i)%name)
@@ -215,11 +219,13 @@ use m_Modeling
                 ! + gardner
                 if(is_gardner) m%rho = a*m%vp**b
                 call m%apply_freeze_zone
+
             endif
+
         endif
 
-
         if(present(o_xprior)) then
+            call alloc(o_xprior,self%n1,self%n2,self%n3,self%npars,oif_protect=.true.)
             do i=1,self%npars
                 select case (self%pars(i)%name)
                 case ('vp' ); o_x(:,:,:,i) = (m%vp_prior -self%pars(i)%min)/self%pars(i)%range
@@ -228,15 +234,25 @@ use m_Modeling
                 end select
             enddo
         endif
-        
+
         if(present(o_g)) then
+            call alloc(o_g,self%n1,self%n2,self%n3,self%npars,oif_protect=.true.)
             call transform_gradient(m%gradient,o_g)
         endif
         
-        if(present(o_pg)) then
-            call transform_gradient(m%pgradient,o_pg)
-        endif
+        ! if(present(o_pg)) then
+        !     call alloc(o_pg,param%n1,param%n2,param%n3,param%npars,oif_protect=.true.)
+        !     call transform_gradient(preco%preco,o_preco)
+        ! endif
 
+    end subroutine
+
+    subroutine transform_preconditioner(self,preco_in_m,preco_in_x)
+        class(t_parametrizer) :: self
+        real,dimension(m%nz,m%nx,m%ny) :: preco_in_m
+        real,dimension(self%n1,self%n2,self%n3) :: preco_in_x
+
+        preco_in_x=preco_in_m
     end subroutine
 
     subroutine transform_gradient(gradient,g)

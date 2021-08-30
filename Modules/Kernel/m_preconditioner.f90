@@ -7,8 +7,6 @@ use m_parametrizer
 
     type,public :: t_preconditioner
 
-        real,dimension(:,:,:),allocatable :: preco
-
         contains
 
         procedure :: update
@@ -17,6 +15,9 @@ use m_parametrizer
     end type
 
     type(t_preconditioner),public :: preco
+
+    real,dimension(:,:,:),allocatable :: preco_in_x
+    real,dimension(:,:,:),allocatable :: preco_in_m
     
     contains
     
@@ -26,7 +27,7 @@ use m_parametrizer
         type(t_string),dimension(:),allocatable :: list, sublist
         character(:),allocatable :: file
 
-        call alloc(self%preco,m%nz,m%nx,m%ny,o_init=1.)
+        call alloc(preco_in_m,m%nz,m%nx,m%ny,o_init=1.)
 
         list=setup%get_strs('PRECONDITIONING','PRECO',o_default='z^1')
 
@@ -34,13 +35,13 @@ use m_parametrizer
             if(index(list(i)%s,'z^')>0) then
                 sublist=split(list(i)%s,o_sep='^')
                 call hud('Will precondition the gradient by z^'//sublist(2)%s)
-                call by_depth(self%preco,o_power=str2real(sublist(2)%s))
+                call by_depth(o_power=str2real(sublist(2)%s))
             endif
 
             if(index(list(i)%s,'z*')>0) then
                 sublist=split(list(i)%s,o_sep='*')
                 call hud('Will precondition the gradient by z*'//sublist(2)%s)
-                call by_depth(self%preco,o_factor=str2real(sublist(2)%s))
+                call by_depth(o_factor=str2real(sublist(2)%s))
             endif
             
             select case (list(i)%s)
@@ -52,7 +53,7 @@ use m_parametrizer
                     call warn('The chosen energy term does NOT exist! Use instead the 1st term provided from propagator.')
                     iengy=1
                 endif
-                call by_energy(self%preco,iengy)
+                call by_energy(iengy)
 
             case ('custom')
                 sublist=split(list(i)%s,o_sep=':')
@@ -63,39 +64,39 @@ use m_parametrizer
                 endif
 
                 call hud('Will precondition the gradient in a custom way defined in '//file)
-                call by_custom(self%preco,file)
+                call by_custom(file)
 
             end select
 
         enddo
 
+        call alloc(preco_in_x,param%n1,param%n2,param%n3)
+        call param%transform_preconditioner(preco_in_m,preco_in_x)
+
     end subroutine
 
-    subroutine by_depth(preco,o_power,o_factor)
-        real,dimension(m%nz,m%nx,m%ny) :: preco
+    subroutine by_depth(o_power,o_factor)
         real,optional :: o_power, o_factor
 
         if(present(o_power)) then
-            preco(:,1,1)=[(((iz-1)*m%dz)**o_power,iz=1,m%nz)]
+            preco_in_m(:,1,1)=[(((iz-1)*m%dz)**o_power,iz=1,m%nz)]
             do iy=1,m%ny; do ix=1,m%nx
-                preco(:,ix,iy)=preco(:,1,1)
+                preco_in_m(:,ix,iy)=preco_in_m(:,1,1)
             enddo; enddo
         endif
 
         if(present(o_factor)) then
-            preco(:,1,1)=[(((iz-1)*m%dz)*o_factor,iz=1,m%nz)]
+            preco_in_m(:,1,1)=[(((iz-1)*m%dz)*o_factor,iz=1,m%nz)]
             do iy=1,m%ny; do ix=1,m%nx
-                preco(:,ix,iy)=preco(:,1,1)
+                preco_in_m(:,ix,iy)=preco_in_m(:,1,1)
             enddo; enddo
         endif
         
     end subroutine
 
-    subroutine by_energy(preco,iengy)
-        real,dimension(m%nz,m%nx,m%ny) :: preco
+    subroutine by_energy(iengy)
 
-
-        preco=1./m%energy(:,:,:,iengy)
+        preco_in_m=1./m%energy(:,:,:,iengy)
 
         ! !convert gradient wrt model to gradient wrt parameters
         ! call param%transform_gradient('m->x',fobj%gradient)
@@ -124,8 +125,7 @@ use m_parametrizer
 
     end subroutine
 
-    subroutine by_custom(preco,file)
-        real,dimension(m%nz,m%nx,m%ny) :: preco
+    subroutine by_custom(file)
         character(*) :: file
 
         integer :: file_size
@@ -138,7 +138,7 @@ use m_parametrizer
 
         call sysio_read(file,tmp,size(tmp))
 
-        preco=preco*tmp
+        preco_in_m=preco_in_m*tmp
 
         deallocate(tmp)
 
@@ -146,7 +146,7 @@ use m_parametrizer
     
     subroutine apply(self,g,pg)
         class(t_preconditioner) :: self
-        real,dimension(m%nz,m%nx,m%ny,ppg%ngrad) :: g,pg
+        real,dimension(param%n1,param%n2,param%n3,param%npars) :: g,pg
         
         real :: old_norm
 
@@ -164,10 +164,13 @@ use m_parametrizer
         !precond whole grediant to keep the gradient norm
         old_norm = norm2(g)
         do i=1,ppg%ngrad
-            pg(:,:,:,i)=g(:,:,:,i)*self%preco(:,:,:)
+            pg(:,:,:,i)=g(:,:,:,i)*preco_in_x(:,:,:)
         enddo
         pg = pg * old_norm / norm2(pg)
         
+        !save some RAM
+        call dealloc(preco_in_m)
+
     end subroutine
 
 end
