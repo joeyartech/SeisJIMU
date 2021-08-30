@@ -77,6 +77,8 @@ use m_Kernel
         type(t_querypoint) :: curr,pert
         real,dimension(:,:,:,:,:),optional :: o_gradient_history
 
+        type(t_checkpoint),save :: chp
+
         logical :: if_1st_cond, if_2nd_cond
 
         self%alphaL=0.
@@ -105,7 +107,13 @@ use m_Kernel
             ! call sysio_write('pert%x',pert%x,size(pert%x),o_mode='append')
             call threshold(pert%x,size(pert%x))
             call hud('Modeling with perturbed models')
-            call fobj%eval(pert)
+
+            call chp%init('FWI_querypoint_linesearcher','Gradient#','per_init')
+            if(.not.pert%is_registered(chp)) then
+                call fobj%eval(pert)
+                call pert%register(chp)
+            endif
+
             call self%scale(pert)
             pert%g_dot_d = sum(pert%g*curr%d)
 

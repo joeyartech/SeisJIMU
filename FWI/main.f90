@@ -4,7 +4,7 @@ use m_Modeling
 use m_Kernel
 use m_Optimization
 
-    type(t_checkpoint) :: chp
+    type(t_checkpoint) :: chp_shls, chp_qp
     type(t_querypoint),target :: qp0
     character(:),allocatable :: job
 
@@ -48,10 +48,10 @@ use m_Optimization
     !shotlist
     call shls%read_from_data
     call shls%build
-    call chp%init('FWI_shotlist_grad',oif_fuse=.true.)
-    if(.not.shls%is_registered(chp,'sampled_shots')) then
+    call chp_shls%init('FWI_shotlist_gradient',oif_fuse=.true.)
+    if(.not.shls%is_registered(chp_shls,'sampled_shots')) then
         call shls%sample
-        call shls%register(chp,'sampled_shots')
+        call shls%register(chp_shls,'sampled_shots')
     endif
     call shls%assign
 
@@ -64,19 +64,21 @@ use m_Optimization
     call param%init
 
     !initial (model) parameters as querypoint
-    call qp0%init
+    call qp0%init('qp0')
 
     !objective function and gradient
     call fobj%init
-    call fobj%eval(qp0,oif_update_m=.false.)
+    call chp_qp%init('FWI_querypoint_gradient')
+    if(.not.qp0%is_registered(chp_qp)) then
+        call fobj%eval(qp0,oif_update_m=.false.)
+        call qp0%register(chp_qp)
+    endif
 
     call sysio_write('qp0%g',qp0%g,size(qp0%g))
     call sysio_write('qp0%pg',qp0%pg,size(qp0%pg))
 
-    !linesearcher
+    !scale problem by linesearcher
     call ls%init
-
-    !scale problem
     call ls%scale(qp0)
 
     call hud('qp0%f, ||g|| = '//num2str(qp0%f)//', '//num2str(norm2(qp0%g)))
@@ -108,7 +110,6 @@ use m_smoother_laplacian_sparse
 
     type(t_field) :: sfield, rfield
     character(:),allocatable :: update_wavelet
-    integer,save :: igradient=1
 
     call hud('===== START LOOP OVER SHOTS =====')
     
@@ -132,7 +133,7 @@ use m_smoother_laplacian_sparse
         call sfield%ignite
         
         !forward modeling
-        call ppg%forward(sfield,igradient,shls%yield(i))
+        call ppg%forward(sfield)
 
         call sfield%acquire
 
@@ -163,7 +164,7 @@ use m_smoother_laplacian_sparse
             call rfield%ignite(ois_adjoint=.true.)
 
             !adjoint modeling
-            call ppg%adjoint(rfield,o_sf=sfield,oif_compute_grad=.true.,igradient=igradient,ishot=ishot)
+            call ppg%adjoint(rfield,o_sf=sfield,oif_compute_grad=.true.)
                 
             call cb%project_back
 
@@ -182,8 +183,6 @@ use m_smoother_laplacian_sparse
         call mpi_allreduce(mpi_in_place, m%gradient,  m%n*ppg%ngrad, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
         call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     endif
-
-    igradient=igradient+1
 
     call mpiworld%barrier
 

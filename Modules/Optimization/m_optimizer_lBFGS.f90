@@ -64,7 +64,7 @@ use m_linesearcher
         
         !perturbed point
         pert=>qp1
-        call pert%init        
+        call pert%init('qp')
 
         !descent direction of previous point
         prev_d=curr%d
@@ -92,7 +92,7 @@ use m_linesearcher
         real,dimension(:),allocatable :: q, alpha, rho, r             
 
         call hud('============ START OPTIMIZATON ============')
-        call chp%init('FWI_shotlist_optim','Iter#',oif_fuse=.true.)
+        call chp%init('FWI_shotlist_optimizer','Iter#',oif_fuse=.true.)
 
         call optimizer_write('start')
 

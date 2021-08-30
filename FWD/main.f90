@@ -71,7 +71,7 @@ use m_Modeling
         call field%ignite
 
         !forward modeling
-        call ppg%forward(field,1,shls%yield(i))
+        call ppg%forward(field)
 
         call field%acquire
 

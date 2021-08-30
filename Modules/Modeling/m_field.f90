@@ -75,9 +75,10 @@ use, intrinsic :: ieee_arithmetic
         procedure :: write
         procedure :: write_ext
         procedure :: boundary_transport
+        final :: final
+        
         procedure :: is_registered
         procedure :: register
-        final :: final
 
     end type
 

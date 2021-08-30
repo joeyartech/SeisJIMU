@@ -31,10 +31,10 @@ use m_setup
         procedure :: assign
         procedure :: check
         procedure :: open
-        procedure :: read_real1,  read_real2,  read_real3,  read_real4
-        procedure :: write_real1, write_real2, write_real3, write_real4
-        generic :: read  =>  read_real1,  read_real2,  read_real3,  read_real4
-        generic :: write => write_real1, write_real2, write_real3, write_real4
+        procedure :: read_real,  read_real1,  read_real2,  read_real3,  read_real4
+        procedure :: write_real, write_real1, write_real2, write_real3, write_real4
+        generic :: read  => read_real,  read_real1,  read_real2,  read_real3,  read_real4
+        generic :: write => write_real, write_real1, write_real2, write_real3, write_real4
         procedure :: close
 
     end type
@@ -216,6 +216,36 @@ use m_setup
 
     end subroutine
 
+    subroutine read_real(self,a,b,c,d,e,f,g)
+        class(t_checkpoint) :: self
+        real :: a,b,c,d,e,f,g
+        optional :: b,c,d,e,f,g
+
+        if(if_use_checkpoint) then
+                read(self%fp) a
+            if(present(b)) then
+                read(self%fp) b
+            endif
+            if(present(c)) then
+                read(self%fp) c
+            endif
+            if(present(d)) then
+                read(self%fp) d
+            endif
+            if(present(e)) then
+                read(self%fp) e
+            endif
+            if(present(f)) then
+                read(self%fp) f
+            endif
+            if(present(g)) then
+                read(self%fp) g
+            endif
+
+        endif
+
+    end subroutine
+
     subroutine read_real1(self,a,b,c,d,e,f,g)
         class(t_checkpoint) :: self
         real,dimension(:),allocatable :: a,b,c,d,e,f,g
@@ -330,6 +360,36 @@ use m_setup
             endif
             if(present(g)) then
                 if(allocated(g)) read(self%fp) g
+            endif
+
+        endif
+
+    end subroutine
+
+    subroutine write_real(self,a,b,c,d,e,f,g)
+        class(t_checkpoint) :: self
+        real :: a,b,c,d,e,f,g
+        optional :: b,c,d,e,f,g
+
+        if(if_use_checkpoint) then
+                write(self%fp) a
+            if(present(b)) then
+                write(self%fp) b
+            endif
+            if(present(c)) then
+                write(self%fp) c
+            endif
+            if(present(d)) then
+                write(self%fp) d
+            endif
+            if(present(e)) then
+                write(self%fp) e
+            endif
+            if(present(f)) then
+                write(self%fp) f
+            endif
+            if(present(g)) then
+                write(self%fp) g
             endif
 
         endif
