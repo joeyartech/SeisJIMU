@@ -217,8 +217,8 @@ use m_model
                 o_fstoplo=str2real(fstoplo),o_fpasslo=str2real(fpasslo),o_fpasshi=str2real(fpasshi),o_fstophi=str2real(fstophi), &
                 o_astoplo=str2real(astoplo),o_apasslo=str2real(apasslo),o_apasshi=str2real(apasshi),o_astophi=str2real(astophi)  )
 
-            sudata%hdrs(:)%lcf=str2real(fstoplo)
-            sudata%hdrs(:)%hcf=str2real(fstophi)
+            sudata%hdrs(:)%lcf=str2int(fstoplo)
+            sudata%hdrs(:)%hcf=str2int(fstophi)
             
             call sudata%write('dobs_filt_'//self%sindex)
 

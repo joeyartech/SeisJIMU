@@ -113,6 +113,8 @@ use m_System
 !Proc #1 is assigned with {3 9}
 !
 !Procedure yield: return one shot from sampled_shots inside shot loop.
+!
+!Procedure scale: scale the data misfit computed by using a portion of shots to approximate the misfit by all shots
 
     private
 
@@ -136,6 +138,7 @@ use m_System
         procedure :: sample
         procedure :: assign
         procedure :: yield
+        procedure :: scale
 
         procedure :: is_registered
         procedure :: register
@@ -432,6 +435,30 @@ use m_System
         yield=str2int(self%shots_per_processor(i)%s)
 
     end function
+
+    subroutine scale(self,dnorms)
+        class(t_shotlist) :: self
+        real,dimension(:) :: dnorms
+
+        logical,save :: is_first_in=.true.
+        integer,save :: n=0, m=1
+
+        if(is_first_in) then
+            m=size(self%lists) !=sampled shots
+
+            !total number of elements in lists
+            !/= number of all provided shots, since some shots might be repeated
+            do i=1,size(self%lists)
+                n = n + size(split(self%lists(i)%s))
+            enddo
+
+            is_first_in=.false.
+            
+        endif
+
+        dnorms = dnorms * n/m
+
+    end subroutine
 
 
     logical function is_registered(self,chp,str)

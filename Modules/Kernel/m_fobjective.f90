@@ -213,6 +213,9 @@ use m_preconditioner
 
         enddo
 
+        !scale dnorms by shotlist
+        call shls%scale(self%dnorms)
+
         call shot%write('dadj_',shot%dadj)
 
         is_first_in=.false.
