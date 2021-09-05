@@ -81,23 +81,24 @@ use m_Modeling
 
         if(is_empirical) then
             do i=1,size(list)
-                if(list(i)%s(1:7)=='Gardner') then
+                if(index(list(i)%s,'Gardner')>0) then
                     !Gardner law rho=a*vp^b
                     !passive rho will be updated according to vp
                     !https://wiki.seg.org/wiki/Dictionary:Gardner%E2%80%99s_equation
                     !http://www.subsurfwiki.org/wiki/Gardner%27s_equation
                     !https://en.wikipedia.org/wiki/Gardner%27s_relation
                     is_gardner=.true.
-                    if(len(list(1)%s)<=7) then
-                        a=310; b=0.25
-                        if(m%ref_rho<1000.) a=0.31
+!                     if(len(list(i)%s)<=7) then
+                        a=either(310.,0.31,m%ref_rho<1000.)
+                        b=0.25
                         
-                    else
-                        sublist=split(list(1)%s,o_sep=',')
-                        a=str2real(sublist(2)%s)
-                        b=str2real(sublist(3)%s)
-                    endif
-
+!                     else
+!                         sublist=split(list(i)%s,o_sep=',') !ifort generates 'catastropic error ... internal compiler error' and lets me report...
+!                         a=str2real(sublist(2)%s)
+!                         b=str2real(sublist(3)%s)
+                        
+!                     endif
+! 
                     call hud('Gardner law is enabled: a='//num2str(a)//', b='//num2str(b)//s_NL// &
                         'Parameter rho will not be active in the inversion.')
 
@@ -180,16 +181,17 @@ use m_Modeling
 
     end subroutine
     
-    ! subroutine init_forwardmap(self,fm,oif_g,oif_)
-    !     class(t_parametrizer) :: self
-    !     type(t_forwardmap) :: fm
-
-    !     call alloc(fm%x, n1,n2,n3,self%npars)
-    !     call alloc(fm%g, n1,n2,n3,self%npars)
-    !     call alloc(fm%pg,n1,n2,n3,self%npars)
-    !     call alloc(fm%d, n1,n2,n3,self%npars)
-
-    ! end subroutine
+!deprecated
+!     subroutine init_forwardmap(self,fm,oif_g,oif_)
+!         class(t_parametrizer) :: self
+!         type(t_forwardmap) :: fm
+! 
+!         call alloc(fm%x, n1,n2,n3,self%npars)
+!         call alloc(fm%g, n1,n2,n3,self%npars)
+!         call alloc(fm%pg,n1,n2,n3,self%npars)
+!         call alloc(fm%d, n1,n2,n3,self%npars)
+! 
+!     end subroutine
 
     subroutine transform(self,o_dir,o_x,o_xprior,o_g)
         class(t_parametrizer) :: self
@@ -240,10 +242,11 @@ use m_Modeling
             call transform_gradient(m%gradient,o_g)
         endif
         
-        ! if(present(o_pg)) then
-        !     call alloc(o_pg,param%n1,param%n2,param%n3,param%npars,oif_protect=.true.)
-        !     call transform_gradient(preco%preco,o_preco)
-        ! endif
+!deprecated
+!         if(present(o_pg)) then
+!             call alloc(o_pg,param%n1,param%n2,param%n3,param%npars,oif_protect=.true.)
+!             call transform_gradient(preco%preco,o_preco)
+!         endif
 
     end subroutine
 

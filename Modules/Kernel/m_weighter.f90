@@ -191,7 +191,9 @@ use m_Modeling
                 if (msg < 0) then !end of file
                     call error(file//' is missing xgain points.')
                 endif
-                if (msg > 0) stop 'Check '//file//'.  Something is wrong..'
+                if (msg > 0) then
+                    call error('Check '//file//'.  Something is wrong..')
+                endif
                 if (text=='') then !blank line
                     cycle
                 else
@@ -222,7 +224,9 @@ use m_Modeling
                 if (msg < 0) then !end of file
                     call error(file//' is missing tgain points.')
                 endif
-                if (msg > 0) stop 'Check '//file//'.  Something is wrong..'
+                if (msg > 0) then
+                    call error('Check '//file//'.  Something is wrong..')
+                endif
                 if (text=='') then !blank line
                     cycle
                 else 
@@ -248,7 +252,9 @@ use m_Modeling
                 if (msg < 0) then !end of file
                     call error(file//' is missing tgain points.')
                 endif
-                if (msg > 0) stop 'Check '//file//'.  Something is wrong..'
+                if (msg > 0) then
+                    call error('Check '//file//'.  Something is wrong..')
+                endif
                 if (text=='') then !blank line
                     cycle
                 else 
@@ -334,7 +340,9 @@ use m_Modeling
             if (msg < 0) then !end of file
                 call error(file//' is missing xgain points.')
             endif
-            if (msg > 0) stop 'Check file '//file//'.  Something is wrong..'
+            if (msg > 0) then
+               call error('Check file '//file//'.  Something is wrong..')
+            endif
             if (text=='') then !blank line
                 cycle
             else
@@ -375,7 +383,9 @@ use m_Modeling
                 if (msg < 0) then !end of file
                     call error(file//' is missing tgain points.')
                 endif
-                if (msg > 0) stop 'Check file '//file//'. Something is wrong..'
+                if (msg > 0) then
+                    call error('Check file '//file//'. Something is wrong..')
+                endif
                 if (text=='') then !blank line
                     cycle
                 else
