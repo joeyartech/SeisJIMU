@@ -14,10 +14,10 @@ use m_setup
         !input directory
         dir_in=setup%get_str('DIR_IN',o_default='./') 
 
-#ifdef GNU
+#ifdef gfortran
         inquire(file=dir_in,exist=exist)
 #endif
-#ifdef INTEL
+#ifdef ifort
         inquire(directory=dir_in,exist=exist)
 #endif
         

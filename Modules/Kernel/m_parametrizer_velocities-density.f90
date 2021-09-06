@@ -240,7 +240,53 @@ use m_Modeling
 
         if(present(o_g)) then
             call alloc(o_g,self%n1,self%n2,self%n3,self%npars)
-            call transform_gradient(m%gradient,o_g)
+            !m%gradient(:,:,:,1) = grho
+            !m%gradient(:,:,:,2) = gkpa or glda
+            !m%gradient(:,:,:,3) = gmu
+
+            !acoustic
+            if(is_AC .and. .not. is_empirical) then
+                do i=1,param%npars
+                    select case (param%pars(i)%name)
+                    case ('vp' ); o_g(:,:,:,i) = m%gradient(:,:,:,2)*2*m%rho*m%vp
+                    case ('rho'); o_g(:,:,:,i) = m%gradient(:,:,:,2)*m%vp**2 + m%gradient(:,:,:,1)
+                    end select
+                enddo
+            endif
+
+            !acoustic + gardner
+            if(is_AC .and. is_gardner) then
+                o_g(:,:,:,1) =(m%gradient(:,:,:,2)*(b+2)/b*m%vp**2 + m%gradient(:,:,:,1))*a*b*m%vp**(b-1)
+            endif
+
+            !elastic
+            if(is_EL .and. .not. is_empirical) then
+                do i=1,param%npars
+                    select case (param%pars(i)%name)
+                    case ('vp' ); o_g(:,:,:,i) = m%gradient(:,:,:,2)*2*m%rho*m%vp
+                    case ('vs' ); o_g(:,:,:,i) =(m%gradient(:,:,:,2)*(-2) + m%gradient(:,:,:,3))*2*m%rho*m%vs
+                    case ('rho'); o_g(:,:,:,i) = m%gradient(:,:,:,2)*m%vp**2 + (-2*m%gradient(:,:,:,2)+m%gradient(:,:,:,3))*m%vs**2 + m%gradient(:,:,:,1)
+                    end select
+                enddo
+            endif
+
+            !elastic + gardner
+            if(is_EL .and. is_gardner) then
+                do i=1,param%npars
+                    select case (param%pars(i)%name)
+                    case ('vp' ); o_g(:,:,:,i) =(m%gradient(:,:,:,2)*(b+2)/b*m%vp + (-2*m%gradient(:,:,:,2)+m%gradient(:,:,:,3))*m%vs**2 + m%gradient(:,:,:,1))*a*b*m%vp**(b-1)
+                    case ('vs' ); o_g(:,:,:,i) =(m%gradient(:,:,:,2)*(-2) + m%gradient(:,:,:,3))*2*a*m%vp**b*m%vs
+                    end select
+                enddo
+            endif
+
+            !normaliz g by allowed parameter range
+            !s.t. g is in unit [Nm]
+            do i=1,param%npars
+                o_g(:,:,:,i)=o_g(:,:,:,i)*param%pars(i)%range
+            enddo
+            
+            ! where (param%is_freeze_zone) g=0.
         endif
         
 !deprecated
@@ -257,59 +303,6 @@ use m_Modeling
         real,dimension(self%n1,self%n2,self%n3) :: preco_in_x
 
         preco_in_x=preco_in_m
-    end subroutine
-
-    subroutine transform_gradient(gradient,g)
-        real,dimension(m%nz,m%nx,m%ny,ppg%ngrad) :: gradient
-        real,dimension(param%n1,param%n2,param%n3,param%npars) :: g
-        !gradient(:,:,:,1) = grho
-        !gradient(:,:,:,2) = gkpa or glda
-        !gradient(:,:,:,3) = gmu
-
-        !acoustic
-        if(is_AC .and. .not. is_empirical) then
-            do i=1,param%npars
-                select case (param%pars(i)%name)
-                case ('vp' ); g(:,:,:,i) = gradient(:,:,:,2)*2*m%rho*m%vp
-                case ('rho'); g(:,:,:,i) = gradient(:,:,:,2)*m%vp**2 + gradient(:,:,:,1)
-                end select
-            enddo
-        endif
-
-        !acoustic + gardner
-        if(is_AC .and. is_gardner) then
-            g(:,:,:,1) =(gradient(:,:,:,2)*(b+2)/b*m%vp**2 + gradient(:,:,:,1))*a*b*m%vp**(b-1)
-        endif
-
-        !elastic
-        if(is_EL .and. .not. is_empirical) then
-            do i=1,param%npars
-                select case (param%pars(i)%name)
-                case ('vp' ); g(:,:,:,i) = gradient(:,:,:,2)*2*m%rho*m%vp
-                case ('vs' ); g(:,:,:,i) =(gradient(:,:,:,2)*(-2) + gradient(:,:,:,3))*2*m%rho*m%vs
-                case ('rho'); g(:,:,:,i) = gradient(:,:,:,2)*m%vp**2 + (-2*gradient(:,:,:,2)+gradient(:,:,:,3))*m%vs**2 + gradient(:,:,:,1)
-                end select
-            enddo
-        endif
-
-        !elastic + gardner
-        if(is_EL .and. is_gardner) then
-            do i=1,param%npars
-                select case (param%pars(i)%name)
-                case ('vp' ); g(:,:,:,i) =(gradient(:,:,:,2)*(b+2)/b*m%vp + (-2*gradient(:,:,:,2)+gradient(:,:,:,3))*m%vs**2 + gradient(:,:,:,1))*a*b*m%vp**(b-1)
-                case ('vs' ); g(:,:,:,i) =(gradient(:,:,:,2)*(-2) + gradient(:,:,:,3))*2*a*m%vp**b*m%vs
-                end select
-            enddo
-        endif
-
-        !normaliz g by allowed parameter range
-        !s.t. g is in unit [Nm]
-        do i=1,param%npars
-            g(:,:,:,i)=g(:,:,:,i)*param%pars(i)%range
-        enddo
-        
-        ! where (param%is_freeze_zone) g=0.
-
     end subroutine
 
 end module

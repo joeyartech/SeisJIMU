@@ -56,7 +56,7 @@ use m_Optimization
     call shls%assign
 
     !if preconditioner needs energy terms
-    if(index(strcat(setup%get_strs('PRECONDITIONING','PRECO')),'energy')>0) then
+    if(index(setup%get_str('PRECONDITIONING','PRECO'),'energy')>0) then
         ppg%if_compute_engy=.true.
     endif
 

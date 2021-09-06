@@ -9,7 +9,7 @@ FLAGF90= -xHost -O3 -Ofast -ipo -parallel -qopenmp -traceback -assume byterecl  
 # FLAGF90= -g -debug -check all -check noarg_temp_created -W1 -WB -traceback -assume byterecl
 FLAGF77= $(FLAGF90)
 
-FPP=-fpp -DINTEL -D"git_commit='$(GIT_COMMIT)'" -D"git_branch='$(GIT_BRANCH)'"
+FPP=-fpp -Difort -D"git_commit='$(GIT_COMMIT)'" -D"git_branch='$(GIT_BRANCH)'"
 
 MOD=-module $(mod_dir)
 

@@ -7,7 +7,7 @@ FLAGF90= -Ofast -fopenmp -ffree-line-length-none -fbacktrace  -fno-unsafe-math-o
 #FLAGF77= -g -Wall -fopenmp -fcheck=all                         -fbacktrace
 #FLAGF90= -g -Wall -fopenmp -fcheck=all -ffree-line-length-none -fbacktrace
 
-FPP=-cpp -DGNU -D"git_commit='$(GIT_COMMIT)'" -D"git_branch='$(GIT_BRANCH)'"
+FPP=-cpp -Dgfortran -D"git_commit='$(GIT_COMMIT)'" -D"git_branch='$(GIT_BRANCH)'"
 
 MOD=-J $(mod_dir)
 

@@ -9,13 +9,13 @@ use m_string
     character(*),parameter :: commit = git_commit
     character(*),parameter :: branch = git_branch
 
-#ifdef GNU
+#ifdef gfortran
     character(*),parameter :: compiler = 'gfortran v' // __VERSION__
     character(*),parameter :: version = __VERSION__
     integer,parameter      :: endian = __BYTE_ORDER__
 #endif
 
-#ifdef INTEL
+#ifdef ifort
     character(*),parameter :: compiler = 'ifort'
     integer,parameter      :: version(2) = [__INTEL_COMPILER, __INTEL_COMPILER_UPDATE]
     character(*),parameter :: endian = 'unavailable'

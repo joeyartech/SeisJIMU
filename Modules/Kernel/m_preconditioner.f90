@@ -44,8 +44,7 @@ use m_parametrizer
                 call by_depth(o_factor=str2real(sublist(2)%s))
             endif
             
-            select case (list(i)%s)
-            case ('1/energy')
+            if(index(list(i)%s,'energy')>0) then
                 sublist=split(list(i)%s,o_sep=':')
                 iengy=either(str2int(sublist(2)%s),1,len(sublist(2)%s)>0)
                 call hud('Will precondition the gradient by '//num2str(iengy)//"'th energy term")
@@ -54,8 +53,9 @@ use m_parametrizer
                     iengy=1
                 endif
                 call by_energy(iengy)
+            endif
 
-            case ('custom')
+            if(index(list(i)%s,'custom')>0) then
                 sublist=split(list(i)%s,o_sep=':')
                 if(size(sublist)==1) then !filename is not attached, ask for it
                     file=setup%get_file('FILE_PRECONDITION_CUSTOM',o_mandatory=1)
@@ -65,8 +65,7 @@ use m_parametrizer
 
                 call hud('Will precondition the gradient in a custom way defined in '//file)
                 call by_custom(file)
-
-            end select
+            endif
 
         enddo
 
@@ -146,8 +145,7 @@ use m_parametrizer
     
     subroutine apply(self,g,pg)
         class(t_preconditioner) :: self
-        real,dimension(param%n1,param%n2,param%n3,param%npars) :: g
-        real,dimension(:,:,:,:),allocatable :: pg
+        real,dimension(:,:,:,:),allocatable :: g,pg
         
         real :: old_norm
 
@@ -172,7 +170,7 @@ use m_parametrizer
         pg = pg * old_norm / norm2(pg)
         
         !save some RAM
-        call dealloc(preco_in_m)
+        call dealloc(preco_in_x,preco_in_m)
 
     end subroutine
 
