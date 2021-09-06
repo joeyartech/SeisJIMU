@@ -482,13 +482,16 @@ use m_mpienv
     !     p=>a
     ! end subroutine
 
-    subroutine add_int1(a,n,item)
+    subroutine add_int1(a,item)
         integer,dimension(:),allocatable :: a
         integer item
 
         integer,dimension(:),allocatable :: b
         
-        allocate(b(n+1)); b(1:n)=a(1:n)
+        n=size(a)
+
+        allocate(b(n+1))
+        b(1:n)=a(1:n)
         b(n+1)=item
         
         deallocate(a)
@@ -497,12 +500,13 @@ use m_mpienv
 
     end subroutine
 
-    subroutine rm_int1(a,n,item)
+    subroutine rm_int1(a,item)
         integer,dimension(:),allocatable :: a
         integer :: item
 
         integer,dimension(:),allocatable :: b
 
+        n=size(a)
         allocate(b(n))
 
         j=0
@@ -514,8 +518,8 @@ use m_mpienv
         enddo
 
         deallocate(a)
-        allocate(a(j)); a(:)=b(1:j)
-
+        allocate(a(j))
+        a(:)=b(1:j)
         deallocate(b)
 
     end subroutine

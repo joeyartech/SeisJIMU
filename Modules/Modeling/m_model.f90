@@ -89,7 +89,7 @@ use m_System
             self%rev_cell_diagonal=sqrt(self%dz**(-2) + self%dx**(-2))
         endif
 
-        self%file=setup%get_file('FILE_MODEL')!,o_mandatory=.true.) 
+        self%file=setup%get_file('FILE_MODEL',o_mandatory=1) 
 
         self%attributes_read =setup%get_strs('MODEL_ATTRIBUTES',o_default='vp rho')
         self%attributes_write=setup%get_strs('MODEL_ATTRIBUTES_WRITE',o_default=strcat(self%attributes_read))

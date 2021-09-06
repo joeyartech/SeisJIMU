@@ -79,6 +79,16 @@ use m_setup
         
     end subroutine
 
+    subroutine sysio_rm(file,o_wait)
+        character(*) :: file
+        logical,optional :: o_wait
+
+        if(mpiworld%is_master) then
+            call execute_command_line('rm -rf '//dir_out//file,wait=either(o_wait,.true.,present(o_wait)))
+        endif
+
+    end subroutine
+
 end
 !     
 !     

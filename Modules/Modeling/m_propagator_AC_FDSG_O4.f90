@@ -26,7 +26,7 @@ use m_cpml
             'CFL=Sum|coef|*Vmax*dt/rev_cell_volume'//s_NL// &
             '   -> dt <= 0.606(2D) or 0.494(3D) *Vmax/dx'//s_NL// &
             'Required model attributes: vp, rho'//s_NL// &
-            'Required field components: vx, vy, vz, p'//s_NL// &
+            'Required field components: vx, vy(3D), vz, p'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
             'Basic gradients: grho gkpa'//s_NL// &
             'Imaging conditions: P-Pxcorr'//s_NL// &

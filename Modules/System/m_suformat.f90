@@ -460,7 +460,7 @@ use m_sysio
 
         if(present(o_sindex)) write(*,*) 'Shot# '//o_sindex//' will write '//num2str(self%ntr)//' traces, each trace has '//num2str(self%ns)//' samples.'
 
-        call execute_command_line('rm '//dir_out//file//'.su')
+        call sysio_rm(file//'.su')
 
         if(present(o_mode)) then
             if(o_mode=='append') then

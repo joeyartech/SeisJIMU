@@ -87,7 +87,7 @@ use m_string
         class(t_mpienv) :: self
         character(*) :: filename, string
 
-        integer fhandle
+        integer :: filesize, fhandle
         integer(kind=mpi_offset_kind) :: disp, offset
         character(:),allocatable :: stamp, str
 
@@ -103,13 +103,15 @@ use m_string
         endif
 
         call self%barrier
-        
-        ishift=len(stamp)
+
+        inquire(file=filename,size=filesize)
+
+        call self%barrier
         
         !mpi write only + append
         str=string//s_NL
-        disp=ishift+len(str)*self%iproc
-        
+        disp=filesize+len(str)*self%iproc
+
         call mpi_file_open(self%communicator, filename, mpi_mode_append+mpi_mode_wronly, mpi_info_null, fhandle, self%ierr)
         call mpi_file_set_view(fhandle, disp, mpi_char, mpi_char, 'native', mpi_info_null, self%ierr)
         call mpi_file_write(fhandle, str, len(str), mpi_char, mpi_status_ignore, self%ierr)        

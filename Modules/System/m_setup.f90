@@ -190,7 +190,7 @@ use m_message
             endif
 
             if(.not.present(o_default) .and. mandatory==0) then
-                call hud(keys//"is NOT found, take 0, '' or F.")
+                call hud(keys//"is NOT found, take 0, '' or F")
                 res=''
             endif
         endif

@@ -142,8 +142,11 @@ use m_model
         scalel=sudata%hdrs(1)%scalel !assume same scalel for all traces
         scalco=sudata%hdrs(1)%scalco !assume same scalco for all traces
 
-        if(scalel<0) scalel=-1./scalel
-        if(scalco<0) scalco=-1./scalco
+        if(scalel==0.) scalel=1.
+        if(scalco==0.) scalco=1.
+
+        if(scalel<0.) scalel=-1./scalel
+        if(scalco<0.) scalco=-1./scalco
 
         !source & receiver geometry
         self%src%z=sudata%hdrs(1)%sdepth*scalel !assume single shot
@@ -153,9 +156,9 @@ use m_model
         self%src%comp='p' !don't know which su header tells this info..
         
         do i=1,shot%nrcv
-            self%rcv(i)%z=-sudata%hdrs(i)%gelev*scalco
-            self%rcv(i)%x= sudata%hdrs(i)%gx   *scalel
-            self%rcv(i)%y= sudata%hdrs(i)%gy   *scalel
+            self%rcv(i)%z=-sudata%hdrs(i)%gelev*scalel
+            self%rcv(i)%x= sudata%hdrs(i)%gx   *scalco
+            self%rcv(i)%y= sudata%hdrs(i)%gy   *scalco
 
             self%rcv(i)%is_badtrace = sudata%hdrs(i)%trid==2 .or. sudata%hdrs(i)%trid==3  !dead or dummy trace
             
@@ -772,8 +775,8 @@ use m_model
             if(floor(test) == ceiling(test)) exit
             scalel=scalel*10.
 
-            if(scalel>1e7) then
-                call warn('scalel > 1e7! Will have to lose some precision in the SU header.')
+            if(scalel>1e4) then
+                call warn('scalel > 1e4! Will have to lose some precision in the SU header.')
                 return
             endif
         enddo
@@ -784,8 +787,8 @@ use m_model
                 if(floor(test) == ceiling(test)) exit
                 scalel=scalel*10.
 
-                if(scalel>1e7) then
-                    call warn('scalel > 1e7! Will have to lose some precision in the SU header.')
+                if(scalel>1e4) then
+                    call warn('scalel > 1e4! Will have to lose some precision in the SU header.')
                     return
                 endif
             enddo
@@ -804,8 +807,8 @@ use m_model
             if(floor(test) == ceiling(test)) exit
             scalco=scalco*10.
 
-            if(scalco>1e7) then
-                call warn('scalco > 1e7! Will have to lose some precision in the SU header.')
+            if(scalco>1e4) then
+                call warn('scalco > 1e4! Will have to lose some precision in the SU header.')
                 return
             endif
         enddo
@@ -815,8 +818,8 @@ use m_model
             if(floor(test) == ceiling(test)) exit
             scalco=scalco*10.
 
-            if(scalco>1e7) then
-                call warn('scalco > 1e7! Will have to lose some precision in the SU header.')
+            if(scalco>1e4) then
+                call warn('scalco > 1e4! Will have to lose some precision in the SU header.')
                 return
             endif
         enddo
@@ -827,8 +830,8 @@ use m_model
                 if(floor(test) == ceiling(test)) exit
                 scalco=scalco*10.
 
-                if(scalco>1e7) then
-                    call warn('scalco > 1e7! Will have to lose some precision in the SU header.')
+                if(scalco>1e4) then
+                    call warn('scalco > 1e4! Will have to lose some precision in the SU header.')
                     return
                 endif
             enddo
@@ -840,8 +843,8 @@ use m_model
                 if(floor(test) == ceiling(test)) exit
                 scalco=scalco*10.
 
-                if(scalco>1e7) then
-                    call warn('scalco > 1e7! Will have to lose some precision in the SU header.')
+                if(scalco>1e4) then
+                    call warn('scalco > 1e4! Will have to lose some precision in the SU header.')
                     return
                 endif
             enddo

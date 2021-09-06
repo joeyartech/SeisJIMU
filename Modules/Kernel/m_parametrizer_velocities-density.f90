@@ -199,7 +199,7 @@ use m_Modeling
         real,dimension(:,:,:,:),allocatable,optional :: o_x,o_xprior,o_g
 
         if(present(o_x)) then
-            call alloc(o_x,self%n1,self%n2,self%n3,self%npars,oif_protect=.true.)
+            call alloc(o_x,self%n1,self%n2,self%n3,self%npars)
 
             if(either(o_dir,'m->x',present(o_dir))=='m->x') then
                 do i=1,self%npars
@@ -227,7 +227,8 @@ use m_Modeling
         endif
 
         if(present(o_xprior)) then
-            call alloc(o_xprior,self%n1,self%n2,self%n3,self%npars,oif_protect=.true.)
+            call alloc(o_xprior,self%n1,self%n2,self%n3,self%npars)
+
             do i=1,self%npars
                 select case (self%pars(i)%name)
                 case ('vp' ); o_x(:,:,:,i) = (m%vp_prior -self%pars(i)%min)/self%pars(i)%range
@@ -238,7 +239,7 @@ use m_Modeling
         endif
 
         if(present(o_g)) then
-            call alloc(o_g,self%n1,self%n2,self%n3,self%npars,oif_protect=.true.)
+            call alloc(o_g,self%n1,self%n2,self%n3,self%npars)
             call transform_gradient(m%gradient,o_g)
         endif
         

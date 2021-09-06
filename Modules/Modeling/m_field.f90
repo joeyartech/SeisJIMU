@@ -119,7 +119,7 @@ use, intrinsic :: ieee_arithmetic
 
             !rm existing snap files
             if(is_first_in) then
-                call execute_command_line('rm '//dir_out//'snap*', wait=.true.)
+                call sysio_rm('snap*')
                 is_first_in=.false.
             endif
 

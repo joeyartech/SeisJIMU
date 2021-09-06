@@ -187,11 +187,11 @@ use m_System
         logical :: exist
         integer file_size
         
+        file=setup%get_str('FILE_DATA_PREFIX')
         list=setup%get_strs('SHOT_INDEX','ISHOT')
         
         if(size(list)==0) then !not given
             call hud('SHOT_INDEX is not given. Now count how many data files exist in the directory..')
-            file=setup%get_str('FILE_DATA_PREFIX')
 
             i=0; exist=.true.
             do
@@ -213,7 +213,7 @@ use m_System
 
         if(size(list)>0) then !given
             
-            allocate(ishots(1))
+            allocate(ishots(0))
             
             do i=1,size(list)
 
@@ -221,19 +221,19 @@ use m_System
 
                 if(size(sublist)==1) then !add/rm
                     if(sublist(1)%s(1:1)=='-'.or.sublist(1)%s(1:1)=='!') then !rm
-                        call rm(ishots,size(ishots),str2int(sublist(1)%s(2:)))
+                        call rm(ishots,str2int(sublist(1)%s(2:)))
                     else
-                        call add(ishots,size(ishots),str2int(sublist(1)%s))
+                        call add(ishots,str2int(sublist(1)%s))
                     endif
                 endif
                 if(size(sublist)==2) then !first:last
                     do j=str2int(sublist(1)%s),str2int(sublist(2)%s)
-                        call add(ishots,size(ishots),j)
+                        call add(ishots,j)
                     enddo
                 endif
                 if(size(sublist)==3) then !first:increment:last
                     do j=str2int(sublist(1)%s),str2int(sublist(3)%s),str2int(sublist(2)%s)
-                        call add(ishots,size(ishots),j)
+                        call add(ishots,j)
                     enddo
                 endif
 
@@ -241,12 +241,12 @@ use m_System
 
             !check sanity of each shotgather file
             do i=1,size(ishots)
-                inquire(file=num2str(ishots(i))//'.su', size=file_size, exist=exist)
+                inquire(file=file//num2str(ishots(i),'(i0.4)')//'.su', size=file_size, exist=exist)
                 if(file_size==0) exist=.false.
                 
                 if(.not.exist) then
                     call hud('Neglect invalid shot file: Shot #'//int2str(ishots(i)))
-                    call rm(ishots,size(ishots),ishots(i))
+                    call rm(ishots,ishots(i))
                 endif
             enddo
 
@@ -317,12 +317,14 @@ use m_System
         enddo
 
         !write
+        call sysio_rm('shotlist')
         if(mpiworld%is_master) then
             open(10,file=dir_out//'shotlist')
             write(10,'(a)') 'Build lists:'
             do k=1,self%nlists
                 write(10,'(a)') '{'//self%lists(k)%s//'}'
             enddo
+            write(10,'(a)') ' '
             close(10)
         endif
         
@@ -372,6 +374,7 @@ use m_System
             do k=1,self%nlists
                 write(10,'(a)') '{'//self%sampled_shots(k)%s//'}'
             enddo
+            write(10,'(a)') ' '
             close(10)
         endif
         
