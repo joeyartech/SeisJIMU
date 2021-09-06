@@ -317,7 +317,6 @@ use m_System
         enddo
 
         !write
-        call sysio_rm('shotlist')
         if(mpiworld%is_master) then
             open(10,file=dir_out//'shotlist')
             write(10,'(a)') 'Build lists:'
@@ -425,7 +424,7 @@ use m_System
         call hud('See file "shotlist" for details.')
 
         !write shotlist to disk
-        call mpiworld%write('shotlist', 'Proc# '//mpiworld%sproc//' has '//num2str(self%nshots_per_processor)//' assigned shots:'// &
+        call mpiworld%write(dir_out//'shotlist', 'Proc# '//mpiworld%sproc//' has '//num2str(self%nshots_per_processor)//' assigned shots:'// &
             strcat(self%shots_per_processor))
 
     end subroutine

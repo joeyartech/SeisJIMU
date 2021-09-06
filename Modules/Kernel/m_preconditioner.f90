@@ -164,7 +164,7 @@ use m_parametrizer
 
         !precond whole grediant to keep the gradient norm
         old_norm = norm2(g)
-        do i=1,ppg%ngrad
+        do i=1,param%npars
             pg(:,:,:,i)=g(:,:,:,i)*preco_in_x(:,:,:)
         enddo
         pg = pg * old_norm / norm2(pg)

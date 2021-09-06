@@ -62,8 +62,8 @@ use m_Modeling
 
     type(t_parametrizer),public :: param
 
-    logical :: is_empirical, is_gardner !, is_castagna
-    logical :: is_AC, is_EL
+    logical :: is_empirical=.false., is_gardner=.false. !, is_castagna
+    logical :: is_AC=.false., is_EL=.false.
 
     real :: a,b
 
