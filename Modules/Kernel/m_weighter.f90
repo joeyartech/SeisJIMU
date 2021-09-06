@@ -110,7 +110,7 @@ use m_Modeling
 
         enddo
 
-        if(mpiworld%is_master) call suformat_write(dir_out//'weights',self%weight,self%nt,self%ntr,o_dt=self%dt)
+        if(mpiworld%is_master) call suformat_write('weights',self%weight,self%nt,self%ntr,o_dt=self%dt)
         
     end subroutine
 

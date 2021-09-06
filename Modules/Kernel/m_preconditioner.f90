@@ -132,7 +132,7 @@ use m_parametrizer
         real,dimension(:,:,:),allocatable :: tmp
 
         inquire(file=file,size=file_size)
-        if(file_size < 4*m%n) call warn('FILE_PRECONDITION_CUSTOM has size '//num2str(file_size/4)//' < nz*nx*ny. Some where of the gradient will not be preconditioned.')
+        if(file_size < 4*m%n) call warn('FILE_PRECONDITION_CUSTOM has size '//num2str(file_size/4)//' < nz*nx*ny. Some part of the gradient will not be preconditioned!')
         
         call alloc(tmp,m%nz,m%nx,m%ny,o_init=1.)
 
@@ -146,9 +146,12 @@ use m_parametrizer
     
     subroutine apply(self,g,pg)
         class(t_preconditioner) :: self
-        real,dimension(param%n1,param%n2,param%n3,param%npars) :: g,pg
+        real,dimension(param%n1,param%n2,param%n3,param%npars) :: g
+        real,dimension(:,:,:,:),allocatable :: pg
         
         real :: old_norm
+
+        call alloc(pg,param%n1,param%n2,param%n3,param%npars)
 
         ! !precond per parameter        
         ! do i=1,npar

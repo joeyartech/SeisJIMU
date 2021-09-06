@@ -415,7 +415,7 @@ use m_System
                 k=k+1
             endif
             if (mpiworld%iproc==j) then
-                self%shots_per_processor(k)=self%sampled_shots(i)
+                self%shots_per_processor(k)%s=self%sampled_shots(i)%s
             endif
             j=j+1
         enddo
