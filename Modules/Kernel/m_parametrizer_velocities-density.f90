@@ -199,7 +199,7 @@ use m_Modeling
         real,dimension(:,:,:,:),allocatable,optional :: o_x,o_xprior,o_g
 
         if(present(o_x)) then
-            call alloc(o_x,self%n1,self%n2,self%n3,self%npars)
+            call alloc(o_x,self%n1,self%n2,self%n3,self%npars,oif_protect=.true.)
 
             if(either(o_dir,'m->x',present(o_dir))=='m->x') then
                 do i=1,self%npars

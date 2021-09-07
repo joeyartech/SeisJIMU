@@ -152,7 +152,7 @@ use m_cpml
             self%dt = setup%get_real('CFL',o_default='0.9')/(sumcoef*cb%velmax*m%rev_cell_diagonal)
             self%nt=nint(time_window/self%dt)+1
 
-            write(*,*) 'Adjusted dt, nt =',self%dt,self%nt,'on shot# '//shot%sindex
+            write(*,*) 'Shot# '//shot%sindex//': Adjusted dt, nt =',self%dt,self%nt
 
         endif       
         
@@ -330,8 +330,8 @@ use m_cpml
         endif
 
         call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
-        write(*,'(a,i0.5,a)') 'ximage < snap_sfield%*  n1=',cb%nz,' perc=99'
-        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_sfield%*  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'
+        call hud('ximage < snap_sfield%*  n1='//num2str(cb%nz)//' perc=99')
+        call hud('xmovie < snap_sfield%*  n1='//num2str(cb%nz)//' n2='//num2str(cb%nx)//' clip=?e-?? loop=2 title=%g')
 
     end subroutine
 
@@ -729,10 +729,10 @@ use m_cpml
         endif
 
         call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
-        write(*,'(a,i0.5,a)') 'ximage < snap_rfield%*  n1=',cb%nz,' perc=99'
-        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_rfield%*  n1=',cb%nz,' n2=',cb%nx,' clip=?e-?? loop=2 title=%g'
-        write(*,'(a,i0.5,a)') 'ximage < snap_*  n1=',cb%mz,' perc=99'
-        write(*,'(a,i0.5,a,i0.5,a)') 'xmovie < snap_*  n1=',cb%mz,' n2=',cb%mx,' clip=?e-?? loop=2 title=%g'
+        call hud('ximage < snap_rfield%*  n1='//num2str(cb%nz)//' perc=99')
+        call hud('xmovie < snap_rfield%*  n1='//num2str(cb%nz)//' n2='//num2str(cb%nx)//' clip=?e-?? loop=2 title=%g')
+        call hud('ximage < snap_*  n1='//num2str(cb%mz)//' perc=99')
+        call hud('xmovie < snap_*  n1='//num2str(cb%mz)//' n2='//num2str(cb%mx)//' clip=?e-?? loop=2 title=%g')
         
     end subroutine
 

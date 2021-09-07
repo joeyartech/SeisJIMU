@@ -420,7 +420,8 @@ use m_System
         enddo
 
         !message
-        write(*,*) ' Proc# '//mpiworld%sproc//' has '//num2str(self%nshots_per_processor)//' assigned shots.'
+        !write(*,*) ' Proc# '//mpiworld%sproc//' has '//num2str(self%nshots_per_processor)//' assigned shots'
+        call hud('Proc# '//mpiworld%sproc//' has '//num2str(self%nshots_per_processor)//' assigned shots')
         call hud('See file "shotlist" for details.')
 
         !write shotlist to disk

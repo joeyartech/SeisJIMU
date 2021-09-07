@@ -87,7 +87,7 @@ use m_Kernel
         
         ! if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Initial alphaL/alpha/alphaR =',alphaL,alpha,alphaR
         call hud('Initial alpha = '//num2str(self%alpha))
-        call hud('Current f, ||g|| = '//num2str(curr%f)//', '//num2str(norm2(curr%g)))
+        call hud('Current qp%f, ||g||_L2 = '//num2str(curr%f)//', '//num2str(norm2(curr%g)))
 
         !save gradients
         if(present(o_gradient_history)) then
@@ -104,7 +104,7 @@ use m_Kernel
 
             !perturb current point
             pert%x = curr%x + self%alpha*curr%d
-            ! call sysio_write('pert%x',pert%x,size(pert%x),o_mode='append')
+            !if(mpiworld%is_master) call sysio_write('pert%x',pert%x,size(pert%x),o_mode='append')
             call threshold(pert%x,size(pert%x))
             call hud('Modeling with perturbed models')
 
@@ -129,7 +129,7 @@ use m_Kernel
 
             !if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Linesearch alphaL/alpha/alphaR =',alphaL,alpha,alphaR
             call hud('alpha = '//num2str(self%alpha)//' in ['//num2str(self%alphaL)//','//num2str(self%alphaR)//']')
-            call hud('Perturb f, ||g|| = '//num2str(pert%f)//', '//num2str(norm2(pert%g)))
+            call hud('Perturb qp%f, ||g||_L2 = '//num2str(pert%f)//', '//num2str(norm2(pert%g)))
             
             !Wolfe conditions
             if_1st_cond = (pert%f <= curr%f+c1*self%alpha*curr%g_dot_d) !sufficient descent condition
@@ -242,7 +242,7 @@ use m_Kernel
         
         if(is_first_in) then
 
-            str=setup%get_str('REF_LINESEARCHER_SCALING','REF_LS_SCALING',o_default='by total_volume/|pg1|_L1')
+            str=setup%get_str('LINESEARCHER_SCALING','LS_SCALING',o_default='by total_volume/|pg1|_L1')
 
             if(str=='by total_volume/|pg1|_L1') then
                 eps=param%n1*param%n2*param%n3/sum(abs(qp%pg(:,:,:,1))) !=total_volume/|pg1|_L1, total_volume = int dy^3

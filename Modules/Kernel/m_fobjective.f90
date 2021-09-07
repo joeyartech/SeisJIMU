@@ -344,7 +344,7 @@ use m_preconditioner
             call modeling_gradient(oif_gradient)
         ! endif
 
-        qp%f = self%dnorms(self%i_dnorm_4adjsource) + sum(self%xnorms)
+        qp%f = self%dnorms(self%i_dnorm_4adjsource) ! + sum(self%xnorms)
 
         if(.not. either(oif_gradient,.true.,present(oif_gradient))) return
 
@@ -389,7 +389,7 @@ use m_preconditioner
         ! if(either(oif_approx,.false.,present(oif_approx))) then
         !     call regularize_approximate(fobj,qp)
         ! else
-            call regularize(self,qp)
+        !    call regularize(self,qp)
         ! endif
 
         !preconditioner
