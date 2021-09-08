@@ -197,8 +197,8 @@ use m_linesearcher
                 close(16)
                 
                 call param%transform('x->m',o_x=curr%x)
-                if(mpiworld%is_master) call m%write(o_suffix='_Iter'//int2str(iterate))
-                if(mpiworld%is_master) call sysio_write('pg_Iter'//int2str(iterate),curr%pg,size(curr%pg))
+                call m%write(o_suffix='_Iter'//int2str(iterate))
+                call sysio_write('pg_Iter'//int2str(iterate),curr%pg,size(curr%pg))
                 call shot%write('dsyn_Iter'//int2str(iterate)//'_',shot%dsyn)
 
             case('maximum')

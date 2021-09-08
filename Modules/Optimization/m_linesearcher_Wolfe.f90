@@ -32,8 +32,10 @@ use m_Kernel
     !thresholding
     real,parameter :: thres=0.
 
+    !initial steplength
+    real,parameter :: alpha0=1.
+
     type,public :: t_linesearcher
-        real :: alpha0 !initial steplength
         real :: alpha  !steplength
         real :: alphaL, alphaR !search interval: alpha \in [alphaL, alphaR]
         real :: scaler
@@ -41,7 +43,7 @@ use m_Kernel
         
         !counter
         integer :: isearch !number of linesearch performed in each iterate
-        integer :: max_search=12 !max number of linesearch allowed per iteration
+        integer :: max_search !max number of linesearch allowed per iteration
         integer :: igradient=1 !total number of gradient computed
         integer :: max_gradient=30 !max total number of gradient computation allowed
     
@@ -62,10 +64,9 @@ use m_Kernel
         call hud(info)
         call hud('Wolfe condition parameters: c1='//num2str(c1)//', c2='//num2str(c2))
 
-        !read setup        
-        self%alpha0=setup%get_real('ALPHA0',o_default='1.')
-        self%alpha=self%alpha0
+        self%alpha=alpha0
 
+        !read setup        
         self%max_search=setup%get_int('MAX_SEARCH',o_default='12')
 
     end subroutine
@@ -83,7 +84,7 @@ use m_Kernel
 
         self%alphaL=0.
         self%alphaR=huge(1.)
-        if(if_reinit_alpha) self%alpha=self%alpha0
+        if(if_reinit_alpha) self%alpha=alpha0
         
         ! if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Initial alphaL/alpha/alphaR =',alphaL,alpha,alphaR
         call hud('Initial alpha = '//num2str(self%alpha))
@@ -230,7 +231,7 @@ use m_Kernel
     end subroutine
     
     !scale the problem s.t. 
-    !qp%g, qp%pg, to be negated as qp%d, have a similar scale(unit) as qp%x, 
+    !qp%g, qp%pg, to be negated as qp%d, have a similar scale (or unit) as qp%x, 
     !and alpha0 can be simply 1 (unitless).
     !update=alpha*qp%d=-alpha*qp%pg
     subroutine scale(self,qp)

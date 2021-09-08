@@ -157,7 +157,8 @@ use m_linesearcher
 ! print*,q
                 
                 !preconditioner provides seed for initial guess of inv Hessian
-                call preco%apply(q,q)
+                call preco%apply_ext(q,q)
+
                 gamma_num   = dot_product(sk(:,m),yk(:,m))
                 gamma_denom = norm2(yk(:,m))
                 gamma_denom = gamma_denom*gamma_denom
@@ -243,7 +244,7 @@ use m_linesearcher
                 
                 call param%transform('x->m',o_x=curr%x)
                 call m%write(o_suffix='_Iter'//int2str(iterate))
-                call sysio_write('pg_Iter'//int2str(iterate),curr%pg,size(curr%pg))
+                call sysio_write('descent_Iter'//int2str(iterate),curr%d,size(curr%d))
                 call shot%write('dsyn_Iter'//int2str(iterate)//'_',shot%dsyn)
 
             case('maximum')
@@ -276,7 +277,8 @@ use m_linesearcher
                 
                 call param%transform('x->m',o_x=pert%x)
                 call m%write(o_suffix='_Iter'//int2str(iterate))
-                call sysio_write('pg_Iter'//int2str(iterate),curr%pg,size(curr%pg))
+                call execute_command_line('(cd '//dir_out//' ; ln -sf model_Iter'//int2str(iterate)//' model_final )')
+                call sysio_write('descent_Iter'//int2str(iterate),curr%d,size(curr%d))
                 call shot%write('dsyn_Iter'//int2str(iterate)//'_',shot%dsyn)
 
                 write(*,'(a,i0.4)') 'ximage < model_final n1=',m%nz

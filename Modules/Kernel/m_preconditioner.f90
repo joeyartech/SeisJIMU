@@ -10,7 +10,7 @@ use m_parametrizer
         contains
 
         procedure :: update
-        procedure :: apply
+        procedure :: apply, apply_ext
 
     end type
 
@@ -149,7 +149,7 @@ use m_parametrizer
         
         real :: old_norm
 
-        call alloc(pg,param%n1,param%n2,param%n3,param%npars)
+        call alloc(pg,param%n1,param%n2,param%n3,param%npars,oif_protect=.true.)
 
         ! !precond per parameter        
         ! do i=1,npar
@@ -169,9 +169,21 @@ use m_parametrizer
         enddo
         pg = pg * old_norm / norm2(pg)
         
-        !save some RAM
-        call dealloc(preco_in_x,preco_in_m)
+        !!save some RAM
+        !call dealloc(preco_in_x,preco_in_m)
 
+    end subroutine
+
+    subroutine apply_ext(self,g,pg)
+        class(t_preconditioner) :: self
+        real,dimension(param%n1,param%n2,param%n3,param%npars) :: g,pg
+        real :: old_norm
+
+        old_norm = norm2(g)
+        do i=1,param%npars
+            pg(:,:,:,i)=g(:,:,:,i)*preco_in_x(:,:,:)
+        enddo
+        pg = pg * old_norm / norm2(pg)
     end subroutine
 
 end
