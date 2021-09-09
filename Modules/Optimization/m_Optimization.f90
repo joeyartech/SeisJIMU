@@ -1,4 +1,5 @@
 module m_Optimization
-    use m_linesearcher
-    use m_optimizer
+use m_linesearcher
+use m_optimizer_common
+use m_optimizer
 end

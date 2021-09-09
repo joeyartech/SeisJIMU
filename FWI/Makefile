@@ -22,6 +22,7 @@ obj = \
 ../Modules/Kernel/m_fobjective.o \
 ../Modules/Kernel/m_Kernel.o \
 ../Modules/Optimization/m_linesearcher_$(LineS).o \
+../Modules/Optimization/m_optimizer_common.o \
 ../Modules/Optimization/m_optimizer_$(Optim).o \
 ../Modules/Optimization/m_Optimization.o
 

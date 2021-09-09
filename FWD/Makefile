@@ -14,7 +14,7 @@ obj = \
 ../Modules/Modeling/m_field.o \
 ../Modules/Modeling/m_cpml_$(Solver).o \
 ../Modules/Modeling/m_propagator_$(WaveEq)_$(Solver)_$(Order).o \
-../Modules/Modeling/m_Modeling.f90
+../Modules/Modeling/m_Modeling.o
 
 
 all : mod exe

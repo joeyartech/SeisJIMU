@@ -5,6 +5,7 @@ include ../../modules.inc
 
 src = \
 m_linesearcher_$(LineS).f90 \
+m_optimizer_common.f90 \
 m_optimizer_$(Optim).f90 \
 m_Optimization.f90
 
