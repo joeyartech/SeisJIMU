@@ -198,6 +198,7 @@ use m_cpml
         !default to Nyquist, and must be a multiple of dt
         rdt=setup%get_real('REF_RECT_TIME_INTEVAL','RDT',o_default=num2str(0.5/shot%fmax))
         irdt=floor(rdt/self%dt)
+        if(irdt==0) irdt=1
         rdt=irdt*self%dt
         call hud('rdt, irdt = '//num2str(rdt)//', '//num2str(irdt))
 

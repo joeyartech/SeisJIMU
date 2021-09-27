@@ -211,9 +211,9 @@ use m_model
 
             !butterworth filtering
             call hud('subfilt < data > data_filt '//&
-                'zerophase='//zerophase//' locut='//locut//' hicut='//hicut// &
-                'fstoplo='//fstoplo//' fpasslo='//fpasslo//' fpasshi='//fpasshi//' fstophi='//fstophi// &
-                'astoplo='//astoplo//' apasslo='//apasslo//' apasshi='//apasshi//' astophi='//astophi   )
+                ' zerophase='//zerophase//' locut='//locut//' hicut='//hicut// &
+                ' fstoplo='//fstoplo//' fpasslo='//fpasslo//' fpasshi='//fpasshi//' fstophi='//fstophi// &
+                ' astoplo='//astoplo//' apasslo='//apasslo//' apasshi='//apasshi//' astophi='//astophi   )
             
             call butterworth(sudata%trs,sudata%ns,sudata%ntr,sudata%dt, &
                 ois_zerophase=either(.true.,.false.,zerophase=='1'),oif_locut=either(.true.,.false.,locut=='1'),oif_hicut=either(.true.,.false.,hicut=='1'),       &
