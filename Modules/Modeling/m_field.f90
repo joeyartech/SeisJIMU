@@ -260,8 +260,15 @@ use, intrinsic :: ieee_arithmetic
                         call sysio_write('snap_'//self%name//'%vx'//suf,self%vx,size(self%vx),o_mode='append')
                     case ('vy')
                         call sysio_write('snap_'//self%name//'%vx'//suf,self%vy,size(self%vy),o_mode='append')
+                        
                     case ('p')
                         call sysio_write('snap_'//self%name//'%p'//suf,self%p,size(self%p),o_mode='append')
+                    case ('szz')
+                        call sysio_write('snap_'//self%name//'%szz'//suf,self%szz,size(self%szz),o_mode='append')
+                    case ('sxx')
+                        call sysio_write('snap_'//self%name//'%sxx'//suf,self%sxx,size(self%sxx),o_mode='append')
+                    case ('szx')
+                        call sysio_write('snap_'//self%name//'%szx'//suf,self%szx,size(self%szx),o_mode='append')
                     end select
                 enddo
             endif

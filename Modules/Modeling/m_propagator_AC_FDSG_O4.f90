@@ -11,7 +11,7 @@ use m_cpml
     private
 
     !FD coef
-    real,dimension(2),parameter :: coef = [9./8.,-1./24.] !Fornberg,1988,Generation of Finite-Difference Formulas on Arbitrary Spaced Grids.
+    real,dimension(2),parameter :: coef = [9./8.,-1./24.] !Fornberg, 1988, Generation of Finite-Difference Formulas on Arbitrary Spaced Grids.
     
     real :: c1x, c1y, c1z
     real :: c2x, c2y, c2z
@@ -26,7 +26,7 @@ use m_cpml
             'CFL=Sum|coef|*Vmax*dt/rev_cell_volume'//s_NL// &
             '   -> dt <= 0.606(2D) or 0.494(3D) *Vmax/dx'//s_NL// &
             'Required model attributes: vp, rho'//s_NL// &
-            'Required field components: vx, vy(3D), vz, p'//s_NL// &
+            'Required field components: vz, vx, vy(3D), p'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
             'Basic gradients: grho gkpa'//s_NL// &
             'Imaging conditions: P-Pxcorr'//s_NL// &
@@ -51,7 +51,7 @@ use m_cpml
         !leading _ : inverse
 
         !local models shared between fields
-        real,dimension(:,:,:),allocatable :: buox, buoy, buoz, kpa, inv_kpa
+        real,dimension(:,:,:),allocatable :: buoz, buox, buoy, kpa, inv_kpa
 
         !time frames
         integer :: nt
