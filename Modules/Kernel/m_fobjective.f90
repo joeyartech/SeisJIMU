@@ -13,15 +13,15 @@ use m_preconditioner
     type,public :: t_fobjective
 
         type(t_string),dimension(:),allocatable :: s_dnorms !norms for data residuals
-        type(t_string),dimension(:),allocatable :: s_xnorms !norms for model residuals
+        type(t_string),dimension(:),allocatable :: s_xnorms !norms for (unknown) parameter residuals
 
         real,dimension(:),allocatable :: dnorms !unit in [Nm]
         real,dimension(:),allocatable :: xnorms !unit in [Nm]
 
         integer :: n_dnorms, n_xnorms
-        integer :: i_dnorm_4adjsource !which dnorm is used for the adjoint source (only 1 is allowed so far)
 
-        real,dimension(:),allocatable :: xpenalizers
+        real,dimension(:),allocatable :: dnorm_weights !scalar weights before each dnorm in the objective function
+        real,dimension(:),allocatable :: xnorm_weights !scalar weights before each xnorm in the objective function
 
         contains
 
@@ -39,7 +39,7 @@ use m_preconditioner
     real,dimension(:,:),allocatable :: Wdres
     real,dimension(:,:,:,:),allocatable :: Wxres
     real,dimension(:,:,:,:),allocatable :: xprior !prior parameter
-    real :: xnorms_weights(4) !weights on 1st, 2nd, 3rd & 4th dimensions
+    ! real :: xnorms_weights(4) !weights on 1st, 2nd, 3rd & 4th dimensions
 
     contains
 
@@ -47,33 +47,22 @@ use m_preconditioner
         class(t_fobjective) :: self
         
         !data norms
-        self%s_dnorms=setup%get_strs('DATA_NORMS','DNORMS',o_default='L1 =>L2')
+        self%s_dnorms=setup%get_strs('DATA_NORMS','DNORMS',o_default='L1 L2')
         self%n_dnorms=size(self%s_dnorms)
         call alloc(self%dnorms,self%n_dnorms)
 
-        do i=1,self%n_dnorms
-            self%i_dnorm_4adjsource=1 !default
-
-            if(self%s_dnorms(i)%s(1:2)=='=>') then
-                self%i_dnorm_4adjsource=i
-                !remove the indicator '=>'
-                self%s_dnorms(i)%s(1:2)='  '; self%s_dnorms(i)%s=lalign(self%s_dnorms(i)%s)
-                exit
-            endif
-
-        enddo
-
-        call hud(self%s_dnorms(self%i_dnorm_4adjsource)%s//' will be used for the adjoint source.')
+        self%dnorm_weights=setup%get_reals('DATA_NORM_WEIGHTS','DWEIGHTS',o_default='0. 1.')
 
         !parameter norms
         self%s_xnorms=setup%get_strs('PARAMETER_NORMS','XNORMS',o_default='none')
         self%n_xnorms=size(self%s_xnorms)
         call alloc(self%xnorms,self%n_xnorms)
-        call alloc(self%xpenalizers,self%n_xnorms)
 
-        if(self%n_xnorms>0) then
-            xnorms_weights=setup%get_reals('PARAMETER_NORMS_WEIGHTS','XNORMS_WEI',o_default='1. 1. 1. 1.')
-        endif
+        self%xnorm_weights=setup%get_reals('PARAMETER_NORM_WEIGHTS','XWEIGHTS',o_default='0.')
+
+        ! if(self%n_xnorms>0) then
+        !     xnorms_weights=setup%get_reals('PARAMETER_NORMS_WEIGHTS','XNORMS_WEI',o_default='1. 1. 1. 1.')
+        ! endif
 
         !prior models
         call m%read_prior
@@ -117,7 +106,7 @@ use m_preconditioner
                 enddo
 
                 !compute adjoint source and set proper units
-                if(i==self%i_dnorm_4adjsource) then
+                if(abs(self%dnorm_weights(i))>0.) then
                     shot%dadj = -wei%weight*Wdres*m%cell_volume/shot%dt
                     do ir=1,shot%nrcv
                         if(shot%rcv(ir)%comp=='p') then !for pressure data
@@ -161,7 +150,7 @@ use m_preconditioner
                 enddo
 
                 !compute adjoint source and set proper units
-                if(i==self%i_dnorm_4adjsource) then
+                if(abs(self%dnorm_weights(i))>0.) then
                     shot%dadj = -wei%weight*rsign(Wdres)*m%cell_volume/shot%dt
                     do ir=1,shot%nrcv
                         if(shot%rcv(ir)%comp=='p') then !for pressure data
@@ -174,7 +163,9 @@ use m_preconditioner
 
                 endif
 
-            case ('ndecon') !aka Reverse AWI
+            case ('ndecon') !normalized deconvolution
+                !aka Reverse AWI (Warner & Guasch, 2016, Geophysics, 81-6)
+                !Eq D-4. Note this eq has a minor type; check the paper for correct one.
 
                 ! if(is_first_in) then
                 !     ref_p = 0.
@@ -200,7 +191,7 @@ use m_preconditioner
 
                         self%dnorms(i) = self%dnorms(i) + 0.5*numer/denom !/shot%dt*m%cell_volume*ref_p*ref_p/m%ref_kpa
                     
-                        if(i==self%i_dnorm_4adjsource) then
+                        if(abs(self%dnorm_weights(i))>0.) then
                             call matchfilter_adjointsrc(shot%dobs(:,ir),shot%dadj(:,ir), &
                                 -(time*time-2.*self%dnorms(i))/denom*v)
 
@@ -226,7 +217,7 @@ use m_preconditioner
         class(t_fobjective) :: self
         real,dimension(param%n1,param%n2,param%n3,param%npars) :: x,g
 
-        real,dimension(:,:,:,:),allocatable :: Wxres !weighted residuals of x
+        ! real,dimension(:,:,:,:),allocatable :: Wxres !weighted residuals of x
         real,dimension(:,:,:,:),allocatable :: spatgrad !spatial gradient of x
 
         call alloc(spatgrad,param%n1,param%n2,param%n3,param%npars,o_init=0.)
@@ -344,7 +335,7 @@ use m_preconditioner
             call modeling_gradient(oif_gradient)
         ! endif
 
-        qp%f = self%dnorms(self%i_dnorm_4adjsource) ! + sum(self%xnorms)
+        qp%f = sum(self%dnorm_weights*self%dnorms) ! + sum(self%xnorm_weights*self%xnorms)
 
         if(.not. either(oif_gradient,.true.,present(oif_gradient))) return
 
