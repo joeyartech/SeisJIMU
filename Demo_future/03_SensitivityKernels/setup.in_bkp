@@ -1,0 +1,28 @@
+MODEL_SIZE              '301   301   1'
+MODEL_SPACING           '10    10    1'
+MODEL_ORIGIN            '0     0     0'
+FILE_MODEL              'true'
+MODEL_ATTRIBUTES        'vp rho'
+
+IS_FREESURFACE          F
+
+#WAVELET_TYPE    'ricker'
+
+ACQUI_GEOMETRY          spread
+FS                      '1500 1000  1'
+FR                      '1500 2000 1'
+DR                      '0 0 0'
+NR                      1
+
+SCOMP                   p
+RCOMP                   p
+
+IF_HICKS		F
+
+NT           1000
+DT           0.004
+FPEAK        6
+
+SNAPSHOT     p
+
+IF_USE_CHECKPOINT   F
