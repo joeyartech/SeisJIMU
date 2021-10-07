@@ -168,11 +168,12 @@ use m_smoother_laplacian_sparse
         !A delta_u = W^2*Iu
         !grad = delta_u \star a
         call ppg%init_field(fld_a,name='fld_a') !adjsrc for a should not be initialized
-        call ppg%adjoint_ext1(fld_a,fld_du,fld_u,W*W*cb%imag,oif_compute_grad=.true.)
+        call ppg%adjoint_ext1(fld_a,fld_du,fld_u,W*W*cb%imag,oif_compute_grad=.true.) !,oif_compute_imag=.true.)
+        ! call sysio_write('image_du_star_a',cb%imag,size(cb%imag))
         call sysio_write('du_star_a',cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
         tmpgrad=tmpgrad+cb%grad(:,:,:,2)
         call hud('---------------------------------')
-! pause
+pause
         call hud('---------------------------------')
         call hud('extd right-side Rabbit Ears')
         call hud('---------------------------------')

@@ -429,7 +429,7 @@ use m_cpml
             tt5=tt5+toc-tic
 
             !snapshot
-            call fld_u%write(it,o_suffix='_for2')
+            ! call fld_u%write(it,o_suffix='_for2')
             call fld_du%write(it)
 
             !step 6: save v^it+1 in boundary layers
@@ -608,14 +608,15 @@ use m_cpml
             ! endif
             
             !snapshot
-            call fld_a%write(it)
-            call fld_u%write(it,o_suffix='_back')
+            call fld_a%write(it,o_suffix='_rev')
+            call fld_u%write(it,o_suffix='_rev')
             if(if_compute_imag) then
                 call fld_a%write_ext(it,'imag' ,cb%imag,size(cb%imag))
             endif
             if(if_compute_grad) then
                 ! call fld_a%write_ext(it,'grad_density',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
-                call fld_a%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+                ! call fld_a%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+                call fld_a%write_ext(it,'grad_u_dot_a' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
             endif
             if(self%if_compute_engy) then
                 call fld_a%write_ext(it,'engy',cb%engy(:,:,:,1),size(cb%engy(:,:,:,1)))
@@ -650,22 +651,22 @@ use m_cpml
         
     end subroutine
 
-    subroutine adjoint_ext1(self,fld_a,fld_du,fld_u,W2imag,oif_compute_grad)
+    subroutine adjoint_ext1(self,fld_a,fld_du,fld_u,W2imag,oif_compute_imag,oif_compute_grad)
         class(t_propagator) :: self
         type(t_field) :: fld_a,fld_du,fld_u
         real,dimension(cb%mz,cb%mx,cb%my) :: W2imag
-        logical,optional :: oif_compute_grad
+        logical,optional :: oif_compute_imag,oif_compute_grad
         
         real,parameter :: time_dir=-1. !time direction
-        logical :: if_compute_grad
+        logical :: if_compute_imag,if_compute_grad
 
         ! if_record_adjseismo =either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
-        ! if_compute_imag     =either(oif_compute_imag,    .false.,present(oif_compute_imag))
+        if_compute_imag     =either(oif_compute_imag,    .false.,present(oif_compute_imag))
         if_compute_grad     =either(oif_compute_grad,    .false.,present(oif_compute_grad))
         ! self%if_compute_engy=self%if_compute_engy.and.(if_compute_imag.or.if_compute_grad)
         
         ! if(if_record_adjseismo)  call alloc(fld_a%seismo,1,self%nt)
-        ! if(if_compute_imag)      call alloc(cb%imag,cb%mz,cb%mx,cb%my,self%nimag)
+        if(if_compute_imag)      call alloc(cb%imag,cb%mz,cb%mx,cb%my,self%nimag)
         if(if_compute_grad)      call alloc(cb%grad,cb%mz,cb%mx,cb%my,self%ngrad)
         ! if(self%if_compute_engy) call alloc(cb%engy,cb%mz,cb%mx,cb%my,self%nengy)
 
@@ -752,12 +753,12 @@ use m_cpml
                 tt6=tt6+toc-tic
             endif
 
-            ! if(if_compute_imag.and.mod(it,irdt)==0) then
-            !     call cpu_time(tic)
-            !     call imaging(fld_u,fld_a,it,cb%imag)
-            !     call cpu_time(toc)
-            !     tt6=tt6+toc-tic
-            ! endif
+            if(if_compute_imag.and.mod(it,irdt)==0) then
+                call cpu_time(tic)
+                call imaging(fld_du,fld_a,it,cb%imag)
+                call cpu_time(toc)
+                tt6=tt6+toc-tic
+            endif
 
             ! !energy term of sfield
             ! if(self%if_compute_engy.and.mod(it,irdt)==0) then
@@ -817,15 +818,16 @@ use m_cpml
             ! endif
             
             !snapshot
-            call fld_a%write(it,o_suffix='_back2')
-            call fld_du%write(it,o_suffix='_back')
-            call fld_u%write(it,o_suffix='_back2')
-            ! if(if_compute_imag) then
-            !     call fld_a%write_ext(it,'imag' ,cb%imag,size(cb%imag))
-            ! endif
+            ! call fld_a%write(it,o_suffix='_back2')
+            call fld_du%write(it,o_suffix='_rev')
+            ! call fld_u%write(it,o_suffix='_back2')
+            if(if_compute_imag) then
+                call fld_a%write_ext(it,'imag_du_dot_a' ,cb%imag,size(cb%imag))
+            endif
             if(if_compute_grad) then
                 ! call fld_a%write_ext(it,'grad_density',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
-                call fld_a%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+                ! call fld_a%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+                call fld_a%write_ext(it,'grad_du_dot_a' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
             endif
             ! if(self%if_compute_engy) then
             !     call fld_a%write_ext(it,'engy',cb%engy(:,:,:,1),size(cb%engy(:,:,:,1)))
@@ -1018,15 +1020,16 @@ use m_cpml
             ! endif
             
             !snapshot
-            call fld_da%write(it)
-            call fld_a%write(it,o_suffix='_back3')
-            call fld_u%write(it,o_suffix='_back3')
+            call fld_da%write(it,o_suffix='_rev')
+            ! call fld_a%write(it,o_suffix='_back3')
+            ! call fld_u%write(it,o_suffix='_back3')
             ! if(if_compute_imag) then
                 ! call fld_lda%write_ext(it,'imag' ,cb%imag,size(cb%imag))
             ! endif
             if(if_compute_grad) then
                 ! call fld_da%write_ext(it,'grad_density',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
-                call fld_da%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+                ! call fld_da%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+                call fld_da%write_ext(it,'grad_u_dot_da' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
             endif
             ! if(self%if_compute_engy) then
                 ! call fld_a%write_ext(it,'engy',cb%engy(:,:,:,1),size(cb%engy(:,:,:,1)))

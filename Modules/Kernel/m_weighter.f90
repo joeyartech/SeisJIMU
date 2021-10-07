@@ -72,8 +72,7 @@ use m_Modeling
                 call by_aoffset(self%weight,o_factor=str2real(sublist(2)%s))
             endif
             
-            select case (list(i)%s)
-            case ('polygon') !polygon defined weights to multiply on traces
+            if (index(list(i)%s,'polygon')>0) then !polygon defined weights to multiply on traces
                 sublist=split(list(i)%s,o_sep=':')
                 if(size(sublist)==1) then !filename is not attached, ask for it
                     file=setup%get_file('FILE_WEIGHT_POLYGON',o_mandatory=1)
@@ -83,8 +82,9 @@ use m_Modeling
                 
                 call hud('Will weight traces with polygons defined in '//file)
                 call by_polygon(self%weight,file)
+            endif
             
-            case ('table') !table defined weights to multiply on traces
+            if (index(list(i)%s,'table')>0) then !table defined weights to multiply on traces
                 sublist=split(list(i)%s,o_sep=':')
                 if(size(sublist)==1) then !filename is not attached, ask for it
                     file=setup%get_file('FILE_WEIGHT_TABLE',o_mandatory=1)
@@ -94,8 +94,9 @@ use m_Modeling
                 
                 call hud('Will weight traces with tables defined in '//file)
                 call by_table(self%weight,file)
+            endif
                 
-            case ('custom')
+            if (index(list(i)%s,'custom')>0) then
                 sublist=split(list(i)%s,o_sep=':')
                 if(size(sublist)==1) then !filename is not attached, ask for it
                     file=setup%get_file('FILE_WEIGHT_CUSTOM',o_mandatory=1)
@@ -105,8 +106,7 @@ use m_Modeling
 
                 call hud('Will weight traces in a custom way defined in '//file)
                 call by_custom(self%weight,file)
-
-            end select
+            endif
 
         enddo
 
