@@ -10,9 +10,11 @@ IS_FREESURFACE          F
 
 ACQUI_GEOMETRY          spread
 FS                      '1500 1000  1'
-FR                      '1500 2000 1'
-DR                      '0 0 0'
-NR                      1
+DS                      '0    500   0'
+NS                      2
+FR                      '1500 1500  1'
+DR                      '0    500   0'
+NR                      2
 
 SCOMP                   p
 RCOMP                   p

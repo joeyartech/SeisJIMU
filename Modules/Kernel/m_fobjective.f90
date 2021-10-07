@@ -332,8 +332,19 @@ use m_preconditioner
         ! if(either(oif_approx,.false.,present(oif_approx))) then
         !     call modeling_gradient_approximate(fobj)
         ! else
-            call modeling_gradient(oif_gradient)
+            ! call modeling_gradient(oif_gradient)
         ! endif
+
+if(setup%get_str('JOB')=='imaging') then
+    call modeling_imaging
+    call mpiworld%final
+    stop
+endif
+if(setup%get_str('JOB')=='gradient') then
+    call modeling_gradient
+    call mpiworld%final
+    stop
+endif
 
         qp%f = sum(self%dnorm_weights*self%dnorms) ! + sum(self%xnorm_weights*self%xnorms)
 
