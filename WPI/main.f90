@@ -107,7 +107,7 @@ use m_matchfilter
 use m_smoother_laplacian_sparse
 
     type(t_field) :: fld_u, fld_a, fld_du, fld_da
-    real,dimension(:,:,:),allocatable :: tmpgrad
+    real,dimension(:,:),allocatable :: Wdres
     ! character(:),allocatable :: update_wavelet
     ! real,dimension(:,:),allocatable :: Rmu, Rdiff
 
@@ -132,16 +132,17 @@ use m_smoother_laplacian_sparse
         call hud('---------------------------------')
         call hud('build images')
         call hud('---------------------------------')
-        call alloc(tmpgrad,cb%nz,cb%nx,cb%ny)
         !forward modeling on u
         call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite       
         call ppg%forward(fld_u);                    call fld_u%acquire
-
-        !dnorm
-        !C_data=Ru-d
         call shot%write('Ru_imag_',shot%dsyn)
-        call wei%update
-        call fobj%compute_dnorms
+
+call wei%update('IMAGING'); wei%weight(1:300,:)=0.
+call alloc(Wdres,shot%nt,shot%nrcv)
+Wdres = (shot%dsyn-shot%dobs)*wei%weight
+shot%dadj = -wei%weight*Wdres*m%cell_volume/shot%dt
+shot%dadj = shot%dadj/m%ref_kpa
+call shot%write('dadj_',shot%dadj)
 
         !adjoint modeling on a
         !A^H a = R^H*Delta_d
@@ -216,7 +217,7 @@ use m_smoother_laplacian_sparse
         !dnorm
         !C_data=Ru-d
         call shot%write('Ru_',shot%dsyn)
-        call wei%update
+        call wei%update('GRADIENT')
         call fobj%compute_dnorms
 
         !adjoint modeling on a
@@ -230,10 +231,10 @@ use m_smoother_laplacian_sparse
         
         call hud('--- load prior image ---')
         call alloc(cb%imag,cb%mz,cb%mx,cb%my,1)
-        call sysio_read(setup%get_file('I'),cb%imag,size(cb%imag))
+        call sysio_read(setup%get_file('IMAGE'),cb%imag,size(cb%imag))
         call sysio_write('loaded_I',cb%imag,size(cb%imag))
         W=1.
-        C_field=0.5*sum(W*cb%imag)
+        C_imag=0.5*sum(W*cb%imag)
         call hud('---------------------------------')
 ! pause
         call hud('--- extd left-side Rabbit Ears ---')
@@ -285,7 +286,7 @@ use m_smoother_laplacian_sparse
 
         call cb%project_back
 
-        fobj%dnorms=fobj%dnorms+C_field
+        fobj%dnorms=fobj%dnorms+C_imag
 
     enddo
     

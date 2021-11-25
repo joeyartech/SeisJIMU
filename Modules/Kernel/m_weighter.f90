@@ -20,8 +20,9 @@ use m_Modeling
     
     contains
 
-    subroutine update(self,o_nt,o_dt,o_ntr)
+    subroutine update(self,extd,o_nt,o_dt,o_ntr)
         class(t_weighter) :: self
+        character(*) :: extd
         integer,optional :: o_nt, o_ntr
         real,optional :: o_dt
 
@@ -33,7 +34,7 @@ use m_Modeling
         self%dt = either(o_dt,  shot%dt  , present(o_dt ))
         call alloc(self%weight,self%nt,self%ntr,o_init=1.)
 
-        list=setup%get_strs('WEIGHTING','WEI',o_default=either('aoffset^1','aoffset^0.5',m%is_cubic))
+        list=setup%get_strs('WEIGHTING_'//extd,'WEI_'//extd,o_default=either('aoffset^1','aoffset^0.5',m%is_cubic))
 
         do i=1,size(list)
             if(index(list(i)%s,'p*')>0) then !weight pressure components
