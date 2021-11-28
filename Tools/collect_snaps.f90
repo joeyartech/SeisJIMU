@@ -1,7 +1,8 @@
 program main
 
 integer,parameter :: nz=349, nx=349, nt=51
-real,dimension(nz,nx,nt) :: snap1,snap2,snap3
+real,dimension(nz,nx,nt) :: snap1,snap2
+real,dimension(nz,nx*2,nt) :: snaps
 
 character(80) :: file1,file2
 
@@ -18,10 +19,17 @@ close(12)
 amaxval1=maxval(abs(snap1))
 amaxval2=maxval(abs(snap2))
 
-snap3=abs(snap1/amaxval1) - abs(snap2/amaxval2)
+!catenate
+do i=1,nt
+    snaps(:,1:nx,i)=snap1(:,:,i)/amaxval1
+    snaps(:,nx+1:nx*2,i)=snap2(:,:,i)/amaxval2
+enddo
 
-open(13,file='snaps',access='direct',recl=4*nz*nx*nt)
-write(13,rec=1) snap3
+!diff
+snaps=abs(snap1/amaxval1) - abs(snap2/amaxval2)
+
+open(13,file='snaps',access='direct',recl=4*size(snaps))
+write(13,rec=1) snaps
 close(13)
 
 end

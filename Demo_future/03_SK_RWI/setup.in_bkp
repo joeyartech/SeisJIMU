@@ -1,0 +1,28 @@
+FILE_MODELS             'true'
+MODEL_DIMENSION         '301   301   1'
+MODEL_SPACING           '10    10    1'
+MODEL_ORIGIN            '0     0     0'
+
+NBOUNDARYLAYER          60
+IF_FREESURFACE          F
+
+#WAVELET_TYPE    'ricker'
+
+ACQUI_TYPE              spread
+                       # fsz   fsx  fsy  lsz   lsx    lsy  ns
+SOURCE_LINE             '1500  1000  1   1500  1500   1    2'
+                       # frz   frx  fry  lrz   lrx    lry  nr
+RECEIVER_LINE           '1500  1500  1   1500  2000   1    2'
+SOURCE_COMPONENT        1
+RECEIVER_COMPONENT     	1
+
+
+IF_HICKS		F
+
+TIME_STEP           1000
+TIME_INTERVAL       0.004
+PEAK_FREQUENCY      6
+
+#IF_SNAPSHOT     T
+
+#IF_USE_CHECKPOINT   F

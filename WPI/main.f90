@@ -137,7 +137,7 @@ use m_smoother_laplacian_sparse
         call ppg%forward(fld_u);                    call fld_u%acquire
         call shot%write('Ru_imag_',shot%dsyn)
 
-call wei%update('IMAGING'); wei%weight(1:300,:)=0.
+call wei%update('IMAGING'); !wei%weight(1:200,:)=0.
 call alloc(Wdres,shot%nt,shot%nrcv)
 Wdres = (shot%dsyn-shot%dobs)*wei%weight
 shot%dadj = -wei%weight*Wdres*m%cell_volume/shot%dt
@@ -184,9 +184,11 @@ use m_weighter
 use m_fobjective
 use m_matchfilter
 use m_smoother_laplacian_sparse
+use m_resampler
 
     type(t_field) :: fld_u, fld_a, fld_du, fld_da
     real,dimension(:,:,:),allocatable :: tmpgrad
+    real,dimension(:,:),allocatable :: tmpdsyn
     ! character(:),allocatable :: update_wavelet
     ! real,dimension(:,:),allocatable :: Rmu, Rdiff
 
@@ -275,7 +277,14 @@ use m_smoother_laplacian_sparse
         !adjoint modeling on new a with adjsource=R*delta_u
         !A^H a = R^H*R*delta_u
         !grad4 = u \star a
-        call ppg%init_field(fld_a,name='fld_a');    call fld_a%ignite(ois_adjoint=.true.,o_wavelet=shot%dsyn)
+!!manual resampling
+call alloc(tmpdsyn,ppg%nt,shot%nrcv)
+call resampler(shot%dsyn,tmpdsyn, &
+            ntr=shot%nrcv,&
+            din=shot%dt,nin=shot%nt,&
+            dout=ppg%dt,nout=ppg%nt)
+
+        call ppg%init_field(fld_a,name='fld_a');    call fld_a%ignite(ois_adjoint=.true.,o_wavelet=tmpdsyn)
         call ppg%adjoint_ext1(fld_a,fld_du,fld_u,W*W*cb%imag,oif_compute_grad=.true.)
         call sysio_write('u_star_adj(du)',cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
         tmpgrad=tmpgrad+cb%grad(:,:,:,2)
