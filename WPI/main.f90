@@ -301,7 +301,7 @@ call resampler(shot%dsyn,tmpdsyn, &
 call shot%write('Wei_Rdu_',shot%dsyn)
 
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite(o_wavelet=tmpdsyn)
-        call ppg%adjoint_du_star_a(fld_a,fld_du,fld_u,W*W*cb%imag,oif_compute_grad=.true.)
+        call ppg%adjoint(fld_a,fld_u,oif_compute_grad=.true.)
         call sysio_write('u_star_adj(du)',cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
         tmpgrad=tmpgrad+cb%grad(:,:,:,2)
         call hud('---------------------------------')
