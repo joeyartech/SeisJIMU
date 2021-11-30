@@ -14,6 +14,12 @@ use m_Modeling
 
         procedure :: update
 
+        procedure :: by_components
+        procedure :: by_aoffset
+        procedure :: by_polygon
+        procedure :: by_table
+        procedure :: by_custom
+
     end type
 
     type(t_weighter),public :: wei
@@ -40,37 +46,37 @@ use m_Modeling
             if(index(list(i)%s,'p*')>0) then !weight pressure components
                 sublist=split(list(i)%s,o_sep='*')
                 call hud('Will multiply pressure component by '//sublist(2)%s)
-                call by_components(self%weight,o_p=str2real(sublist(2)%s))
+                call self%by_components(o_p=str2real(sublist(2)%s))
             endif
 
             if (index(list(i)%s,'vz*')>0) then
                 sublist=split(list(i)%s,o_sep='*')
                 call hud('Will multiply vz component by '//sublist(2)%s)
-                call by_components(self%weight,o_vz=str2real(sublist(2)%s))
+                call self%by_components(o_vz=str2real(sublist(2)%s))
             endif
 
             if (index(list(i)%s,'vx*')>0) then
                 sublist=split(list(i)%s,o_sep='*')
                 call hud('Will multiply vx component by '//sublist(2)%s)
-                call by_components(self%weight,o_vx=str2real(sublist(2)%s))
+                call self%by_components(o_vx=str2real(sublist(2)%s))
             endif
 
             if (index(list(i)%s,'vy*')>0) then
                 sublist=split(list(i)%s,o_sep='*')
                 call hud('Will multiply vy component by '//sublist(2)%s)
-                call by_components(self%weight,o_vy=str2real(sublist(2)%s))
+                call self%by_components(o_vy=str2real(sublist(2)%s))
             endif
 
             if (index(list(i)%s,'aoffset^')>0) then !weight traces based on power of aoffset
                 sublist=split(list(i)%s,o_sep='^')
                 call hud('Will weight traces by aoffset^'//sublist(2)%s)
-                call by_aoffset(self%weight,o_power=str2real(sublist(2)%s))
+                call self%by_aoffset(o_power=str2real(sublist(2)%s))
             endif
             
             if (index(list(i)%s,'aoffset*')>0) then !use aoffset to multiply on traces
                 sublist=split(list(i)%s,o_sep='*')
                 call hud('Will weight traces by aoffset*'//sublist(2)%s)
-                call by_aoffset(self%weight,o_factor=str2real(sublist(2)%s))
+                call self%by_aoffset(o_factor=str2real(sublist(2)%s))
             endif
             
             if (index(list(i)%s,'polygon')>0) then !polygon defined weights to multiply on traces
@@ -82,7 +88,7 @@ use m_Modeling
                 endif
                 
                 call hud('Will weight traces with polygons defined in '//file)
-                call by_polygon(self%weight,file)
+                call self%by_polygon(file)
             endif
             
             if (index(list(i)%s,'table')>0) then !table defined weights to multiply on traces
@@ -94,7 +100,7 @@ use m_Modeling
                 endif
                 
                 call hud('Will weight traces with tables defined in '//file)
-                call by_table(self%weight,file)
+                call self%by_table(file)
             endif
                 
             if (index(list(i)%s,'custom')>0) then
@@ -106,7 +112,7 @@ use m_Modeling
                 endif
 
                 call hud('Will weight traces in a custom way defined in '//file)
-                call by_custom(self%weight,file)
+                call self%by_custom(file)
             endif
 
         enddo
@@ -115,49 +121,49 @@ use m_Modeling
         
     end subroutine
 
-    subroutine by_components(weight,o_p,o_vz,o_vx,o_vy)
-        real,dimension(wei%nt,wei%ntr) :: weight
+    subroutine by_components(self,o_p,o_vz,o_vx,o_vy)
+        class(t_weighter) :: self
         real,optional :: o_p, o_vz, o_vx, o_vy
 
         if(present(o_p)) then
             do i=1,shot%nrcv
-                if(shot%rcv(i)%comp=='p') weight(:,i)=weight(:,i)*o_p
+                if(shot%rcv(i)%comp=='p') self%weight(:,i)=self%weight(:,i)*o_p
             enddo
         endif
 
         if(present(o_vz)) then
             do i=1,shot%nrcv
-                if(shot%rcv(i)%comp=='vz') weight(:,i)=weight(:,i)*o_vz
+                if(shot%rcv(i)%comp=='vz') self%weight(:,i)=self%weight(:,i)*o_vz
             enddo
         endif
 
         if(present(o_vx)) then
             do i=1,shot%nrcv
-                if(shot%rcv(i)%comp=='vx') weight(:,i)=weight(:,i)*o_vx
+                if(shot%rcv(i)%comp=='vx') self%weight(:,i)=self%weight(:,i)*o_vx
             enddo
         endif
 
         if(present(o_vy)) then
             do i=1,shot%nrcv
-                if(shot%rcv(i)%comp=='vy') weight(:,i)=weight(:,i)*o_vy
+                if(shot%rcv(i)%comp=='vy') self%weight(:,i)=self%weight(:,i)*o_vy
             enddo
         endif
 
     end subroutine
 
-    subroutine by_aoffset(weight,o_power,o_factor)
-        real,dimension(wei%nt,wei%ntr) :: weight
+    subroutine by_aoffset(self,o_power,o_factor)
+        class(t_weighter) :: self
         real,optional :: o_power, o_factor
 
         if(present(o_power)) then
             do i=1,shot%nrcv    
-                weight(:,i)=weight(:,i)*shot%rcv(i)%aoffset**o_power
+                self%weight(:,i)=self%weight(:,i)*shot%rcv(i)%aoffset**o_power
             enddo
         endif
 
         if(present(o_factor)) then
             do i=1,shot%nrcv    
-                weight(:,i)=weight(:,i)*shot%rcv(i)%aoffset*o_factor
+                self%weight(:,i)=self%weight(:,i)*shot%rcv(i)%aoffset*o_factor
             enddo
         endif
 
@@ -165,8 +171,8 @@ use m_Modeling
 
     ! Modified from sumute.c in Seismic Unix
     ! dir: SeisUnix/src/su/main/windowing_sorting_muting
-    subroutine by_polygon(weight,file)
-        real,dimension(wei%nt,wei%ntr) :: weight
+    subroutine by_polygon(self,file)
+        class(t_weighter) :: self
         character(*) :: file
 
         character(i_str_slen) :: text
@@ -265,10 +271,10 @@ use m_Modeling
 
             !convert string to real numbers
             read(text,*,iostat=msg) gain, taper
-            ntaper=nint(taper/wei%dt)
+            ntaper=nint(taper/self%dt)
 
             !loop of offset
-            do itr=1,wei%ntr
+            do itr=1,self%ntr
                 
                 !find the two xgain's closest to aoffset
                 if(shot%rcv(itr)%aoffset<=xgain(1)) then
@@ -291,21 +297,22 @@ use m_Modeling
                 !interp time by the two tgain & xgain pairs
                 time = tgain(jx1)*dx2 + tgain(jx2)*dx1
 
-                itime = nint(time/wei%dt)+1  !assume all receivers have same dt ...
+                itime = nint(time/self%dt)+1  !assume all receivers have same dt ...
                 itime_start = itime-ntaper  !1 <= itime_start <= itime <= nt
 
                 !apply linear taper from itime_start+1 to itime
-                do it=min(max(itime_start+1,1),wei%nt) , &
-                      min(max(itime        ,1),wei%nt)
+                do it=min(max(itime_start+1,1),self%nt) , &
+                      min(max(itime        ,1),self%nt)
                     
                     k=it-itime_start-1
 
-                    weight(it,itr) = weight(it,itr)* ( gain_old*(ntaper-k) + gain*k ) / ntaper
+                    self%weight(it,itr) = self%weight(it,itr)* ( gain_old*(ntaper-k) + gain*k ) / ntaper
                 end do               
 
                 !apply constant gain from itime+1 to nt
-                it = min(max(itime+1,1),wei%nt)
-                weight(it:wei%nt,itr) = weight(it:wei%nt,itr)* gain
+                it = min(max(itime+1,1),self%nt)
+                !self%weight(it:self%nt,itr) = self%weight(it:self%nt,itr)* gain
+                self%weight(it:self%nt,itr) = gain
                 
             end do
             
@@ -317,8 +324,8 @@ use m_Modeling
 
     end subroutine
 
-    subroutine by_table(weight,file)
-        real,dimension(wei%nt,wei%ntr) :: weight
+    subroutine by_table(self,file)
+        class(t_weighter) :: self
         character(*) :: file
         
         character(i_str_slen) :: text
@@ -420,7 +427,7 @@ use m_Modeling
         deallocate(tmp_table)
 
         !map table to weight with interpolation
-        do itr=1,wei%ntr
+        do itr=1,self%ntr
 
             !find the two xgain's closest to aoffset
             if(shot%rcv(itr)%aoffset<=xgain(1)) then
@@ -441,8 +448,8 @@ use m_Modeling
             endif
 
 
-            do it=1,wei%nt
-                t=(it-1)*wei%dt
+            do it=1,self%nt
+                t=(it-1)*self%dt
 
                 !find the two tgain's closest to aoffset
                 if(t<=tgain(1)) then
@@ -463,7 +470,10 @@ use m_Modeling
                 endif
 
                 
-                weight(it,itr) = weight(it,itr) * ( &
+                ! self%weight(it,itr) = self%weight(it,itr) * ( &
+                !       ( table(jt1,jx1)*dt2 + table(jt2,jx1)*dt1 ) *dx2  &
+                !     + ( table(jt1,jx2)*dt2 + table(jt2,jx2)*dt1 ) *dx1  )
+                self%weight(it,itr) = 1.* ( &
                       ( table(jt1,jx1)*dt2 + table(jt2,jx1)*dt1 ) *dx2  &
                     + ( table(jt1,jx2)*dt2 + table(jt2,jx2)*dt1 ) *dx1  )
 
@@ -475,21 +485,21 @@ use m_Modeling
 
     end subroutine
 
-    subroutine by_custom(weight,file)
-        real,dimension(wei%nt,wei%ntr) :: weight
+    subroutine by_custom(self,file)
+        class(t_weighter) :: self
         character(*) :: file
 
         integer :: file_size
         real,dimension(:,:),allocatable :: tmp
 
         inquire(file=file,size=file_size)
-        if(file_size<4*wei%nt*wei%ntr) call warn('FILE_WEIGHT_CUSTOM has size '//num2str(file_size/4)//' < nt*ntr. Some traces will not be weighted.')
+        if(file_size<4*self%nt*self%ntr) call warn('FILE_WEIGHT_CUSTOM has size '//num2str(file_size/4)//' < nt*ntr. Some traces will not be weighted.')
 
-        call alloc(tmp,wei%nt,wei%ntr,o_init=1.)
+        call alloc(tmp,self%nt,self%ntr,o_init=1.)
 
         call sysio_read(file,tmp,size(tmp))
 
-        weight=weight*tmp
+        self%weight=self%weight*tmp
 
         deallocate(tmp)
 

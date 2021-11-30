@@ -26,6 +26,9 @@ use, intrinsic :: ieee_arithmetic
 
         character(:),allocatable :: name
 
+        !adjointness
+        logical :: is_adjoint
+        
         !wavefield components in computation domain
         real,dimension(:,:,:),allocatable :: vz,vx,vy !velocities
         real,dimension(:,:,:),allocatable :: szz,szx,szy !stress tensor
@@ -66,7 +69,7 @@ use, intrinsic :: ieee_arithmetic
         !snapshot
 
         contains
-        procedure :: init
+        ! procedure :: init
         procedure :: init_bloom
         procedure :: init_boundary
         procedure :: check_value
@@ -127,17 +130,16 @@ use, intrinsic :: ieee_arithmetic
 
     end subroutine
 
-    subroutine init(self,name)
+    ! subroutine init(self,name)
+    !     class(t_field) :: self
+    !     character(*) :: name
+
+    !     self%name=name
+
+    ! end subroutine
+
+    subroutine init_bloom(self)
         class(t_field) :: self
-        character(*) :: name
-
-        self%name=name
-
-    end subroutine
-
-    subroutine init_bloom(self,origin)
-        class(t_field) :: self
-        character(3) :: origin
 
         !blooming
         call alloc(self%bloom,6,nt)
@@ -150,7 +152,7 @@ use, intrinsic :: ieee_arithmetic
         !     distx = cb%velmax * dt / m%dx
         !     disty = cb%velmax * dt / m%dy
 
-        !     if(origin=='src') then
+        !     if(self%is_adjoint==.false.) then
         !         self%bloom(1,1)=max(shot%src%iz -initial_half_bloomwidth, cb%ifz)
         !         self%bloom(2,1)=min(shot%src%iz +initial_half_bloomwidth, cb%ilz)
         !         self%bloom(3,1)=max(shot%src%ix -initial_half_bloomwidth, cb%ifx)
@@ -292,13 +294,12 @@ use, intrinsic :: ieee_arithmetic
 
     end subroutine
  
-    subroutine ignite(self,ois_adjoint,o_wavelet)
+    subroutine ignite(self,o_wavelet)
         class(t_field) :: self
-        logical,optional :: ois_adjoint
         real,dimension(:,:),optional :: o_wavelet !use external wavelet instead of shot%wavelet or %dadj
 
         !add adjoint source
-        if(either(ois_adjoint,.false.,present(ois_adjoint))) then
+        if(self%is_adjoint) then
 
             if(present(o_wavelet)) then
                 if(all(shape(o_wavelet)==[nt,shot%nrcv])) then
@@ -326,23 +327,23 @@ use, intrinsic :: ieee_arithmetic
         endif
 
         !add source
-        if(present(o_wavelet)) then
-            if(all(shape(o_wavelet)==[nt,1])) then
-                self%wavelet=transpose(o_wavelet)
+            if(present(o_wavelet)) then
+                if(all(shape(o_wavelet)==[nt,1])) then
+                    self%wavelet=transpose(o_wavelet)
+                else
+                    call hud('shape(o_wavelet) = '//strcat(nums2strs(shape(o_wavelet))))
+                    call hud('required shape = '//num2str(nt)//', 1')
+                    call error('External o_wavelet do NOT have the required shape!')
+                endif
+
             else
-                call hud('shape(o_wavelet) = '//strcat(nums2strs(shape(o_wavelet))))
-                call hud('required shape = '//num2str(nt)//', 1')
-                call error('External o_wavelet do NOT have the required shape!')
+                call alloc(self%wavelet,1,nt)
+                call resampler(shot%wavelet,self%wavelet(1,:),1,&
+                                din=shot%dt,nin=shot%nt,&
+                                dout=dt,nout=nt)
             endif
 
-        else
-            call alloc(self%wavelet,1,nt)
-            call resampler(shot%wavelet,self%wavelet(1,:),1,&
-                            din=shot%dt,nin=shot%nt,&
-                            dout=dt,nout=nt)
-        endif
-
-        self%wavelet=self%wavelet*dt/m%cell_volume
+            self%wavelet=self%wavelet*dt/m%cell_volume
 
     end subroutine
 

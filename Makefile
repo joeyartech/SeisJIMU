@@ -40,7 +40,7 @@ wpi :
 
 
 clean :
-	-rm FWD/*.o FWI/*.o
+	-rm FWD/*.o FWI/*.o WPI/*.o
 
 cleanmod :
 	(cd Modules/System; make clean)
@@ -49,5 +49,6 @@ cleanmod :
 	(cd Modules/Modeling; make clean)
 	(cd Modules/Kernel; make clean)
 	(cd Modules/Optimization; make clean)
+	(cd mod; rm -r *)
 
 cleanall : cleanmod clean
