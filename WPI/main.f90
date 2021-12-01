@@ -150,7 +150,6 @@ call shot%write('dadj_',shot%dadj)
         !grad = u \star a
         call ppg%init_field(fld_a,name='fld_a_imag',ois_adjoint=.true.); call fld_a%ignite
         call ppg%adjoint(fld_a,fld_u,oif_compute_imag=.true.)
-        call sysio_write('I',cb%imag,size(cb%imag))
         call hud('---------------------------------')
 
         call cb%project_back
@@ -170,6 +169,8 @@ call shot%write('dadj_',shot%dadj)
         !     call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
         ! endif
     ! endif
+    
+    call sysio_write('I',m%image,size(m%image))
 
     call mpiworld%barrier
 
@@ -235,21 +236,21 @@ use m_resampler
         call alloc(cb%imag,cb%mz,cb%mx,cb%my,1)
         call sysio_read(setup%get_file('IMAGE'),cb%imag,size(cb%imag))
         call sysio_write('loaded_I',cb%imag,size(cb%imag))
-        W=1.
-        C_imag=0.5*sum(W*cb%imag)
+        W_I=1.
+        C_imag=0.5*sum(W_I*cb%imag)
         call hud('---------------------------------')
 ! pause
         call hud('--- extd left-side Rabbit Ears ---')
         !model u and delta_u
         call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
         call ppg%init_field(fld_du,name='fld_du')
-        call ppg%forward_scattering(fld_du,fld_u,W*W*cb%imag); call fld_du%acquire
+        call ppg%forward_scattering(fld_du,fld_u,-W_I*W_I*cb%imag); call fld_du%acquire
         call shot%write('Rdu_',shot%dsyn)
         !
-        !A delta_u = W^2*Iu
+        !A delta_u = W_I^2*Iu
         !grad = delta_u \star a
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.) !adjsrc for a should not be initialized
-        call ppg%adjoint_du_star_a(fld_a,fld_du,fld_u,W*W*cb%imag,oif_compute_grad=.true.) !,oif_compute_imag=.true.)
+        call ppg%adjoint_du_star_a(fld_a,fld_du,fld_u,-W_I*W_I*cb%imag,oif_compute_grad=.true.) !,oif_compute_imag=.true.)
         ! call sysio_write('image_du_star_a',cb%imag,size(cb%imag))
         call sysio_write('du_star_a',cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
         tmpgrad=tmpgrad+cb%grad(:,:,:,2)
@@ -260,11 +261,11 @@ use m_resampler
         call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
         call ppg%forward(fld_u)
         !
-        !A^H delta_a = W^2*Ia
+        !A^H delta_a = W_I^2*Ia
         !grad3 = u \star delta_a
         call ppg%init_field(fld_a, name='fld_a', ois_adjoint=.true.) !adjsrc for a should not be initialized
         call ppg%init_field(fld_da,name='fld_da',ois_adjoint=.true.)
-        call ppg%adjoint_scattering_u_star_da(fld_da,fld_a,W*W*cb%imag,fld_u,oif_record_adjseismo=.true.,oif_compute_grad=.true.)
+        call ppg%adjoint_scattering_u_star_da(fld_da,fld_a,-W_I*W_I*cb%imag,fld_u,oif_record_adjseismo=.true.,oif_compute_grad=.true.)
         call suformat_write('da_adjseismo',fld_da%seismo,ppg%nt,1,ppg%dt)
         call sysio_write('u_star_da',cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
         tmpgrad=tmpgrad+cb%grad(:,:,:,2)
@@ -274,11 +275,11 @@ use m_resampler
         !model u and then delta_u
         call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
         call ppg%init_field(fld_du,name='fld_du')
-        call ppg%forward_scattering(fld_du,fld_u,W*W*cb%imag)
+        call ppg%forward_scattering(fld_du,fld_u,-W_I*W_I*cb%imag)
 
         call ppg%init_field(fld_a, name='fld_a', ois_adjoint=.true.)
         call ppg%init_field(fld_da,name='fld_da',ois_adjoint=.true.)
-        call ppg%adjoint_scattering_du_star_da(fld_da,fld_a,fld_du,fld_u,W*W*cb%imag,oif_compute_grad=.true.)
+        call ppg%adjoint_scattering_du_star_da(fld_da,fld_a,fld_du,fld_u,-W_I*W_I*cb%imag,oif_compute_grad=.true.)
 
         call sysio_write('du_star_da',cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
         call hud('---------------------------------')
@@ -286,19 +287,19 @@ use m_resampler
         call hud('--- u_star_Adj(du) ---')
         call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
         call ppg%init_field(fld_du,name='fld_du')
-        call ppg%forward_scattering(fld_du,fld_u,W*W*cb%imag); call fld_du%acquire !shot%dsyn = R*fld_du
+        call ppg%forward_scattering(fld_du,fld_u,-W_I*W_I*cb%imag); call fld_du%acquire !shot%dsyn = R*fld_du
         !adjoint modeling on new a with adjsource=R*delta_u
         !A^H a = R^H*R*delta_u
         !grad4 = u \star a
 !!manual weighting and resampling
 shot%dsyn=shot%dsyn*wei%weight
+call shot%write('Wei_Rdu_',shot%dsyn)
 !!cheating: shot%dsyn=shot%dobs*wei%weight
 call alloc(tmpdsyn,ppg%nt,shot%nrcv)
 call resampler(shot%dsyn,tmpdsyn, &
             ntr=shot%nrcv,&
             din=shot%dt,nin=shot%nt,&
             dout=ppg%dt,nout=ppg%nt)
-call shot%write('Wei_Rdu_',shot%dsyn)
 
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite(o_wavelet=tmpdsyn)
         call ppg%adjoint(fld_a,fld_u,oif_compute_grad=.true.)
