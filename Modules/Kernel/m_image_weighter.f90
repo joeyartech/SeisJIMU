@@ -33,7 +33,7 @@ use m_Modeling
         self%ny = either(o_ny, m%ny, present(o_ny))
         call alloc(self%weight,self%nz,self%nx,self%ny,o_init=1.)
 
-        list=setup%get_strs('IMAGE_WEIGHTING_','IWEI_',o_default='1.')
+        list=setup%get_strs('IMAGE_WEIGHTING','IWEI',o_default='none')
 
         do i=1,size(list)
 
@@ -51,7 +51,7 @@ use m_Modeling
 
         enddo
 
-        if(mpiworld%is_master) call sysio_write('image_weights',self%weight,size(self%weight))
+        if(mpiworld%is_master) call sysio_write('Imag_weights',self%weight,size(self%weight))
         
     end subroutine
 

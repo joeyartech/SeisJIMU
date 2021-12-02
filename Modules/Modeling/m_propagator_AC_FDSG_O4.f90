@@ -1273,9 +1273,9 @@ use m_cpml
         class(t_propagator) :: self
         type(t_field) :: f
         
-        ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
-        ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
-        ify=shot%src%ify; iy=shot%src%iy; ily=shot%src%ily
+        ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
+        ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
+        ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
         
         wl=time_dir*f%wavelet(1,it)
         
@@ -1356,9 +1356,9 @@ use m_cpml
         class(t_propagator) :: self
         type(t_field) :: f
         
-        ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
-        ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
-        ify=shot%src%ify; iy=shot%src%iy; ily=shot%src%ily
+        ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
+        ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
+        ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
         
         wl=time_dir*f%wavelet(1,it)
         
@@ -1383,9 +1383,9 @@ use m_cpml
         real,dimension(cb%mz,cb%mx,cb%my) :: RHS
         real :: time_dir
 
-        ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
-        ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
-        ify=shot%src%ify; iy=shot%src%iy; ily=shot%src%ily
+        ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
+        ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
+        ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
 
         f%p(1:cb%mz,1:cb%mx,1:cb%my) = f%p(1:cb%mz,1:cb%mx,1:cb%my) + time_dir*RHS*self%kpa(iz,ix,iy)
     end subroutine
@@ -1426,9 +1426,9 @@ use m_cpml
         type(t_field) :: f
         
         do i=1,shot%nrcv
-            ifz=shot%rcv(i)%ifz; iz=shot%rcv(i)%iz; ilz=shot%rcv(i)%ilz
-            ifx=shot%rcv(i)%ifx; ix=shot%rcv(i)%ix; ilx=shot%rcv(i)%ilx
-            ify=shot%rcv(i)%ify; iy=shot%rcv(i)%iy; ily=shot%rcv(i)%ily
+            ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
+            ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
+            ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
 
             if(if_hicks) then
                 select case (shot%rcv(i)%comp)
@@ -1470,9 +1470,9 @@ use m_cpml
 
             if(shot%rcv(i)%comp=='p') then
 
-                ifz=shot%rcv(i)%ifz; iz=shot%rcv(i)%iz; ilz=shot%rcv(i)%ilz
-                ifx=shot%rcv(i)%ifx; ix=shot%rcv(i)%ix; ilx=shot%rcv(i)%ilx
-                ify=shot%rcv(i)%ify; iy=shot%rcv(i)%iy; ily=shot%rcv(i)%ily
+                ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
+                ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
+                ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
                 
                 !adjsource for pressure
                 wl=f%wavelet(i,it)
@@ -1509,9 +1509,9 @@ use m_cpml
         type(t_field) :: f
 
         do i=1,shot%nrcv
-            ifz=shot%rcv(i)%ifz; iz=shot%rcv(i)%iz; ilz=shot%rcv(i)%ilz
-            ifx=shot%rcv(i)%ifx; ix=shot%rcv(i)%ix; ilx=shot%rcv(i)%ilx
-            ify=shot%rcv(i)%ify; iy=shot%rcv(i)%iy; ily=shot%rcv(i)%ily
+            ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
+            ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
+            ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
             
             wl=f%wavelet(i,it)
             
@@ -1564,9 +1564,9 @@ use m_cpml
         class(t_propagator) :: self
         type(t_field) :: f
         
-        ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
-        ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
-        ify=shot%src%ify; iy=shot%src%iy; ily=shot%src%ily
+        ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
+        ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
+        ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
         
         if(if_hicks) then
             select case (shot%src%comp)

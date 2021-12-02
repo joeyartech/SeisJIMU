@@ -45,6 +45,7 @@ use m_setup
         character(*),optional :: o_mode
         !integer,optional :: o_iproc
 
+        integer :: file_size
         real,dimension(:),allocatable :: tmp_array
 
         if(present(o_mode)) then
@@ -53,14 +54,21 @@ use m_setup
                 open(12,file=dir_out//file,access='stream',position='append')
                 write(12) array
             endif
-            if(o_mode=='stack') then
-                allocate(tmp_array(n))
-                open(12,file=dir_out//file,access='direct',recl=4*n)
-                read(12) tmp_array
-                tmp_array=tmp_array+array
-                write(12) tmp_array
-                deallocate(tmp_array)
-            endif
+            !this way of stacking cannot work properly without MPI_File and file locks..
+            ! if(o_mode=='stack') then
+            !     inquire(file=dir_out//file,size=file_size)
+            !     if(file_size<4*n) then
+            !         open(12,file=dir_out//file,access='direct',recl=4*n)
+            !         write(12,rec=1) array
+            !     else    
+            !         open(12,file=dir_out//file,access='direct',recl=4*n)
+            !         allocate(tmp_array(n))
+            !         read(12,rec=1) tmp_array
+            !         tmp_array=tmp_array+array
+            !         write(12,rec=1) tmp_array
+            !         deallocate(tmp_array)
+            !     endif
+            ! endif
         else
             open(12,file=dir_out//file,access='direct',recl=4*n)
             write(12,rec=1) array

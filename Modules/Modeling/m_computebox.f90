@@ -20,7 +20,7 @@ use m_shot
 !       * source point
 !                                        Computebox: C+D
 
-    real,dimension(4) :: aperture
+    real,dimension(4) :: add_aperture
     
     type,public :: t_computebox
 
@@ -45,7 +45,7 @@ use m_shot
         real,dimension(:,:,:),allocatable :: eps,del,eta
         real,dimension(:,:,:),allocatable :: qp,qs
         
-        real,dimension(:,:,:,:),allocatable :: grad, imag, engy
+        real,dimension(:,:,:,:),allocatable :: grad, imag, engy, corr
         
         contains
         procedure :: init
@@ -65,8 +65,8 @@ use m_shot
         class(t_computebox) :: self
         integer :: add_abslayer
 
-        !shot aperture, default to whole model
-        aperture=setup%get_reals('APERTURE',o_default='-99999 99999 -99999 99999')
+        !add aperture; aperture default to whole model
+        add_aperture=setup%get_reals('ADD_APERTURE',o_default='-99999 99999 -99999 99999')
 
         ! self%cell_volume = m%dz*m%dx*m%dy
 
@@ -89,21 +89,21 @@ use m_shot
 
         !C's origin index in model
         self%ioz=1 !always from top of model
-        x=minval(shot%rcv(:)%x)
-        x=min(x,shot%src%x,shot%src%x+aperture(1))
-        y=minval(shot%rcv(:)%y)
-        y=min(y,shot%src%y,shot%src%y+aperture(3))
+
+        x=min( shot%src%x, minval(shot%rcv(:)%x)) +add_aperture(1)
+        y=min( shot%src%y, minval(shot%rcv(:)%y)) +add_aperture(3)
+
         self%iox=max(1,   nint(x/m%dx)+1) !can't exceed size of model
         self%ioy=max(1,   nint(y/m%dy)+1) !can't exceed size of model
         
         !C's size
         self%mz=m%nz !always down to bottom of model
-        x=maxval(shot%rcv(:)%x)
-        x=max(x,shot%src%x,shot%src%x+aperture(2))
-        y=maxval(shot%rcv(:)%y)
-        y=max(y,shot%src%y,shot%src%y+aperture(4))
-        self%mx=min(m%nx,nint(x/m%dx)+1) +1 -self%iox
-        self%my=min(m%ny,nint(y/m%dy)+1) +1 -self%ioy
+
+        x=max( shot%src%x, maxval(shot%rcv(:)%x)) +add_aperture(2)
+        y=max( shot%src%y, maxval(shot%rcv(:)%y)) +add_aperture(4)
+        
+        self%mx=min(m%nx,nint(x/m%dx)+1) -self%iox +1
+        self%my=min(m%ny,nint(y/m%dy)+1) -self%ioy +1
         
         !C+D's index
         self%ifx = 1       - self%nabslayer
@@ -137,39 +137,41 @@ use m_shot
             write(*,*)'  ioy,my:',self%ioy,self%my
         endif
 
-        !shift source-receiver positions by computebox origin
-        !then positions are 0-based inside computebox
-        !source side
-        associate(s=>shot%src)
-            s%iz=s%iz-self%ioz+1
-            s%ix=s%ix-self%iox+1
-            s%iy=s%iy-self%ioy+1
+        !move this piece of code to m_propagator.f90
+        !as we need to write dsyn during modelings in WPI
+        ! !shift source-receiver positions by computebox origin
+        ! !then positions are 0-based inside computebox
+        ! !source side
+        ! associate(s=>shot%src)
+        !     s%iz=s%iz-self%ioz+1
+        !     s%ix=s%ix-self%iox+1
+        !     s%iy=s%iy-self%iox+1
 
-            s%ifz=s%ifz-self%ioz+1; s%ilz=s%ilz-self%ioz+1
-            s%ifx=s%ifx-self%iox+1; s%ilx=s%ilx-self%iox+1
-            s%ify=s%ify-self%ioy+1; s%ily=s%ily-self%ioy+1
+        !     s%ifz=s%ifz-self%ioz+1; s%ilz=s%ilz-self%ioz+1
+        !     s%ifx=s%ifx-self%iox+1; s%ilx=s%ilx-self%iox+1
+        !     s%ify=s%ify-self%ioy+1; s%ily=s%ily-self%ioy+1
             
-            s%z=s%z-(self%ioz-1)*m%dz
-            s%x=s%x-(self%iox-1)*m%dx
-            s%y=s%y-(self%ioy-1)*m%dy
-        end associate
+        !     s%z=s%z-(self%ioz-1)*m%dz
+        !     s%x=s%x-(self%iox-1)*m%dx
+        !     s%y=s%y-(self%ioy-1)*m%dy
+        ! end associate
 
-        !receiver side
-        associate(r=>shot%rcv)
-            do i=1,shot%nrcv
-                r(i)%iz=r(i)%iz-self%ioz+1
-                r(i)%ix=r(i)%ix-self%iox+1
-                r(i)%iy=r(i)%iy-self%ioy+1
+        ! !receiver side
+        ! associate(r=>shot%rcv)
+        !     do i=1,shot%nrcv
+        !         r(i)%iz=r(i)%iz-self%ioz+1
+        !         r(i)%ix=r(i)%ix-self%iox+1
+        !         r(i)%iy=r(i)%iy-self%ioy+1
 
-                r(i)%ifz=r(i)%ifz-self%ioz+1; r(i)%ilz=r(i)%ilz-self%ioz+1
-                r(i)%ifx=r(i)%ifx-self%iox+1; r(i)%ilx=r(i)%ilx-self%iox+1
-                r(i)%ify=r(i)%ify-self%ioy+1; r(i)%ily=r(i)%ily-self%ioy+1
+        !         r(i)%ifz=r(i)%ifz-self%ioz+1; r(i)%ilz=r(i)%ilz-self%ioz+1
+        !         r(i)%ifx=r(i)%ifx-self%iox+1; r(i)%ilx=r(i)%ilx-self%iox+1
+        !         r(i)%ify=r(i)%ify-self%ioy+1; r(i)%ily=r(i)%ily-self%ioy+1
 
-                r(i)%z=r(i)%z-(self%ioz-1)*m%dz
-                r(i)%x=r(i)%x-(self%iox-1)*m%dx
-                r(i)%y=r(i)%y-(self%ioy-1)*m%dy
-            enddo
-        end associate
+        !         r(i)%z=r(i)%z-(self%ioz-1)*m%dz
+        !         r(i)%x=r(i)%x-(self%iox-1)*m%dx
+        !         r(i)%y=r(i)%y-(self%ioy-1)*m%dy
+        !     enddo
+        ! end associate
 
         !models in computebox
         call m2cb(m%vp ,self%vp )
@@ -239,6 +241,7 @@ use m_shot
         call cb2m(m%gradient,cb%grad)
         call cb2m(m%image   ,cb%imag)
         call cb2m(m%energy  ,cb%engy)
+        call cb2m(m%correlate,cb%corr)
 
         call final(self)
 

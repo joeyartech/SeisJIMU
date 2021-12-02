@@ -36,6 +36,7 @@ use m_string
         procedure :: init
         procedure :: barrier
         procedure :: write
+        procedure :: reduce
         procedure :: final
     end type
     
@@ -116,6 +117,25 @@ use m_string
         call mpi_file_set_view(fhandle, disp, mpi_char, mpi_char, 'native', mpi_info_null, self%ierr)
         call mpi_file_write(fhandle, str, len(str), mpi_char, mpi_status_ignore, self%ierr)        
         call mpi_file_close(fhandle, self%ierr)
+
+    end subroutine
+
+    subroutine reduce(self,array,n)
+        class(t_mpienv) :: self
+
+        real,dimension(n) :: array
+        real,dimension(:),allocatable :: tmp
+
+        if(self%is_master) then
+            allocate(tmp(n))
+        endif
+        
+        call mpi_reduce(array, tmp, n, mpi_real, mpi_sum, 0, self%communicator, self%ierr)
+        
+        if(self%is_master) then
+            array=tmp
+            deallocate(tmp)
+        endif
 
     end subroutine
     

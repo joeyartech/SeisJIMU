@@ -460,7 +460,7 @@ use, intrinsic :: ieee_arithmetic
     subroutine final(self)
         type(t_field) :: self
         
-        deallocate(self%name)
+        !deallocate(self%name)
 
         call dealloc(self%vz,self%vx,self%vy)
         call dealloc(self%szz,self%szx,self%szy,self%sxx,self%sxy,self%shh,self%p)
