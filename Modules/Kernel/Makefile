@@ -3,7 +3,7 @@ include ../../compiler.inc
 include ../../modules.inc
 
 
-ifeq '$(APP)' 'RTM'
+ifeq '$(App)' 'RTM'
 	src = 
 endif
 
@@ -15,11 +15,15 @@ src = \
 	m_fobjective.f90 \
 	m_Kernel.f90
 
-ifeq '$(APP)' 'FWI'
+ifeq '$(App)' 'FWI'
 endif
 
-ifeq '$(APP)' 'RWI'
+ifeq '$(App)' 'RWI'
 	src += m_separator.f90
+endif
+
+ifeq '$(App)' 'WPI'
+	src += m_image_weighter.f90
 endif
 
 
@@ -27,7 +31,7 @@ all : $(src:.f90=.o)
 	@printf "\n"
 
 clean :
-	-rm $(src:.f90=.o)
+	-rm *.o
 	@printf "\n"
-	-rm $(src:%.f90=$(mod_dir)%.mod) $(mod_dir)m_parametrizer.mod $(mod_dir)m_kernel.mod
+	-rm $(src:%.f90=$(mod_dir)%.mod) $(mod_dir)m_parametrizer.mod $(mod_dir)m_kernel.mod $(mod_dir)m_separator.mod $(mod_dir)m_image_weighter.mod
 	@printf "\n"

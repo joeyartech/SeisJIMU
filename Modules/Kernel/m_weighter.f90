@@ -26,21 +26,24 @@ use m_Modeling
     
     contains
 
-    subroutine update(self,extd,o_nt,o_dt,o_ntr)
+    subroutine update(self,o_suffix,o_nt,o_dt,o_ntr)
         class(t_weighter) :: self
-        character(*) :: extd
+        character(*),optional :: o_suffix
         integer,optional :: o_nt, o_ntr
         real,optional :: o_dt
 
+        character(:),allocatable :: suf
         type(t_string),dimension(:),allocatable :: list,sublist
         character(:),allocatable :: file
+
+        suf = either(o_suffix,'',present(o_suffix))
 
         self%nt = either(o_nt,  shot%nt  , present(o_nt ))
         self%ntr= either(o_ntr, shot%nrcv, present(o_ntr))
         self%dt = either(o_dt,  shot%dt  , present(o_dt ))
         call alloc(self%weight,self%nt,self%ntr,o_init=1.)
 
-        list=setup%get_strs('WEIGHTING_'//extd,'WEI_'//extd,o_default=either('aoffset^1','aoffset^0.5',m%is_cubic))
+        list=setup%get_strs('WEIGHTING_'//suf,'WEI_'//suf,o_default=either('aoffset^1','aoffset^0.5',m%is_cubic))
 
         do i=1,size(list)
             if(index(list(i)%s,'p*')>0) then !weight pressure components
@@ -117,7 +120,7 @@ use m_Modeling
 
         enddo
 
-        if(mpiworld%is_master) call suformat_write('weights',self%weight,self%nt,self%ntr,o_dt=self%dt)
+        if(mpiworld%is_master) call suformat_write('weights'//suf,self%weight,self%nt,self%ntr,o_dt=self%dt)
         
     end subroutine
 

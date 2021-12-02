@@ -45,11 +45,21 @@ use m_setup
         character(*),optional :: o_mode
         !integer,optional :: o_iproc
 
+        real,dimension(:),allocatable :: tmp_array
+
         if(present(o_mode)) then
             if(o_mode=='append') then
                 !open(12,file=dir_out//file,access='direct',recl=4*n,position='append')
                 open(12,file=dir_out//file,access='stream',position='append')
                 write(12) array
+            endif
+            if(o_mode=='stack') then
+                allocate(tmp_array(n))
+                open(12,file=dir_out//file,access='direct',recl=4*n)
+                read(12) tmp_array
+                tmp_array=tmp_array+array
+                write(12) tmp_array
+                deallocate(tmp_array)
             endif
         else
             open(12,file=dir_out//file,access='direct',recl=4*n)

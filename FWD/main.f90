@@ -65,7 +65,7 @@ use m_Modeling
 
         call ppg%check_discretization
         call ppg%init
-        call ppg%init_field(field,name='field',origin='src')
+        call ppg%init_field(field,name='field')
         call ppg%init_abslayer
 
         call field%ignite

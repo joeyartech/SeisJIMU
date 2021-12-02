@@ -24,7 +24,7 @@ kernel :
 optimization :
 	(cd Modules/Optimization; make)
 
-exe : fwd fwi
+exe : fwd fwi wpi
 
 fwd :
 	(cd FWD; make)

@@ -130,25 +130,26 @@ use m_smoother_laplacian_sparse
         call ppg%init_abslayer
 
         call hud('---------------------------------')
-        call hud('build images')
+        call hud('            Imaging              ')
         call hud('---------------------------------')
         !forward modeling on u
-        call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite       
-        call ppg%forward(fld_u);                    call fld_u%acquire
-        call shot%write('Ru_imag_',shot%dsyn)
+        call ppg%init_field(fld_u,name='Image_fld_u');    call fld_u%ignite       
+        call ppg%forward(fld_u);                          call fld_u%acquire
+        call shot%write('Imag_Ru_',shot%dsyn)
 
-call wei%update('IMAGE')
-call alloc(Wdres,shot%nt,shot%nrcv)
-Wdres = -(shot%dsyn-shot%dobs)*wei%weight
-shot%dadj = wei%weight*Wdres
-shot%dadj = shot%dadj  *m%cell_volume/shot%dt/m%ref_kpa !otherwise numerical overflow
-call shot%write('dadj_',shot%dadj)
+        !weighting on the adjoint source for the image
+        call wei%update('IMAGE')
+        call alloc(Wdres,shot%nt,shot%nrcv)
+        Wdres = -(shot%dsyn-shot%dobs)*wei%weight
+        shot%dadj = Wdres*wei%weight
+        shot%dadj = shot%dadj  *m%cell_volume/shot%dt/m%ref_kpa !otherwise numerical overflow
+        call shot%write('Imag_dadj_',shot%dadj)
 
         !adjoint modeling on a
         !A^H a = R^H*Delta_d
         !C_field=0.5*(u_star_a)^2
         !grad = u \star a
-        call ppg%init_field(fld_a,name='fld_a_imag',ois_adjoint=.true.); call fld_a%ignite
+        call ppg%init_field(fld_a,name='Image_fld_a',ois_adjoint=.true.); call fld_a%ignite
         call ppg%adjoint(fld_a,fld_u,oif_compute_imag=.true.)
         call hud('---------------------------------')
 
@@ -170,7 +171,7 @@ call shot%write('dadj_',shot%dadj)
         ! endif
     ! endif
     
-    call sysio_write('I',m%image,size(m%image))
+    call sysio_write('I',m%image(:,:,:,1),size(m%image(:,:,:,1)))
 
     call mpiworld%barrier
 
@@ -182,16 +183,25 @@ use mpi
 use m_System
 use m_Modeling
 use m_weighter
+use m_image_weighter
 use m_fobjective
 use m_matchfilter
 use m_smoother_laplacian_sparse
 use m_resampler
 
     type(t_field) :: fld_u, fld_a, fld_du, fld_da
-    real,dimension(:,:,:),allocatable :: tmpgrad
+    real,dimension(:,:,:),allocatable :: Wimag, Imag_adj
+    real,dimension(:,:,:),allocatable :: fullgrad
     real,dimension(:,:),allocatable :: tmpdsyn
     ! character(:),allocatable :: update_wavelet
     ! real,dimension(:,:),allocatable :: Rmu, Rdiff
+
+    !first do imaging
+    call modeling_imaging
+    if(setup%get_str('JOB')=='upto_imaging') then
+        call mpiworld%final
+        stop
+    endif
 
     call hud('===== START LOOP OVER SHOTS =====')
     
@@ -207,12 +217,14 @@ use m_resampler
         call cb%init(ppg%nbndlayer)
         call cb%project
 
+        mm=size(cb%grad)
+
         call ppg%check_discretization
         call ppg%init
         call ppg%init_abslayer
 
-        call hud('--- classical FWI Sensitivity Kernels ---')
-        call alloc(tmpgrad,cb%nz,cb%nx,cb%ny)
+        call hud('-------- FWI SK --------')
+        call alloc(fullgrad,cb%nz,cb%nx,cb%ny)
         !forward modeling on u
         call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite       
         call ppg%forward(fld_u);                    call fld_u%acquire
@@ -220,8 +232,8 @@ use m_resampler
         !dnorm
         !C_data=Ru-d
         call shot%write('Ru_',shot%dsyn)
-        call wei%update('GRADIENT')
-        call fobj%compute_dnorms
+        call wei%update('FWI')
+        ! call fobj%compute_dnorms
 
         !adjoint modeling on a
         !A^H a = R^H*Delta_d
@@ -229,34 +241,43 @@ use m_resampler
         !grad = u \star a
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite
         call ppg%adjoint(fld_a,fld_u,oif_compute_grad=.true.)
-        call sysio_write('u_star_a',cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
-        tmpgrad=cb%grad(:,:,:,2)
-        
-        call hud('--- load prior image ---')
-        call alloc(cb%imag,cb%mz,cb%mx,cb%my,1)
-        call sysio_read(setup%get_file('IMAGE'),cb%imag,size(cb%imag))
-        call sysio_write('loaded_I',cb%imag,size(cb%imag))
-        W_I=1.
-        C_imag=0.5*sum(W_I*cb%imag)
+
+        call local_write_stack('u_star_a',cb%grad,fullgrad,mm)
+        call hud('---------------------------------')
+
+
+        call hud('-------- Load Image --------')
+        call alloc(m%image,m%nz,m%nx,m%ny,1)
+        call sysio_read(setup%get_file('IMAGE'),m%image,size(m%image))
+        call sysio_write('loaded_I',m%image,size(m%image))
+
+        call iwei%update
+        ! call alloc(Wimag,m%nz,m%nx,m%ny)
+        call alloc(Imag_adj,m%nz,m%nx,m%ny)
+        ! Wimag = -m%image *iwei%weight
+        ! Imag_adj = iwei%weight*Wimag
+        Imag_adj = -m%image(:,:,:,1) *iwei%weight*iwei%weight
+
+        call dealloc(m%image)
         call hud('---------------------------------')
 ! pause
-        call hud('--- extd left-side Rabbit Ears ---')
-        !model u and delta_u
+
+        call hud('--- extd right-side Rabbit Ears (du star a) ---')
         call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
         call ppg%init_field(fld_du,name='fld_du')
-        call ppg%forward_scattering(fld_du,fld_u,-W_I*W_I*cb%imag); call fld_du%acquire
+        call ppg%forward_scattering(fld_du,fld_u,Imag_adj); call fld_du%acquire
         call shot%write('Rdu_',shot%dsyn)
         !
         !A delta_u = W_I^2*Iu
         !grad = delta_u \star a
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.) !adjsrc for a should not be initialized
-        call ppg%adjoint_du_star_a(fld_a,fld_du,fld_u,-W_I*W_I*cb%imag,oif_compute_grad=.true.) !,oif_compute_imag=.true.)
-        ! call sysio_write('image_du_star_a',cb%imag,size(cb%imag))
-        call sysio_write('du_star_a',cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
-        tmpgrad=tmpgrad+cb%grad(:,:,:,2)
+        call ppg%adjoint_du_star_a(fld_a,fld_du,fld_u,Imag_adj,oif_compute_grad=.true.) !,oif_compute_imag=.true.)
+        
+        call local_write_stack('du_star_a',cb%grad,fullgrad,mm)
         call hud('---------------------------------')
 ! pause
-        call hud('--- extd right-side Rabbit Ears ---')
+
+        call hud('--- extd left-side Rabbit Ears (u star da) ---')
         !re-model u
         call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
         call ppg%forward(fld_u)
@@ -265,54 +286,56 @@ use m_resampler
         !grad3 = u \star delta_a
         call ppg%init_field(fld_a, name='fld_a', ois_adjoint=.true.) !adjsrc for a should not be initialized
         call ppg%init_field(fld_da,name='fld_da',ois_adjoint=.true.)
-        call ppg%adjoint_scattering_u_star_da(fld_da,fld_a,-W_I*W_I*cb%imag,fld_u,oif_record_adjseismo=.true.,oif_compute_grad=.true.)
-        call suformat_write('da_adjseismo',fld_da%seismo,ppg%nt,1,ppg%dt)
-        call sysio_write('u_star_da',cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
-        tmpgrad=tmpgrad+cb%grad(:,:,:,2)
+        call ppg%adjoint_scattering_u_star_da(fld_da,fld_a,Imag_adj,fld_u,oif_compute_grad=.true.)
+
+        call local_write_stack('u_star_da',cb%grad,fullgrad,mm)
         call hud('---------------------------------')
 
-        call hud('--- du_star_da --- (just for curiosity)')
-        !model u and then delta_u
+
+        call hud('-------- du_star_da --- (just for curiosity)')
         call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
         call ppg%init_field(fld_du,name='fld_du')
-        call ppg%forward_scattering(fld_du,fld_u,-W_I*W_I*cb%imag)
+        call ppg%forward_scattering(fld_du,fld_u,Imag_adj)
 
         call ppg%init_field(fld_a, name='fld_a', ois_adjoint=.true.)
         call ppg%init_field(fld_da,name='fld_da',ois_adjoint=.true.)
-        call ppg%adjoint_scattering_du_star_da(fld_da,fld_a,fld_du,fld_u,-W_I*W_I*cb%imag,oif_compute_grad=.true.)
+        call ppg%adjoint_scattering_du_star_da(fld_da,fld_a,fld_du,fld_u,Imag_adj,oif_compute_grad=.true.)
 
-        call sysio_write('du_star_da',cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+        call local_write_stack('du_star_da',cb%grad,fullgrad,mm)
         call hud('---------------------------------')
 
-        call hud('--- u_star_Adj(du) ---')
+
+        call hud('--- demig-remig (u_star_Adj(du)) ---')
         call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
         call ppg%init_field(fld_du,name='fld_du')
-        call ppg%forward_scattering(fld_du,fld_u,-W_I*W_I*cb%imag); call fld_du%acquire !shot%dsyn = R*fld_du
+        call ppg%forward_scattering(fld_du,fld_u,Imag_adj); call fld_du%acquire !shot%dsyn = R*fld_du
         !adjoint modeling on new a with adjsource=R*delta_u
         !A^H a = R^H*R*delta_u
         !grad4 = u \star a
-!!manual weighting and resampling
-shot%dsyn=shot%dsyn*wei%weight
-call shot%write('Wei_Rdu_',shot%dsyn)
-!!cheating: shot%dsyn=shot%dobs*wei%weight
-call alloc(tmpdsyn,ppg%nt,shot%nrcv)
-call resampler(shot%dsyn,tmpdsyn, &
-            ntr=shot%nrcv,&
-            din=shot%dt,nin=shot%nt,&
-            dout=ppg%dt,nout=ppg%nt)
+
+        !!manual weighting and resampling
+        shot%dsyn=shot%dsyn*wei%weight
+        call shot%write('Wei_Rdu_',shot%dsyn)
+        !!cheating: shot%dsyn=shot%dobs*wei%weight
+        call alloc(tmpdsyn,ppg%nt,shot%nrcv)
+        call resampler(shot%dsyn,tmpdsyn, &
+                    ntr=shot%nrcv,&
+                    din=shot%dt,nin=shot%nt,&
+                    dout=ppg%dt,nout=ppg%nt)
 
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite(o_wavelet=tmpdsyn)
         call ppg%adjoint(fld_a,fld_u,oif_compute_grad=.true.)
-        call sysio_write('u_star_adj(du)',cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
-        tmpgrad=tmpgrad+cb%grad(:,:,:,2)
+
+        call local_write_stack('u_star_Adj(du)',cb%grad,fullgrad,mm)
         call hud('---------------------------------')
 
-        cb%grad(:,:,:,2)=tmpgrad
-        call sysio_write('grad',cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+
+        cb%grad(:,:,:,2)=fullgrad
+        call sysio_write('fullgrad',cb%grad,mm)
 
         call cb%project_back
 
-        fobj%dnorms=fobj%dnorms+C_imag
+        !fobj%dnorms=fobj%dnorms+C_imag
 
     enddo
     
@@ -332,6 +355,24 @@ call resampler(shot%dsyn,tmpdsyn, &
 
     call mpiworld%barrier
 
+
+    if(setup%get_str('JOB')=='upto_gradient') then
+        call mpiworld%final
+        stop
+    endif
+
+end subroutine
+
+
+subroutine local_write_stack(name,grad,fullgrad,mm)
+use mpi
+use m_System
+
+    character(*) :: name
+    real,dimension(mm) :: grad,fullgrad
+
+    call sysio_write(name,grad,mm,o_mode='stack')
+    fullgrad=fullgrad+grad
 end subroutine
 
 subroutine print_manual

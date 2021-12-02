@@ -18,6 +18,7 @@ obj = \
 ../Modules/Kernel/m_parametrizer_$(Param).o \
 ../Modules/Kernel/m_querypoint.o \
 ../Modules/Kernel/m_weighter.o \
+../Modules/Kernel/m_image_weighter.o \
 ../Modules/Kernel/m_preconditioner.o \
 ../Modules/Kernel/m_fobjective.o \
 ../Modules/Kernel/m_Kernel.o \
@@ -39,9 +40,9 @@ mod :
 	#Modeling
 	(cd ../Modules/Modeling; make)
 	#Kernel
-	(cd ../Modules/Kernel; make)
+	(cd ../Modules/Kernel; make App=WPI)
 	#Optimization
-	(cd ../Modules/Optimization; make)
+	(cd ../Modules/Optimization; make App=WPI)
 
 exe : main.o
 	mpif90 $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/wpi_$(WaveEq)_$(Solver)_$(Order)_$(LineS)_$(Optim)

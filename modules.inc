@@ -17,8 +17,7 @@ ShotDec=batching
 Param=velocities-density
 #Param=velocities-impedance
 #Param=slowness-density
-app=fwi
-APP=FWI
+App=FWI
 
 ################
 # Optimization #

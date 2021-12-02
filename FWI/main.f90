@@ -127,7 +127,7 @@ use m_smoother_laplacian_sparse
 
         call ppg%check_discretization
         call ppg%init
-        call ppg%init_field(sfield,name='sfield',origin='src',oif_will_reconstruct=.true.)
+        call ppg%init_field(sfield,name='sfield')
         call ppg%init_abslayer
 
         call sfield%ignite
@@ -159,12 +159,12 @@ use m_smoother_laplacian_sparse
             !adjoint source
             if(update_wavelet/='no') call shot%update_adjsource
 
-            call ppg%init_field(rfield,name='rfield',origin='rcv')
+            call ppg%init_field(rfield,name='rfield',ois_adjoint=.true.)
 
-            call rfield%ignite(ois_adjoint=.true.)
+            call rfield%ignite
 
             !adjoint modeling
-            call ppg%adjoint(rfield,o_sf=sfield,oif_compute_grad=.true.)
+            call ppg%adjoint(rfield,sfield,oif_compute_grad=.true.)
                 
             call cb%project_back
 

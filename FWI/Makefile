@@ -39,9 +39,9 @@ mod :
 	#Modeling
 	(cd ../Modules/Modeling; make)
 	#Kernel
-	(cd ../Modules/Kernel; make)
+	(cd ../Modules/Kernel; make App=FWI)
 	#Optimization
-	(cd ../Modules/Optimization; make)
+	(cd ../Modules/Optimization; make App=FWI)
 
 exe : main.o
 	mpif90 $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/fwi_$(WaveEq)_$(Solver)_$(Order)_$(LineS)_$(Optim)

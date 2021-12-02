@@ -209,11 +209,11 @@ use m_cpml
 
     end subroutine
 
-    subroutine init_field(self,f,name,ois_adjoint)
+    subroutine init_field(self,f,name,ois_adjoint,oif_will_reconstruct)
         class(t_propagator) :: self
         type(t_field) :: f
         character(*) :: name
-        ! logical,optional :: oif_will_reconstruct
+        logical,optional :: oif_will_reconstruct
         logical,optional :: ois_adjoint
 
         !field
@@ -224,10 +224,9 @@ use m_cpml
 
         call f%init_bloom
 
-        ! if(either(oif_will_reconstruct,.false.,present(oif_will_reconstruct))) then
-            f%if_will_reconstruct=.true.
-            call f%init_boundary
-        ! endif
+        !f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
+        !if(f%if_will_reconstruct) call f%init_boundary
+        call f%init_boundary
 
         call alloc(f%vz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%vx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])

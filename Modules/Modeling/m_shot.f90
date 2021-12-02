@@ -103,10 +103,9 @@ use m_model
         endif
 
         select case (setup%get_str('ACQUI_GEOMETRY',o_default='spread'))
-        case ('spread')
-            call geometry_spread(self)
-        case ('streamer')
-            call geometry_streamer(self)
+        case ('spread');    call geometry_spread(self)
+        case ('streamer');  call geometry_streamer(self)
+        case ('emptybox');  call geometry_emptybox(self)    
         case ('spread_irregular')
             call geometry_spread_irregular(self)
         case ('spread3D')
@@ -585,6 +584,87 @@ use m_model
 
     end subroutine
 
+    subroutine geometry_emptybox(shot)
+        type(t_shot) :: shot
+
+        logical,save :: is_first_in=.true.
+        real,dimension(3),save :: spos
+        real,dimension(4),save :: tline, rline, bline, lline
+        real,dimension(4) :: line
+        integer,save :: nr=1
+        !type(t_string),dimension(:),allocatable,save :: rcomp
+        character(:),allocatable,save :: rcomp
+
+        if(is_first_in) then
+            spos=setup%get_reals('SOURCE_POSITION',  'SPOS',o_default='0. 0. 0.') !for now just 1 shot
+            
+            lline=setup%get_reals('LEFT_RCV_LINE',o_mandatory=4)
+            tline=setup%get_reals('TOP_RCV_LINE',o_mandatory=4) !const_z, fx, dx, nx
+            rline=setup%get_reals('RIGHT_RCV_LINE',o_mandatory=4) !const_x, fz, dz, nz
+            bline=setup%get_reals('BOTTOM_RCV_LINE',o_mandatory=4)
+
+            nr=tline(4)+rline(4)+bline(4)+lline(4)
+
+            !rcomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',o_default='p')
+            rcomp=setup%get_str('RECEIVER_COMPONENT','RCOMP',o_default='p')
+
+            ! if(.not.m%is_cubic) then
+            !     fs(3)=0.; fr(3)=0.
+            !     ds(3)=0.; dr(3)=0.
+            ! endif
+
+            is_first_in=.false.
+        
+        endif
+
+        !source side
+        shot%src%z=spos(1)
+        shot%src%x=spos(2)
+        shot%src%y=spos(3)
+
+        !receiver side
+        shot%nrcv=nr*1  !size(rcomp)
+        if(allocated(shot%rcv)) deallocate(shot%rcv)
+        allocate(shot%rcv(shot%nrcv))
+        shot%rcv(:)%comp = rcomp
+        shot%rcv(:)%y = 0.
+
+        k=0
+
+        !left receivers
+        line=lline
+        do i=k+1,k+int(line(4))
+            shot%rcv(i)%x = line(1)
+            shot%rcv(i)%z = line(2) + (i-k-1)*line(3)
+        enddo
+        k=k+line(4)
+
+        !top receiver line
+        line=tline
+        do i=k+1,k+int(line(4))
+            shot%rcv(i)%z = line(1)
+            shot%rcv(i)%x = line(2) + (i-k-1)*line(3)
+        enddo
+        k=k+line(4)
+
+        !right receiver line
+        line=rline
+        do i=k+1,k+int(line(4))
+            shot%rcv(i)%x = line(1)
+            shot%rcv(i)%z = line(2) + (i-k-1)*line(3)
+        enddo
+        k=k+line(4)
+
+        !bottom receivers
+        line=bline
+        do i=k+1,k+int(line(4))
+            shot%rcv(i)%z = line(1)
+            shot%rcv(i)%x = line(2) + (i-k-1)*line(3)
+        enddo
+        k=k+line(4)
+
+    end subroutine
+
     ! subroutine geometry_3Dspread
     !     !!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !     !  Quadrilateral Geometry  !
@@ -916,3 +996,4 @@ use m_model
     end subroutine
 
 end
+
