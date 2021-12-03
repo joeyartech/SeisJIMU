@@ -627,7 +627,8 @@ use m_cpml
 
         enddo
         
-        !postprocess gradient
+        !postprocess
+        if(if_compute_imag) cb%imag(1,:,:,:) = cb%imag(2,:,:,:)
         if(if_compute_grad) call gradient_postprocess
         
         if(mpiworld%is_master) then
@@ -1626,11 +1627,11 @@ use m_cpml
         
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
-        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz-2)
-        ifx=max(sf%bloom(3,it),rf%bloom(3,it),2)
-        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx-2)
-        ify=max(sf%bloom(5,it),rf%bloom(5,it),2)
-        ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my-2)
+        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
+        ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
+        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
+        ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
+        ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
         
         if(m%is_cubic) then
             call grad3d_density(sf%p,rf%vz,rf%vx,rf%vy,&
@@ -1650,11 +1651,11 @@ use m_cpml
         
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
-        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz-2)
-        ifx=max(sf%bloom(3,it),rf%bloom(3,it),2)
-        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx-2)
-        ify=max(sf%bloom(5,it),rf%bloom(5,it),2)
-        ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my-2)
+        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
+        ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
+        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
+        ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
+        ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
         
         if(m%is_cubic) then
             call grad3d_moduli(sf%vz,sf%vx,sf%vy,rf%p,&
@@ -1677,18 +1678,6 @@ use m_cpml
                 
         !preparing for cb%project_back
         cb%grad(1,:,:,:) = cb%grad(2,:,:,:)
-        cb%grad(cb%mz-1,:,:,:) = cb%grad(cb%mz-2,:,:,:)
-        cb%grad(cb%mz,  :,:,:) = cb%grad(cb%mz-2,:,:,:)
-
-        cb%grad(:,1,:,:) = cb%grad(:,2,:,:)
-        cb%grad(:,cb%mx-1,:,:) = cb%grad(:,cb%mx-2,:,:)
-        cb%grad(:,cb%mx  ,:,:) = cb%grad(:,cb%mx-2,:,:)
-
-        if(m%is_cubic) then
-            cb%grad(:,:,1,:) = cb%grad(:,2,:,:)
-            cb%grad(:,:,cb%my-1,:) = cb%grad(:,:,cb%my-2,:)
-            cb%grad(:,:,cb%my  ,:) = cb%grad(:,:,cb%my-2,:)
-        endif
 
     end subroutine
 
@@ -1698,11 +1687,11 @@ use m_cpml
         
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
-        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz-2)
-        ifx=max(sf%bloom(3,it),rf%bloom(3,it),2)
-        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx-2)
-        ify=max(sf%bloom(5,it),rf%bloom(5,it),2)
-        ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my-2)
+        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
+        ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
+        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
+        ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
+        ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
         
         if(m%is_cubic) then
             call imag3d_xcorr(sf%p,rf%p,&
@@ -1722,11 +1711,11 @@ use m_cpml
         
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),2)
-        ilz=min(sf%bloom(2,it),cb%mz-2)
-        ifx=max(sf%bloom(3,it),2)
-        ilx=min(sf%bloom(4,it),cb%mx-2)
-        ify=max(sf%bloom(5,it),2)
-        ily=min(sf%bloom(6,it),cb%my-2)
+        ilz=min(sf%bloom(2,it),cb%mz)
+        ifx=max(sf%bloom(3,it),1)
+        ilx=min(sf%bloom(4,it),cb%mx)
+        ify=max(sf%bloom(5,it),1)
+        ily=min(sf%bloom(6,it),cb%my)
         
         if(m%is_cubic) then
             call engy3d_xcorr(sf%p,&

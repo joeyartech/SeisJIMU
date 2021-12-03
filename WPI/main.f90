@@ -174,7 +174,13 @@ use m_smoother_laplacian_sparse
 
     call mpiworld%barrier
 
-    if(mpiworld%is_master) call sysio_write('I',m%image(:,:,:,1),size(m%image(:,:,:,1)))
+    if(mpiworld%is_master) then
+        call sysio_write('unmask_I',m%image(:,:,:,1),size(m%image(:,:,:,1)))
+
+        !apply freeze zone
+        where(m%is_freeze_zone) m%image(:,:,:,1)=0.
+        call sysio_write('I',m%image(:,:,:,1),size(m%image(:,:,:,1)))
+    endif
 
     call mpiworld%barrier
 
@@ -332,7 +338,7 @@ use m_resampler
 
         !!manual weighting and resampling
         shot%dsyn=shot%dsyn*wei%weight
-        call shot%write('Wei_Rdu_',shot%dsyn)
+        if(mpiworld%is_master) call shot%write('Wei_Rdu_',shot%dsyn)
         !!cheating: shot%dsyn=shot%dobs*wei%weight
         call alloc(tmpdsyn,ppg%nt,shot%nrcv)
         call resampler(shot%dsyn,tmpdsyn, &
