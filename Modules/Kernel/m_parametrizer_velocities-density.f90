@@ -3,7 +3,7 @@ use m_System
 use m_Modeling
 
     !PARAMETERIZATION     -- ALLOWED PARAMETERS
-    !velocities-density   -- vp vs ip
+    !velocities-density   -- vp vs rho
 
     !acoustic:
     !kpa = rho*vp^2 = vp*ip
@@ -42,8 +42,8 @@ use m_Modeling
         !info
         character(i_str_xxlen) :: info = &
             'Parameterization: velocities-density'//s_NL// &
-            'Allowed pars: vp, vs, ip'//s_NL// &
-            'Available empirical laws: Gardner, Castagna (will implemented in future)'
+            'Allowed pars: vp, vs, rho'//s_NL// &
+            'Available empirical laws: Gardner'
 
         type(t_parameter),dimension(:),allocatable :: pars
         integer :: npars

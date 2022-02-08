@@ -95,6 +95,8 @@ use m_cpml
     integer :: irdt
     real :: rdt
 
+real,dimension(:,:,:),allocatable :: sf_p_save
+
     contains
     
     !========= for FDSG O(dx4,dt2) ===================  
@@ -492,6 +494,8 @@ use m_cpml
         tt10=0.;tt11=0.; tt12=0.; tt13=0.
         
         ift=1; ilt=self%nt
+
+call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
@@ -697,6 +701,8 @@ use m_cpml
         tt10=0.;tt11=0.; tt12=0.; tt13=0.
         
         ift=1; ilt=self%nt
+
+call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
@@ -903,6 +909,8 @@ use m_cpml
         
         ift=1; ilt=self%nt
         
+call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
@@ -1103,6 +1111,8 @@ use m_cpml
         tt10=0.;tt11=0.; tt12=0.; tt13=0.
         
         ift=1; ilt=self%nt
+
+call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
@@ -1657,15 +1667,23 @@ use m_cpml
         ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
         ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
         
-        if(m%is_cubic) then
-            call grad3d_moduli(sf%vz,sf%vx,sf%vy,rf%p,&
-                               grad,                  &
-                               ifz,ilz,ifx,ilx,ify,ily)
-        else
-            call grad2d_moduli(sf%vz,sf%vx,rf%p,&
+        ! if(m%is_cubic) then
+        !     call grad3d_moduli(sf%vz,sf%vx,sf%vy,rf%p,&
+        !                        grad,                  &
+        !                        ifz,ilz,ifx,ilx,ify,ily)
+        ! else
+            call grad2d_moduli(sf%p,sf_p_save,rf%p,&
                                grad,            &
                                ifz,ilz,ifx,ilx)
-        endif
+        ! endif
+
+        sf_p_save = sf%p
+
+
+        ! !inexact greadient
+        ! call grad2d_moduli(sf%vz,sf%vx,rf%p,&
+        !                    grad,            &
+        !                    ifz,ilz,ifx,ilx)
         
     end subroutine
     
@@ -1693,15 +1711,20 @@ use m_cpml
         ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
         ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
         
-        if(m%is_cubic) then
-            call imag3d_xcorr(sf%p,rf%p,&
-                              imag,                  &
-                              ifz,ilz,ifx,ilx,ify,ily)
-        else
+        ! if(m%is_cubic) then
+        !     call imag3d_xcorr(sf%p,rf%p,&
+        !                       imag,                  &
+        !                       ifz,ilz,ifx,ilx,ify,ily)
+        ! else
             call imag2d_xcorr(sf%p,rf%p,&
                               imag,            &
                               ifz,ilz,ifx,ilx)
-        endif
+        ! endif
+
+        ! call imag2d_xcorr(sf%p,sf%vz,sf%vx,&
+        !                   rf%p,rf%vz,rf%vx,&
+        !                   imag,            &
+        !                   ifz,ilz,ifx,ilx)
 
     end subroutine
 
@@ -2092,16 +2115,13 @@ use m_cpml
         
     end subroutine
 
-    subroutine grad2d_moduli(sf_vz,sf_vx,rf_p,&
+    subroutine grad2d_moduli(sf_p,sf_p_save,rf_p,&
                              grad,            &
                              ifz,ilz,ifx,ilx)
-        real,dimension(*) :: sf_vz,sf_vx,rf_p
+        real,dimension(*) :: sf_p,sf_p_save,rf_p
         real,dimension(*) :: grad
         
         nz=cb%nz
-        
-        dvz_dz=0.
-        dvx_dx=0.
         
         dsp=0.
          rp=0.
@@ -2121,19 +2141,7 @@ use m_cpml
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
                 j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
                 
-                izm1_ix=i-1  !iz-1,ix
-                iz_ix  =i    !iz,ix
-                izp1_ix=i+1  !iz+1,ix
-                izp2_ix=i+2  !iz+2,ix
-                
-                iz_ixm1=i    -nz  !iz,ix-1
-                iz_ixp1=i    +nz  !iz,ix+1
-                iz_ixp2=i  +2*nz  !iz,ix+2
-                
-                dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
-                dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
-                
-                dsp = dvz_dz +dvx_dx
+                dsp = sf_p_save(i) - sf_p(i)
                  rp = rf_p(i)
                 
                 grad(j)=grad(j) - dsp*rp
@@ -2145,6 +2153,60 @@ use m_cpml
         !$omp end parallel
 
     end subroutine
+
+    ! subroutine grad2d_moduli(sf_vz,sf_vx,rf_p,&
+    !                          grad,            &
+    !                          ifz,ilz,ifx,ilx)
+    !     real,dimension(*) :: sf_vz,sf_vx,rf_p
+    !     real,dimension(*) :: grad
+        
+    !     nz=cb%nz
+        
+    !     dvz_dz=0.
+    !     dvx_dx=0.
+        
+    !     dsp=0.
+    !      rp=0.
+        
+    !     !$omp parallel default (shared)&
+    !     !$omp private(iz,ix,i,j,&
+    !     !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
+    !     !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
+    !     !$omp         dvz_dz,dvx_dx,&
+    !     !$omp         dsp,rp)
+    !     !$omp do schedule(dynamic)
+    !     do ix=ifx,ilx
+        
+    !         !dir$ simd
+    !         do iz=ifz,ilz
+                
+    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
+    !             j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                
+    !             izm1_ix=i-1  !iz-1,ix
+    !             iz_ix  =i    !iz,ix
+    !             izp1_ix=i+1  !iz+1,ix
+    !             izp2_ix=i+2  !iz+2,ix
+                
+    !             iz_ixm1=i    -nz  !iz,ix-1
+    !             iz_ixp1=i    +nz  !iz,ix+1
+    !             iz_ixp2=i  +2*nz  !iz,ix+2
+                
+    !             dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
+    !             dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
+                
+    !             dsp = dvz_dz +dvx_dx
+    !              rp = rf_p(i)
+                
+    !             grad(j)=grad(j) - dsp*rp
+                
+    !         end do
+            
+    !     end do
+    !     !$omp end do
+    !     !$omp end parallel
+
+    ! end subroutine
     
     subroutine grad3d_density(sf_p,rf_vz,rf_vx,rf_vy,&
                               grad,                  &
@@ -2312,6 +2374,38 @@ use m_cpml
         !$omp end parallel
         
     end subroutine
+
+    ! subroutine imag2d_xcorr(sf_p,sf_vz,sf_vx,&
+    !                         rf_p,rf_vz,rf_vx,&
+    !                         imag,          &
+    !                         ifz,ilz,ifx,ilx)
+    !     real,dimension(*) :: sf_p,sf_vz,sf_vx
+    !     real,dimension(*) :: rf_p,rf_vz,rf_vx
+    !     real,dimension(*) :: imag
+        
+    !     nz=cb%nz
+        
+    !     !$omp parallel default (shared)&
+    !     !$omp private(iz,ix,i,j)
+    !     !$omp do schedule(dynamic)
+    !     do ix=ifx,ilx
+        
+    !         !dir$ simd
+    !         do iz=ifz,ilz
+                
+    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
+    !             j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                
+    !             imag(j)=imag(j) + &
+    !                 sf_p(i)*rf_p(i) + sf_vz(i)*rf_vz(i) + sf_vx(i)*rf_vx(i)
+                
+    !         end do
+            
+    !     end do
+    !     !$omp end do
+    !     !$omp end parallel
+
+    ! end subroutine
 
     subroutine imag2d_xcorr(sf_p,rf_p,     &
                             imag,          &
