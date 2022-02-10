@@ -632,7 +632,7 @@ call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         enddo
         
         !postprocess
-        if(if_compute_imag) cb%imag(1,:,:,:) = cb%imag(2,:,:,:)
+        if(if_compute_imag) call imaging_postprocess
         if(if_compute_grad) call gradient_postprocess
         
         if(mpiworld%is_master) then
@@ -1726,6 +1726,13 @@ call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         !                   imag,            &
         !                   ifz,ilz,ifx,ilx)
 
+    end subroutine
+
+    subroutine imaging_postprocess
+        cb%imag = cb%imag * rdt
+
+        !for cb%project_back
+        cb%imag(1,:,:,:) = cb%imag(2,:,:,:)
     end subroutine
 
     subroutine energy(sf,it,engy)

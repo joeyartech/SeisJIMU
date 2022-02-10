@@ -35,10 +35,12 @@ image :
 	cp setup.in_bkp setup.in
 	echo 'FILE_MODEL	init'  >> setup.in
 	echo 'FILE_DATA_PREFIX	nearoff_' >> setup.in
+	echo 'NBATCH	1' >> setup.in
 	echo 'PARAMETER		vp:1000:1200' >> setup.in
 	echo 'UPDATE_WAVELET	no' >> setup.in
 	echo 'RDT	0.' >> setup.in
-	echo 'WEI_IMAGING	polygon:fwei' >> setup.in
+	#echo 'WEI_IMAGING	polygon:fwei' >> setup.in
+	echo 'WEI	aoffset^0' >> setup.in
 	echo 'SMOOTHING	none' >> setup.in
 	echo 'JOB	imaging' >> setup.in
 	echo 'DIR_OUT   "./results_imaging/"' >> setup.in
@@ -58,11 +60,13 @@ gradient :
 	cp setup.in_bkp setup.in
 	echo 'FILE_MODEL	init'  >> setup.in
 	echo 'FILE_DATA_PREFIX	faroff_' >> setup.in
+	echo 'NBATCH	1' >> setup.in
 	echo 'PARAMETER		vp:1000:1200' >> setup.in
 	echo 'UPDATE_WAVELET	no' >> setup.in
 	echo 'RDT	0.' >> setup.in
 	#echo "IMAGE 'I'" >> setup.in
 	echo "IMAGE 'multioff_I'" >> setup.in
+	echo 'CORRS	RE' >> setup.in
 	echo 'SMOOTHING	none' >> setup.in
 	echo 'JOB	gradient' >> setup.in
 	../../exe/WPI setup.in

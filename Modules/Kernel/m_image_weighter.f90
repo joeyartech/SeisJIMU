@@ -33,7 +33,7 @@ use m_Modeling
         self%ny = either(o_ny, m%ny, present(o_ny))
         call alloc(self%weight,self%nz,self%nx,self%ny,o_init=1.)
 
-        list=setup%get_strs('IMAGE_WEIGHTING','IWEI',o_default='none')
+        list=setup%get_strs('IMAGE_WEIGHTING','IWEI',o_default='one')
 
         do i=1,size(list)
 

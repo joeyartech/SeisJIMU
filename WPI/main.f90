@@ -12,7 +12,7 @@ use m_Optimization
     call mpiworld%init(name='MPIWorld')
 
     call hud('======================================'//s_NL// &
-             '       WELCOME TO SeisJIMU WFI        '//s_NL// &
+             '       WELCOME TO SeisJIMU WPI        '//s_NL// &
              '======================================')
 
     call setup%init
@@ -50,7 +50,7 @@ use m_Optimization
     call shls%build
     ! call chp_shls%init('FWI_shotlist_gradient',oif_fuse=.true.)
     ! if(.not.shls%is_registered(chp_shls,'sampled_shots')) then
-    !     call shls%sample
+        call shls%sample
     !     call shls%register(chp_shls,'sampled_shots')
     ! endif
     call shls%assign
@@ -70,7 +70,7 @@ use m_Optimization
     call fobj%init
     ! call chp_qp%init('FWI_querypoint_gradient')
     ! if(.not.qp0%is_registered(chp_qp)) then
-    !     call fobj%eval(qp0,oif_update_m=.false.)
+        call fobj%eval(qp0,oif_update_m=.false.)
     !     call qp0%register(chp_qp)
     ! endif
 
@@ -106,8 +106,8 @@ subroutine modeling_imaging
 use mpi
 use m_System
 use m_Modeling
-use m_integral
 use m_weighter
+use m_Lpnorm
 use m_fobjective
 use m_matchfilter
 use m_smoother_laplacian_sparse
@@ -150,9 +150,9 @@ use m_smoother_laplacian_sparse
         !weighting on the adjoint source for the image
         call wei%update!('_4IMAGING')
 
-        tmp = integral(size(wei%weight),wei%weight**2,shot%dsyn-shot%dobs,2,shot%dt,0.5/m%ref_kpa*m%cell_volume/shot%dt)
+        tmp = L2norm_sq(size(wei%weight),wei%weight,shot%dsyn-shot%dobs,shot%dt,0.5/m%ref_kpa*m%cell_volume/shot%dt)                     ![Pa]^2    [s]   [1/Pa m^3/s]=[Nm]
         
-        shot%dadj =reshape( -nabla_integral(), shape(shot%dobs))
+        call nabla_L2norm_sq(shot%dadj); shot%dadj=-shot%dadj
 
         call shot%write('Imag_dadj_',shot%dadj)
 
@@ -171,8 +171,6 @@ use m_smoother_laplacian_sparse
     call hud('        END LOOP OVER SHOTS        ')
 
     !collect
-    call mpi_allreduce(mpi_in_place, fobj%data_misfit, 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-
     call mpi_allreduce(mpi_in_place, m%image,  size(m%image), mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
 
     call mpiworld%barrier
@@ -197,9 +195,9 @@ subroutine modeling_gradient(is_fitting_data)
 use mpi
 use m_System
 use m_Modeling
-use m_integral
 use m_weighter
 use m_image_weighter
+use m_Lpnorm
 use m_fobjective
 use m_matchfilter
 use m_smoother_laplacian_sparse
@@ -218,24 +216,37 @@ use m_resampler
     ! real,dimension(:,:),allocatable :: Rmu, Rdiff
 
 
-    if(setup%get_str('JOB')=='skip_imaging') then
+    if(setup%get_file('IMAGE')/='') then
         call alloc(m%image,m%nz,m%nx,m%ny,1)
         call sysio_read(setup%get_file('IMAGE'),m%image,size(m%image))
-        call sysio_write('loaded_I',m%image,size(m%image))
+        call sysio_write('loaded_I',m%image,size(m%image))    
+        
+        !get shot%dt
+        call shot%init(shls%yield(1))
+        call shot%read_from_data
+        call shot%set_var_time
     else
+        call hud('Will do imaging')
         call modeling_imaging
     endif
 
     !compute fobjective
     call iwei%update
-    
-    fobj%dnorms(1) = integral(size(iwei%weight),iwei%weight**2,m%image,2,m%cell_volume,0.5/m%ref_kpa**3/shot%dt**2) !just consider ||I||_L2 for now
 
+    !L1 & L2 norms of image
+    !fobj%dnorms(1) = integral(size(iwei%weight),abs(iwei%weight),abs(m%image),1, m%cell_volume,1./m%ref_kpa/shot%dt)   ![Pa^2 s] [m^3] [1/Pa 1/s]=[Nm]
+    fobj%dnorms(1) = L1norm   (size(iwei%weight),iwei%weight,m%image,m%cell_volume,1./m%ref_kpa/shot%dt)   !                                [Pa^2 s] [m^3]        [1/Pa 1/s]=[Nm]
+
+    !fobj%dnorms(2) = integral(size(iwei%weight),iwei%weight**2,m%image,2,        m%cell_volume,0.5/m%ref_kpa**3/shot%dt**2)  ![Pa^2 s]^2 [m^3] [Pa^-3 s^-2]=[Nm]
+    fobj%dnorms(2) = L2norm_sq(size(iwei%weight),iwei%weight,m%image,m%cell_volume,0.5/m%ref_kpa**3/shot%dt**2)                            ![Pa^2 s]^2 [m^3]      [Pa^-3 s^-2]=[Nm]
+
+    !Use L2 norm for adjsrc
     !call alloc(Imag_as_adjsrc,m%nz,m%nx,m%ny)
-    Imag_as_adjsrc =reshape( -nabla_integral(), [m%nz,m%nx,m%ny])
+    !Imag_as_adjsrc =reshape( -nabla_integral(), [m%nz,m%nx,m%ny])
+    call nabla_L2norm_sq(Imag_as_adjsrc); Imag_as_adjsrc = -Imag_as_adjsrc
 
-
-    fobj%data_misfit=0.
+    !FWI misfit
+    fobj%FWI_misfit=0.
 
 
     call alloc(m%correlate, m%nz,m%nx,m%ny,5)
@@ -274,9 +285,11 @@ use m_resampler
         call wei%update!('_4FWI')
 
         !compute FWI data misfit and adjsrc
-        fobj%data_misfit = fobj%data_misfit &
-            + integral(size(wei%weight),wei%weight**2,shot%dsyn-shot%dobs,2,shot%dt,0.5/m%ref_kpa*m%cell_volume/shot%dt)
-        shot%dadj =reshape( -nabla_integral(), shape(shot%dobs))
+        fobj%FWI_misfit = fobj%FWI_misfit &
+            + L2norm_sq(size(wei%weight),wei%weight,shot%dsyn-shot%dobs,shot%dt,0.5/m%ref_kpa*m%cell_volume/shot%dt)                     ![Pa]^2    [s]   [1/Pa m^3/s]=[Nm]
+
+        call nabla_L2norm_sq(shot%dadj); shot%dadj=-shot%dadj
+        
         call shot%write('FWI_dadj_',shot%dadj)
 
         !adjoint modeling on a
@@ -381,9 +394,13 @@ use m_resampler
 
     !collect global objective function value
     call mpi_allreduce(mpi_in_place, fobj%dnorms, fobj%n_dnorms, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-    call fobj%print_dnorms('Stacked but not linesearch-scaled','')
+    call fobj%print_dnorms('Stacked but not yet linesearch-scaled','')
 
-    call mpi_allreduce(mpi_in_place, fobj%data_misfit, 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    call mpi_allreduce(mpi_in_place, fobj%FWI_misfit, 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+
+    call hud('Stacked but not scaled FWI_misfit '//num2str(fobj%FWI_misfit))
+
+    call mpi_allreduce(mpi_in_place, fobj%FWI_misfit, 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
 
     !collect global correlations
     call mpi_allreduce(mpi_in_place, m%correlate,  m%n*5, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
@@ -404,6 +421,9 @@ use m_resampler
     endif
 
     m%gradient=0.
+    if(index(corrs,'FWI')>0) then
+        m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,1)
+    endif
     if(index(corrs,'RE')>0) then
         m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,2)+m%correlate(:,:,:,3)
     endif

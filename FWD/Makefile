@@ -30,7 +30,7 @@ mod :
 	(cd ../Modules/Modeling; make)
 
 exe : main.o
-	mpif90 $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/fwd_$(WaveEq)_$(Solver)_$(Order)
+	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/fwd_$(WaveEq)_$(Solver)_$(Order)
 	(cd ../exe; ln -sf fwd_$(WaveEq)_$(Solver)_$(Order) FWD )
 
 clean :

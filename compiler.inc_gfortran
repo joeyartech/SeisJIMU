@@ -2,6 +2,9 @@
 GIT_COMMIT:=$(shell git rev-parse --short HEAD)
 GIT_BRANCH:=$(shell git rev-parse --abbrev-ref HEAD)
 
+F90=mpif90
+F77=mpif77
+
 FLAGF77= -Ofast -fopenmp                         -fbacktrace  #-flto
 FLAGF90= -Ofast -fopenmp -ffree-line-length-none -fbacktrace  -fno-unsafe-math-optimizations -frounding-math -fsignaling-nans
 #FLAGF77= -g -Wall -fopenmp -fcheck=all                         -fbacktrace
@@ -15,9 +18,9 @@ MOD=-J $(mod_dir)
 .SUFFIX : %.f %.f90 %.o
 
 %.o : %.f90
-	mpif90 $(FPP) $(FLAGF90) $(MOD) -c $^ -o $@
+	$(F90) $(FPP) $(FLAGF90) $(MOD) -c $^ -o $@
 	@printf "\n"	
 
 %.o : %.f
-	mpif77        $(FLAGF77)        -c $^ -o $@
+	$(F77)        $(FLAGF77)        -c $^ -o $@
 	@printf "\n"

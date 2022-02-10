@@ -25,6 +25,6 @@ NT           1000
 DT           0.004
 FPEAK        6
 
-SNAPSHOT     p
+#SNAPSHOT     p
 
 IF_USE_CHECKPOINT   F

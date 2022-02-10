@@ -10,7 +10,8 @@ use m_parametrizer
         contains
 
         procedure :: update
-        procedure :: apply, apply_ext
+        procedure :: apply
+        procedure :: apply_ext
 
     end type
 

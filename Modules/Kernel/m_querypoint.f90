@@ -18,7 +18,8 @@ use m_parametrizer
 
         contains
         procedure :: init
-        procedure :: set_negative, set_positive
+        procedure :: set_negative
+        procedure :: set_positive
         final :: fin
 
         procedure :: is_registered
@@ -51,9 +52,9 @@ use m_parametrizer
         class(t_querypoint) :: self
         if(self%f>=0.) then
             self%f  = -self%f
-            self%g  = -self%g
-            self%pg = -self%pg
-            self%d  = -self%d
+            if(allocated(self%g )) self%g  = -self%g
+            if(allocated(self%pg)) self%pg = -self%pg
+            if(allocated(self%d )) self%d  = -self%d
         endif
     end subroutine
 
@@ -61,9 +62,9 @@ use m_parametrizer
         class(t_querypoint) :: self
         if(self%f<=0.) then
             self%f  = -self%f
-            self%g  = -self%g
-            self%pg = -self%pg
-            self%d  = -self%d
+            if(allocated(self%g )) self%g  = -self%g
+            if(allocated(self%pg)) self%pg = -self%pg
+            if(allocated(self%d )) self%d  = -self%d
         endif
     end subroutine
 

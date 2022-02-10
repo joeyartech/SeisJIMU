@@ -1,6 +1,7 @@
 module m_fobjective
 use m_System
 use m_Modeling
+use m_Lpnorm
 use m_matchfilter
 use m_smoother_laplacian_sparse
 use m_parametrizer
@@ -18,7 +19,7 @@ use m_preconditioner
         real,dimension(:),allocatable :: dnorms !unit in [Nm]
         real,dimension(:),allocatable :: xnorms !unit in [Nm]
 
-        real data_misfit
+        real FWI_misfit
         
         integer :: n_dnorms, n_xnorms
 
@@ -49,8 +50,7 @@ use m_preconditioner
         class(t_fobjective) :: self
         
         !data norms
-        !self%s_dnorms=setup%get_strs('DATA_NORMS','DNORMS',o_default='L1 L2')
-        self%s_dnorms=setup%get_strs('DATA_NORMS','DNORMS',o_default='L2')
+        self%s_dnorms=setup%get_strs('DATA_NORMS','DNORMS',o_default='L1 L2')
         self%n_dnorms=size(self%s_dnorms)
         call alloc(self%dnorms,self%n_dnorms)
 

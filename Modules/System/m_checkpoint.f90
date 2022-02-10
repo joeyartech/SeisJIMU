@@ -31,8 +31,16 @@ use m_setup
         procedure :: assign
         procedure :: check
         procedure :: open
-        procedure :: read_real,  read_real1,  read_real2,  read_real3,  read_real4
-        procedure :: write_real, write_real1, write_real2, write_real3, write_real4
+        procedure :: read_real
+        procedure :: read_real1
+        procedure :: read_real2
+        procedure :: read_real3
+        procedure :: read_real4
+        procedure :: write_real
+        procedure :: write_real1
+        procedure :: write_real2
+        procedure :: write_real3
+        procedure :: write_real4
         generic :: read  => read_real,  read_real1,  read_real2,  read_real3,  read_real4
         generic :: write => write_real, write_real1, write_real2, write_real3, write_real4
         procedure :: close

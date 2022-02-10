@@ -36,6 +36,7 @@ use m_arrayop
     end function
 
     !compute nabla_x int K*x^n dt
+    !only works for n=2
     function nabla_integral()
         real,dimension(:),allocatable :: nabla_integral
 
