@@ -115,6 +115,12 @@ use m_Kernel
                 call pert%register(chp)
             endif
 
+            if(.not. curr%is_fitting_data) then
+                call hud('Negate the sign of pert due to curr')
+                call pert%set_negative
+            endif
+
+
             call self%scale(pert)
             pert%g_dot_d = sum(pert%g*curr%d)
 
@@ -198,6 +204,16 @@ use m_Kernel
             endif
 
         enddo loop
+
+
+        if(pert%is_fitting_data) then
+            call hud('Set positive sign to pert')
+            call pert%set_positive
+        else
+            call hud('Set negtaive sign to pert')
+            call pert%set_negative
+        endif
+
         
         if(self%igradient>=self%max_gradient) then
             call hud('Maximum number of gradients reached. Finalize program now..')

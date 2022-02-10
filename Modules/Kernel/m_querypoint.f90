@@ -14,8 +14,11 @@ use m_parametrizer
         real :: f !objective function value, unit in [Nm]
         real :: g_dot_d !projection of g onto d, in [Nm]
 
+        logical :: is_fitting_data
+
         contains
         procedure :: init
+        procedure :: set_negative, set_positive
         final :: fin
 
         procedure :: is_registered
@@ -42,6 +45,26 @@ use m_parametrizer
         call param%transform('m->x',o_x=self%x)
         ! call param%transform(o_g=self%g)
 
+    end subroutine
+
+    subroutine set_negative(self)
+        class(t_querypoint) :: self
+        if(self%f>=0.) then
+            self%f  = -self%f
+            self%g  = -self%g
+            self%pg = -self%pg
+            self%d  = -self%d
+        endif
+    end subroutine
+
+    subroutine set_positive(self)
+        class(t_querypoint) :: self
+        if(self%f<=0.) then
+            self%f  = -self%f
+            self%g  = -self%g
+            self%pg = -self%pg
+            self%d  = -self%d
+        endif
     end subroutine
 
     subroutine fin(self)

@@ -18,6 +18,8 @@ use m_preconditioner
         real,dimension(:),allocatable :: dnorms !unit in [Nm]
         real,dimension(:),allocatable :: xnorms !unit in [Nm]
 
+        real data_misfit
+        
         integer :: n_dnorms, n_xnorms
 
         real,dimension(:),allocatable :: dnorm_weights !scalar weights before each dnorm in the objective function
@@ -47,7 +49,8 @@ use m_preconditioner
         class(t_fobjective) :: self
         
         !data norms
-        self%s_dnorms=setup%get_strs('DATA_NORMS','DNORMS',o_default='L1 L2')
+        !self%s_dnorms=setup%get_strs('DATA_NORMS','DNORMS',o_default='L1 L2')
+        self%s_dnorms=setup%get_strs('DATA_NORMS','DNORMS',o_default='L2')
         self%n_dnorms=size(self%s_dnorms)
         call alloc(self%dnorms,self%n_dnorms)
 
@@ -332,7 +335,7 @@ use m_preconditioner
         ! if(either(oif_approx,.false.,present(oif_approx))) then
         !     call modeling_gradient_approximate(fobj)
         ! else
-            call modeling_gradient(oif_gradient)
+            call modeling_gradient(qp%is_fitting_data)
         ! endif
         
         qp%f = sum(self%dnorm_weights*self%dnorms) ! + sum(self%xnorm_weights*self%xnorms)

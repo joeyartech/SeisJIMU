@@ -8,6 +8,7 @@ sgtsv.f
 
 srcf90 = \
 m_math.f90 \
+m_integral.f90 \
 singleton.f90
 
 

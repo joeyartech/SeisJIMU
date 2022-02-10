@@ -6,7 +6,7 @@ use m_Optimization
 
     type(t_checkpoint) :: chp_shls, chp_qp
     type(t_querypoint),target :: qp0
-    ! character(:),allocatable :: job
+    character(:),allocatable :: job
 
     !mpiworld lives in t_mpienv
     call mpiworld%init(name='MPIWorld')
@@ -48,11 +48,11 @@ use m_Optimization
     !shotlist
     call shls%read_from_data
     call shls%build
-    call chp_shls%init('FWI_shotlist_gradient',oif_fuse=.true.)
-    if(.not.shls%is_registered(chp_shls,'sampled_shots')) then
-        call shls%sample
-        call shls%register(chp_shls,'sampled_shots')
-    endif
+    ! call chp_shls%init('FWI_shotlist_gradient',oif_fuse=.true.)
+    ! if(.not.shls%is_registered(chp_shls,'sampled_shots')) then
+    !     call shls%sample
+    !     call shls%register(chp_shls,'sampled_shots')
+    ! endif
     call shls%assign
 
     !if preconditioner needs energy terms
@@ -68,10 +68,15 @@ use m_Optimization
 
     !objective function and gradient
     call fobj%init
-    call chp_qp%init('FWI_querypoint_gradient')
-    if(.not.qp0%is_registered(chp_qp)) then
-        call fobj%eval(qp0,oif_update_m=.false.)
-        call qp0%register(chp_qp)
+    ! call chp_qp%init('FWI_querypoint_gradient')
+    ! if(.not.qp0%is_registered(chp_qp)) then
+    !     call fobj%eval(qp0,oif_update_m=.false.)
+    !     call qp0%register(chp_qp)
+    ! endif
+
+    if(.not. qp0%is_fitting_data) then
+        call hud('Negate the sign of qp0 to ensure fitting the data')
+        call qp0%set_negative
     endif
 
     call sysio_write('qp0%g',qp0%g,size(qp0%g))
@@ -101,19 +106,20 @@ subroutine modeling_imaging
 use mpi
 use m_System
 use m_Modeling
+use m_integral
 use m_weighter
 use m_fobjective
 use m_matchfilter
 use m_smoother_laplacian_sparse
 
     type(t_field) :: fld_u, fld_a
-    real,dimension(:,:),allocatable :: Wdres
+    ! real,dimension(:,:),allocatable :: Wdres
     ! character(:),allocatable :: update_wavelet
     ! real,dimension(:,:),allocatable :: Rmu, Rdiff
 
-    if(setup%get_str('JOB')=='skip_imaging') then
-        return
-    endif
+    ! if(setup%get_str('JOB')=='skip_imaging') then
+    !     return
+    ! endif
 
     call hud('===== START LOOP OVER SHOTS =====')
     
@@ -134,7 +140,7 @@ use m_smoother_laplacian_sparse
         call ppg%init_abslayer
 
         call hud('---------------------------------')
-        call hud('            Imaging              ')
+        call hud('     Imaging (aka Wavepath)      ')
         call hud('---------------------------------')
         !forward modeling on u
         call ppg%init_field(fld_u,name='Imag_fld_u');    call fld_u%ignite       
@@ -142,11 +148,12 @@ use m_smoother_laplacian_sparse
         call shot%write('Imag_Ru_',shot%dsyn)
 
         !weighting on the adjoint source for the image
-        call wei%update('_4IMAGING')
-        call alloc(Wdres,shot%nt,shot%nrcv)
-        Wdres = -(shot%dsyn-shot%dobs)*wei%weight
-        shot%dadj = Wdres*wei%weight
-        shot%dadj = shot%dadj  *m%cell_volume/shot%dt/m%ref_kpa !otherwise numerical overflow
+        call wei%update!('_4IMAGING')
+
+        tmp = integral(size(wei%weight),wei%weight**2,shot%dsyn-shot%dobs,2,shot%dt,0.5/m%ref_kpa*m%cell_volume/shot%dt)
+        
+        shot%dadj =reshape( -nabla_integral(), shape(shot%dobs))
+
         call shot%write('Imag_dadj_',shot%dadj)
 
         !adjoint modeling on a
@@ -163,14 +170,10 @@ use m_smoother_laplacian_sparse
     
     call hud('        END LOOP OVER SHOTS        ')
 
-    !collect global objective function value
-    ! call mpi_allreduce(mpi_in_place, fobj%dnorms, fobj%n_dnorms, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-    ! call fobj%print_dnorms('Unscaled stacked','')
+    !collect
+    call mpi_allreduce(mpi_in_place, fobj%data_misfit, 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
 
-    ! if(either(oif_gradient,.true.,present(oif_gradient))) then
-        !collect global image
-        call mpi_allreduce(mpi_in_place, m%image,  size(m%image), mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-    ! endif
+    call mpi_allreduce(mpi_in_place, m%image,  size(m%image), mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
 
     call mpiworld%barrier
 
@@ -182,8 +185,6 @@ use m_smoother_laplacian_sparse
         call sysio_write('I',m%image(:,:,:,1),size(m%image(:,:,:,1)))
     endif
 
-    call mpiworld%barrier
-
     if(setup%get_str('JOB')=='imaging') then
         call mpiworld%final
         stop
@@ -192,10 +193,11 @@ use m_smoother_laplacian_sparse
 end subroutine
 
 
-subroutine modeling_gradient
+subroutine modeling_gradient(is_fitting_data)
 use mpi
 use m_System
 use m_Modeling
+use m_integral
 use m_weighter
 use m_image_weighter
 use m_fobjective
@@ -203,17 +205,38 @@ use m_matchfilter
 use m_smoother_laplacian_sparse
 use m_resampler
 
+    logical :: is_fitting_data
+
+    character(:),allocatable :: corrs
     type(t_field) :: fld_u, fld_du, fld_Adj_du, fld_a, fld_da
-    real,dimension(:,:),allocatable :: Wdres
-    real,dimension(:,:,:),allocatable :: WImag, Imag_as_adjsrc
+    ! real,dimension(:,:),allocatable :: Wdres
+    ! real,dimension(:,:,:),allocatable :: WImag, 
+    real,dimension(:),allocatable :: tmp
+    real,dimension(:,:,:),allocatable :: Imag_as_adjsrc
     real,dimension(:,:),allocatable :: tmpdsyn
     ! character(:),allocatable :: update_wavelet
     ! real,dimension(:,:),allocatable :: Rmu, Rdiff
 
-    character(:),allocatable :: corrs
 
-    !first do imaging
-    call modeling_imaging
+    if(setup%get_str('JOB')=='skip_imaging') then
+        call alloc(m%image,m%nz,m%nx,m%ny,1)
+        call sysio_read(setup%get_file('IMAGE'),m%image,size(m%image))
+        call sysio_write('loaded_I',m%image,size(m%image))
+    else
+        call modeling_imaging
+    endif
+
+    !compute fobjective
+    call iwei%update
+    
+    fobj%dnorms(1) = integral(size(iwei%weight),iwei%weight**2,m%image,2,m%cell_volume,0.5/m%ref_kpa**3/shot%dt**2) !just consider ||I||_L2 for now
+
+    !call alloc(Imag_as_adjsrc,m%nz,m%nx,m%ny)
+    Imag_as_adjsrc =reshape( -nabla_integral(), [m%nz,m%nx,m%ny])
+
+
+    fobj%data_misfit=0.
+
 
     call alloc(m%correlate, m%nz,m%nx,m%ny,5)
 
@@ -248,14 +271,12 @@ use m_resampler
         !C_data=Ru-d
         call shot%write('Ru_',shot%dsyn)
 
-        call wei%update('_4FWI')
+        call wei%update!('_4FWI')
 
-        ! call fobj%compute_dnorms
-        call alloc(Wdres,shot%nt,shot%nrcv)
-        call alloc(shot%dadj,shot%nt,shot%nrcv)
-        Wdres = -(shot%dsyn-shot%dobs)*wei%weight
-        shot%dadj = Wdres*wei%weight
-        shot%dadj = shot%dadj  *m%cell_volume/shot%dt/m%ref_kpa !otherwise numerical overflow
+        !compute FWI data misfit and adjsrc
+        fobj%data_misfit = fobj%data_misfit &
+            + integral(size(wei%weight),wei%weight**2,shot%dsyn-shot%dobs,2,shot%dt,0.5/m%ref_kpa*m%cell_volume/shot%dt)
+        shot%dadj =reshape( -nabla_integral(), shape(shot%dobs))
         call shot%write('FWI_dadj_',shot%dadj)
 
         !adjoint modeling on a
@@ -271,23 +292,6 @@ use m_resampler
         cb%corr(:,:,:,1)=cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
         call hud('---------------------------------')
 
-
-        call hud('-------- Image as RHS --------')
-        if(setup%get_str('JOB')=='skip_imaging') then
-            call alloc(m%image,m%nz,m%nx,m%ny,1)
-            call sysio_read(setup%get_file('IMAGE'),m%image,size(m%image))
-            call sysio_write('loaded_I',m%image,size(m%image))
-        endif
-
-        call iwei%update
-        ! call alloc(Wimag,m%nz,m%nx,m%ny)
-        call alloc(Imag_as_adjsrc,m%nz,m%nx,m%ny)
-        ! Wimag = -m%image *iwei%weight
-        ! Imag_as_adjsrc = iwei%weight*Wimag
-        Imag_as_adjsrc = -m%image(:,:,:,1) *iwei%weight*iwei%weight
-
-        call hud('---------------------------------')
-! pause
 
         if(index(corrs,'RE')>0) then
 
@@ -370,8 +374,6 @@ use m_resampler
         
         call cb%project_back
 
-        !fobj%dnorms=fobj%dnorms+C_imag
-
     enddo
     
     call hud('        END LOOP OVER SHOTS        ')
@@ -379,8 +381,9 @@ use m_resampler
 
     !collect global objective function value
     call mpi_allreduce(mpi_in_place, fobj%dnorms, fobj%n_dnorms, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-    call fobj%print_dnorms('Unscaled stacked','')
+    call fobj%print_dnorms('Stacked but not linesearch-scaled','')
 
+    call mpi_allreduce(mpi_in_place, fobj%data_misfit, 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
 
     !collect global correlations
     call mpi_allreduce(mpi_in_place, m%correlate,  m%n*5, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
@@ -400,7 +403,6 @@ use m_resampler
         endif
     endif
 
-
     m%gradient=0.
     if(index(corrs,'RE')>0) then
         m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,2)+m%correlate(:,:,:,3)
@@ -409,13 +411,9 @@ use m_resampler
         m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,5)
     endif
 
-    !if not fitting the data then flip the sign
-    if(dot_product(pack(m%correlate(:,:,:,1),.true.),pack(m%gradient(:,:,:,2),.true.))<0) then
-        call hud('Flip the sign to ensure fitting the data')
-        fobj%dnorms=-fobj%dnorms
-        m%gradient(:,:,:,2)=-m%gradient(:,:,:,2)
-    endif
 
+    !check if fitting the t-x domain data
+    is_fitting_data = sum(m%correlate(:,:,:,1)*m%gradient(:,:,:,2))>0.
 
     ! if(either(oif_gradient,.true.,present(oif_gradient))) then
         !collect global gradient
@@ -430,18 +428,18 @@ use m_resampler
 end subroutine
 
 
-subroutine local_write(fname,grad,fullgrad,mm)
-use mpi
-use m_System
+! subroutine local_write(fname,grad,fullgrad,mm)
+! use mpi
+! use m_System
 
-    character(*) :: fname
-    real,dimension(mm) :: grad,fullgrad
+!     character(*) :: fname
+!     real,dimension(mm) :: grad,fullgrad
 
     
-    call sysio_write(fname,grad,mm,o_mode='stack')
-    fullgrad=fullgrad+grad
+!     call sysio_write(fname,grad,mm,o_mode='stack')
+!     fullgrad=fullgrad+grad
     
-end subroutine
+! end subroutine
 
 subroutine print_manual
 
