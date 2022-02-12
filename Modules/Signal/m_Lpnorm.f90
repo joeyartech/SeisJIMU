@@ -57,7 +57,7 @@ use m_arrayop
 
         dt_scalar = dt*scalar
 
-        L2norm = sum(Wpu*u(1:n))*dt_scalar
+        L2norm_sq = sum(Wpu*u(1:n))*dt_scalar
 
     end function
 

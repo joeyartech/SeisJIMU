@@ -36,10 +36,10 @@ use singleton
 
         filter = numer/(denom+1e-5*maxval(abs(denom)))
 
-        if(present(o_index)) then
-            call sysio_write('matchfilters_amp',real(abs (filter),kind=4),nt) !for purpose of quality control of results
-            call sysio_write('matchfilters_ph' ,real(atan(filter),kind=4),nt) !for purpose of quality control of results
-        endif
+        ! if(present(o_index)) then
+        !     call sysio_write('matchfilters_amp',real(abs (filter),kind=4),nt) !for purpose of quality control of results
+        !     call sysio_write('matchfilters_ph' ,real(atan(filter),kind=4),nt) !for purpose of quality control of results
+        ! endif
 
         if(either(oif_stack,.false.,present(oif_stack))) then
             call mpi_allreduce(MPI_IN_PLACE, filter, nt, MPI_DOUBLE_COMPLEX, MPI_SUM, mpiworld%communicator, mpiworld%ierr)
