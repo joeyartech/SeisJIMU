@@ -120,7 +120,7 @@ use m_smoother_laplacian_sparse
     ! if(setup%get_str('JOB')=='skip_imaging') then
     !     return
     ! endif
-
+    
     call hud('===== START LOOP OVER SHOTS =====')
     
     do i=1,shls%nshots_per_processor
@@ -149,11 +149,12 @@ use m_smoother_laplacian_sparse
 
         !weighting on the adjoint source for the image
         call wei%update!('_4IMAGING')
-
+        
         tmp = L2norm_sq(size(wei%weight),wei%weight,shot%dsyn-shot%dobs,shot%dt,0.5/m%ref_kpa*m%cell_volume/shot%dt)                     ![Pa]^2    [s]   [1/Pa m^3/s]=[Nm]
         
-        call nabla_L2norm_sq(shot%dadj); shot%dadj=-shot%dadj
-
+        call alloc(shot%dadj,shot%nt,shot%nrcv)
+        call nabla_L2norm_sq(shot%dadj)
+        shot%dadj=-shot%dadj
         call shot%write('Imag_dadj_',shot%dadj)
 
         !adjoint modeling on a
@@ -239,11 +240,14 @@ use m_resampler
 
     !fobj%dnorms(2) = integral(size(iwei%weight),iwei%weight**2,m%image,2,        m%cell_volume,0.5/m%ref_kpa**3/shot%dt**2)  ![Pa^2 s]^2 [m^3] [Pa^-3 s^-2]=[Nm]
     fobj%dnorms(2) = L2norm_sq(size(iwei%weight),iwei%weight,m%image,m%cell_volume,0.5/m%ref_kpa**3/shot%dt**2)                            ![Pa^2 s]^2 [m^3]      [Pa^-3 s^-2]=[Nm]
+    
+    deallocate(m%image)
 
     !Use L2 norm for adjsrc
-    !call alloc(Imag_as_adjsrc,m%nz,m%nx,m%ny)
+    call alloc(Imag_as_adjsrc,m%nz,m%nx,m%ny)
     !Imag_as_adjsrc =reshape( -nabla_integral(), [m%nz,m%nx,m%ny])
-    call nabla_L2norm_sq(Imag_as_adjsrc); Imag_as_adjsrc = -Imag_as_adjsrc
+    call nabla_L2norm_sq(Imag_as_adjsrc)
+    Imag_as_adjsrc = -Imag_as_adjsrc
 
     !FWI misfit
     fobj%FWI_misfit=0.
@@ -288,6 +292,7 @@ use m_resampler
         fobj%FWI_misfit = fobj%FWI_misfit &
             + L2norm_sq(size(wei%weight),wei%weight,shot%dsyn-shot%dobs,shot%dt,0.5/m%ref_kpa*m%cell_volume/shot%dt)                     ![Pa]^2    [s]   [1/Pa m^3/s]=[Nm]
 
+        call alloc(shot%dadj,shot%nt,shot%nrcv)
         call nabla_L2norm_sq(shot%dadj); shot%dadj=-shot%dadj
         
         call shot%write('FWI_dadj_',shot%dadj)
@@ -397,10 +402,7 @@ use m_resampler
     call fobj%print_dnorms('Stacked but not yet linesearch-scaled','')
 
     call mpi_allreduce(mpi_in_place, fobj%FWI_misfit, 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-
-    call hud('Stacked but not scaled FWI_misfit '//num2str(fobj%FWI_misfit))
-
-    call mpi_allreduce(mpi_in_place, fobj%FWI_misfit, 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    call hud('Stacked FWI_misfit '//num2str(fobj%FWI_misfit))
 
     !collect global correlations
     call mpi_allreduce(mpi_in_place, m%correlate,  m%n*5, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
@@ -435,6 +437,8 @@ use m_resampler
     !check if fitting the t-x domain data
     is_fitting_data = sum(m%correlate(:,:,:,1)*m%gradient(:,:,:,2))>0.
 
+    deallocate(m%correlate)
+    
     ! if(either(oif_gradient,.true.,present(oif_gradient))) then
         !collect global gradient
         !call mpi_allreduce(mpi_in_place, m%gradient,  m%n*ppg%ngrad, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
