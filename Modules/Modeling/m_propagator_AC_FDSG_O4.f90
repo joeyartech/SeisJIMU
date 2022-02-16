@@ -126,9 +126,7 @@ real,dimension(:,:,:),allocatable :: sf_p_save
             call alloc(m%rho,m%nz,m%nx,m%ny,o_init=1000.)
             call warn('Constant rho model (1 g/cc) is allocated by propagator.')
         endif
-
-        m%ref_kpa=m%ref_rho*m%ref_vel**2
-
+        
     end subroutine
     
     subroutine check_discretization(self)

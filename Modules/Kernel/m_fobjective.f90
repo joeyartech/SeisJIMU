@@ -83,88 +83,75 @@ use m_preconditioner
     subroutine compute_dnorms(self)
         class(t_fobjective) :: self
 
-        logical,save :: is_first_in=.true.
-        real,save :: ref_p,ref_v
+        real,dimension(:,:),allocatable :: Wdres
         real :: numer, denom, time(shot%nt), v(shot%nt)
+        logical :: is_adjsrc
         
-        call alloc(Wdres,shot%nt,shot%nrcv)
-        Wdres = (shot%dsyn-shot%dobs)*wei%weight       
-        if(mpiworld%is_master) call shot%write('Wdres_',Wdres)
+        !Data residual of 1st shot as an example
+        if(mpiworld%is_master) then
+            Wdres=wei%weight*(shot%dsyn-shot%dobs)
+            call shot%write('Wdres_',Wdres)
+            deallocate(Wdres)
+        endif
 
         self%dnorms=0.
+
         do i=1,self%n_dnorms
             select case (self%s_dnorms(i)%s)
+
             case ('L2')
+
+                is_adjsrc=abs(self%dnorm_weights(i))>0.
+
                 do ir=1,shot%nrcv
                     if(shot%rcv(ir)%is_badtrace) cycle
 
-                    !set unit of dnorm to be [Nm], same as Lagrangian
-                    !this also help balance contributions from different component data
+                    !unit of dnorms = [Nm], same as Lagrangian
+                    !this also helps balance contributions from different component data
                     if(shot%rcv(ir)%comp=='p') then !for pressure data
-                        self%dnorms(i) = self%dnorms(i) + 0.5*m%cell_volume*norm2(Wdres(:,ir)) /m%ref_kpa
+                        self%dnorms(i) = self%dnorms(i) + L2norm_sq(shot%nt,wei%weight(:,ir),&
+                            shot%dsyn(:,ir)-shot%dobs(:,ir),shot%dt,0.5/m%unit_pressure*m%unit_volume/m%unit_time)
+                            !   [Pa]^2                      [s]      [1/Pa m^3/s]=[Nm]
+
+                        if(is_adjsrc) call adjsrc_L2norm_sq(shot%dadj(:,ir))
+
                     else !for velocities data
-                        self%dnorms(i) = self%dnorms(i) + 0.5*m%cell_volume*norm2(Wdres(:,ir)) *m%ref_rho
+                        self%dnorms(i) = self%dnorms(i) + L2norm_sq(shot%nt,wei%weight(:,ir),&
+                            shot%dsyn(:,ir)-shot%dobs(:,ir),shot%dt,0.5*m%unit_mass/m%unit_time)
+                            !   [m/s]^2                     [s]        [kg/s]=[kg m^2/s^2]=[Nm]
+
+                        if(is_adjsrc) call adjsrc_L2norm_sq(shot%dadj(:,ir))
+
                     endif
 
                 enddo
 
-                !compute adjoint source and set proper units
-                if(abs(self%dnorm_weights(i))>0.) then
-                    shot%dadj = -wei%weight*Wdres*m%cell_volume/shot%dt
-                    do ir=1,shot%nrcv
-                        if(shot%rcv(ir)%comp=='p') then !for pressure data
-                            shot%dadj(:,ir) = shot%dadj(:,ir) /m%ref_kpa
-                        else !for velocities data
-                            shot%dadj(:,ir) = shot%dadj(:,ir) *m%ref_rho
-                        endif
-
-                    enddo
-
-                endif
-                
             case ('L1')
 
-                if(is_first_in) then
-                    ref_p = 0.
-                    ref_v = 0.
-                    do ir=1,shot%nrcv
-                        if(shot%rcv(ir)%is_badtrace) cycle
-                        if(shot%rcv(ir)%comp=='p') then !for pressure data
-                            tmp=maxval(abs(Wdres(:,ir)))
-                            ref_p=either(ref_p,tmp,ref_p>tmp)
-                        else !for velocities data
-                            tmp=maxval(abs(Wdres(:,ir)))
-                            ref_v=either(ref_v,tmp,ref_v>tmp)
-                        endif
-                    enddo
-                endif
+                is_adjsrc=abs(self%dnorm_weights(i))>0.
 
                 do ir=1,shot%nrcv
                     if(shot%rcv(ir)%is_badtrace) cycle
 
-                    !set unit of dnorm to be [Nm], same as Lagrangian
-                    !this also help balance contributions from different component data
+                    !unit of dnorms = [Nm], same as Lagrangian
+                    !this also helps balance contributions from different component data
                     if(shot%rcv(ir)%comp=='p') then !for pressure data
-                        self%dnorms(i) = self%dnorms(i) + 0.5*m%cell_volume*sum(abs(Wdres(:,ir))) *ref_p/m%ref_kpa
+                        self%dnorms(i) = self%dnorms(i) + L1norm(shot%nt,wei%weight(:,ir),&
+                            shot%dsyn(:,ir)-shot%dobs(:,ir),shot%dt,m%unit_volume/m%unit_time)
+                            !   [Pa]                        [s]     [m^3/s]=[Nm]
+
+                        if(is_adjsrc) call adjsrc_L1norm(shot%dadj(:,ir))
+
                     else !for velocities data
-                        self%dnorms(i) = self%dnorms(i) + 0.5*m%cell_volume*sum(abs(Wdres(:,ir))) *ref_v*m%ref_rho
+                        self%dnorms(i) = self%dnorms(i) + L1norm(shot%nt,wei%weight(:,ir),&
+                            shot%dsyn(:,ir)-shot%dobs(:,ir),shot%dt,m%unit_mass*m%unit_length/m%unit_time/m%unit_time)
+                            !   [m/s]                       [s]     [kg m/s^2]=[kg m^2/s^2]=[Nm]
+
+                        if(is_adjsrc) call adjsrc_L1norm(shot%dadj(:,ir))
+
                     endif
 
                 enddo
-
-                !compute adjoint source and set proper units
-                if(abs(self%dnorm_weights(i))>0.) then
-                    shot%dadj = -wei%weight*rsign(Wdres)*m%cell_volume/shot%dt
-                    do ir=1,shot%nrcv
-                        if(shot%rcv(ir)%comp=='p') then !for pressure data
-                            shot%dadj(:,ir) = shot%dadj(:,ir) *ref_p/m%ref_kpa
-                        else !for velocities data
-                            shot%dadj(:,ir) = shot%dadj(:,ir) *ref_v*m%ref_rho
-                        endif
-
-                    enddo
-
-                endif
 
             case ('ndecon') !normalized deconvolution
                 !aka Reverse AWI (Warner & Guasch, 2016, Geophysics, 81-6)
@@ -181,6 +168,8 @@ use m_preconditioner
                 !     enddo
                 ! endif
 
+                is_adjsrc=abs(self%dnorm_weights(i))>0.
+
                 numer=0.
                 denom=0.
                 time=[(it-1.,it=1,shot%nt)]*shot%dt !why shot%nt?
@@ -194,7 +183,7 @@ use m_preconditioner
 
                         self%dnorms(i) = self%dnorms(i) + 0.5*numer/denom !/shot%dt*m%cell_volume*ref_p*ref_p/m%ref_kpa
                     
-                        if(abs(self%dnorm_weights(i))>0.) then
+                        if(is_adjsrc) then
                             call matchfilter_adjointsrc(shot%dobs(:,ir),shot%dadj(:,ir), &
                                 -(time*time-2.*self%dnorms(i))/denom*v)
 
@@ -212,15 +201,13 @@ use m_preconditioner
 
         call shot%write('dadj_',shot%dadj)
 
-        is_first_in=.false.
-
     end subroutine
 
     subroutine compute_xnorms(self,x,g)
         class(t_fobjective) :: self
         real,dimension(param%n1,param%n2,param%n3,param%npars) :: x,g
 
-        ! real,dimension(:,:,:,:),allocatable :: Wxres !weighted residuals of x
+        real,dimension(:,:,:,:),allocatable :: xres !weighted residuals of x
         real,dimension(:,:,:,:),allocatable :: spatgrad !spatial gradient of x
 
         call alloc(spatgrad,param%n1,param%n2,param%n3,param%npars,o_init=0.)
@@ -231,18 +218,20 @@ use m_preconditioner
             select case (self%s_xnorms(i)%s)
             case ('Ridge','L2')
                 !fcost
-                call alloc(Wxres,param%n1,param%n2,param%n3,param%npars)
+                call alloc(xres,param%n1,param%n2,param%n3,param%npars)
                 if(m%if_has_prior) then
-                    Wxres=x-xprior
+                    xres=x-xprior
                 else
-                    Wxres=x
+                    xres=x
                 endif
 
-                self%xnorms(i) = self%xnorms(i) + sum(Wxres*Wxres)
+                self%xnorms(i) = self%xnorms(i) + sum(x*x)
                 !self%xnorms(i) = sum(Wxres*Wxres, .not.param%is_freeze_zone)
 
                 !spatial gradient
-                spatgrad = spatgrad + Wxres
+                spatgrad = spatgrad + xres
+
+                deallocate(xres)
 
             case ('Lasso','L1')
                 !to be implemented..
@@ -283,18 +272,19 @@ use m_preconditioner
                 enddo
 
             case ('TV')
-                !to be implementedl
+                !to be implemented
 
             end select
 
         enddo
 
-        self%xnorms = 0.5*self%xnorms*param%cell_volume_in_Pa
+        self%xnorms = 0.5*self%xnorms *m%cell_volume*m%unit_pressure
+                                      ![m^3 Pa]=[Nm]
 
         !where(param%is_freeze_zone) spatgrad=0.
 
         !add to dnorm's gradient wrt parameters
-        g = g + spatgrad*param%cell_volume_in_Pa
+        g = g + spatgrad *m%cell_volume*m%unit_pressure
 
     end subroutine
 

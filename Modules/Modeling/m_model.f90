@@ -21,7 +21,10 @@ use m_System
 
         real,dimension(:,:,:),allocatable :: vp_prior,vs_prior,rho_prior
 
-        real :: ref_vel=1500., ref_rho=1000., ref_kpa=1000.*1500.**2
+        !units
+        real :: unit_volume, unit_area, unit_length
+        real :: unit_mass,   unit_time=1.
+        real :: unit_force,  unit_pressure
 
         logical,dimension(:,:,:),allocatable :: is_freeze_zone
 
@@ -76,10 +79,16 @@ use m_System
         self%dmin=min(self%dz,self%dx)
         if(self%is_cubic) self%dmin=min(self%dmin,self%dy)
 
+        !find unit of length
+        self%unit_volume=self%dz*self%dx*self%dy
+        self%unit_length=self%unit_volume**(1./3.)
+        self%unit_area  =self%unit_length**2
+
         rtmp=setup%get_reals('MODEL_ORIGIN','OZXY',o_default='0. 0. 0.')
         rtmp=0.
         self%oz=rtmp(1); self%ox=rtmp(2); self%oy=rtmp(3)
 
+        !discretization of the model
         self%cell_volume = self%dz*self%dx*self%dy
         if(self%is_cubic) then
             self%cell_diagonal=sqrt(self%dz**2+self%dx**2+self%dy**2)
@@ -118,7 +127,6 @@ use m_System
                 call alloc(self%vp,self%nz,self%nx,self%ny)
                 read(12,rec=i) self%vp
                 call hud('vp model is read.')
-                self%ref_vel=self%vp(1,1,1)
 
             case ('vs')
                 call alloc(self%vs,self%nz,self%nx,self%ny)
@@ -129,7 +137,6 @@ use m_System
                 call alloc(self%rho,self%nz,self%nx,self%ny)
                 read(12,rec=i) self%rho
                 call hud('rho model is read.')
-                self%ref_rho=self%rho(1,1,1)
 
             case ('eps')
                 call alloc(self%eps,self%nz,self%nx,self%ny)
@@ -162,7 +169,15 @@ use m_System
 
         close(12)
 
-        self%ref_kpa=self%ref_rho*self%ref_vel**2
+        !find units for physical quantities
+        !density model is required
+        if(.not. allocated(m%rho)) then
+            call alloc(m%rho,m%nz,m%nx,m%ny,o_init=1000.) ![kg/m3]
+            call warn('Constant rho model (1000 kg/m3) has been assumed.')
+        endif
+        self%unit_mass=self%rho(1,1,1)*self%unit_volume
+        self%unit_force=self%unit_mass/self%unit_length/self%unit_time**2
+        self%unit_pressure=self%unit_force/self%unit_area
 
         !freesurface
         self%is_freesurface=setup%get_bool('IS_FREESURFACE',o_default='T')

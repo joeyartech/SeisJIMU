@@ -52,7 +52,7 @@ use m_Modeling
         logical,dimension(:,:,:,:),allocatable :: is_freeze_zone
 
         integer :: n1,n2,n3,n
-        real :: d1,d2,d3,cell_volume_in_Pa
+        real :: d1,d2,d3
         
         contains
         procedure :: init
@@ -89,7 +89,7 @@ use m_Modeling
                     !https://en.wikipedia.org/wiki/Gardner%27s_relation
                     is_gardner=.true.
 !                     if(len(list(i)%s)<=7) then
-                        a=either(310.,0.31,m%ref_rho<1000.)
+                        a=either(310.,0.31,m%rho(1,1,1)<1000.)
                         b=0.25
                         
 !                     else
@@ -177,7 +177,6 @@ use m_Modeling
         self%d1=m%dz
         self%d2=m%dx
         self%d3=m%dy
-        self%cell_volume_in_Pa=self%d1*self%d2*self%d3*m%ref_kpa
 
     end subroutine
     

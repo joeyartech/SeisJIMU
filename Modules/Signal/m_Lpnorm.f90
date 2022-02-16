@@ -10,7 +10,7 @@ use m_arrayop
 
     contains
 
-    !||u||1 = int |W*u| *dt *scalar
+    !||u||_1 = int |W*u| *dt *scalar
     real function L1norm(size,W,u,dt,scalar)
         integer size
         real,dimension(*) :: W,u
@@ -28,15 +28,17 @@ use m_arrayop
 
     end function
 
-    !nabla_u ||u||1 = sign(W*u) *dt *scalar
-    subroutine nable_L1norm(nabla_u)
-        real,dimension(*) :: nabla_u
+    !nabla_u ||u||_1 = sign(W*u) *scalar
+    !gradient = nabla*dt
+    !adjsource= -gradient
+    subroutine adjsrc_L1norm(adjsrc)
+        real,dimension(*) :: adjsrc
 
         do i=1,n
             if (Wpu(i)>0.) then
-                nabla_u(i) = dt_scalar
+                adjsrc(i) =-dt_scalar
             else
-                nabla_u(i) =-dt_scalar
+                adjsrc(i) = dt_scalar
             endif
         enddo
 
@@ -60,11 +62,13 @@ use m_arrayop
         
     end function
 
-    !nabla_u ||u||2^2 = 2* W*W*u *dt*scalar
-    subroutine nabla_L2norm_sq(nabla_u)
-        real,dimension(*) :: nabla_u
+    !nabla_u ||u||_2^2 = 2* W*W*u *scalar
+    !gradient = nabla*dt
+    !adjsource= -gradient
+    subroutine adjsrc_L2norm_sq(adjsrc)
+        real,dimension(*) :: adjsrc
         
-        nabla_u(1:n) = 2.*Wpu*dt_scalar
+        adjsrc(1:n) = -2.*Wpu*dt_scalar
 
         deallocate(Wpu)
 

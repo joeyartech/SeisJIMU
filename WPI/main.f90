@@ -150,11 +150,12 @@ use m_smoother_laplacian_sparse
         !weighting on the adjoint source for the image
         call wei%update!('_4IMAGING')
         
-        tmp = L2norm_sq(size(wei%weight),wei%weight,shot%dsyn-shot%dobs,shot%dt,0.5/m%ref_kpa*m%cell_volume/shot%dt)                     ![Pa]^2    [s]   [1/Pa m^3/s]=[Nm]
+        tmp = L2norm_sq(size(wei%weight),wei%weight,&
+            shot%dsyn-shot%dobs,shot%dt,0.5/m%unit_pressure*m%unit_volume/m%unit_time)
+        !   [Pa]^2             [s]     [1/Pa m^3/s]=[Nm]
         
         call alloc(shot%dadj,shot%nt,shot%nrcv)
-        call nabla_L2norm_sq(shot%dadj)
-        shot%dadj=-shot%dadj
+        call adjsrc_L2norm_sq(shot%dadj)
         call shot%write('Imag_dadj_',shot%dadj)
 
         !adjoint modeling on a
@@ -235,19 +236,19 @@ use m_resampler
     call iwei%update
 
     !L1 & L2 norms of image
-    !fobj%dnorms(1) = integral(size(iwei%weight),abs(iwei%weight),abs(m%image),1, m%cell_volume,1./m%ref_kpa/shot%dt)   ![Pa^2 s] [m^3] [1/Pa 1/s]=[Nm]
-    fobj%dnorms(1) = L1norm   (size(iwei%weight),iwei%weight,m%image,m%cell_volume,1./m%ref_kpa/shot%dt)   !                                [Pa^2 s] [m^3]        [1/Pa 1/s]=[Nm]
+    fobj%dnorms(1) = L1norm   (size(iwei%weight),iwei%weight,&
+        m%image, m%cell_volume, 1./m%unit_pressure/m%unit_time)
+    !   [Pa^2 s] [m^3]          [1/Pa 1/s] =[Nm]
 
-    !fobj%dnorms(2) = integral(size(iwei%weight),iwei%weight**2,m%image,2,        m%cell_volume,0.5/m%ref_kpa**3/shot%dt**2)  ![Pa^2 s]^2 [m^3] [Pa^-3 s^-2]=[Nm]
-    fobj%dnorms(2) = L2norm_sq(size(iwei%weight),iwei%weight,m%image,m%cell_volume,0.5/m%ref_kpa**3/shot%dt**2)                            ![Pa^2 s]^2 [m^3]      [Pa^-3 s^-2]=[Nm]
+    fobj%dnorms(2) = L2norm_sq(size(iwei%weight),iwei%weight,&
+        m%image,   m%cell_volume,0.5/m%unit_pressure**3/m%unit_time**2)
+    !   [Pa^2 s]^2 [m^3]         [Pa^-3 s^-2]=[Nm]
     
     deallocate(m%image)
 
     !Use L2 norm for adjsrc
     call alloc(Imag_as_adjsrc,m%nz,m%nx,m%ny)
-    !Imag_as_adjsrc =reshape( -nabla_integral(), [m%nz,m%nx,m%ny])
-    call nabla_L2norm_sq(Imag_as_adjsrc)
-    Imag_as_adjsrc = -Imag_as_adjsrc
+    call adjsrc_L2norm_sq(Imag_as_adjsrc)
 
     !FWI misfit
     fobj%FWI_misfit=0.
@@ -289,11 +290,12 @@ use m_resampler
         call wei%update!('_4FWI')
 
         !compute FWI data misfit and adjsrc
-        fobj%FWI_misfit = fobj%FWI_misfit &
-            + L2norm_sq(size(wei%weight),wei%weight,shot%dsyn-shot%dobs,shot%dt,0.5/m%ref_kpa*m%cell_volume/shot%dt)                     ![Pa]^2    [s]   [1/Pa m^3/s]=[Nm]
+        fobj%FWI_misfit = fobj%FWI_misfit + L2norm_sq(size(wei%weight),wei%weight,&
+            shot%dsyn-shot%dobs,shot%dt,0.5/m%unit_pressure*m%unit_volume/m%unit_time)
+        !   [Pa]^2              [s]     [1/Pa m^3/s]=[Nm]
 
         call alloc(shot%dadj,shot%nt,shot%nrcv)
-        call nabla_L2norm_sq(shot%dadj); shot%dadj=-shot%dadj
+        call adjsrc_L2norm_sq(shot%dadj)
         
         call shot%write('FWI_dadj_',shot%dadj)
 
