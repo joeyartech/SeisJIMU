@@ -8,7 +8,6 @@ sgtsv.f
 
 srcf90 = \
 m_math.f90 \
-findelement.f90 \
 singleton.f90
 
 

@@ -44,7 +44,6 @@ use m_Optimization
     call m%init
     call m%read
     call ppg%check_model
-    call m%set_reference
 
     !shotlist
     call shls%read_from_data

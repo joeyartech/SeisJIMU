@@ -260,36 +260,21 @@ use m_System
 
     end subroutine
 
-    subroutine set_reference(self)
+    subroutine set_reference(self,iz,ix,iy)
+    use mpi
         class(t_model) :: self
         
-        real,dimension(:),allocatable :: a
+        self%ref_inv_vp=self%vp (iz,ix,iy)
+        self%ref_rho   =self%rho(iz,ix,iy)
 
-        if(mpiworld%is_master) then
-            call alloc(a,self%nz)
+        call mpi_allreduce(mpi_in_place,self%ref_inv_vp,1,mpi_real,mpi_sum,mpiworld%communicator, mpiworld%ierr)
+        call mpi_allreduce(mpi_in_place,self%ref_rho   ,1,mpi_real,mpi_sum,mpiworld%communicator, mpiworld%ierr)
 
-            !reference velocity
-            do i=1,self%nz
-                a(i) = sum(m%vp(i,:,:))
-            enddo
-            a=a/self%nx/self%ny
-            m%ref_inv_vp=1./findelement(self%nz/2,a,self%nz)
-            write(*,*) 'Reference vp value = ',1./m%ref_inv_vp
+        self%ref_inv_vp=self%ref_inv_vp/mpiworld%nproc
+        self%ref_rho   =self%ref_rho   /mpiworld%nproc
 
-            !reference density
-            do i=1,self%nz
-                a(i) = sum(m%rho(i,:,:))
-            enddo
-            a=a/self%nx/self%ny
-            m%ref_rho=findelement(self%nz/2,a,self%nz)
-            write(*,*) 'Reference rho value = ',m%ref_rho
-
-            deallocate(a)
-
-        endif
-
-        call mpi_bcast(m%ref_inv_vp,1,mpi_integer,0,mpiworld%communicator,mpiworld%ierr)
-        call mpi_bcast(m%ref_rho,   1,mpi_integer,0,mpiworld%communicator,mpiworld%ierr)
+        call hud('Reference vp value = '//num2str(1./self%ref_inv_vp))
+        call hud('Reference rho value = '//num2str(self%ref_rho))
 
     end subroutine
 

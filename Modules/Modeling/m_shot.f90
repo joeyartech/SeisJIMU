@@ -305,8 +305,6 @@ use m_model
             halfx=either(m%dx/2.,0.,is_fdsg)
             halfy=either(m%dy/2.,0.,is_fdsg)
 
-            is_first_in=.false.
-
         endif
 
         !source
@@ -333,6 +331,11 @@ use m_model
         case default
             call hicks_get_coefficient('truncate', self%src%interp_coef)
         end select
+
+        !set reference to balance pressure vs velocities data
+        if(is_first_in) call m%set_reference(self%src%iz,self%src%ix,self%src%iy)
+
+        is_first_in=.false.
 
         !receivers
         do i=1,self%nrcv
