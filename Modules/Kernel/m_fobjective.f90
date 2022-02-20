@@ -16,15 +16,13 @@ use m_preconditioner
         type(t_string),dimension(:),allocatable :: s_dnorms !norms for data residuals
         type(t_string),dimension(:),allocatable :: s_xnorms !norms for (unknown) parameter residuals
 
-        real,dimension(:),allocatable :: dnorms !unit in [Nm]
-        real,dimension(:),allocatable :: xnorms !unit in [Nm]
+        integer :: n_dnorms, n_xnorms !number of norms
+
+        real,dimension(:),allocatable :: dnorms, xnorms !values of norms
+        real,dimension(:),allocatable :: dnorm_normalizers, xnorm_normalizers
+        real,dimension(:),allocatable :: dnorm_weights,     xnorm_weights
 
         real FWI_misfit
-        
-        integer :: n_dnorms, n_xnorms
-
-        real,dimension(:),allocatable :: dnorm_weights !scalar weights before each dnorm in the objective function
-        real,dimension(:),allocatable :: xnorm_weights !scalar weights before each xnorm in the objective function
 
         contains
 
@@ -52,9 +50,16 @@ use m_preconditioner
         !data norms
         self%s_dnorms=setup%get_strs('DATA_NORMS','DNORMS',o_default='L1 L2')
         self%n_dnorms=size(self%s_dnorms)
-        call alloc(self%dnorms,self%n_dnorms)
-
+        
+        call alloc(self%dnorms,           self%n_dnorms)
+        
         self%dnorm_weights=setup%get_reals('DATA_NORM_WEIGHTS','DWEIGHTS',o_default='0. 1.')
+        if(size(self%dnorm_weights)/=self%n_dnorms) then
+            stop 'error reading DATA_NORM_WEIGHTS (DWEIGHTS)'
+        endif
+
+        call alloc(self%dnorm_normalizers,self%n_dnorms)
+        self%dnorm_normalizers=1.
 
         !parameter norms
         self%s_xnorms=setup%get_strs('PARAMETER_NORMS','XNORMS',o_default='none')
@@ -80,82 +85,77 @@ use m_preconditioner
         
     end subroutine
     
-    subroutine compute_dnorms(self)
+    subroutine compute_dnorms(self,if_compute_adjsrc)
         class(t_fobjective) :: self
+        logical :: if_compute_adjsrc
 
         real,dimension(:,:),allocatable :: Wdres
+        logical :: is_4adjsrc
         real :: numer, denom, time(shot%nt), v(shot%nt)
-        logical :: is_adjsrc
-        
-        !Data residual of 1st shot as an example
-        if(mpiworld%is_master) then
-            Wdres=wei%weight*(shot%dsyn-shot%dobs)
-            call shot%write('Wdres_',Wdres)
-            deallocate(Wdres)
-        endif
 
         self%dnorms=0.
 
         do i=1,self%n_dnorms
             select case (self%s_dnorms(i)%s)
 
-            case ('L2')
+            case ('L1')
 
-                is_adjsrc=abs(self%dnorm_weights(i))>0.
+                is_4adjsrc=abs(self%dnorm_weights(i))>0. .and. if_compute_adjsrc
+                if(is_4adjsrc) call alloc(shot%dadj,shot%nt,shot%nrcv,oif_protect=.true.)
 
                 do ir=1,shot%nrcv
                     if(shot%rcv(ir)%is_badtrace) cycle
 
-                    !unit of dnorms = [Nm], same as Lagrangian
-                    !this also helps balance contributions from different component data
-                    if(shot%rcv(ir)%comp=='p') then !for pressure data
-                        self%dnorms(i) = self%dnorms(i) + L2norm_sq(shot%nt,wei%weight(:,ir),&
-                            shot%dsyn(:,ir)-shot%dobs(:,ir),shot%dt,0.5/m%unit_pressure*m%unit_volume/m%unit_time)
-                            !   [Pa]^2                      [s]      [1/Pa m^3/s]=[Nm]
+                    if(shot%rcv(ir)%comp=='p') then !pressure data
+                        self%dnorms(i) = self%dnorms(i) + L1norm( shot%nt, &
+                            wei%weight(:,ir)*m%ref_inv_vp, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
 
-                        if(is_adjsrc) call adjsrc_L2norm_sq(shot%dadj(:,ir))
+                        if(is_4adjsrc) call adjsrc_L1norm(shot%dadj(:,ir),self%dnorm_normalizers(i))
 
-                    else !for velocities data
-                        self%dnorms(i) = self%dnorms(i) + L2norm_sq(shot%nt,wei%weight(:,ir),&
-                            shot%dsyn(:,ir)-shot%dobs(:,ir),shot%dt,0.5*m%unit_mass/m%unit_time)
-                            !   [m/s]^2                     [s]        [kg/s]=[kg m^2/s^2]=[Nm]
+                    else !velocities data
+                        self%dnorms(i) = self%dnorms(i) + L1norm( shot%nt, &
+                            wei%weight(:,ir)*m%ref_rho,    shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
 
-                        if(is_adjsrc) call adjsrc_L2norm_sq(shot%dadj(:,ir))
+                        if(is_4adjsrc) call adjsrc_L1norm(shot%dadj(:,ir),self%dnorm_normalizers(i))
 
                     endif
 
                 enddo
 
-            case ('L1')
+            case ('L2')
 
-                is_adjsrc=abs(self%dnorm_weights(i))>0.
+                is_4adjsrc=abs(self%dnorm_weights(i))>0. .and. if_compute_adjsrc
+                if(is_4adjsrc) call alloc(shot%dadj,shot%nt,shot%nrcv,oif_protect=.true.)
 
                 do ir=1,shot%nrcv
                     if(shot%rcv(ir)%is_badtrace) cycle
 
-                    !unit of dnorms = [Nm], same as Lagrangian
-                    !this also helps balance contributions from different component data
-                    if(shot%rcv(ir)%comp=='p') then !for pressure data
-                        self%dnorms(i) = self%dnorms(i) + L1norm(shot%nt,wei%weight(:,ir),&
-                            shot%dsyn(:,ir)-shot%dobs(:,ir),shot%dt,m%unit_volume/m%unit_time)
-                            !   [Pa]                        [s]     [m^3/s]=[Nm]
+                    if(shot%rcv(ir)%comp=='p') then !pressure data
+                        self%dnorms(i) = self%dnorms(i) + 0.5*L2norm_sq( shot%nt, &
+                            wei%weight(:,ir)*m%ref_inv_vp, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
 
-                        if(is_adjsrc) call adjsrc_L1norm(shot%dadj(:,ir))
+                        if(is_4adjsrc) call adjsrc_L2norm_sq(shot%dadj(:,ir),self%dnorm_normalizers(i))
 
-                    else !for velocities data
-                        self%dnorms(i) = self%dnorms(i) + L1norm(shot%nt,wei%weight(:,ir),&
-                            shot%dsyn(:,ir)-shot%dobs(:,ir),shot%dt,m%unit_mass*m%unit_length/m%unit_time/m%unit_time)
-                            !   [m/s]                       [s]     [kg m/s^2]=[kg m^2/s^2]=[Nm]
+                    else !velocity data
+                        self%dnorms(i) = self%dnorms(i) + 0.5*L2norm_sq( shot%nt, &
+                            wei%weight(:,ir)*m%ref_rho,    shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
 
-                        if(is_adjsrc) call adjsrc_L1norm(shot%dadj(:,ir))
+                        if(is_4adjsrc) call adjsrc_L2norm_sq(shot%dadj(:,ir),self%dnorm_normalizers(i))
 
                     endif
 
                 enddo
 
             case ('ndecon') !normalized deconvolution
+                ! !Data residual of 1st shot as an example
+                ! if(mpiworld%is_master) then
+                !     Wdres=wei%weight*(shot%dsyn-shot%dobs)
+                !     call shot%write('Wdres_',Wdres)
+                !     deallocate(Wdres)
+                ! endif
+
                 !aka Reverse AWI (Warner & Guasch, 2016, Geophysics, 81-6)
-                !Eq D-4. Note this eq has a minor type; check the paper for correct one.
+                !Note Eq D-4 has a minor typo in the paper, however the other eq in the main text is correct.
 
                 ! if(is_first_in) then
                 !     ref_p = 0.
@@ -168,7 +168,8 @@ use m_preconditioner
                 !     enddo
                 ! endif
 
-                is_adjsrc=abs(self%dnorm_weights(i))>0.
+                is_4adjsrc=abs(self%dnorm_weights(i))>0. .and. if_compute_adjsrc
+                if(is_4adjsrc) call alloc(shot%dadj,shot%nt,shot%nrcv,oif_protect=.true.)
 
                 numer=0.
                 denom=0.
@@ -183,7 +184,7 @@ use m_preconditioner
 
                         self%dnorms(i) = self%dnorms(i) + 0.5*numer/denom !/shot%dt*m%cell_volume*ref_p*ref_p/m%ref_kpa
                     
-                        if(is_adjsrc) then
+                        if(is_4adjsrc) then
                             call matchfilter_adjointsrc(shot%dobs(:,ir),shot%dadj(:,ir), &
                                 -(time*time-2.*self%dnorms(i))/denom*v)
 
@@ -199,7 +200,7 @@ use m_preconditioner
         !scale dnorms by shotlist
         call shls%scale(self%dnorms)
 
-        call shot%write('dadj_',shot%dadj)
+        if(allocated(shot%dadj)) call shot%write('dadj_',shot%dadj)
 
     end subroutine
 
@@ -278,13 +279,12 @@ use m_preconditioner
 
         enddo
 
-        self%xnorms = 0.5*self%xnorms *m%cell_volume*m%unit_pressure
-                                      ![m^3 Pa]=[Nm]
+        self%xnorms = 0.5*self%xnorms *m%cell_volume
 
         !where(param%is_freeze_zone) spatgrad=0.
 
         !add to dnorm's gradient wrt parameters
-        g = g + spatgrad *m%cell_volume*m%unit_pressure
+        g = g + spatgrad *m%cell_volume
 
     end subroutine
 
@@ -328,7 +328,7 @@ use m_preconditioner
             call modeling_gradient(qp%is_fitting_data)
         ! endif
         
-        qp%f = sum(self%dnorm_weights*self%dnorms) ! + sum(self%xnorm_weights*self%xnorms)
+        qp%f = sum(self%dnorm_weights*self%dnorms*self%dnorm_normalizers) ! + sum(self%xnorm_weights*self%xnorms*self%xnorm_normalizers)
 
         if(.not. either(oif_gradient,.true.,present(oif_gradient))) return
 

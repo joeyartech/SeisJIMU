@@ -44,6 +44,7 @@ use m_Optimization
     call m%init
     call m%read
     call ppg%check_model
+    call m%set_reference
 
     !shotlist
     call shls%read_from_data
@@ -97,7 +98,7 @@ use m_Optimization
     
 end
 
-subroutine modeling_gradient(oif_gradient)
+subroutine modeling_gradient(is_fitting_data)!(oif_gradient)
 use mpi
 use m_System
 use m_Modeling
@@ -106,10 +107,14 @@ use m_fobjective
 use m_matchfilter
 use m_smoother_laplacian_sparse
 
-    logical,optional :: oif_gradient
+    !logical,optional :: oif_gradient
+    logical :: is_fitting_data
 
+    logical,save :: is_first_in=.true.
     type(t_field) :: sfield, rfield
     character(:),allocatable :: update_wavelet
+
+    is_fitting_data=.true.
 
     call hud('===== START LOOP OVER SHOTS =====')
     
@@ -127,15 +132,12 @@ use m_smoother_laplacian_sparse
 
         call ppg%check_discretization
         call ppg%init
-        call ppg%init_field(sfield,name='sfield')
         call ppg%init_abslayer
 
-        call sfield%ignite
+        call ppg%init_field(sfield,name='sfield');  call sfield%ignite
         
         !forward modeling
-        call ppg%forward(sfield)
-
-        call sfield%acquire
+        call ppg%forward(sfield);   call sfield%acquire
 
         if(mpiworld%is_master) call shot%write('draw_',shot%dsyn)
 
@@ -150,11 +152,16 @@ use m_smoother_laplacian_sparse
         call wei%update
 
         !objective function and adjoint source
-        call fobj%compute_dnorms
+        if(is_first_in) then
+            call fobj%compute_dnorms(if_compute_adjsrc=.false.)
+            fobj%dnorm_normalizers=1./fobj%dnorms
+            is_first_in=.false.
+        endif
+        call fobj%compute_dnorms(if_compute_adjsrc=.true.)
 
-        if(mpiworld%is_master) call fobj%print_dnorms('Unscaled','on Shot#'//shot%sindex)
+        if(mpiworld%is_master) call fobj%print_dnorms('Unstacked','on Shot#'//shot%sindex)
 
-        if(either(oif_gradient,.true.,present(oif_gradient))) then
+        ! if(either(oif_gradient,.true.,present(oif_gradient))) then
 
             !adjoint source
             if(update_wavelet/='no') call shot%update_adjsource
@@ -168,7 +175,7 @@ use m_smoother_laplacian_sparse
                 
             call cb%project_back
 
-        endif
+        ! endif
 
     enddo
     
@@ -176,15 +183,15 @@ use m_smoother_laplacian_sparse
 
     !collect global objective function value
     call mpi_allreduce(mpi_in_place, fobj%dnorms, fobj%n_dnorms, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-    call fobj%print_dnorms('Unscaled stacked','')
+    call fobj%print_dnorms('Stacked but not yet linesearch-scaled','')
 
-    if(either(oif_gradient,.true.,present(oif_gradient))) then
+    ! if(either(oif_gradient,.true.,present(oif_gradient))) then
         !collect global gradient
         call mpi_allreduce(mpi_in_place, m%gradient,  m%n*ppg%ngrad, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
         if(ppg%if_compute_engy) then
             call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
         endif
-    endif
+    ! endif
 
     call mpiworld%barrier
 

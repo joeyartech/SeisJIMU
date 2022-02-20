@@ -19,12 +19,11 @@ use m_System
         real,dimension(:,:,:),allocatable :: eps,del,eta
         real,dimension(:,:,:),allocatable :: qp,qs
 
+        !prior models
         real,dimension(:,:,:),allocatable :: vp_prior,vs_prior,rho_prior
 
-        !units
-        real :: unit_volume, unit_area, unit_length
-        real :: unit_mass,   unit_time=1.
-        real :: unit_force,  unit_pressure
+        !reference values
+        real :: ref_inv_vp, ref_rho
 
         logical,dimension(:,:,:),allocatable :: is_freeze_zone
 
@@ -35,6 +34,7 @@ use m_System
         procedure :: estim_RAM
         procedure :: read
         procedure :: read_prior
+        procedure :: set_reference
         procedure :: write
         procedure :: apply_freeze_zone
 
@@ -62,7 +62,7 @@ use m_System
         
         self%nz=itmp(1); self%nx=itmp(2); self%ny=itmp(3)
 
-        self%n=self%nx*self%ny*self%nz
+        self%n=self%nz*self%nx*self%ny
 
         rtmp=setup%get_reals('MODEL_SPACING','DZXY',o_mandatory=3)
         self%dz=rtmp(1); self%dx=rtmp(2); self%dy=rtmp(3)
@@ -79,11 +79,6 @@ use m_System
         self%dmin=min(self%dz,self%dx)
         if(self%is_cubic) self%dmin=min(self%dmin,self%dy)
 
-        !find unit of length
-        self%unit_volume=self%dz*self%dx*self%dy
-        self%unit_length=self%unit_volume**(1./3.)
-        self%unit_area  =self%unit_length**2
-
         rtmp=setup%get_reals('MODEL_ORIGIN','OZXY',o_default='0. 0. 0.')
         rtmp=0.
         self%oz=rtmp(1); self%ox=rtmp(2); self%oy=rtmp(3)
@@ -98,7 +93,7 @@ use m_System
             self%rev_cell_diagonal=sqrt(self%dz**(-2) + self%dx**(-2))
         endif
 
-        self%file=setup%get_file('FILE_MODEL',o_mandatory=1) 
+        self%file=setup%get_file('FILE_MODEL') 
 
         self%attributes_read =setup%get_strs('MODEL_ATTRIBUTES',o_default='vp rho')
         self%attributes_write=setup%get_strs('MODEL_ATTRIBUTES_WRITE',o_default=strcat(self%attributes_read))
@@ -168,16 +163,6 @@ use m_System
         enddo
 
         close(12)
-
-        !find units for physical quantities
-        !density model is required
-        if(.not. allocated(m%rho)) then
-            call alloc(m%rho,m%nz,m%nx,m%ny,o_init=1000.) ![kg/m3]
-            call warn('Constant rho model (1000 kg/m3) has been assumed.')
-        endif
-        self%unit_mass=self%rho(1,1,1)*self%unit_volume
-        self%unit_force=self%unit_mass/self%unit_length/self%unit_time**2
-        self%unit_pressure=self%unit_force/self%unit_area
 
         !freesurface
         self%is_freesurface=setup%get_bool('IS_FREESURFACE',o_default='T')
@@ -272,6 +257,39 @@ use m_System
         enddo
 
         close(12)
+
+    end subroutine
+
+    subroutine set_reference(self)
+        class(t_model) :: self
+        
+        real,dimension(:),allocatable :: a
+
+        if(mpiworld%is_master) then
+            call alloc(a,self%nz)
+
+            !reference velocity
+            do i=1,self%nz
+                a(i) = sum(m%vp(i,:,:))
+            enddo
+            a=a/self%nx/self%ny
+            m%ref_inv_vp=1./findelement(self%nz/2,a,self%nz)
+            write(*,*) 'Reference vp value = ',1./m%ref_inv_vp
+
+            !reference density
+            do i=1,self%nz
+                a(i) = sum(m%rho(i,:,:))
+            enddo
+            a=a/self%nx/self%ny
+            m%ref_rho=findelement(self%nz/2,a,self%nz)
+            write(*,*) 'Reference rho value = ',m%ref_rho
+
+            deallocate(a)
+
+        endif
+
+        call mpi_bcast(m%ref_inv_vp,1,mpi_integer,0,mpiworld%communicator,mpiworld%ierr)
+        call mpi_bcast(m%ref_rho,   1,mpi_integer,0,mpiworld%communicator,mpiworld%ierr)
 
     end subroutine
 

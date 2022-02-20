@@ -168,10 +168,10 @@ use m_parametrizer
         do i=1,param%npars
             pg(:,:,:,i)=g(:,:,:,i)*preco_in_x(:,:,:)
         enddo
-        pg = pg * old_norm / norm2(pg)
+        pg = old_norm/norm2(pg) * pg
         
-        !!save some RAM
-        !call dealloc(preco_in_x,preco_in_m)
+        !save some RAM
+        call dealloc(preco_in_x,preco_in_m)
 
     end subroutine
 

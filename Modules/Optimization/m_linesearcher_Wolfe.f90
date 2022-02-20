@@ -121,7 +121,10 @@ use m_Kernel
             endif
 
 
+if(mpiworld%is_master) print*,'minmax pert%g before scaling',minval(pert%g),maxval(pert%g)
             call self%scale(pert)
+if(mpiworld%is_master) print*,'minmax pert%g after scaling',minval(pert%g),maxval(pert%g)
+if(mpiworld%is_master) print*,'minmax curr%d',minval(curr%d),maxval(curr%d)
             pert%g_dot_d = sum(pert%g*curr%d)
 
             self%igradient=self%igradient+1
@@ -139,13 +142,14 @@ use m_Kernel
             call hud('Perturb qp%f, ||g||_L2 = '//num2str(pert%f)//', '//num2str(norm2(pert%g)))
             
             !Wolfe conditions
-            if_1st_cond = (pert%f <= curr%f+c1*self%alpha*curr%g_dot_d) !sufficient descent condition
+            !if_1st_cond = (pert%f <= curr%f+c1*self%alpha*curr%g_dot_d) !sufficient descent condition
+            if_1st_cond = (pert%f <= curr%f) !+c1*self%alpha*curr%g_dot_d/self%scaler)
             !if_2nd_cond = (abs(pert%g_dot_d) >= c2*abs(curr%g_dot_d)) !strong curvature condition
             if_2nd_cond = (pert%g_dot_d >= c2*curr%g_dot_d) !weak curvature condition
-            
-            ! print*,'1st cond',pert%f,curr%f,curr%g_dot_d, if_1st_cond
-            ! print*,'2nd cond',pert%g_dot_d, if_2nd_cond
-            ! print*,'alpha(3)',alphaL,alpha,alpha_R
+
+            print*,'1st cond',pert%f,curr%f,curr%g_dot_d, if_1st_cond
+            print*,'2nd cond',pert%g_dot_d, if_2nd_cond
+            print*,'alpha(3)',alphaL,alpha,alpha_R
 
             !occasionally optimizers on processors don't have same behavior
             !try to avoid this by broadcast controlling logicals.

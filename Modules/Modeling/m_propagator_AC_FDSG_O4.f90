@@ -119,14 +119,14 @@ real,dimension(:,:,:),allocatable :: sf_p_save
         if(index(self%info,'vp')>0  .and. .not. allocated(m%vp)) then
             !call error('vp model is NOT given.')
             call alloc(m%vp,m%nz,m%nx,m%ny,o_init=1500.)
-            call warn('Constant vp model (1.5 km/s) is allocated by propagator.')
+            call warn('Constant vp model (1500 m/s) is allocated by propagator.')
         endif
 
         if(index(self%info,'rho')>0 .and. .not. allocated(m%rho)) then
             call alloc(m%rho,m%nz,m%nx,m%ny,o_init=1000.)
-            call warn('Constant rho model (1 g/cc) is allocated by propagator.')
+            call warn('Constant rho model (1000 kg/m3) is allocated by propagator.')
         endif
-        
+                
     end subroutine
     
     subroutine check_discretization(self)
@@ -318,11 +318,11 @@ real,dimension(:,:,:),allocatable :: sf_p_save
             endif
 
             !do forward time stepping (step# conforms with backward & adjoint time stepping)
-            ! !step 1: add forces to v^it
-            ! call cpu_time(tic)
-            ! call self%inject_velocities(fld_u,time_dir,it)
-            ! call cpu_time(toc)
-            ! tt1=tt1+toc-tic
+            !step 1: add forces to v^it
+            call cpu_time(tic)
+            call self%inject_velocities(fld_u,time_dir,it)
+            call cpu_time(toc)
+            tt1=tt1+toc-tic
 
             !step 2: from v^it to v^it+1 by differences of s^it+0.5
             call cpu_time(tic)
