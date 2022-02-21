@@ -122,6 +122,8 @@ use m_System
         character(:),allocatable :: all
         integer :: nshot
 
+        integer :: nshots_2consider
+
         type(t_string),dimension(:),allocatable :: lists
         integer :: nlists
         
@@ -130,6 +132,7 @@ use m_System
         
         type(t_string),dimension(:),allocatable :: shots_per_processor
         integer :: nshots_per_processor
+
 
         contains
         procedure :: read_from_setup
@@ -253,8 +256,6 @@ use m_System
             self%all=strcat(nums2strs(ishots))
 
             self%nshot=size(ishots)
-
-            call hud('Total number of shots: '//num2str(self%nshot)//'')
             
         endif
 
@@ -262,10 +263,10 @@ use m_System
         if(allocated(sublist)) deallocate(sublist)
         if(allocated( ishots)) deallocate( ishots)
 
-        call hud('No. of processors: '//num2str(mpiworld%nproc)//s_NL// &
-                'No. of shots: '//num2str(self%nshot))
+        call hud('Number of processors = '//num2str(mpiworld%nproc)//s_NL// &
+                'Number of shots = '//num2str(self%nshot))
 
-        if(self%nshot<mpiworld%nproc) call warn('Shot number < Processor number. Some processors will be always idle..')
+        if(self%nshot<mpiworld%nproc) call error('Shot number < Processor number. Some processors will be always idle and MPI_allreduce will fail..')
                 
     end subroutine
 
@@ -316,6 +317,14 @@ use m_System
             endif
         enddo
 
+        !total number of shots for consider
+        !which is NOT number of all available shots
+        !since some shots might be repeated
+        self%nshots_2consider=0
+        do i=1,size(self%lists)
+            self%nshots_2consider = self%nshots_2consider + size(split(self%lists(i)%s))
+        enddo
+
         !write
         if(mpiworld%is_master) then
             open(10,file=dir_out//'shotlist')
@@ -323,9 +332,11 @@ use m_System
             do k=1,self%nlists
                 write(10,'(a)') '{'//self%lists(k)%s//'}'
             enddo
+            write(10,'(a)') 'Number of shots to consider = '//num2str(self%nshots_2consider)
             write(10,'(a)') ' '
             close(10)
         endif
+
         
     end subroutine
 
@@ -421,7 +432,7 @@ use m_System
 
         !message
         !write(*,*) ' Proc# '//mpiworld%sproc//' has '//num2str(self%nshots_per_processor)//' assigned shots'
-        call hud('Proc# '//mpiworld%sproc//' has '//num2str(self%nshots_per_processor)//' assigned shots')
+        call hud('Proc# 0001 has '//num2str(self%nshots_per_processor)//' assigned shots')
         call hud('See file "shotlist" for details.')
 
         !write shotlist to disk
@@ -439,27 +450,25 @@ use m_System
 
     end function
 
-    subroutine scale(self,dnorms)
+    subroutine scale(self,n,o_from_sampled,o_from_firstly_computed,o_from_1st_shot)
         class(t_shotlist) :: self
-        real,dimension(:) :: dnorms
+        real,dimension(*),optional :: o_from_sampled, o_from_firstly_computed, o_from_1st_shot
 
-        logical,save :: is_first_in=.true.
-        integer,save :: n=0, m=1
-
-        if(is_first_in) then
-            m=size(self%lists) !=sampled shots
-
-            !total number of elements in lists
-            !/= number of all provided shots, since some shots might be repeated
-            do i=1,size(self%lists)
-                n = n + size(split(self%lists(i)%s))
-            enddo
-
-            is_first_in=.false.
-            
+        !scale from sampled shots to shots_2consider
+        !e.g. used after loop over shots
+        if(present(o_from_sampled)) then
+            o_from_sampled(1:n) = self%nshots_2consider/self%nlists  * o_from_sampled(1:n)
         endif
 
-        dnorms = dnorms * n/m
+        !scale from firstly computed shots to shots_2consider
+        !e.g. used after fobj%dnorm is computed before exiting shot loops
+        if(present(o_from_firstly_computed)) then
+            o_from_firstly_computed(1:n) = self%nshots_2consider/mpiworld%nproc  * o_from_firstly_computed(1:n)
+        endif
+        
+        if(present(o_from_1st_shot)) then
+            o_from_1st_shot(1:n) = self%nshots_2consider * o_from_1st_shot(1:n)
+        endif
 
     end subroutine
 

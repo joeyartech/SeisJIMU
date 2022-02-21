@@ -264,17 +264,18 @@ use m_System
     use mpi
         class(t_model) :: self
         
-        self%ref_inv_vp=self%vp (iz,ix,iy)
-        self%ref_rho   =self%rho(iz,ix,iy)
+        if(mpiworld%is_master) then
 
-        call mpi_allreduce(mpi_in_place,self%ref_inv_vp,1,mpi_real,mpi_sum,mpiworld%communicator, mpiworld%ierr)
-        call mpi_allreduce(mpi_in_place,self%ref_rho   ,1,mpi_real,mpi_sum,mpiworld%communicator, mpiworld%ierr)
+            self%ref_inv_vp=1./self%vp (iz,ix,iy)
+            self%ref_rho   =   self%rho(iz,ix,iy)
 
-        self%ref_inv_vp=self%ref_inv_vp/mpiworld%nproc
-        self%ref_rho   =self%ref_rho   /mpiworld%nproc
-
-        call hud('Reference vp value = '//num2str(1./self%ref_inv_vp))
-        call hud('Reference rho value = '//num2str(self%ref_rho))
+            write(*,*) 'Reference vp value =',1./self%ref_inv_vp
+            write(*,*) 'Reference rho value =',self%ref_rho
+        
+        endif
+        
+        call mpi_bcast(self%ref_inv_vp,1,mpi_real,0,mpiworld%communicator,mpiworld%ierr)
+        call mpi_bcast(self%ref_rho   ,1,mpi_real,0,mpiworld%communicator,mpiworld%ierr)
 
     end subroutine
 

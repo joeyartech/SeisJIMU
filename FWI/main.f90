@@ -80,15 +80,15 @@ use m_Optimization
     !scale problem by linesearcher
     call ls%init
     call ls%scale(qp0)
-
-    call hud('qp0%f, ||g||_L2 = '//num2str(qp0%f)//', '//num2str(norm2(qp0%g)))
+    
+    call hud('qp0%f, ||g||^2 = '//num2str(qp0%f)//', '//num2str(norm2(qp0%g)))
 
     !if just estimate the wavelet or compute the gradient then this is it.
     if(setup%get_str('JOB')=='gradient') then
         call mpiworld%final
         stop
     endif
-
+    
     !optimization
     call optimizer_init(qp0)
     call optimizer_loop
@@ -114,6 +114,9 @@ use m_smoother_laplacian_sparse
     character(:),allocatable :: update_wavelet
 
     is_fitting_data=.true.
+
+    fobj%dnorms=0.
+    fobj%xnorms=0.
 
     call hud('===== START LOOP OVER SHOTS =====')
     
@@ -149,31 +152,25 @@ use m_smoother_laplacian_sparse
 
         !data weighting
         call wei%update
-
+        
         !objective function and adjoint source
-        if(is_first_in) then
-            call fobj%compute_dnorms(if_compute_adjsrc=.false.)
-            fobj%dnorm_normalizers=1./fobj%dnorms
-            is_first_in=.false.
-        endif
-        call fobj%compute_dnorms(if_compute_adjsrc=.true.)
-
-        if(mpiworld%is_master) call fobj%print_dnorms('Unstacked','on Shot#'//shot%sindex)
-
+        call fobj%compute_dnorms
+        
+        if(mpiworld%is_master) call fobj%print_dnorms('Shotloop-stacked','upto Shot#'//shot%sindex)
         ! if(either(oif_gradient,.true.,present(oif_gradient))) then
-
+        
             !adjoint source
             if(update_wavelet/='no') call shot%update_adjsource
-
+            
             call ppg%init_field(rfield,name='rfield',ois_adjoint=.true.)
-
+            
             call rfield%ignite
-
+            
             !adjoint modeling
             call ppg%adjoint(rfield,sfield,oif_compute_grad=.true.)
-                
+            
             call cb%project_back
-
+            
         ! endif
 
     enddo
@@ -182,11 +179,17 @@ use m_smoother_laplacian_sparse
 
     !collect global objective function value
     call mpi_allreduce(mpi_in_place, fobj%dnorms, fobj%n_dnorms, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-    call fobj%print_dnorms('Stacked but not yet linesearch-scaled','')
+    !scale by shotlist
+    call shls%scale(fobj%n_dnorms,o_from_sampled=fobj%dnorms)
+
+    call fobj%print_dnorms('Shotloop-stacked, shotlist-scaled, but yet linesearch-scaled','')
 
     ! if(either(oif_gradient,.true.,present(oif_gradient))) then
         !collect global gradient
         call mpi_allreduce(mpi_in_place, m%gradient,  m%n*ppg%ngrad, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+        !scale
+        call shls%scale(m%n*ppg%ngrad,o_from_sampled=m%gradient)
+
         if(ppg%if_compute_engy) then
             call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
         endif

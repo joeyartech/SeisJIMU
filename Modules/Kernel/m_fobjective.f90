@@ -37,6 +37,8 @@ use m_preconditioner
 
     type(t_fobjective),public :: fobj
 
+    logical :: if_has_dnorm_normalizers, if_has_xnorm_normalizers
+
     real,dimension(:,:),allocatable :: Wdres
     real,dimension(:,:,:,:),allocatable :: Wxres
     real,dimension(:,:,:,:),allocatable :: xprior !prior parameter
@@ -48,7 +50,7 @@ use m_preconditioner
         class(t_fobjective) :: self
         
         !data norms
-        self%s_dnorms=setup%get_strs('DATA_NORMS','DNORMS',o_default='L1 L2')
+        self%s_dnorms=setup%get_strs('DATA_NORMS','DNORMS',o_default='L1 L2_sq')
         self%n_dnorms=size(self%s_dnorms)
         
         call alloc(self%dnorms,           self%n_dnorms)
@@ -58,8 +60,8 @@ use m_preconditioner
             stop 'error reading DATA_NORM_WEIGHTS (DWEIGHTS)'
         endif
 
-        call alloc(self%dnorm_normalizers,self%n_dnorms)
-        self%dnorm_normalizers=1.
+        call alloc(self%dnorm_normalizers,self%n_dnorms,o_init=1.)
+        if_has_dnorm_normalizers=.false.
 
         !parameter norms
         self%s_xnorms=setup%get_strs('PARAMETER_NORMS','XNORMS',o_default='none')
@@ -85,123 +87,137 @@ use m_preconditioner
         
     end subroutine
     
-    subroutine compute_dnorms(self,if_compute_adjsrc)
+    recursive subroutine compute_dnorms(self)
+    use mpi
         class(t_fobjective) :: self
-        logical :: if_compute_adjsrc
 
         real,dimension(:,:),allocatable :: Wdres
         logical :: is_4adjsrc
         real :: numer, denom, time(shot%nt), v(shot%nt)
-
-        self%dnorms=0.
+        
+        !reinitialize adjoint source
+        if(if_has_dnorm_normalizers) call alloc(shot%dadj,shot%nt,shot%nrcv)
 
         do i=1,self%n_dnorms
             select case (self%s_dnorms(i)%s)
 
             case ('L1')
 
-                is_4adjsrc=abs(self%dnorm_weights(i))>0. .and. if_compute_adjsrc
-                if(is_4adjsrc) call alloc(shot%dadj,shot%nt,shot%nrcv,oif_protect=.true.)
+                is_4adjsrc = self%dnorm_weights(i)>0. .and. if_has_dnorm_normalizers
 
                 do ir=1,shot%nrcv
                     if(shot%rcv(ir)%is_badtrace) cycle
-
+                    
                     if(shot%rcv(ir)%comp=='p') then !pressure data
                         self%dnorms(i) = self%dnorms(i) + L1norm( shot%nt, &
-                            wei%weight(:,ir)*m%ref_inv_vp, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
-
-                        if(is_4adjsrc) call adjsrc_L1norm(shot%dadj(:,ir),self%dnorm_normalizers(i))
-
+                            wei%weight(:,ir)*m%ref_inv_vp, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt, self%dnorm_normalizers(i))
+                            
+                        if(is_4adjsrc) call adjsrc_L1norm(shot%dadj(:,ir))
+                        
                     else !velocities data
                         self%dnorms(i) = self%dnorms(i) + L1norm( shot%nt, &
-                            wei%weight(:,ir)*m%ref_rho,    shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
+                            wei%weight(:,ir)*m%ref_rho,    shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt, self%dnorm_normalizers(i))
 
-                        if(is_4adjsrc) call adjsrc_L1norm(shot%dadj(:,ir),self%dnorm_normalizers(i))
-
-                    endif
-
-                enddo
-
-            case ('L2')
-
-                is_4adjsrc=abs(self%dnorm_weights(i))>0. .and. if_compute_adjsrc
-                if(is_4adjsrc) call alloc(shot%dadj,shot%nt,shot%nrcv,oif_protect=.true.)
-
-                do ir=1,shot%nrcv
-                    if(shot%rcv(ir)%is_badtrace) cycle
-
-                    if(shot%rcv(ir)%comp=='p') then !pressure data
-                        self%dnorms(i) = self%dnorms(i) + 0.5*L2norm_sq( shot%nt, &
-                            wei%weight(:,ir)*m%ref_inv_vp, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
-
-                        if(is_4adjsrc) call adjsrc_L2norm_sq(shot%dadj(:,ir),self%dnorm_normalizers(i))
-
-                    else !velocity data
-                        self%dnorms(i) = self%dnorms(i) + 0.5*L2norm_sq( shot%nt, &
-                            wei%weight(:,ir)*m%ref_rho,    shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
-
-                        if(is_4adjsrc) call adjsrc_L2norm_sq(shot%dadj(:,ir),self%dnorm_normalizers(i))
+                        if(is_4adjsrc) call adjsrc_L1norm(shot%dadj(:,ir))
 
                     endif
 
                 enddo
-
-            case ('ndecon') !normalized deconvolution
-                ! !Data residual of 1st shot as an example
-                ! if(mpiworld%is_master) then
-                !     Wdres=wei%weight*(shot%dsyn-shot%dobs)
-                !     call shot%write('Wdres_',Wdres)
-                !     deallocate(Wdres)
-                ! endif
-
-                !aka Reverse AWI (Warner & Guasch, 2016, Geophysics, 81-6)
-                !Note Eq D-4 has a minor typo in the paper, however the other eq in the main text is correct.
-
-                ! if(is_first_in) then
-                !     ref_p = 0.
-                !     do ir=1,shot%nrcv
-                !         if(shot%rcv(ir)%is_badtrace) cycle
-                !         if(shot%rcv(ir)%comp=='p') then !for pressure data
-                !             tmp=maxval(abs(Wdres(:,ir)))
-                !             ref_p=either(ref_p,tmp,ref_p>tmp)
-                !         endif
-                !     enddo
-                ! endif
-
-                is_4adjsrc=abs(self%dnorm_weights(i))>0. .and. if_compute_adjsrc
-                if(is_4adjsrc) call alloc(shot%dadj,shot%nt,shot%nrcv,oif_protect=.true.)
-
-                numer=0.
-                denom=0.
-                time=[(it-1.,it=1,shot%nt)]*shot%dt !why shot%nt?
-
-                do ir=1,shot%nrcv
-                    if(shot%rcv(ir)%is_badtrace) cycle
-                    if(shot%rcv(ir)%comp=='p') then
-                        call matchfilter_estimate(shot%dobs(:,ir),shot%dsyn(:,ir),shot%nt,1,o_filter_time=v)
-                        numer=numer+norm2(time*v) 
-                        denom=denom+norm2(v*v)
-
-                        self%dnorms(i) = self%dnorms(i) + 0.5*numer/denom !/shot%dt*m%cell_volume*ref_p*ref_p/m%ref_kpa
-                    
-                        if(is_4adjsrc) then
-                            call matchfilter_adjointsrc(shot%dobs(:,ir),shot%dadj(:,ir), &
-                                -(time*time-2.*self%dnorms(i))/denom*v)
-
-                        endif
                 
+            case ('L2_sq')
+            
+                is_4adjsrc = self%dnorm_weights(i)>0. .and. if_has_dnorm_normalizers
+
+                do ir=1,shot%nrcv
+                    if(shot%rcv(ir)%is_badtrace) cycle
+                    
+                    if(shot%rcv(ir)%comp=='p') then !pressure data
+                        self%dnorms(i) = self%dnorms(i) + L2norm_sq( shot%nt, &
+                            wei%weight(:,ir)*m%ref_inv_vp, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt, 0.5*self%dnorm_normalizers(i))
+                            
+                        if(is_4adjsrc) call adjsrc_L2norm_sq(shot%dadj(:,ir))
+                        
+                    else !velocity data
+                        self%dnorms(i) = self%dnorms(i) + L2norm_sq( shot%nt, &
+                            wei%weight(:,ir)*m%ref_rho,    shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt, 0.5*self%dnorm_normalizers(i))
+
+                        if(is_4adjsrc) call adjsrc_L2norm_sq(shot%dadj(:,ir))
+
                     endif
-                enddo               
+
+                enddo
+
+            ! case ('ndecon') !normalized deconvolution
+            !     ! !Data residual of 1st shot as an example
+            !     ! if(mpiworld%is_master) then
+            !     !     Wdres=wei%weight*(shot%dsyn-shot%dobs)
+            !     !     call shot%write('Wdres_',Wdres)
+            !     !     deallocate(Wdres)
+            !     ! endif
+
+            !     !aka Reverse AWI (Warner & Guasch, 2016, Geophysics, 81-6)
+            !     !Note Eq D-4 in Appendix D has a minor typo, the other eq in the paper is correct.
+
+            !     ! if(is_first_in) then
+            !     !     ref_p = 0.
+            !     !     do ir=1,shot%nrcv
+            !     !         if(shot%rcv(ir)%is_badtrace) cycle
+            !     !         if(shot%rcv(ir)%comp=='p') then !for pressure data
+            !     !             tmp=maxval(abs(Wdres(:,ir)))
+            !     !             ref_p=either(ref_p,tmp,ref_p>tmp)
+            !     !         endif
+            !     !     enddo
+            !     ! endif
+
+            !     is_4adjsrc=abs(self%dnorm_weights(i))>0. .and. if_compute_adjsrc
+            !     if(is_4adjsrc) call alloc(shot%dadj,shot%nt,shot%nrcv,oif_protect=.true.)
+
+            !     numer=0.
+            !     denom=0.
+            !     time=[(it-1.,it=1,shot%nt)]*shot%dt !why shot%nt?
+
+            !     do ir=1,shot%nrcv
+            !         if(shot%rcv(ir)%is_badtrace) cycle
+            !         if(shot%rcv(ir)%comp=='p') then
+            !             call matchfilter_estimate(shot%dobs(:,ir),shot%dsyn(:,ir),shot%nt,1,o_filter_time=v)
+            !             numer=numer+norm2(time*v) 
+            !             denom=denom+norm2(v*v)
+
+            !             self%dnorms(i) = self%dnorms(i) + 0.5*numer/denom !/shot%dt*m%cell_volume*ref_p*ref_p/m%ref_kpa
+                    
+            !             if(is_4adjsrc) then
+            !                 call matchfilter_adjointsrc(shot%dobs(:,ir),shot%dadj(:,ir), &
+            !                     -(time*time-2.*self%dnorms(i))/denom*v)
+
+            !             endif
+                
+            !         endif
+            !     enddo
 
             end select
 
         enddo
-
-        !scale dnorms by shotlist
-        call shls%scale(self%dnorms)
-
-        if(allocated(shot%dadj)) call shot%write('dadj_',shot%dadj)
-
+        
+        if(if_has_dnorm_normalizers) call shot%write('dadj_',shot%dadj)
+        
+        if(if_has_dnorm_normalizers) return
+        
+        
+        !otherwise estimate normalizers
+        if(mpiworld%is_master) then            
+            self%dnorm_normalizers=1./self%dnorms
+            write(*,*) 'fobj%dnorm_normalizers before shotlist-scaling =',self%dnorm_normalizers
+            call shls%scale(self%n_dnorms,o_from_1st_shot=self%dnorm_normalizers)
+            write(*,*) 'fobj%dnorm_normalizers =',self%dnorm_normalizers
+        endif
+        
+        call mpi_bcast(self%dnorm_normalizers, self%n_dnorms, mpi_real, 0, mpiworld%communicator, mpiworld%ierr)
+        
+        if_has_dnorm_normalizers=.true.
+        
+        !and redo the computations for adjoint sources
+        call self%compute_dnorms
+        
     end subroutine
 
     subroutine compute_xnorms(self,x,g)
@@ -217,7 +233,7 @@ use m_preconditioner
 
         do i=1,self%n_xnorms
             select case (self%s_xnorms(i)%s)
-            case ('Ridge','L2')
+            case ('Ridge','L2_sq')
                 !fcost
                 call alloc(xres,param%n1,param%n2,param%n3,param%npars)
                 if(m%if_has_prior) then
@@ -237,7 +253,7 @@ use m_preconditioner
             case ('Lasso','L1')
                 !to be implemented..
 
-            case ('1st_Ridge','1-L2')
+            case ('1st_Ridge','1st_L2_sq')
 
                 do j=1,param%n1
                     !self%xnorms(i) = self%xnorms(i) + xnorms_weights(1)*sum((x(j+1,:,:,:)-x(j,:,:,:))**2,.not.param%is_freeze_zone(j,:,:,:))
@@ -328,7 +344,7 @@ use m_preconditioner
             call modeling_gradient(qp%is_fitting_data)
         ! endif
         
-        qp%f = sum(self%dnorm_weights*self%dnorms*self%dnorm_normalizers) ! + sum(self%xnorm_weights*self%xnorms*self%xnorm_normalizers)
+        qp%f = sum(self%dnorm_weights*self%dnorms) ! + sum(self%xnorm_weights*self%xnorms)
 
         if(.not. either(oif_gradient,.true.,present(oif_gradient))) return
 

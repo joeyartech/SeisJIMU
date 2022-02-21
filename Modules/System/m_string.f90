@@ -22,6 +22,8 @@ module m_string
         !https://www.petefreitag.com/item/863.cfm
         !char function: CHAR(10) is linefeed LF. CHAR(13) is carriage return CR. If you are a little paranoid, ACHAR(10) is better - this is a little more robust to the default character kind not being ascii.
         !The NEW_LINE standard intrinsic is even more robust. There's also the C_NEW_LINE and C_CARRIAGE_RETURN constants from the ISO_C_BINDING module for kind C_CHAR characters.
+    haracter(*), parameter :: s_vvbar = achar(186)
+    haracter(*), parameter :: s_sq = achar(253)
 
     integer,parameter,private :: A2a = ichar('a') - ichar('A')
     character(*),parameter,private :: digits='1234567890'

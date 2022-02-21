@@ -88,7 +88,7 @@ use m_Kernel
         
         ! if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Initial alphaL/alpha/alphaR =',alphaL,alpha,alphaR
         call hud('Initial alpha = '//num2str(self%alpha))
-        call hud('Current qp%f, ||g||_L2 = '//num2str(curr%f)//', '//num2str(norm2(curr%g)))
+        call hud('Current qp%f, ||g||2^2 = '//num2str(curr%f)//', '//num2str(norm2(curr%g)))
 
         !save gradients
         if(present(o_gradient_history)) then
@@ -139,11 +139,11 @@ if(mpiworld%is_master) print*,'minmax curr%d',minval(curr%d),maxval(curr%d)
 
             !if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Linesearch alphaL/alpha/alphaR =',alphaL,alpha,alphaR
             call hud('alpha = '//num2str(self%alpha)//' in ['//num2str(self%alphaL)//','//num2str(self%alphaR)//']')
-            call hud('Perturb qp%f, ||g||_L2 = '//num2str(pert%f)//', '//num2str(norm2(pert%g)))
+            call hud('Perturb qp%f, ||g||2^2 = '//num2str(pert%f)//', '//num2str(norm2(pert%g)))
             
             !Wolfe conditions
-            !if_1st_cond = (pert%f <= curr%f+c1*self%alpha*curr%g_dot_d) !sufficient descent condition
-            if_1st_cond = (pert%f <= curr%f) !+c1*self%alpha*curr%g_dot_d/self%scaler)
+            if_1st_cond = (pert%f <= curr%f+c1*self%alpha*curr%g_dot_d) !sufficient descent condition
+            !if_1st_cond = (pert%f <= curr%f)
             !if_2nd_cond = (abs(pert%g_dot_d) >= c2*abs(curr%g_dot_d)) !strong curvature condition
             if_2nd_cond = (pert%g_dot_d >= c2*curr%g_dot_d) !weak curvature condition
 
@@ -263,16 +263,18 @@ if(mpiworld%is_master) print*,'minmax curr%d',minval(curr%d),maxval(curr%d)
         
         if(is_first_in) then
 
-            str=setup%get_str('LINESEARCHER_SCALING','LS_SCALING',o_default='by total_volume/|pg1|_L1')
+            str=setup%get_str('LINESEARCHER_SCALING','LS_SCALING',o_default='by total_volume/||pg1||1')
 
-            if(str=='by total_volume/|pg1|_L1') then
-                eps=param%n1*param%n2*param%n3/sum(abs(qp%pg(:,:,:,1))) !=total_volume/|pg1|_L1, total_volume = int dy^3
-            else
+            if(str=='by total_volume/||pg1||1') then
+                eps=param%n1*param%n2*param%n3/sum(abs(qp%pg(:,:,:,1))) !=total_volume/||pg1||1, total_volume = int dy^3
+                
+            elseif(len(str)>0) then
                 eps=str2real(str)
                 eps=eps/maxval(abs(qp%pg(:,:,:,1))) !e.g., =0.05/|g1|_inf i.e. maximum 50m/s perturbation on velocity
-
+            else
+                call error('LINESEARCHER_SCALING input is zero!')
             endif
-
+            
             self%scaler=eps/param%pars(1)%range
             
             call hud('Linesearch scaler= '//num2str(self%scaler))
@@ -280,11 +282,11 @@ if(mpiworld%is_master) print*,'minmax curr%d',minval(curr%d),maxval(curr%d)
             is_first_in=.false.
 
         endif
-
+        
         qp%f=qp%f*self%scaler
         qp%g=qp%g*self%scaler
         qp%pg=qp%pg*self%scaler
-
+        
     end subroutine
     
 
