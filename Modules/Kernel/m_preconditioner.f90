@@ -164,11 +164,11 @@ use m_parametrizer
         ! enddo
 
         !precond whole grediant to keep the gradient norm
-        old_norm = norm2(g)
+        old_norm = sum(abs(g))
         do i=1,param%npars
             pg(:,:,:,i)=g(:,:,:,i)*preco_in_x(:,:,:)
         enddo
-        pg = sqrt(old_norm/norm2(pg)) * pg
+        pg = old_norm/sum(abs(pg)) * pg !switch to L1 tobe robust
         
         !save some RAM
         call dealloc(preco_in_x,preco_in_m)
