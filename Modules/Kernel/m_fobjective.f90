@@ -27,8 +27,8 @@ use m_preconditioner
         contains
 
         procedure :: init
-        procedure :: compute_dnorms
-        procedure :: compute_xnorms
+        procedure :: stack_dnorms
+        procedure :: stack_xnorms
         procedure :: print_dnorms
         procedure :: print_xnorms
         procedure :: eval
@@ -91,7 +91,7 @@ use m_preconditioner
         
     end subroutine
     
-    recursive subroutine compute_dnorms(self)
+    recursive subroutine stack_dnorms(self)
     use mpi
         class(t_fobjective) :: self
 
@@ -220,11 +220,12 @@ use m_preconditioner
         if_has_dnorm_normalizers=.true.
         
         !and redo the computations for adjoint sources
-        call self%compute_dnorms
+        self%dnorms=0.
+        call self%stack_dnorms
         
     end subroutine
 
-    subroutine compute_xnorms(self,x,g)
+    subroutine stack_xnorms(self,x,g)
         class(t_fobjective) :: self
         real,dimension(param%n1,param%n2,param%n3,param%npars) :: x,g
 
@@ -409,7 +410,7 @@ use m_preconditioner
         type(t_fobjective) :: fobj
         type(t_querypoint) :: qp
 
-        if(mpiworld%is_master) call fobj%compute_xnorms(qp%x,qp%g)
+        if(mpiworld%is_master) call fobj%stack_xnorms(qp%x,qp%g)
 
     end subroutine
 

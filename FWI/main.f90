@@ -154,7 +154,7 @@ use m_smoother_laplacian_sparse
         call wei%update
         
         !objective function and adjoint source
-        call fobj%compute_dnorms
+        call fobj%stack_dnorms
         
         if(mpiworld%is_master) call fobj%print_dnorms('Shotloop-stacked','upto Shot#'//shot%sindex)
         ! if(either(oif_gradient,.true.,present(oif_gradient))) then
