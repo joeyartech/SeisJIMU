@@ -32,8 +32,12 @@ use m_Kernel
     !thresholding
     real,parameter :: thres=0.
 
-    !initial steplength
-    real,parameter :: alpha0=1.
+    ! !initial steplength
+    ! real,parameter :: alpha0=1.
+
+    !change here for enumerated search
+    real,parameter,dimension(*) :: alphas=[0.5,1.,2.,4.,8.,16.,32.,64.,128.,256.,512.,1024.]
+    integer :: nalpha=size(alphas)
 
     type,public :: t_linesearcher
         real :: alpha  !steplength
@@ -64,10 +68,8 @@ use m_Kernel
         call hud(info)
         call hud('Wolfe condition parameters: c1='//num2str(c1)//', c2='//num2str(c2))
 
-        self%alpha=alpha0
-
         !read setup        
-        self%max_search=setup%get_int('MAX_SEARCH',o_default='12')
+        ! self%max_search=setup%get_int('MAX_SEARCH',o_default='12')
 
     end subroutine
     
@@ -82,43 +84,45 @@ use m_Kernel
 
         logical :: if_1st_cond, if_2nd_cond
 
-        self%alphaL=0.
-        self%alphaR=huge(1.)
-        if(if_reinit_alpha) self%alpha=alpha0
+        ! self%alphaL=0.
+        ! self%alphaR=huge(1.)
+        ! if(if_reinit_alpha) self%alpha=alpha0
         
         ! if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Initial alphaL/alpha/alphaR =',alphaL,alpha,alphaR
         call hud('Initial alpha = '//num2str(self%alpha))
         call hud('Current qp%f, ║g║² = '//num2str(curr%f)//', '//num2str(norm2(curr%g)))
 
-        !save gradients
-        if(present(o_gradient_history)) then
-            l=size(o_gradient_history,5) !number of gradient in history
-            i=1
-            o_gradient_history(:,:,:,:,i)=curr%g !?? and why not eoshift(o_gradient_history,1,curr%g)
-            i=i+1; if(i>l) i=1
-        endif
+        ! !save gradients
+        ! if(present(o_gradient_history)) then
+        !     l=size(o_gradient_history,5) !number of gradient in history
+        !     i=1
+        !     o_gradient_history(:,:,:,:,i)=curr%g !?? and why not eoshift(o_gradient_history,1,curr%g)
+        !     i=i+1; if(i>l) i=1
+        ! endif
         
         call hud('------------ START LINESEARCH ------------')
         !linesearch loop
-        loop: do isearch=1,self%max_search
+        loop: do isearch=1,nalpha
             self%isearch=isearch !gfortran requires so
+
+            self%alpha=alphas(isearch)
 
             !perturb current point
             pert%x = curr%x + self%alpha*curr%d
-            !if(mpiworld%is_master) call sysio_write('pert%x',pert%x,size(pert%x),o_mode='append')
             call threshold(pert%x,size(pert%x))
+            if(mpiworld%is_master) call sysio_write('pert%x',pert%x,size(pert%x),o_mode='append')
             call hud('Modeling with perturbed models')
 
-            call chp%init('FWI_querypoint_linesearcher','Gradient#','per_init')
-            if(.not.pert%is_registered(chp)) then
+            ! call chp%init('FWI_querypoint_linesearcher','Gradient#','per_init')
+            ! if(.not.pert%is_registered(chp)) then
                 call fobj%eval(pert)
-                call pert%register(chp)
-            endif
+                ! call pert%register(chp)
+            ! endif
 
-            if(.not. curr%is_fitting_data) then
-                call hud('Negate the sign of pert due to curr')
-                call pert%set_negative
-            endif
+            ! if(.not. curr%is_fitting_data) then
+            !     call hud('Negate the sign of pert due to curr')
+            !     call pert%set_negative
+            ! endif
 
 
 if(mpiworld%is_master) print*,'minmax pert%g before scaling',minval(pert%g),maxval(pert%g)
@@ -129,11 +133,11 @@ if(mpiworld%is_master) print*,'minmax curr%d',minval(curr%d),maxval(curr%d)
 
             self%igradient=self%igradient+1
 
-            !save gradients
-            if(present(o_gradient_history)) then
-                o_gradient_history(:,:,:,:,i)=pert%g
-                i=i+1; if(i>l) i=1
-            endif
+            ! !save gradients
+            ! if(present(o_gradient_history)) then
+            !     o_gradient_history(:,:,:,:,i)=pert%g
+            !     i=i+1; if(i>l) i=1
+            ! endif
 
             call hud('Iterate.Linesearch.Gradient# = '//num2str(iterate)//'.'//num2str(self%isearch)//'.'//num2str(self%igradient))
 
@@ -149,7 +153,7 @@ if(mpiworld%is_master) print*,'minmax curr%d',minval(curr%d),maxval(curr%d)
 
             print*,'1st cond',pert%f,curr%f,curr%g_dot_d, if_1st_cond
             print*,'2nd cond',pert%g_dot_d, if_2nd_cond
-            print*,'alpha(3)',alphaL,alpha,alpha_R
+            ! print*,'alpha(3)',alphaL,alpha,alpha_R
 
             !occasionally optimizers on processors don't have same behavior
             !try to avoid this by broadcast controlling logicals.
@@ -159,70 +163,75 @@ if(mpiworld%is_master) print*,'minmax curr%d',minval(curr%d),maxval(curr%d)
             !1st condition OK, 2nd condition OK => use alpha
             if(if_1st_cond .and. if_2nd_cond) then
                 call hud('Wolfe conditions are satisfied')
-                call hud('Enter new iterate')
+                ! call hud('Enter new iterate')
                 self%result='success'
-                exit loop
+                ! exit loop
+                cycle loop
             endif
             
-            if(self%isearch<self%max_search) then
+            ! if(self%isearch<self%max_search) then
             
                 !1st condition BAD => [ <-]
                 if(.not. if_1st_cond) then
                     call hud("Sufficient decrease condition is not satified. Now try a smaller alpha")
                     self%result='perturb'
-                    self%alphaR=self%alpha
-                    self%alpha=0.5*(self%alphaL+self%alphaR) !shrink the search interval
+                    ! self%alphaR=self%alpha
+                    ! self%alpha=0.5*(self%alphaL+self%alphaR) !shrink the search interval
                 endif
                 
                 !2nd condition BAD => [-> ]
                 if(if_1st_cond .and. .not. if_2nd_cond) then
                     call hud("Curvature condition is not satified. Now try a larger alpha")
                     self%result='perturb'
-                    self%alphaL=self%alpha
-                    if(self%alphaR < huge(1.)) then
-                        self%alpha=0.5*(self%alphaL+self%alphaR) !shrink the search interval
-                    else
-                        self%alpha=self%alpha*multiplier !extend search interval
-                    endif
+                    ! self%alphaL=self%alpha
+                    ! if(self%alphaR < huge(1.)) then
+                    !     self%alpha=0.5*(self%alphaL+self%alphaR) !shrink the search interval
+                    ! else
+                    !     self%alpha=self%alpha*multiplier !extend search interval
+                    ! endif
                 endif
                 
-            endif
+            ! endif
 
-            if(self%isearch==self%max_search) then
+            ! if(self%isearch==self%max_search) then
             
-                !1st condition BAD => failure
-                if(.not. if_1st_cond) then
-                    call hud("Linesearch failure: can't find good alpha.")
-                    self%result='failure'
-                    exit loop
-                endif
+            !     !1st condition BAD => failure
+            !     if(.not. if_1st_cond) then
+            !         call hud("Linesearch failure: can't find good alpha.")
+            !         self%result='failure'
+            !         exit loop
+            !     endif
                 
-                !2nd condition BAD => use alpha
-                if(.not. if_2nd_cond) then
-                    call hud("Maximum linesearch number reached. Use alpha although curvature condition is not satisfied")
-                    call hud('Enter new iterate')
-                    self%result='success'
-                    exit loop
-                endif
+            !     !2nd condition BAD => use alpha
+            !     if(.not. if_2nd_cond) then
+            !         call hud("Maximum linesearch number reached. Use alpha although curvature condition is not satisfied")
+            !         call hud('Enter new iterate')
+            !         self%result='success'
+            !         exit loop
+            !     endif
                 
-            endif
+            ! endif
 
         enddo loop
 
 
-        if(pert%is_fitting_data) then
-            call hud('Set positive sign to pert')
-            call pert%set_positive
-        else
-            call hud('Set negtaive sign to pert')
-            call pert%set_negative
-        endif
+        ! if(pert%is_fitting_data) then
+        !     call hud('Set positive sign to pert')
+        !     call pert%set_positive
+        ! else
+        !     call hud('Set negtaive sign to pert')
+        !     call pert%set_negative
+        ! endif
 
         
-        if(self%igradient>=self%max_gradient) then
-            call hud('Maximum number of gradients reached. Finalize program now..')
-            self%result='maximum'
-        endif       
+        ! if(self%igradient>=self%max_gradient) then
+        !     call hud('Maximum number of gradients reached. Finalize program now..')
+        !     self%result='maximum'
+        ! endif
+
+
+        call mpiworld%final
+        stop
     
     end subroutine
 

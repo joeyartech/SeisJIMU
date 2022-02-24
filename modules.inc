@@ -23,6 +23,7 @@ App=FWI
 # Optimization #
 ################
 LineS=Wolfe
+#LineS=enumerate
 Optim=SD
 #Optim=NLCG
 #Optim=lBFGS

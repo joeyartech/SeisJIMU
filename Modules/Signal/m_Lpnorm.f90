@@ -8,6 +8,19 @@ use m_arrayop
 
     contains
 
+    ! function s_L1norm(str)
+    !     character(*) :: str
+    !     character(:),allocatable :: s_L1norm
+    !     s_L1norm = '║'//str//'║1'
+    ! end function
+
+    ! function s_L2norm_sq(str)
+    !     character(*) :: str
+    !     character(:),allocatable :: s_L2norm_sq
+    !     s_L2norm_sq = '║'//str//'║2²'
+    ! end function
+
+
     !||u||_1 = int |W*u| *dt
     real function L1norm(size,W,u,sampling,scaler)
         integer size

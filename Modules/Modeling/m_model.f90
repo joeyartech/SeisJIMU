@@ -263,11 +263,20 @@ use m_System
     subroutine set_reference(self,iz,ix,iy)
     use mpi
         class(t_model) :: self
+        real :: tmp(2)
         
         if(mpiworld%is_master) then
 
-            self%ref_inv_vp=1./self%vp (iz,ix,iy)
-            self%ref_rho   =   self%rho(iz,ix,iy)
+            if(setup%check('MODEL_REFERENCE','MREF')) then
+                tmp=setup%get_reals('MODEL_REFERENCE','MREF',o_mandatory=2)
+                self%ref_inv_vp=1./tmp(1)
+                self%ref_rho   =tmp(2)
+
+            else
+                self%ref_inv_vp=1./self%vp (iz,ix,iy)
+                self%ref_rho   =   self%rho(iz,ix,iy)
+
+            endif
 
             write(*,*) 'Reference vp value =',1./self%ref_inv_vp
             write(*,*) 'Reference rho value =',self%ref_rho

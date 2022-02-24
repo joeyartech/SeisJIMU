@@ -23,14 +23,14 @@ use m_cpml
             '1st-order Velocity-Stress formulation'//s_NL// &
             'Vireux-Levandar Staggered-Grid Finite-Difference (FDSG) method'//s_NL// &
             'Cartesian O(x4,t2) stencil'//s_NL// &
-            'CFL=Sum|coef|*Vmax*dt/rev_cell_volume'//s_NL// &
+            'CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal'//s_NL// &
             '   -> dt <= 0.606(2D) or 0.494(3D) *Vmax/dx'//s_NL// &
             'Required model attributes: vp, rho'//s_NL// &
-            'Required field components: vz, vx, vy(3D), p'//s_NL// &
+            'Required field components: vz, vx, vy(for 3D), p'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
             'Basic gradients: grho gkpa'//s_NL// &
             'Imaging conditions: P-Pxcorr'//s_NL// &
-            'Energy terms: Sum_shot int sfield%P^2 dt'
+            'Energy terms: Σ_shot ∫ sfield%p² dt'
 
         integer :: nbndlayer=max(2,hicks_r) !minimum absorbing layer thickness
         integer :: ngrad=2 !number of basic gradients
@@ -95,7 +95,7 @@ use m_cpml
     integer :: irdt
     real :: rdt
 
-real,dimension(:,:,:),allocatable :: sf_p_save
+! real,dimension(:,:,:),allocatable :: sf_p_save
 
     contains
     
@@ -124,7 +124,7 @@ real,dimension(:,:,:),allocatable :: sf_p_save
 
         if(index(self%info,'rho')>0 .and. .not. allocated(m%rho)) then
             call alloc(m%rho,m%nz,m%nx,m%ny,o_init=1000.)
-            call warn('Constant rho model (1000 kg/m3) is allocated by propagator.')
+            call warn('Constant rho model (1000 kg/m³) is allocated by propagator.')
         endif
                 
     end subroutine
@@ -493,7 +493,7 @@ real,dimension(:,:,:),allocatable :: sf_p_save
         
         ift=1; ilt=self%nt
 
-call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
@@ -700,7 +700,7 @@ call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
         ift=1; ilt=self%nt
 
-call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
@@ -907,7 +907,7 @@ call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
         ift=1; ilt=self%nt
         
-call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
@@ -1110,7 +1110,7 @@ call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
         ift=1; ilt=self%nt
 
-call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
@@ -1619,11 +1619,11 @@ call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
     end subroutine
 
     !========= for wavefield correlation ===================   
-    !grho = -adjv \dot dv_dt
-    !     = -adjv \dot b \nabla p
+    !grho = -adjv · dv_dt
+    !     = -adjv · b ∇p
     !
-    !gkpa = -adjp \dot -1/kpa2 dp_dt
-    !     = -adjp \dot -1/kpa  \nabla.v
+    !gkpa = -adjp · -1/kpa2 dp_dt
+    !     = -adjp · -1/kpa  ∇·v
     !
     !v^it+1, p^it+0.5, adjp^it+0.5
     !p^it+0.5, v^it, adjv^it
@@ -1665,31 +1665,29 @@ call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
         ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
         
-        ! if(m%is_cubic) then
-        !     call grad3d_moduli(sf%vz,sf%vx,sf%vy,rf%p,&
-        !                        grad,                  &
-        !                        ifz,ilz,ifx,ilx,ify,ily)
-        ! else
-            call grad2d_moduli(sf%p,sf_p_save,rf%p,&
+        if(m%is_cubic) then
+            call grad3d_moduli(sf%vz,sf%vx,sf%vy,rf%p,&
+                               grad,                  &
+                               ifz,ilz,ifx,ilx,ify,ily)
+        else
+            ! call grad2d_moduli(sf%p,sf_p_save,rf%p,&
+            !                    grad,            &
+            !                    ifz,ilz,ifx,ilx)
+            ! sf_p_save = sf%p
+            
+            !inexact greadient
+            call grad2d_moduli(sf%vz,sf%vx,rf%p,&
                                grad,            &
                                ifz,ilz,ifx,ilx)
-        ! endif
-
-        sf_p_save = sf%p
-
-
-        ! !inexact greadient
-        ! call grad2d_moduli(sf%vz,sf%vx,rf%p,&
-        !                    grad,            &
-        !                    ifz,ilz,ifx,ilx)
+        endif
         
     end subroutine
     
     subroutine gradient_postprocess
-        !grho, in [Nm/(kg/m3)]
+        !grho
         cb%grad(:,:,:,1)=-cb%grad(:,:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)         *m%cell_volume*rdt
 
-        !gkpa, in [Nm/Pa]
+        !gkpa
         cb%grad(:,:,:,2)=-cb%grad(:,:,:,2) * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my)) *m%cell_volume*rdt
                 
         !preparing for cb%project_back
@@ -2120,55 +2118,13 @@ call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
     end subroutine
 
-    subroutine grad2d_moduli(sf_p,sf_p_save,rf_p,&
-                             grad,            &
-                             ifz,ilz,ifx,ilx)
-        real,dimension(*) :: sf_p,sf_p_save,rf_p
-        real,dimension(*) :: grad
-        
-        nz=cb%nz
-        
-        dsp=0.
-         rp=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,j,&
-        !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-        !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dvz_dz,dvx_dx,&
-        !$omp         dsp,rp)
-        !$omp do schedule(dynamic)
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-                
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
-                
-                dsp = sf_p_save(i) - sf_p(i)
-                 rp = rf_p(i)
-                
-                grad(j)=grad(j) - dsp*rp
-                
-            end do
-            
-        end do
-        !$omp end do
-        !$omp end parallel
-
-    end subroutine
-
-    ! subroutine grad2d_moduli(sf_vz,sf_vx,rf_p,&
+    ! subroutine grad2d_moduli(sf_p,sf_p_save,rf_p,&
     !                          grad,            &
     !                          ifz,ilz,ifx,ilx)
-    !     real,dimension(*) :: sf_vz,sf_vx,rf_p
+    !     real,dimension(*) :: sf_p,sf_p_save,rf_p
     !     real,dimension(*) :: grad
         
     !     nz=cb%nz
-        
-    !     dvz_dz=0.
-    !     dvx_dx=0.
         
     !     dsp=0.
     !      rp=0.
@@ -2188,19 +2144,7 @@ call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
     !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
     !             j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
                 
-    !             izm1_ix=i-1  !iz-1,ix
-    !             iz_ix  =i    !iz,ix
-    !             izp1_ix=i+1  !iz+1,ix
-    !             izp2_ix=i+2  !iz+2,ix
-                
-    !             iz_ixm1=i    -nz  !iz,ix-1
-    !             iz_ixp1=i    +nz  !iz,ix+1
-    !             iz_ixp2=i  +2*nz  !iz,ix+2
-                
-    !             dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
-    !             dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
-                
-    !             dsp = dvz_dz +dvx_dx
+    !             dsp = sf_p_save(i) - sf_p(i)
     !              rp = rf_p(i)
                 
     !             grad(j)=grad(j) - dsp*rp
@@ -2212,6 +2156,60 @@ call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
     !     !$omp end parallel
 
     ! end subroutine
+
+    subroutine grad2d_moduli(sf_vz,sf_vx,rf_p,&
+                             grad,            &
+                             ifz,ilz,ifx,ilx)
+        real,dimension(*) :: sf_vz,sf_vx,rf_p
+        real,dimension(*) :: grad
+        
+        nz=cb%nz
+        
+        dvz_dz=0.
+        dvx_dx=0.
+        
+        dsp=0.
+         rp=0.
+        
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,j,&
+        !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
+        !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
+        !$omp         dvz_dz,dvx_dx,&
+        !$omp         dsp,rp)
+        !$omp do schedule(dynamic)
+        do ix=ifx,ilx
+        
+            !dir$ simd
+            do iz=ifz,ilz
+                
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                
+                izm1_ix=i-1  !iz-1,ix
+                iz_ix  =i    !iz,ix
+                izp1_ix=i+1  !iz+1,ix
+                izp2_ix=i+2  !iz+2,ix
+                
+                iz_ixm1=i    -nz  !iz,ix-1
+                iz_ixp1=i    +nz  !iz,ix+1
+                iz_ixp2=i  +2*nz  !iz,ix+2
+                
+                dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
+                dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
+                
+                dsp = dvz_dz +dvx_dx
+                 rp = rf_p(i)
+                
+                grad(j)=grad(j) - dsp*rp
+                
+            end do
+            
+        end do
+        !$omp end do
+        !$omp end parallel
+
+    end subroutine
     
     subroutine grad3d_density(sf_p,rf_vz,rf_vx,rf_vy,&
                               grad,                  &

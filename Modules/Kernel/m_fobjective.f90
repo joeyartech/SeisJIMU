@@ -60,9 +60,13 @@ use m_preconditioner
             stop 'error reading DATA_NORM_WEIGHTS (DWEIGHTS)'
         endif
 
-        call alloc(self%dnorm_normalizers,self%n_dnorms,o_init=1.)
         if_has_dnorm_normalizers=.false.
-
+        call alloc(self%dnorm_normalizers,self%n_dnorms,o_init=1.)
+        if(setup%check('DATA_NORM_NORMALIZERS','DNORMALIZERS')) then
+            self%dnorm_normalizers=setup%get_reals('DATA_NORM_NORMALIZERS','DNORMALIZERS',o_mandatory=self%n_dnorms)
+            if_has_dnorm_normalizers=.true.
+        endif
+        
         !parameter norms
         self%s_xnorms=setup%get_strs('PARAMETER_NORMS','XNORMS',o_default='none')
         self%n_xnorms=size(self%s_xnorms)
@@ -309,7 +313,7 @@ use m_preconditioner
         character(*) :: prefix,suffix
 
         if(mpiworld%is_master) then
-            write(*,*) prefix//' fobj%dnorms '//suffix//': ', (' ',self%s_dnorms(i)%s,' ',self%dnorms(i),i=1,self%n_dnorms)
+            write(*,*) prefix//' fobj%dnorms '//suffix//': ', (' ',self%s_dnorms(i)%s//'= ',self%dnorms(i),i=1,self%n_dnorms)
         endif
 
     end subroutine
@@ -318,7 +322,7 @@ use m_preconditioner
         class(t_fobjective) :: self
 
         if(mpiworld%is_master) then
-            write(*,*) 'fobj%xnorms:', (' ',self%s_xnorms(i)%s,' ',self%xnorms(i),i=1,self%n_xnorms)
+            write(*,*) 'fobj%xnorms:', (' ',self%s_xnorms(i)%s//'= ',self%xnorms(i),i=1,self%n_xnorms)
         endif
 
     end subroutine

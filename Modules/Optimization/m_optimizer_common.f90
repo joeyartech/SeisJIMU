@@ -9,7 +9,7 @@ use m_linesearcher
     real,dimension(:,:,:,:),allocatable :: prev_d  !descent direction of previous point (no need for another t_querypoint instance)
 
     real f0 !initial fobjective
-    real g0norm !initial gradient norm
+    real g0norm2 !initial gradient norm2
     
     !counter
     integer :: iterate=0 !number of iteration performed 
@@ -31,7 +31,7 @@ if(mpiworld%is_master) print*,'minmax curr%d',minval(curr%d),maxval(curr%d)
 
         !initial values
         f0=curr%f
-        g0norm=norm2(curr%g)
+        g0norm2=norm2(curr%g)
         
         !perturbed point
         pert=>qp1
@@ -74,17 +74,17 @@ if(mpiworld%is_master) print*,'minmax curr%d',minval(curr%d),maxval(curr%d)
                 write(16,'(a,i5)'   ) '     Max iterates allowed     =',  max_iterate
                 write(16,'(a,i5)'   ) '     Max linesearches allowed =',  ls%max_search
                 write(16,'(a,i5)'   ) '     Max gradients allowed    =',  ls%max_gradient
-                write(16,'(a,es8.2)') '     Initial fobjective (f0)        =',  f0
-                write(16,'(a,es8.2)') '     Initial gradient norm (||g0||) =',  g0norm
+                write(16,'(a,es8.2)') '     Initial fobjective (f0)  =',  f0
+                write(16,'(a,es8.2)') '     Initial gradient norm2 (║g0║²)  =',  g0norm2
                 write(16,'(a)'      ) ' **********************************************************************'
-                write(16,'(a)'      ) '  Iter#      f         f/f0    ||g||/||g0||    alpha     nls  Gradient#'
+                write(16,'(a)'      ) '  Iter#      f         f/f0    ║g║²/║g0║²    alpha     nls  Gradient#'
                                !e.g.  !    0    z1.00E+00    1.00E+00    1.00E+00    1.00E+00      0       1
-                write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, curr%f, curr%f/f0, norm2(curr%g)/g0norm, ls%alpha, ls%isearch, ls%igradient
+                write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, curr%f, curr%f/f0, norm2(curr%g)/g0norm2, ls%alpha, ls%isearch, ls%igradient
                 close(16)
                 
             case('update')
                 open(16,file=dir_out//'iterate.log',position='append',action='write')
-                write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, curr%f, curr%f/f0, norm2(curr%g)/g0norm, ls%alpha, ls%isearch, ls%igradient
+                write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, curr%f, curr%f/f0, norm2(curr%g)/g0norm2, ls%alpha, ls%isearch, ls%igradient
                 close(16)
                 
                 call param%transform('x->m',o_x=curr%x)

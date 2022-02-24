@@ -280,7 +280,6 @@ use m_Modeling
             endif
 
             !normaliz g by allowed parameter range
-            !s.t. g is in unit [Nm]
             do i=1,param%npars
                 o_g(:,:,:,i)=o_g(:,:,:,i)*param%pars(i)%range
             enddo
