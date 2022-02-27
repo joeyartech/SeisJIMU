@@ -80,7 +80,7 @@ use m_linesearcher
     call ls%init
     call ls%scale(qp0)
     
-    call hud('qp0%f, ║g║² = '//num2str(qp0%f)//', '//num2str(norm2(qp0%g)))
+    call hud('qp0%f, ║g║₂² = '//num2str(qp0%f)//', '//num2str(norm2(qp0%g)))
     
     call internal_optimizer_init_loop(qp0)
         

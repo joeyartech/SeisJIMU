@@ -62,7 +62,7 @@ use m_Kernel
         call hud(info)
         call hud('Wolfe condition parameters: c1='//num2str(c1)//', c2='//num2str(c2))
         
-        alphas = setup%get_reals('TEST_ALPHAS','ALPHAS',o_default='0.5 1. 2. 4. 8. 16. 32. 64. 128. 256. 512. 1024.')
+        alphas = setup%get_reals('TEST_ALPHAS','ALPHAS',o_default='0.001 0.01 0.1 1')
         nalpha = size(alphas)
         call hud('nalpha = '//num2str(nalpha))
         
@@ -77,7 +77,7 @@ use m_Kernel
 
         logical :: if_1st_cond, if_2nd_cond
         
-        call hud('Current qp%f, ║g║² = '//num2str(curr%f)//', '//num2str(norm2(curr%g)))
+        call hud('Current qp%f, ║g║₂² = '//num2str(curr%f)//', '//num2str(norm2(curr%g)))
         
         call hud('------------ START LINESEARCH ------------')
         !linesearch loop
@@ -103,8 +103,8 @@ use m_Kernel
             !     call pert%set_negative
             ! endif
 
-
             call self%scale(pert)
+
             pert%g_dot_d = sum(pert%g*curr%d)
 
             self%igradient=self%igradient+1
@@ -115,7 +115,7 @@ use m_Kernel
             call hud('Iterate.Linesearch.Gradient# = *.'//num2str(self%isearch)//'.'//num2str(self%igradient))
             
             call hud('alpha = '//num2str(self%alpha))
-            call hud('Perturb qp%f, ║g║² = '//num2str(pert%f)//', '//num2str(norm2(pert%g)))
+            call hud('Perturb qp%f, ║g║₂² = '//num2str(pert%f)//', '//num2str(norm2(pert%g)))
             
             !Wolfe conditions
             if_1st_cond = (pert%f <= curr%f+c1*self%alpha*curr%g_dot_d) !sufficient descent condition
@@ -212,7 +212,7 @@ use m_Kernel
 
             if(str=='by total_volume/||pg(1)||1') then
                 !total_volume = ∫   1     dy³ = n1*n2*n3  *d1*d2*d3
-                !║pg(1)║1     = ∫ |pg(1)| dy³ = Σ |pg(1)| *d1*d2*d3
+                !║pg(1)║₁     = ∫ |pg(1)| dy³ = Σ |pg(1)| *d1*d2*d3
                 eps=param%n1*param%n2*param%n3/sum(abs(qp%pg(:,:,:,1)))
             
             elseif(str=='none') then

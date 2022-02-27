@@ -25,8 +25,6 @@ use m_linesearcher
         !current point
         curr=>qp0
         curr%d=-curr%pg
-if(mpiworld%is_master) print*,'minmax curr%g',minval(curr%g),maxval(curr%g)
-if(mpiworld%is_master) print*,'minmax curr%d',minval(curr%d),maxval(curr%d)
         curr%g_dot_d = sum(curr%g*curr%d)
 
         !initial values
@@ -75,9 +73,9 @@ if(mpiworld%is_master) print*,'minmax curr%d',minval(curr%d),maxval(curr%d)
                 write(16,'(a,i5)'   ) '     Max linesearches allowed =',  ls%max_search
                 write(16,'(a,i5)'   ) '     Max gradients allowed    =',  ls%max_gradient
                 write(16,'(a,es8.2)') '     Initial fobjective (f0)  =',  f0
-                write(16,'(a,es8.2)') '     Initial gradient norm2 (║g0║²)  =',  g0norm2
+                write(16,'(a,es8.2)') '     Initial gradient norm2 (║g0║₂²)  =',  g0norm2
                 write(16,'(a)'      ) ' **********************************************************************'
-                write(16,'(a)'      ) '  Iter#      f         f/f0    ║g║²/║g0║²    alpha     nls  Gradient#'
+                write(16,'(a)'      ) '  Iter#      f         f/f0    ║g║₂²/║g0║₂²    alpha     nls  Gradient#'
                                !e.g.  !    0    z1.00E+00    1.00E+00    1.00E+00    1.00E+00      0       1
                 write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, curr%f, curr%f/f0, norm2(curr%g)/g0norm2, ls%alpha, ls%isearch, ls%igradient
                 close(16)

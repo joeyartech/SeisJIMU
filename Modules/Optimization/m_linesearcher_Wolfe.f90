@@ -88,7 +88,7 @@ use m_Kernel
         
         ! if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Initial alphaL/alpha/alphaR =',alphaL,alpha,alphaR
         call hud('Initial alpha = '//num2str(self%alpha))
-        call hud('Current qp%f, ║g║² = '//num2str(curr%f)//', '//num2str(norm2(curr%g)))
+        call hud('Current qp%f, ║g║₂² = '//num2str(curr%f)//', '//num2str(norm2(curr%g)))
 
         !save gradients
         if(present(o_gradient_history)) then
@@ -120,11 +120,8 @@ use m_Kernel
                 call pert%set_negative
             endif
 
-
-if(mpiworld%is_master) print*,'minmax pert%g before scaling',minval(pert%g),maxval(pert%g)
             call self%scale(pert)
-if(mpiworld%is_master) print*,'minmax pert%g after scaling',minval(pert%g),maxval(pert%g)
-if(mpiworld%is_master) print*,'minmax curr%d',minval(curr%d),maxval(curr%d)
+
             pert%g_dot_d = sum(pert%g*curr%d)
 
             self%igradient=self%igradient+1
@@ -139,7 +136,7 @@ if(mpiworld%is_master) print*,'minmax curr%d',minval(curr%d),maxval(curr%d)
 
             !if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Linesearch alphaL/alpha/alphaR =',alphaL,alpha,alphaR
             call hud('alpha = '//num2str(self%alpha)//' in ['//num2str(self%alphaL)//','//num2str(self%alphaR)//']')
-            call hud('Perturb qp%f, ║g║² = '//num2str(pert%f)//', '//num2str(norm2(pert%g)))
+            call hud('Perturb qp%f, ║g║₂² = '//num2str(pert%f)//', '//num2str(norm2(pert%g)))
             
             !Wolfe conditions
             if_1st_cond = (pert%f <= curr%f+c1*self%alpha*curr%g_dot_d) !sufficient descent condition
@@ -147,9 +144,11 @@ if(mpiworld%is_master) print*,'minmax curr%d',minval(curr%d),maxval(curr%d)
             !if_2nd_cond = (abs(pert%g_dot_d) >= c2*abs(curr%g_dot_d)) !strong curvature condition
             if_2nd_cond = (pert%g_dot_d >= c2*curr%g_dot_d) !weak curvature condition
 
-            print*,'1st cond',pert%f,curr%f,curr%g_dot_d, if_1st_cond
-            print*,'2nd cond',pert%g_dot_d, if_2nd_cond
-            print*,'alpha(3)',alphaL,alpha,alpha_R
+            if(mpiworld%is_master) then
+                print*,'1st cond',self%alpha,pert%f,curr%f,(pert%f-curr%f)/self%alpha, curr%g_dot_d, if_1st_cond
+                print*,'2nd cond',pert%g_dot_d, curr%g_dot_d, if_2nd_cond
+                print*,'alpha(3)',alphaL,alpha,alpha_R
+            endif
 
             !occasionally optimizers on processors don't have same behavior
             !try to avoid this by broadcast controlling logicals.
@@ -267,7 +266,7 @@ if(mpiworld%is_master) print*,'minmax curr%d',minval(curr%d),maxval(curr%d)
 
             if(str=='by total_volume/||pg(1)||1') then
                 !total_volume = ∫   1     dy³ = n1*n2*n3  *d1*d2*d3
-                !║pg(1)║1     = ∫ |pg(1)| dy³ = Σ |pg(1)| *d1*d2*d3
+                !║pg(1)║₁     = ∫ |pg(1)| dy³ = Σ |pg(1)| *d1*d2*d3
                 eps=param%n1*param%n2*param%n3/sum(abs(qp%pg(:,:,:,1)))
                 
             elseif(len(str)>0) then

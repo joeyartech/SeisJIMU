@@ -8,16 +8,16 @@ use m_arrayop
 
     contains
 
-    ! function s_L1norm(str)
+    ! function s_L1(str)
     !     character(*) :: str
-    !     character(:),allocatable :: s_L1norm
-    !     s_L1norm = '║'//str//'║1'
+    !     character(:),allocatable :: s_L1
+    !     s_L1norm = '║'//str//'║₁'
     ! end function
 
-    ! function s_L2norm_sq(str)
+    ! function s_L2sq(str)
     !     character(*) :: str
-    !     character(:),allocatable :: s_L2norm_sq
-    !     s_L2norm_sq = '║'//str//'║2²'
+    !     character(:),allocatable :: s_L2sq
+    !     s_L2norm_sq = '║'//str//'║₂²'
     ! end function
 
 
@@ -25,7 +25,7 @@ use m_arrayop
     !∇║u║₁ = a*sign(Wu)
     !adjsource= -∇║u║₁
     !gradient =  ∇║u║₁*dt
-    real function L1norm(scaler,size,W,u,sampling)
+    real function L1(scaler,size,W,u,sampling)
         integer size
         real,dimension(*) :: W,u
 
@@ -36,11 +36,11 @@ use m_arrayop
         call alloc(Wpu,n)
         Wpu=W(1:n)*u(1:n)
 
-        L1norm = a*sum(abs(Wpu))*d
+        L1 = a*sum(abs(Wpu))*d
 
     end function
 
-    subroutine adjsrc_L1norm(adjsrc)
+    subroutine adjsrc_L1(adjsrc)
         real,dimension(*) :: adjsrc
 
         do i=1,n
@@ -59,7 +59,7 @@ use m_arrayop
     !∇║u║₂² = 2a*W²u
     !adjsource= -∇║u║₂²
     !gradient =  ∇║u║₂²*dt
-    real function L2norm_sq(scaler,size,W,u,sampling)
+    real function L2sq(scaler,size,W,u,sampling)
         integer size
         real,dimension(*) :: W,u
 
@@ -70,11 +70,11 @@ use m_arrayop
         call alloc(Wpu,n)
         Wpu=W(1:n)*W(1:n)*u(1:n)
         
-        L2norm_sq = a*sum(Wpu*u(1:n))*d
+        L2sq = a*sum(Wpu*u(1:n))*d
         
     end function
 
-    subroutine adjsrc_L2norm_sq(adjsrc)
+    subroutine adjsrc_L2sq(adjsrc)
         real,dimension(*) :: adjsrc
         
         adjsrc(1:n) = adjsrc(1:n) -2.*a*Wpu

@@ -50,7 +50,7 @@ use m_preconditioner
         class(t_fobjective) :: self
         
         !data norms
-        self%s_dnorms=setup%get_strs('DATA_NORMS','DNORMS',o_default='L1 L2_sq')
+        self%s_dnorms=setup%get_strs('DATA_NORMS','DNORMS',o_default='L1 L2sq')
         self%n_dnorms=size(self%s_dnorms)
         
         call alloc(self%dnorms,           self%n_dnorms)
@@ -124,22 +124,22 @@ use m_preconditioner
                     if(shot%rcv(ir)%is_badtrace) cycle
                     
                     if(shot%rcv(ir)%comp=='p') then !pressure data, use 1/ref_vp to balance amplitudes versus velocities data
-                        self%dnorms(i) = self%dnorms(i) + L1norm(self%dnorm_normalizers(i), shot%nt, &
+                        self%dnorms(i) = self%dnorms(i) + L1(self%dnorm_normalizers(i), shot%nt, &
                             wei%weight(:,ir)*m%ref_inv_vp, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
                             
-                        if(is_4adjsrc) call adjsrc_L1norm(shot%dadj(:,ir))
+                        if(is_4adjsrc) call adjsrc_L1(shot%dadj(:,ir))
                         
                     else !velocities data, use ref_rho to balance amplitudes versus pressure data
-                        self%dnorms(i) = self%dnorms(i) + L1norm(self%dnorm_normalizers(i), shot%nt, &
+                        self%dnorms(i) = self%dnorms(i) + L1(self%dnorm_normalizers(i), shot%nt, &
                             wei%weight(:,ir)*m%ref_rho,    shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
 
-                        if(is_4adjsrc) call adjsrc_L1norm(shot%dadj(:,ir))
+                        if(is_4adjsrc) call adjsrc_L1(shot%dadj(:,ir))
 
                     endif
 
                 enddo
                 
-            case ('L2_sq')
+            case ('L2sq')
             
                 is_4adjsrc = self%dnorm_weights(i)>0. .and. if_has_dnorm_normalizers
 
@@ -147,16 +147,16 @@ use m_preconditioner
                     if(shot%rcv(ir)%is_badtrace) cycle
                     
                     if(shot%rcv(ir)%comp=='p') then !pressure data
-                        self%dnorms(i) = self%dnorms(i) + L2norm_sq(0.5*self%dnorm_normalizers(i), shot%nt, &
+                        self%dnorms(i) = self%dnorms(i) + L2sq(0.5*self%dnorm_normalizers(i), shot%nt, &
                             wei%weight(:,ir)*m%ref_inv_vp, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
                             
-                        if(is_4adjsrc) call adjsrc_L2norm_sq(shot%dadj(:,ir))
+                        if(is_4adjsrc) call adjsrc_L2sq(shot%dadj(:,ir))
                         
                     else !velocity data
-                        self%dnorms(i) = self%dnorms(i) + L2norm_sq(0.5*self%dnorm_normalizers(i), shot%nt, &
+                        self%dnorms(i) = self%dnorms(i) + L2sq(0.5*self%dnorm_normalizers(i), shot%nt, &
                             wei%weight(:,ir)*m%ref_rho,    shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
 
-                        if(is_4adjsrc) call adjsrc_L2norm_sq(shot%dadj(:,ir))
+                        if(is_4adjsrc) call adjsrc_L2sq(shot%dadj(:,ir))
 
                     endif
 
@@ -227,7 +227,8 @@ use m_preconditioner
         endif
         
         call mpi_bcast(self%dnorm_normalizers, self%n_dnorms, mpi_real, 0, mpiworld%communicator, mpiworld%ierr)
-        
+        !dnorm_normalizers should also be checkpointed
+
         if_has_dnorm_normalizers=.true.
         
         !and redo the computations for adjoint sources
@@ -249,7 +250,7 @@ use m_preconditioner
 
         do i=1,self%n_xnorms
             select case (self%s_xnorms(i)%s)
-            case ('Ridge','L2_sq')
+            case ('Ridge','L2sq')
                 !fcost
                 call alloc(xres,param%n1,param%n2,param%n3,param%npars)
                 if(m%if_has_prior) then
@@ -269,7 +270,7 @@ use m_preconditioner
             case ('Lasso','L1')
                 !to be implemented..
 
-            case ('1st_Ridge','1st_L2_sq')
+            case ('1st_Ridge','1st_L2sq')
 
                 do j=1,param%n1
                     !self%xnorms(i) = self%xnorms(i) + xnorms_weights(1)*sum((x(j+1,:,:,:)-x(j,:,:,:))**2,.not.param%is_freeze_zone(j,:,:,:))

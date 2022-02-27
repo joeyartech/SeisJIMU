@@ -286,6 +286,7 @@ use m_System
         call mpi_bcast(self%ref_inv_vp,1,mpi_real,0,mpiworld%communicator,mpiworld%ierr)
         call mpi_bcast(self%ref_rho   ,1,mpi_real,0,mpiworld%communicator,mpiworld%ierr)
 
+        !ref_inv_vp & _rho should also be checkpointed
     end subroutine
 
     subroutine apply_freeze_zone(self)
