@@ -1,0 +1,52 @@
+MODEL_SIZE              '101 101 1'
+MODEL_SPACING           '20 20 1'
+FILE_MODEL              'model'
+MODEL_ATTRIBUTES        vp #'vp rho'
+FILE_TOPO               'topo'
+
+IS_FREESURFACE          F
+
+ACQUI_GEOMETRY          spread
+FS                      '50 505 500'
+FR                      '40 10  0'
+DR                      '0  20 0'
+NR                      100
+
+SCOMP                   p
+RCOMP                   vz #'p vz'
+
+
+NT           500
+DT           0.006
+
+## for FWI ##
+FILE_DATA_PREFIX    './results_fwd/dsyn_'
+WEIGHTING           'none'
+
+FPEAK        6.4
+UPDATE_WAVELET		'no'
+RDT			0
+
+PARAMETER           'vp:1000:2000'
+
+SMOOTHING     'none'
+#PRECO        'z^0'
+
+#DNORMALIZERS    '1 1'
+#MREF            '1 1'
+
+DESCENT_DIR     'random'  #'-curr%pg'
+#ALPHAS          '1e-3 1e-2 1e-1 1 1e1'
+ALPHAS          '1e-3 5e-3 1e-2 5e-2 1e-1 5e-1 1'
+#ALPHAS          '-1e-3 -1e-2 -1e-1 -1 -1e1'
+#ALPHAS          '1 1e1 1e2 1e3 1e4'
+#ALPHAS          '0.125 0.25 0.5 1. 2. 4. 8.'
+
+#LS_SCALING  'none'
+
+
+#SNAPSHOT     'p vz'
+#NSNAPSHOT    50
+
+IF_USE_CHECKPOINT   F
+

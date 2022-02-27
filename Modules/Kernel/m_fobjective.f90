@@ -99,6 +99,17 @@ use m_preconditioner
         logical :: is_4adjsrc
         real :: numer, denom, time(shot%nt), v(shot%nt)
         
+        !In theory,
+        !e.g. C(u) = ║u║₂² = 0.5*Σ_rcv ∫ (u-d)² δ_rcv dx3 dt, and
+        !∇C = Σ_rcv ∫ (u-d)² δ_rcv,
+        !adjoint source = - Σ_rcv ∫ (u-d)² δ_rcv
+        !where δ_rcv is the Dirac delta function centered at receiver positions.
+        !Because δ_rcv=1/dx3, in the implementation we take
+        !C(u) = 0.5*Σ_rcv ∫ (u-d)² dt, and
+        !the presence of δ_rcv in the adjoint source is accounted for
+        !by the RHS of adjoint weq
+        !(ie. when calling to rfield%ignite, to be same as sfield%ignite)
+
         !reinitialize adjoint source
         if(if_has_dnorm_normalizers) call alloc(shot%dadj,shot%nt,shot%nrcv)
 
@@ -112,15 +123,15 @@ use m_preconditioner
                 do ir=1,shot%nrcv
                     if(shot%rcv(ir)%is_badtrace) cycle
                     
-                    if(shot%rcv(ir)%comp=='p') then !pressure data
-                        self%dnorms(i) = self%dnorms(i) + L1norm( shot%nt, &
-                            wei%weight(:,ir)*m%ref_inv_vp, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt, self%dnorm_normalizers(i))
+                    if(shot%rcv(ir)%comp=='p') then !pressure data, use 1/ref_vp to balance amplitudes versus velocities data
+                        self%dnorms(i) = self%dnorms(i) + L1norm(self%dnorm_normalizers(i), shot%nt, &
+                            wei%weight(:,ir)*m%ref_inv_vp, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
                             
                         if(is_4adjsrc) call adjsrc_L1norm(shot%dadj(:,ir))
                         
-                    else !velocities data
-                        self%dnorms(i) = self%dnorms(i) + L1norm( shot%nt, &
-                            wei%weight(:,ir)*m%ref_rho,    shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt, self%dnorm_normalizers(i))
+                    else !velocities data, use ref_rho to balance amplitudes versus pressure data
+                        self%dnorms(i) = self%dnorms(i) + L1norm(self%dnorm_normalizers(i), shot%nt, &
+                            wei%weight(:,ir)*m%ref_rho,    shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
 
                         if(is_4adjsrc) call adjsrc_L1norm(shot%dadj(:,ir))
 
@@ -136,14 +147,14 @@ use m_preconditioner
                     if(shot%rcv(ir)%is_badtrace) cycle
                     
                     if(shot%rcv(ir)%comp=='p') then !pressure data
-                        self%dnorms(i) = self%dnorms(i) + L2norm_sq( shot%nt, &
-                            wei%weight(:,ir)*m%ref_inv_vp, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt, 0.5*self%dnorm_normalizers(i))
+                        self%dnorms(i) = self%dnorms(i) + L2norm_sq(0.5*self%dnorm_normalizers(i), shot%nt, &
+                            wei%weight(:,ir)*m%ref_inv_vp, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
                             
                         if(is_4adjsrc) call adjsrc_L2norm_sq(shot%dadj(:,ir))
                         
                     else !velocity data
-                        self%dnorms(i) = self%dnorms(i) + L2norm_sq( shot%nt, &
-                            wei%weight(:,ir)*m%ref_rho,    shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt, 0.5*self%dnorm_normalizers(i))
+                        self%dnorms(i) = self%dnorms(i) + L2norm_sq(0.5*self%dnorm_normalizers(i), shot%nt, &
+                            wei%weight(:,ir)*m%ref_rho,    shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
 
                         if(is_4adjsrc) call adjsrc_L2norm_sq(shot%dadj(:,ir))
 
@@ -208,7 +219,7 @@ use m_preconditioner
         
         
         !otherwise estimate normalizers
-        if(mpiworld%is_master) then            
+        if(mpiworld%is_master) then
             self%dnorm_normalizers=1./self%dnorms
             write(*,*) 'fobj%dnorm_normalizers before shotlist-scaling =',self%dnorm_normalizers
             call shls%scale(self%n_dnorms,o_from_1st_shot=self%dnorm_normalizers)

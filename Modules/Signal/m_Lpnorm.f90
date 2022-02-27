@@ -2,7 +2,7 @@ module m_Lpnorm
 use m_arrayop
 
     public
-    private :: n, Wpu, d_scaler
+    private :: n, Wpu, d, a
     
     real,dimension(:),allocatable :: Wpu
 
@@ -21,32 +21,33 @@ use m_arrayop
     ! end function
 
 
-    !||u||_1 = int |W*u| *dt
-    real function L1norm(size,W,u,sampling,scaler)
+    !║u║₁ = a*∫ |Wu| dt
+    !∇║u║₁ = a*sign(Wu)
+    !adjsource= -∇║u║₁
+    !gradient =  ∇║u║₁*dt
+    real function L1norm(scaler,size,W,u,sampling)
         integer size
         real,dimension(*) :: W,u
 
+        a=scaler
         n=size
-        d_scaler=sampling*scaler
+        d=sampling
 
         call alloc(Wpu,n)
         Wpu=W(1:n)*u(1:n)
 
-        L1norm = sum(abs(Wpu))*d_scaler
+        L1norm = a*sum(abs(Wpu))*d
 
     end function
 
-    !nabla_u ||u||_1 = sign(Wu)
-    !gradient = nabla*dt
-    !adjsource= -gradient
     subroutine adjsrc_L1norm(adjsrc)
         real,dimension(*) :: adjsrc
 
         do i=1,n
             if (Wpu(i)>0.) then
-                adjsrc(i) = adjsrc(i) -d_scaler
+                adjsrc(i) = adjsrc(i) -a
             else
-                adjsrc(i) = adjsrc(i) +d_scaler
+                adjsrc(i) = adjsrc(i) +a
             endif
         enddo
 
@@ -54,28 +55,29 @@ use m_arrayop
 
     end subroutine
 
-    !||u||2^2 = int (W*u)^2 *dt
-    real function L2norm_sq(size,W,u,sampling,scaler)
+    !║u║₂² = a*∫ (Wu)² dt
+    !∇║u║₂² = 2a*W²u
+    !adjsource= -∇║u║₂²
+    !gradient =  ∇║u║₂²*dt
+    real function L2norm_sq(scaler,size,W,u,sampling)
         integer size
         real,dimension(*) :: W,u
-        
-        n=size
-        d_scaler=sampling*scaler
 
+        a=scaler
+        n=size
+        d=sampling
+        
         call alloc(Wpu,n)
         Wpu=W(1:n)*W(1:n)*u(1:n)
         
-        L2norm_sq = sum(Wpu*u(1:n))*d_scaler
+        L2norm_sq = a*sum(Wpu*u(1:n))*d
         
     end function
 
-    !nabla_u ||u||_2^2 = 2* W*W*u
-    !gradient = nabla*dt
-    !adjsource= -gradient
     subroutine adjsrc_L2norm_sq(adjsrc)
         real,dimension(*) :: adjsrc
         
-        adjsrc(1:n) = adjsrc(1:n) -2.*Wpu*d_scaler
+        adjsrc(1:n) = adjsrc(1:n) -2.*a*Wpu
 
         deallocate(Wpu)
 

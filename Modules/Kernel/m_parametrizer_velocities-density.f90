@@ -209,7 +209,7 @@ use m_Modeling
                         end select
                 enddo
 
-            else !x<m
+            else !x<-m
                 do i=1,self%npars
                     select case (self%pars(i)%name)
                     case ('vp' ); m%vp = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min

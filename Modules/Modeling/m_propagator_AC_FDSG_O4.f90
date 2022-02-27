@@ -1685,8 +1685,7 @@ use m_cpml
     
     subroutine gradient_postprocess
         !grho
-        cb%grad(:,:,:,1)=-cb%grad(:,:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)         *m%cell_volume*rdt
-
+        cb%grad(:,:,:,1)=-cb%grad(:,:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)         *m%cell_volume*rdt !scaled by m%cell_volume*rdt tobe a gradient in the discretized world
         !gkpa
         cb%grad(:,:,:,2)=-cb%grad(:,:,:,2) * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my)) *m%cell_volume*rdt
                 
