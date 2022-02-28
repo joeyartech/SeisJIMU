@@ -1,14 +1,14 @@
 #!/bin/bash
 
-# # FWD ##
-# makevel nz=49 nx=101 v000=1500 > c1
-# makevel nz=3  nx=101 v000=2000 > c2
-# cat c1 c2 c1 > tmp && transp < tmp n1=101 > model
-# rm c1 c2 tmp
-# 
-# ../../exe/FWD setup_simple.in
-# 
-# mv results  results_fwd
+# FWD ##
+makevel nz=49 nx=101 v000=1500 > c1
+makevel nz=3  nx=101 v000=2000 > c2
+cat c1 c2 c1 > tmp && transp < tmp n1=101 > model
+rm c1 c2 tmp
+
+../../exe/FWD setup.in
+
+mv results  results_fwd
 
 # FWI ##
 makevel nz=101 nx=101 v000=1800 > model

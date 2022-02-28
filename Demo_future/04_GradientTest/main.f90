@@ -174,7 +174,6 @@ use m_smoother_laplacian_sparse
         
         !forward modeling
         call ppg%forward(sfield);   call sfield%acquire
-
         if(mpiworld%is_master) call shot%write('draw_',shot%dsyn)
 
         update_wavelet=setup%get_str('UPDATE_WAVELET',o_default='per shot')

@@ -37,8 +37,8 @@ use m_linesearcher
     ! call sfield%estim_RAM
     ! call rfield%estim_RAM
     
-    !checkpoint
-    call checkpoint_init
+!     !checkpoint
+!     call checkpoint_init
 
     !model
     call m%init
@@ -151,10 +151,8 @@ use m_smoother_laplacian_sparse
     ! real,dimension(:,:),allocatable :: Wdres
     ! character(:),allocatable :: update_wavelet
     ! real,dimension(:,:),allocatable :: Rmu, Rdiff
-
-    ! if(setup%get_str('JOB')=='skip_imaging') then
-    !     return
-    ! endif
+    
+    call alloc(m%image,m%nz,m%nx,m%ny,1)
     
     call hud('===== START LOOP OVER SHOTS =====')
     
@@ -162,31 +160,41 @@ use m_smoother_laplacian_sparse
 
         call shot%init(shls%yield(i))
         call shot%read_from_data
+print*,'~~~~~ ',shot%rcv(1)%z
         call shot%set_var_time
         call shot%set_var_space(index(ppg%info,'FDSG')>0)
-
+print*,'!!!!! rcv(1)%ifz ?=-1',shot%rcv(1)%ifz
         call hud('Modeling Shot# '//shot%sindex)
-        
+print*,'@@@@@ rcv(1)%ifz ?=-1',shot%rcv(1)%ifz
         call cb%init(ppg%nbndlayer)
         call cb%project
-
+print*,'##### rcv(1)%ifz ?=-1',shot%rcv(1)%ifz
         call ppg%check_discretization
         call ppg%init
         call ppg%init_abslayer
-
+print*,'$$$$$ rcv(1)%ifz ?=-1',shot%rcv(1)%ifz
         call hud('---------------------------------')
         call hud('     Imaging (aka Wavepath)      ')
         call hud('---------------------------------')
         !forward modeling on u
-        call ppg%init_field(fld_u,name='Imag_fld_u');    call fld_u%ignite       
+print*,'%%%%% rcv(1)%ifz ?=-1',shot%rcv(1)%ifz
+        call ppg%init_field(fld_u,name='Imag_fld_u');    call fld_u%ignite
+print*,'^^^^^ rcv(1)%ifz ?=-1',shot%rcv(1)%ifz
         call ppg%forward(fld_u);                         call fld_u%acquire
+print*,'&&&&& rcv(1)%ifz ?=-1',shot%rcv(1)%ifz
+! print*,'fld_u%wavelet',norm2(fld_u%wavelet)
+! print*,'fld_u%seismo', norm2(fld_u%seismo)
         call shot%write('Imag_Ru_',shot%dsyn)
 
         !weighting on the adjoint source for the image
         call wei%update!('_4IMAGING')
         
         tmp = L2sq(0.5,shot%nrcv*shot%nt,&
-            wei%weight*m%ref_inv_vp, shot%dsyn-shot%dobs, shot%dt)
+            wei%weight, shot%dsyn-shot%dobs, shot%dt)
+! print*,'nrcv*nt,dt',shot%nrcv*shot%nt, shot%dt
+! print*,'wei%weight',norm2(wei%weight)
+! print*,'shot%dsyn,dobs',norm2(shot%dsyn),norm2(shot%dobs)
+! print*,'Imaging tmp=',tmp
         
         call alloc(shot%dadj,shot%nt,shot%nrcv)
         call adjsrc_L2sq(shot%dadj)
@@ -253,7 +261,6 @@ use m_resampler
     ! character(:),allocatable :: update_wavelet
     ! real,dimension(:,:),allocatable :: Rmu, Rdiff
 
-
     if(setup%get_file('IMAGE')/='') then
         call alloc(m%image,m%nz,m%nx,m%ny,1)
         call sysio_read(setup%get_file('IMAGE'),m%image,size(m%image))
@@ -266,6 +273,7 @@ use m_resampler
     else
         call hud('Will do imaging')
         call modeling_imaging
+print*,'norm2(image)',norm2(m%image)
     endif
 
     !compute fobjective
@@ -323,7 +331,7 @@ use m_resampler
 
         !compute FWI data misfit and adjsrc
         fobj%FWI_misfit = fobj%FWI_misfit + L2sq(0.5, shot%nrcv*shot%nt, &
-            wei%weight*m%ref_inv_vp, shot%dsyn-shot%dobs, shot%dt)
+            wei%weight, shot%dsyn-shot%dobs, shot%dt)
 
         call alloc(shot%dadj,shot%nt,shot%nrcv)
         call adjsrc_L2sq(shot%dadj)
@@ -432,7 +440,7 @@ use m_resampler
 
     !collect global objective function value
     call mpi_allreduce(mpi_in_place, fobj%dnorms, fobj%n_dnorms, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-    call fobj%print_dnorms('Stacked but not yet linesearch-scaled','')
+    call fobj%print_dnorms('Shotloop-stacked, shotlist-scaled, but yet linesearch-scaled','')
 
     call mpi_allreduce(mpi_in_place, fobj%FWI_misfit, 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     call hud('Stacked FWI_misfit '//num2str(fobj%FWI_misfit))
