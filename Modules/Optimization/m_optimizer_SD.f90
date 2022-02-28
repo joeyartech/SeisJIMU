@@ -77,7 +77,7 @@ use m_optimizer_common
                 call switch_curr_pert
 
                 !new descent direction
-                curr%d=prev_d
+                curr%d=-curr%pg
                 
                 !inner product of g and d for Wolfe condition
                 curr%g_dot_d = sum(curr%g*curr%d)
