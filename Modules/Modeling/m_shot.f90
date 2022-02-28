@@ -283,6 +283,7 @@ use m_model
         logical :: is_fdsg
 
         logical,save :: is_first_in=.true.
+        real,save :: halfz, halfx, halfy
 
         !absolute offset
         do ir=1,self%nrcv
