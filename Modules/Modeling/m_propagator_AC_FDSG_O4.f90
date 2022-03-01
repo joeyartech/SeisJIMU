@@ -1720,7 +1720,7 @@ use m_cpml
     end subroutine
 
     subroutine imaging_postprocess
-        cb%imag = cb%imag * rdt
+        cb%imag = -cb%imag*rdt
 
         !for cb%project_back
         cb%imag(1,:,:,:) = cb%imag(2,:,:,:)
