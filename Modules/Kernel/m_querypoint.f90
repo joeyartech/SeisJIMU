@@ -18,8 +18,7 @@ use m_parametrizer
 
         contains
         procedure :: init
-        procedure :: set_negative
-        procedure :: set_positive
+        procedure :: set_sign
         final :: fin
 
         procedure :: is_registered
@@ -48,24 +47,30 @@ use m_parametrizer
 
     end subroutine
 
-    subroutine set_negative(self)
+    subroutine set_sign(self,o_sign,o_reference)
         class(t_querypoint) :: self
-        if(self%f>=0.) then
+        character,optional :: o_sign
+        real,optional :: o_reference
+        
+        logical :: if_flip
+        
+        if_flip=.false.
+        
+        if(present(o_sign)) then
+            if(o_sign=='+' .and. self%f<0.) then
+                if_flip=.true.
+            elseif(o_sign=='-' .and. self%f>0.) then
+                if_flip=.true.
+            endif
+        endif
+        
+        if(if_flip) then
             self%f  = -self%f
             if(allocated(self%g )) self%g  = -self%g
             if(allocated(self%pg)) self%pg = -self%pg
             if(allocated(self%d )) self%d  = -self%d
         endif
-    end subroutine
-
-    subroutine set_positive(self)
-        class(t_querypoint) :: self
-        if(self%f<=0.) then
-            self%f  = -self%f
-            if(allocated(self%g )) self%g  = -self%g
-            if(allocated(self%pg)) self%pg = -self%pg
-            if(allocated(self%d )) self%d  = -self%d
-        endif
+        
     end subroutine
 
     subroutine fin(self)

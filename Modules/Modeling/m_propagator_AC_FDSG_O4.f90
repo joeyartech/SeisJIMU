@@ -1392,11 +1392,7 @@ use m_cpml
         real,dimension(cb%mz,cb%mx,cb%my) :: RHS
         real :: time_dir
 
-        ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
-        ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
-        ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
-
-        f%p(1:cb%mz,1:cb%mx,1:cb%my) = f%p(1:cb%mz,1:cb%mx,1:cb%my) + time_dir*RHS*self%kpa(iz,ix,iy)
+        f%p(1:cb%mz,1:cb%mx,1:cb%my) = f%p(1:cb%mz,1:cb%mx,1:cb%my) + time_dir*RHS*self%kpa(1:cb%mz,1:cb%mx,1:cb%my)
     end subroutine
 
     !s^it+0.5 -> s^it+1.5 by FD of v^it+1

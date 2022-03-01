@@ -117,7 +117,7 @@ use m_Kernel
 
             if(.not. curr%is_fitting_data) then
                 call hud('Negate the sign of pert due to curr')
-                call pert%set_negative
+                call pert%set_sign(o_sign='-')
             endif
 
             call self%scale(pert)
@@ -211,10 +211,10 @@ use m_Kernel
 
         if(pert%is_fitting_data) then
             call hud('Set positive sign to pert')
-            call pert%set_positive
+            call pert%set_sign(o_sign='+')
         else
-            call hud('Set negtaive sign to pert')
-            call pert%set_negative
+            call hud('Set negative sign to pert')
+            call pert%set_sign(o_sign='-')
         endif
 
         

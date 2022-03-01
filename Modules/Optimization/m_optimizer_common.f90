@@ -35,7 +35,7 @@ use m_linesearcher
         pert=>qp1
         call pert%init('qp')
 
-        !descent direction of previous point
+        !previous descent direction
         prev_d=curr%d
 
         !read setup

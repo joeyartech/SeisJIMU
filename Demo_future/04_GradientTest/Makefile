@@ -62,6 +62,8 @@ cleanall :
 	#Kernel
 	(cd ../../Modules/Kernel; make clean)
 	#Optimization
-	(cd ../../Modules/Optimization; make clean)
+	(cd ../../Modules/Optimization; rm *.o)
+	#
+	(cd ../../mod; rm *.mod)
 	#
 	make clean

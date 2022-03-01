@@ -118,10 +118,20 @@ use m_linesearcher
             elseif(str=='random') then !random descent
                 allocate(curr%d,source=curr%pg)
                 call random_number(curr%d)
-                curr%d = sum(abs(curr%pg))/sum(abs(curr%d)) *curr%d
+            
+            elseif(str=='random_normal') then !random normal direction to steepest descent
+                allocate(curr%d,source=curr%pg)
+                call random_number(curr%d) !unlikely to // with curr%pg
+                !   d·pg/‖pg‖ = ‖d‖cosθ = projection of d onto pg
+                !d-(d·pg/‖pg‖)pg/‖pg‖ = normal direction to pg
+                tmp=sum(curr%d*curr%pg)/norm2(curr%pg)
+                curr%d = curr%d - tmp*curr%pg
                 
             endif
             
+            !ensure good magnitudes
+            curr%d = sum(abs(curr%pg))/sum(abs(curr%d)) *curr%d
+                
             curr%g_dot_d = sum(curr%g*curr%d) !inner product
             
             !perturbed point
@@ -157,33 +167,27 @@ use m_smoother_laplacian_sparse
     call hud('===== START LOOP OVER SHOTS =====')
     
     do i=1,shls%nshots_per_processor
-
+    
         call shot%init(shls%yield(i))
         call shot%read_from_data
-print*,'~~~~~ ',shot%rcv(1)%z
         call shot%set_var_time
         call shot%set_var_space(index(ppg%info,'FDSG')>0)
-print*,'!!!!! rcv(1)%ifz ?=-1',shot%rcv(1)%ifz
+        
         call hud('Modeling Shot# '//shot%sindex)
-print*,'@@@@@ rcv(1)%ifz ?=-1',shot%rcv(1)%ifz
+        
         call cb%init(ppg%nbndlayer)
         call cb%project
-print*,'##### rcv(1)%ifz ?=-1',shot%rcv(1)%ifz
+        
         call ppg%check_discretization
         call ppg%init
         call ppg%init_abslayer
-print*,'$$$$$ rcv(1)%ifz ?=-1',shot%rcv(1)%ifz
+        
         call hud('---------------------------------')
         call hud('     Imaging (aka Wavepath)      ')
         call hud('---------------------------------')
         !forward modeling on u
-print*,'%%%%% rcv(1)%ifz ?=-1',shot%rcv(1)%ifz
         call ppg%init_field(fld_u,name='Imag_fld_u');    call fld_u%ignite
-print*,'^^^^^ rcv(1)%ifz ?=-1',shot%rcv(1)%ifz
         call ppg%forward(fld_u);                         call fld_u%acquire
-print*,'&&&&& rcv(1)%ifz ?=-1',shot%rcv(1)%ifz
-! print*,'fld_u%wavelet',norm2(fld_u%wavelet)
-! print*,'fld_u%seismo', norm2(fld_u%seismo)
         call shot%write('Imag_Ru_',shot%dsyn)
 
         !weighting on the adjoint source for the image
@@ -191,10 +195,6 @@ print*,'&&&&& rcv(1)%ifz ?=-1',shot%rcv(1)%ifz
         
         tmp = L2sq(0.5,shot%nrcv*shot%nt,&
             wei%weight, shot%dsyn-shot%dobs, shot%dt)
-! print*,'nrcv*nt,dt',shot%nrcv*shot%nt, shot%dt
-! print*,'wei%weight',norm2(wei%weight)
-! print*,'shot%dsyn,dobs',norm2(shot%dsyn),norm2(shot%dobs)
-! print*,'Imaging tmp=',tmp
         
         call alloc(shot%dadj,shot%nt,shot%nrcv)
         call adjsrc_L2sq(shot%dadj)
@@ -273,7 +273,6 @@ use m_resampler
     else
         call hud('Will do imaging')
         call modeling_imaging
-print*,'norm2(image)',norm2(m%image)
     endif
 
     !compute fobjective
@@ -287,9 +286,18 @@ print*,'norm2(image)',norm2(m%image)
     deallocate(m%image)
 
     !Use L2 norm for adjsrc
+    !I(x) = ∫ pᴴ(x,t)p(x,t) dt
+    ! ║I║² = ½∫ I(x)² dx³ = ½∫ pᴴ(x,t₁)p(x,t₁) pᴴ(x,t₂)p(x,t₂) dt₁dt₂dx³
+    !δ║I║² = ½∫ pᴴ(t₁)pᴴ(t₂)(p(t₁)δp(t₂)+δp(t₁)p(t₂)) dt₁dt₂dx³
+    !      =  ∫ pᴴ(t₁)pᴴ(t₂)p(t₁)δp(t₂) dt₁dt₂dx³
+    !      =  ∫ I pᴴ δp dtdx³
+    !∇_p║I║² = I pᴴ
     call alloc(Imag_as_adjsrc,m%nz,m%nx,m%ny)
     call adjsrc_L2sq(Imag_as_adjsrc)
 
+    !x dt for propagation
+    Imag_as_adjsrc=Imag_as_adjsrc*shot%dt
+!     
     !FWI misfit
     fobj%FWI_misfit=0.
 
@@ -301,7 +309,7 @@ print*,'norm2(image)',norm2(m%image)
     call hud('===== START LOOP OVER SHOTS =====')
     
     do i=1,shls%nshots_per_processor
-
+    
         call shot%init(shls%yield(i))
         call shot%read_from_data
         call shot%set_var_time
@@ -311,7 +319,7 @@ print*,'norm2(image)',norm2(m%image)
         
         call cb%init(ppg%nbndlayer)
         call cb%project
-
+        
         call ppg%check_discretization
         call ppg%init
         call ppg%init_abslayer
@@ -332,7 +340,6 @@ print*,'norm2(image)',norm2(m%image)
         !compute FWI data misfit and adjsrc
         fobj%FWI_misfit = fobj%FWI_misfit + L2sq(0.5, shot%nrcv*shot%nt, &
             wei%weight, shot%dsyn-shot%dobs, shot%dt)
-
         call alloc(shot%dadj,shot%nt,shot%nrcv)
         call adjsrc_L2sq(shot%dadj)
         
@@ -438,16 +445,17 @@ print*,'norm2(image)',norm2(m%image)
     call hud('        END LOOP OVER SHOTS        ')
 
 
-    !collect global objective function value
-    call mpi_allreduce(mpi_in_place, fobj%dnorms, fobj%n_dnorms, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-    call fobj%print_dnorms('Shotloop-stacked, shotlist-scaled, but yet linesearch-scaled','')
-
     call mpi_allreduce(mpi_in_place, fobj%FWI_misfit, 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     call hud('Stacked FWI_misfit '//num2str(fobj%FWI_misfit))
 
+    !collect global objective function value
+    call mpi_allreduce(mpi_in_place, fobj%dnorms, fobj%n_dnorms, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    call fobj%print_dnorms('Stacked but not yet linesearch-scaled','')
+
     !collect global correlations
     call mpi_allreduce(mpi_in_place, m%correlate,  m%n*5, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-
+    !scale
+    call shls%scale(m%n*5,o_from_sampled=m%correlate)
 
     if(mpiworld%is_master) then
             call sysio_write('u_star_a',      m%correlate(:,:,:,1),m%n)
@@ -480,31 +488,16 @@ print*,'norm2(image)',norm2(m%image)
 
     deallocate(m%correlate)
     
-    ! if(either(oif_gradient,.true.,present(oif_gradient))) then
-        !collect global gradient
-        !call mpi_allreduce(mpi_in_place, m%gradient,  m%n*ppg%ngrad, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-        ! if(ppg%if_compute_engy) then
-        !     call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-        ! endif
-    ! endif
-
+        
+    if(ppg%if_compute_engy) then
+        call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    endif
+    
+    
     call mpiworld%barrier
 
 end subroutine
 
-
-! subroutine local_write(fname,grad,fullgrad,mm)
-! use mpi
-! use m_System
-
-!     character(*) :: fname
-!     real,dimension(mm) :: grad,fullgrad
-
-    
-!     call sysio_write(fname,grad,mm,o_mode='stack')
-!     fullgrad=fullgrad+grad
-    
-! end subroutine
 
 subroutine print_manual
 

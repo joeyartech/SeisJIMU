@@ -8,6 +8,7 @@ rm c1 c2 tmp
 
 ../../exe/FWD setup.in
 
+rm -r results_fwd
 mv results  results_fwd
 
 # FWI ##

@@ -98,10 +98,10 @@ use m_Kernel
                 ! call pert%register(chp)
             ! endif
 
-            ! if(.not. curr%is_fitting_data) then
-            !     call hud('Negate the sign of pert due to curr')
-            !     call pert%set_negative
-            ! endif
+            if(.not. curr%is_fitting_data) then
+                call hud('Negate the sign of pert due to curr')
+                call pert%set_sign(o_sign='-')
+            endif
 
             call self%scale(pert)
 

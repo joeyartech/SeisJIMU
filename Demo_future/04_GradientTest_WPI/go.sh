@@ -8,6 +8,7 @@
 # 
 # ../../exe/FWD setup.in
 # 
+# rm -r results_fwd
 # mv results  results_fwd
 
 # FWI ##
@@ -17,8 +18,5 @@ makevel nz=1 nx=101 v000=400 > topo
 rm -r results
 ../../exe/gradienttest_wpi  setup.in > out
 
-# echo '            alpha    pert%f    curr%f    (pert%f-curr%f)/alpha    curr%g_dot_d    if_1st_cond'
-# grep '1st cond' out
-
-
-grep '!!!!!' out
+echo '            alpha    pert%f    curr%f    (pert%f-curr%f)/alpha    curr%g_dot_d    if_1st_cond'
+grep '1st cond' out

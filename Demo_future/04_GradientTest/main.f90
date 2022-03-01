@@ -112,10 +112,20 @@ use m_linesearcher
             elseif(str=='random') then !random descent
                 allocate(curr%d,source=curr%pg)
                 call random_number(curr%d)
-                curr%d = sum(abs(curr%pg))/sum(abs(curr%d)) *curr%d
+            
+            elseif(str=='random_normal') then !random normal direction to steepest descent
+                allocate(curr%d,source=curr%pg)
+                call random_number(curr%d) !unlikely to // with curr%pg
+                !   d·pg/‖pg‖ = ‖d‖cosθ = projection of d onto pg
+                !d-(d·pg/‖pg‖)pg/‖pg‖ = normal direction to pg
+                tmp=sum(curr%d*curr%pg)/norm2(curr%pg)
+                curr%d = curr%d - tmp*curr%pg
                 
             endif
             
+            !ensure good magnitudes
+            curr%d = sum(abs(curr%pg))/sum(abs(curr%d)) *curr%d
+                
             curr%g_dot_d = sum(curr%g*curr%d) !inner product
             
             !perturbed point
