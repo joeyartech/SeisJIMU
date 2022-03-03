@@ -5,6 +5,7 @@ use m_arrayop
     private :: n, Wpu, d, a
     
     real,dimension(:),allocatable :: Wpu
+    real :: r_Lpnorm_sign4adjsrc=-1.
 
     contains
 
@@ -45,9 +46,9 @@ use m_arrayop
 
         do i=1,n
             if (Wpu(i)>0.) then
-                adjsrc(i) = adjsrc(i) -a
+                adjsrc(i) = adjsrc(i) +r_Lpnorm_sign4adjsrc*a
             else
-                adjsrc(i) = adjsrc(i) +a
+                adjsrc(i) = adjsrc(i) -r_Lpnorm_sign4adjsrc*a
             endif
         enddo
 
@@ -77,7 +78,7 @@ use m_arrayop
     subroutine adjsrc_L2sq(adjsrc)
         real,dimension(*) :: adjsrc
         
-        adjsrc(1:n) = adjsrc(1:n) -2.*a*Wpu
+        adjsrc(1:n) = adjsrc(1:n) +r_Lpnorm_sign4adjsrc*2.*a*Wpu
 
         deallocate(Wpu)
 

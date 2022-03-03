@@ -91,6 +91,9 @@ use m_cpml
 
     type(t_propagator),public :: ppg
 
+    real,public :: r_ppg_sign4gradient=-1.
+    real,public :: r_ppg_sign4imaging=1.
+
     logical :: if_hicks
     integer :: irdt
     real :: rdt
@@ -195,7 +198,7 @@ use m_cpml
         do iy=cb%ify+1,cb%ily
             self%buoy(:,:,iy)=0.5/cb%rho(:,:,iy)+0.5/cb%rho(:,:,iy-1)
         enddo
-        
+
         !initialize m_field
         call field_init(.false.,self%nt,self%dt)
 
@@ -384,6 +387,7 @@ use m_cpml
         real,parameter :: time_dir=1. !time direction
 
         !seismo
+        call alloc(fld_u%seismo, shot%nrcv,self%nt)
         call alloc(fld_du%seismo,shot%nrcv,self%nt)
         
         tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.
@@ -427,6 +431,7 @@ use m_cpml
 
             !step 5: sample v^it+1 or s^it+1.5 at receivers
             call cpu_time(tic)
+            call self%extract(fld_u,it)
             call self%extract(fld_du,it)
             call cpu_time(toc)
             tt5=tt5+toc-tic
@@ -1681,9 +1686,9 @@ use m_cpml
     
     subroutine gradient_postprocess
         !grho
-        cb%grad(:,:,:,1)=-cb%grad(:,:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)         *m%cell_volume*rdt !scaled by m%cell_volume*rdt tobe a gradient in the discretized world
+        cb%grad(:,:,:,1) = r_ppg_sign4gradient*cb%grad(:,:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)         *m%cell_volume*rdt !scaled by m%cell_volume*rdt tobe a gradient in the discretized world
         !gkpa
-        cb%grad(:,:,:,2)=-cb%grad(:,:,:,2) * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my)) *m%cell_volume*rdt
+        cb%grad(:,:,:,2) = r_ppg_sign4gradient*cb%grad(:,:,:,2) * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my)) *m%cell_volume*rdt
                 
         !preparing for cb%project_back
         cb%grad(1,:,:,:) = cb%grad(2,:,:,:)
@@ -1720,7 +1725,7 @@ use m_cpml
     end subroutine
 
     subroutine imaging_postprocess
-        cb%imag = cb%imag*rdt !unlike gradient_proprocess we don't take a '-' here
+        cb%imag = r_ppg_sign4imaging*cb%imag*rdt
 
         !for cb%project_back
         cb%imag(1,:,:,:) = cb%imag(2,:,:,:)

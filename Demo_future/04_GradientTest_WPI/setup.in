@@ -11,6 +11,8 @@ FS                      '50 505 500'
 FR                      '40 10  0'
 DR                      '0  20 0'
 NR                      100
+#FR                      '40 1990  0'
+#NR                     1
 
 #IF_HICKS    F
 
@@ -30,8 +32,9 @@ UPDATE_WAVELET		'no'
 RDT			0
 
 PARAMETER           'vp:1000:2000'
+#PARAMETER           'vp:0:1'
 
-#CORRS          'FWI'
+#CORRS          'RE'
 SMOOTHING     'none'
 PRECO        'z^0'
 
@@ -39,17 +42,13 @@ DNORMALIZERS    '1 1'
 MREF            '1 1'
 
 #DESCENT_DIR     'random'  #'-curr%pg'
-ALPHAS          '1e6 1e7 1e8'
-#ALPHAS          '1e-5 1e-3 1e-1 1'
-#ALPHAS          '1e-3 1e-2 1e-1 1 1e1'
-#ALPHAS          '1e-3 5e-3 1e-2 5e-2 1e-1 5e-1 1'
+DESCENT_DIR     'random_perturb'
+#ALPHAS           '1e-5 1e-4 1e-3 1e-2'
+ALPHAS           '1e-3 1e-2 1e-1 1 1e1'
 #ALPHAS          '0.'
-#ALPHAS          '-1e-3 -1e-2 -1e-1 -1 -1e1'
-#ALPHAS          '1 1e1 1e2 1e3 1e4'
-#ALPHAS          '0.125 0.25 0.5 1. 2. 4. 8.'
 
 
-LS_SCALING  'none'
+#LS_SCALING  'none'
 
 
 #SNAPSHOT     'p vz'

@@ -1,5 +1,6 @@
 program main
 use m_System
+use m_Lpnorm
 use m_Modeling
 use m_Kernel
 use m_linesearcher
@@ -30,6 +31,13 @@ use m_linesearcher
 
     !print propagator info
     call ppg%print_info
+    
+    !remove minus sign convention for adjsrc & gradient computations
+    !as we have considered it in theory
+    !and this can simplify the coding
+    r_ppg_sign4gradient=1.
+    r_ppg_sign4imaging=1.
+    r_Lpnorm_sign4adjsrc=1.
 
     ! !estimate required memory
     ! call m%estim_RAM
@@ -117,8 +125,17 @@ use m_linesearcher
                 
             elseif(str=='random') then !random descent
                 allocate(curr%d,source=curr%pg)
-                call random_number(curr%d)
-            
+                call random_number(curr%d) ! ∈[0,1)
+                curr%d=curr%d*2.-1. ! ∈[-1,1)
+                
+            elseif(str=='random_perturb') then !random perturbation to steepest descent
+                allocate(curr%d,source=curr%pg)
+                call random_number(curr%d) ! ∈[0,1)
+                curr%d=curr%d*2.-1. ! ∈[-1,1)
+                
+                curr%d = sum(abs(curr%pg))/sum(abs(curr%d)) *curr%d
+                curr%d = -curr%pg +0.5*curr%d
+                
             elseif(str=='random_normal') then !random normal direction to steepest descent
                 allocate(curr%d,source=curr%pg)
                 call random_number(curr%d) !unlikely to // with curr%pg
@@ -192,14 +209,12 @@ use m_smoother_laplacian_sparse
         !weighting on the adjoint source for the image
         call wei%update!('_4IMAGING')
         
-        !choose positive sign for imaging
+        !adjoint eqn Aᴴa = Rᴴd
+        !imaging condition I := u★a
         shot%dadj=shot%dobs
         call shot%write('Imag_dadj_',shot%dadj)
 
-        !adjoint modeling on a
-        !Aᴴa = Rᴴd
-        !C_imag=0.5*(u★a)^2
-        !grad = u★a
+        !adjoint modeling
         call ppg%init_field(fld_a,name='Imag_fld_a',ois_adjoint=.true.); call fld_a%ignite
         call ppg%adjoint(fld_a,fld_u,oif_compute_imag=.true.)
         call hud('---------------------------------')
@@ -242,10 +257,8 @@ use m_resampler
     character(:),allocatable :: corrs
     type(t_field) :: fld_u, fld_du, fld_Adj_du, fld_a, fld_da
     ! real,dimension(:,:),allocatable :: Wdres
-    ! real,dimension(:,:,:),allocatable :: WImag, 
-    real,dimension(:),allocatable :: tmp
+    ! real,dimension(:,:,:),allocatable :: WImag
     real,dimension(:,:,:),allocatable :: Imag_as_adjsrc
-    real,dimension(:,:),allocatable :: tmpdsyn
     ! character(:),allocatable :: update_wavelet
     ! real,dimension(:,:),allocatable :: Rmu, Rdiff
 
@@ -263,39 +276,35 @@ use m_resampler
         call modeling_imaging
     endif
 
-    !compute fobjective
+    !weights for the image
     call iwei%update
 
-    !L1 & L2 norms of image
+    !L1 norm of image
     fobj%dnorms(1) = L1  (1. ,m%n,iwei%weight,m%image,m%cell_volume)
 
-    fobj%dnorms(2) = L2sq(0.5,m%n,iwei%weight,m%image,m%cell_volume)
-    
-!     deallocate(m%image)
-
-    !Use L2 norm for adjsrc
+    !L2 norm of image and adjoint source
     !I(x) = ∫ a(x,t)u(x,t) dt
     ! ║I║² = ½∫ I(x)² dx³ = ½∫ a(x,t₁)u(x,t₁) a(x,t₂)u(x,t₂) dt₁dt₂dx³
     !δ║I║² = ½∫ a(t₁)a(t₂)(u(t₁)δu(t₂)+δu(t₁)u(t₂)) dt₁dt₂dx³
     !      =  ∫ a(t₁)a(t₂)u(t₁)δu(t₂) dt₁dt₂dx³
     !      =  ∫ I a δu dtdx³
     !∇ᵤ║I║² = I a
-    !adjsrc = -∇ᵤ║I║²
-    Imag_as_adjsrc=-m%image(:,:,:,1)
-    !call alloc(Imag_as_adjsrc,m%nz,m%nx,m%ny)
-    !call adjsrc_L2sq(Imag_as_adjsrc)
+    fobj%dnorms(2) = L2sq(0.5,m%n,iwei%weight,m%image,m%cell_volume)
+    call alloc(Imag_as_adjsrc,m%nz,m%nx,m%ny)
+    call adjsrc_L2sq(Imag_as_adjsrc) !Imag_as_adjsrc=W*W*I
     
-    !times dt for ppg's modeling purpose,
-    !has been done in ppg
-    !Image_as_adjsrc=Image_as_adjsrc*dt
+    call sysio_write('Imag_as_adjsrc',Imag_as_adjsrc,size(Imag_as_adjsrc))
+    
+    !save RAM
+    deallocate(m%image)
+    
     
     !FWI misfit
     fobj%FWI_misfit=0.
 
-
     call alloc(m%correlate, m%nz,m%nx,m%ny,5)
 
-    corrs=setup%get_str('CORRELATIONS','CORRS','RE+DR')
+    corrs=setup%get_str('CORRELATIONS','CORRS','RE')
     
     call hud('===== START LOOP OVER SHOTS =====')
     
@@ -317,19 +326,19 @@ use m_resampler
 
         call alloc(cb%corr,     cb%mz,cb%mx,cb%my,5)
 
-if(.false.) then
+! if(.false.) then
         call hud('-------- FWI SK (u star a) --------')
         !forward modeling on u
         call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite       
         call ppg%forward(fld_u);                    call fld_u%acquire
 
-        !dnorm
-        !C_data=Ru-d
         call shot%write('Ru_',shot%dsyn)
 
         call wei%update!('_4FWI')
 
-        !compute FWI data misfit and adjsrc
+        !compute FWI data misfit C_data=║Δd║²
+        !adjoint modeling Aᴴa = RᴴΔd
+        !grad = u★a
         fobj%FWI_misfit = fobj%FWI_misfit + L2sq(0.5, shot%nrcv*shot%nt, &
             wei%weight, shot%dsyn-shot%dobs, shot%dt)
             
@@ -338,10 +347,6 @@ if(.false.) then
         
         call shot%write('FWI_dadj_',shot%dadj)
 
-        !adjoint modeling
-        !C_data=║Δd║²
-        !Aᴴa = RᴴΔd
-        !grad = u★a
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
 
         call fld_a%ignite
@@ -350,19 +355,24 @@ if(.false.) then
 
         cb%corr(:,:,:,1)=cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
         call hud('---------------------------------')
-endif
+! endif
 
         if(index(corrs,'RE')>0) then
 
             call hud('--- extd right-side Rabbit Ears (du star a) ---')
             call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
             call ppg%init_field(fld_du,name='fld_du')
-            call ppg%forward_scattering(fld_du,fld_u,Imag_as_adjsrc); call fld_du%acquire
-            call shot%write('Rdu_',shot%dsyn)
+            
+            !forward scattering
+            !Aδu = Iu
+            call ppg%forward_scattering(fld_du,fld_u,Imag_as_adjsrc)
+            call fld_du%acquire; call shot%write('Rdu_',shot%dsyn)
+            
+            !adjoint eqn Aᴴa = Rᴴd
+            shot%dadj=shot%dobs
             
             !adjoint modeling
             !grad = δu★a
-            shot%dadj=shot%dobs
             call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite
             call ppg%adjoint_du_star_a(fld_a,fld_du,fld_u,Imag_as_adjsrc,oif_compute_grad=.true.) !,oif_compute_imag=.true.)
 
@@ -375,9 +385,11 @@ endif
             call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
             call ppg%forward(fld_u)
             
+            !adjoint eqn Aᴴa = Rᴴd, Aδa = Ia
+            shot%dadj=shot%dobs
+            
             !adjoint modeling
             !grad = u★δa
-            shot%dadj=shot%dobs
             call ppg%init_field(fld_a, name='fld_a', ois_adjoint=.true.); call fld_a%ignite
             call ppg%init_field(fld_da,name='fld_da',ois_adjoint=.true.)
             call ppg%adjoint_scattering_u_star_da(fld_da,fld_a,Imag_as_adjsrc,fld_u,oif_compute_grad=.true.)
@@ -394,9 +406,11 @@ endif
             call ppg%init_field(fld_du,name='fld_du')
             call ppg%forward_scattering(fld_du,fld_u,Imag_as_adjsrc)
 
-            tmp = L2sq(0.5,shot%nrcv*shot%nt,&
-                wei%weight, shot%dsyn-shot%dobs, shot%dt)
-            call adjsrc_L2sq(shot%dadj)
+            !adjoint eqn Aᴴa = Rᴴd, Aδa = Ia
+            shot%dadj=shot%dobs
+            
+            !adjoint modeling
+            !grad = δu★δa
             call ppg%init_field(fld_a, name='fld_a', ois_adjoint=.true.); call fld_a%ignite
             call ppg%init_field(fld_da,name='fld_da',ois_adjoint=.true.)
             call ppg%adjoint_scattering_du_star_da(fld_da,fld_a,fld_du,fld_u,Imag_as_adjsrc,oif_compute_grad=.true.)
@@ -405,36 +419,6 @@ endif
             call hud('---------------------------------')
 
         endif
-
-
-        ! if(index(corrs,'DR')>0) then
-
-        !     call hud('--- demig-remig (u_star_Adj(du)) ---')
-        !     call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
-        !     call ppg%init_field(fld_du,name='fld_du')
-        !     call ppg%forward_scattering(fld_du,fld_u,Imag_as_adjsrc); call fld_du%acquire !shot%dsyn = R*fld_du
-        !     !adjoint modeling on new a with adjsource=R*delta_u
-        !     !A^H a = R^H*R*delta_u
-        !     !grad4 = u \star a
-
-        !     !!manual weighting and resampling
-        !     shot%dsyn=shot%dsyn*wei%weight
-        !     if(mpiworld%is_master) call shot%write('Wei_Rdu_',shot%dsyn)
-        !     !!cheating: shot%dsyn=shot%dobs*wei%weight
-        !     call alloc(tmpdsyn,ppg%nt,shot%nrcv)
-        !     call resampler(shot%dsyn,tmpdsyn, &
-        !                 ntr=shot%nrcv,&
-        !                 din=shot%dt,nin=shot%nt,&
-        !                 dout=ppg%dt,nout=ppg%nt)
-
-        !     call ppg%init_field(fld_Adj_du,name='fld_Adj_du',ois_adjoint=.true.)
-        !     call fld_Adj_du%ignite(o_wavelet=tmpdsyn)
-        !     call ppg%adjoint(fld_Adj_du,fld_u,oif_compute_grad=.true.)
-
-        !     cb%corr(:,:,:,5)=cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
-        !     call hud('---------------------------------')
-
-        ! endif
         
         call cb%project_back
 
@@ -464,9 +448,6 @@ endif
         if(index(corrs,'2ndMI')>0) then
             call sysio_write('du_star_da',    m%correlate(:,:,:,4),m%n)
         endif
-        ! if(index(corrs,'DR')>0) then
-        !     call sysio_write('u_star_Adj(du)',m%correlate(:,:,:,5),m%n)
-        ! endif
     endif
 
     m%gradient=0.
@@ -476,9 +457,6 @@ endif
     if(index(corrs,'RE')>0) then
         m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,2)+m%correlate(:,:,:,3)
     endif
-    ! if(index(corrs,'DR')>0) then
-    !     m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,5)
-    ! endif
 
 
     !check if fitting the t-x domain data
