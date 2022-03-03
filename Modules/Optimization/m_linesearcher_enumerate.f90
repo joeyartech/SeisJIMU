@@ -30,6 +30,7 @@ use m_Kernel
     real,parameter :: multiplier=10.
     
     !thresholding
+    logical :: if_threshold
     real,parameter :: thres=0.
     
     real,dimension(:),allocatable :: alphas
@@ -65,6 +66,8 @@ use m_Kernel
         alphas = setup%get_reals('TEST_ALPHAS','ALPHAS',o_default='0.001 0.01 0.1 1')
         nalpha = size(alphas)
         call hud('nalpha = '//num2str(nalpha))
+
+        if_threshold = setup%get_bool('LINESEARCHER_THRESHOLD',o_default='T')
         
     end subroutine
     
@@ -124,7 +127,7 @@ use m_Kernel
             if_2nd_cond = (pert%g_dot_d >= c2*curr%g_dot_d) !weak curvature condition
 
             if(mpiworld%is_master) then
-                print*,'1st cond',self%alpha,pert%f,curr%f,(pert%f-curr%f)/self%alpha, curr%g_dot_d, if_1st_cond
+                print*,'1st cond',self%alpha,pert%f,curr%f,(pert%f-curr%f)/self%alpha, curr%g_dot_d,  curr%g_dot_d/((pert%f-curr%f)/self%alpha), if_1st_cond
                 print*,'2nd cond',pert%g_dot_d, curr%g_dot_d, if_2nd_cond
             endif
 
@@ -171,6 +174,8 @@ use m_Kernel
 
         logical,dimension(n) :: is_reached
 
+        if(.not.if_threshold) return
+        
         is_reached=.false.
 
         !x should reside in [0,1]

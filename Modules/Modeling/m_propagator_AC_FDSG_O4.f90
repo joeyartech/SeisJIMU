@@ -1392,7 +1392,7 @@ use m_cpml
         real,dimension(cb%mz,cb%mx,cb%my) :: RHS
         real :: time_dir
 
-        f%p(1:cb%mz,1:cb%mx,1:cb%my) = f%p(1:cb%mz,1:cb%mx,1:cb%my) + time_dir*RHS*self%kpa(1:cb%mz,1:cb%mx,1:cb%my)
+        f%p(1:cb%mz,1:cb%mx,1:cb%my) = f%p(1:cb%mz,1:cb%mx,1:cb%my) + time_dir*RHS*self%kpa(1:cb%mz,1:cb%mx,1:cb%my) *self%dt
     end subroutine
 
     !s^it+0.5 -> s^it+1.5 by FD of v^it+1
@@ -1720,7 +1720,7 @@ use m_cpml
     end subroutine
 
     subroutine imaging_postprocess
-        cb%imag = -cb%imag*rdt
+        cb%imag = cb%imag*rdt !unlike gradient_proprocess we don't take a '-' here
 
         !for cb%project_back
         cb%imag(1,:,:,:) = cb%imag(2,:,:,:)

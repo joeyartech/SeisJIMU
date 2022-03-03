@@ -116,6 +116,7 @@ use m_linesearcher
             elseif(str=='random_normal') then !random normal direction to steepest descent
                 allocate(curr%d,source=curr%pg)
                 call random_number(curr%d) !unlikely to // with curr%pg
+                curr%d = sum(abs(curr%pg))/sum(abs(curr%d)) *curr%d !start with reasonable magnitudes
                 !   d·pg/‖pg‖ = ‖d‖cosθ = projection of d onto pg
                 !d-(d·pg/‖pg‖)pg/‖pg‖ = normal direction to pg
                 tmp=sum(curr%d*curr%pg)/norm2(curr%pg)
