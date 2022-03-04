@@ -466,16 +466,19 @@ use m_resampler
     call hud('        END LOOP OVER SHOTS        ')
 
 
+    !collect FWI misfit values
+    !no need to collect WPI misfit values
     call mpi_allreduce(mpi_in_place, fobj%FWI_misfit, 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     call hud('Stacked FWI_misfit '//num2str(fobj%FWI_misfit))
 
-!     !collect global objective function value
-    call mpi_allreduce(mpi_in_place, fobj%dnorms, fobj%n_dnorms, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-!fobj%dnorms=fobj%FWI_misfit
     call fobj%print_dnorms('Stacked but not yet linesearch-scaled','')
+    
     !collect global correlations
     call mpi_allreduce(mpi_in_place, m%correlate,  m%n*5, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    
     !scale
+    call shls%scale(1,o_from_sampled=[fobj%FWI_misfit])
+    call shls%scale(fobj%n_dnorms,o_from_sampled=fobj%dnorms)
     call shls%scale(m%n*5,o_from_sampled=m%correlate)
 
     if(mpiworld%is_master) then

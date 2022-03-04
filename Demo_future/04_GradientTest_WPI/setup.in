@@ -8,11 +8,12 @@ IS_FREESURFACE          F
 
 ACQUI_GEOMETRY          spread
 FS                      '50 505 500'
+DS                      '0  20 0'
+NS                      4
 FR                      '40 10  0'
 DR                      '0  20 0'
 NR                      100
-#FR                      '40 1990  0'
-#NR                     1
+
 
 #IF_HICKS    F
 
@@ -25,6 +26,8 @@ DT           0.006
 
 ## for WPI ##
 FILE_DATA_PREFIX    './results_fwd/dsyn_'
+#ISHOT               1
+NBATCH              4
 WEIGHTING           'none'
 
 FPEAK        6.4
@@ -42,9 +45,10 @@ DNORMALIZERS    '1 1'
 MREF            '1 1'
 
 #DESCENT_DIR     'random'  #'-curr%pg'
-DESCENT_DIR     'random_perturb'
+#DESCENT_DIR     'random_perturb'
+ALPHAS           1e-3
 #ALPHAS           '1e-5 1e-4 1e-3 1e-2'
-ALPHAS           '1e-3 1e-2 1e-1 1 1e1'
+#ALPHAS           '1e-3 1e-2 1e-1 1 1e1'
 #ALPHAS          '0.'
 
 

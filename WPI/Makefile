@@ -65,4 +65,6 @@ cleanall :
 	#Optimization
 	(cd ../Modules/Optimization; make clean)
 	#
+	rm ../../mod/*.mod
+	#
 	make clean

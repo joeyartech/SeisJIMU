@@ -1,5 +1,5 @@
-MODEL_SIZE              '101 101 1'
-MODEL_SPACING           '20 20 1'
+MODEL_SIZE              '201 201 1'
+MODEL_SPACING           '10 10 1'
 FILE_MODEL              'model'
 MODEL_ATTRIBUTES        vp #'vp rho'
 FILE_TOPO               'topo'
@@ -13,7 +13,7 @@ DR                      '0  20 0'
 NR                      100
 
 SCOMP                   p
-RCOMP                   vz #'p vz'
+RCOMP                   p #'p vz'
 
 
 NT           500
@@ -32,11 +32,11 @@ PARAMETER           'vp:1000:2000'
 SMOOTHING     'none'
 PRECO         'z^0'
 
-#DNORMALIZERS    '1 1'
-#MREF            '1 1'
+DNORMALIZERS    '1 1'
+MREF            '1 1'
 
-DESCENT_DIR     'random'  #'-curr%pg'
-ALPHAS          '1e-3 1e-2 1e-1 1 1e1'
+#DESCENT_DIR     'random'  #'-curr%pg'
+ALPHAS          '1e-5 1e-3 1e-1 1'
 #ALPHAS          '1e-3 5e-3 1e-2 5e-2 1e-1 5e-1 1'
 #ALPHAS          '0.'
 #ALPHAS          '-1e-3 -1e-2 -1e-1 -1 -1e1'

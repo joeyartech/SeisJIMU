@@ -223,9 +223,10 @@ use m_smoother_laplacian_sparse
 
     !collect global objective function value
     call mpi_allreduce(mpi_in_place, fobj%dnorms, fobj%n_dnorms, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    
     !scale by shotlist
     call shls%scale(fobj%n_dnorms,o_from_sampled=fobj%dnorms)
-
+    
     call fobj%print_dnorms('Shotloop-stacked, shotlist-scaled, but yet linesearch-scaled','')
 
     ! if(either(oif_gradient,.true.,present(oif_gradient))) then
