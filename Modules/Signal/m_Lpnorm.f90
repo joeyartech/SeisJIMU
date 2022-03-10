@@ -41,16 +41,27 @@ use m_arrayop
 
     end function
 
-    subroutine adjsrc_L1(adjsrc)
+    subroutine adjsrc_L1(adjsrc,oif_stack)
         real,dimension(*) :: adjsrc
+        logical,optional :: oif_stack
 
-        do i=1,n
-            if (Wpu(i)>0.) then
-                adjsrc(i) = adjsrc(i) +r_Lpnorm_sign4adjsrc*a
-            else
-                adjsrc(i) = adjsrc(i) -r_Lpnorm_sign4adjsrc*a
-            endif
-        enddo
+        if(either(oif_stack,.false.,present(oif_stack))) then
+            do i=1,n
+                if (Wpu(i)>0.) then
+                    adjsrc(i) =            r_Lpnorm_sign4adjsrc*a
+                else
+                    adjsrc(i) =           -r_Lpnorm_sign4adjsrc*a
+                endif
+            enddo
+        else
+            do i=1,n
+                if (Wpu(i)>0.) then
+                    adjsrc(i) = adjsrc(i) +r_Lpnorm_sign4adjsrc*a
+                else
+                    adjsrc(i) = adjsrc(i) -r_Lpnorm_sign4adjsrc*a
+                endif
+            enddo
+        endif
 
         deallocate(Wpu)
 
@@ -75,10 +86,15 @@ use m_arrayop
         
     end function
 
-    subroutine adjsrc_L2sq(adjsrc)
+    subroutine adjsrc_L2sq(adjsrc,oif_stack)
         real,dimension(*) :: adjsrc
+        logical,optional :: oif_stack
         
-        adjsrc(1:n) = adjsrc(1:n) +r_Lpnorm_sign4adjsrc*2.*a*Wpu
+        if(either(oif_stack,.false.,present(oif_stack))) then
+            adjsrc(1:n) =              r_Lpnorm_sign4adjsrc*2.*a*Wpu
+        else
+            adjsrc(1:n) = adjsrc(1:n) +r_Lpnorm_sign4adjsrc*2.*a*Wpu
+        endif
 
         deallocate(Wpu)
 

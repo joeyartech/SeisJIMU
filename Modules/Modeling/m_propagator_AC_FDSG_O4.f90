@@ -24,9 +24,9 @@ use m_cpml
             'Vireux-Levandar Staggered-Grid Finite-Difference (FDSG) method'//s_NL// &
             'Cartesian O(x4,t2) stencil'//s_NL// &
             'CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal'//s_NL// &
-            '   -> dt <= 0.606(2D) or 0.494(3D) *Vmax/dx'//s_NL// &
+            '   -> dt ≤ 0.606(for 2D) or 0.494(3D) *Vmax/dx'//s_NL// &
             'Required model attributes: vp, rho'//s_NL// &
-            'Required field components: vz, vx, vy(for 3D), p'//s_NL// &
+            'Required field components: vz, vx, vy(3D), p'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
             'Basic gradients: grho gkpa'//s_NL// &
             'Imaging conditions: P-Pxcorr'//s_NL// &

@@ -127,13 +127,13 @@ use m_preconditioner
                         self%dnorms(i) = self%dnorms(i) + L1(self%dnorm_normalizers(i), shot%nt, &
                             wei%weight(:,ir)*m%ref_inv_vp, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
                             
-                        if(is_4adjsrc) call adjsrc_L1(shot%dadj(:,ir))
+                        if(is_4adjsrc) call adjsrc_L1(shot%dadj(:,ir),oif_stack=.true.)
                         
                     else !velocities data, use ref_rho to balance amplitudes versus pressure data
                         self%dnorms(i) = self%dnorms(i) + L1(self%dnorm_normalizers(i), shot%nt, &
                             wei%weight(:,ir)*m%ref_rho,    shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
 
-                        if(is_4adjsrc) call adjsrc_L1(shot%dadj(:,ir))
+                        if(is_4adjsrc) call adjsrc_L1(shot%dadj(:,ir),oif_stack=.true.)
 
                     endif
 
@@ -150,13 +150,13 @@ use m_preconditioner
                         self%dnorms(i) = self%dnorms(i) + L2sq(0.5*self%dnorm_normalizers(i), shot%nt, &
                             wei%weight(:,ir)*m%ref_inv_vp, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
                             
-                        if(is_4adjsrc) call adjsrc_L2sq(shot%dadj(:,ir))
+                        if(is_4adjsrc) call adjsrc_L2sq(shot%dadj(:,ir),oif_stack=.true.)
                         
                     else !velocity data
                         self%dnorms(i) = self%dnorms(i) + L2sq(0.5*self%dnorm_normalizers(i), shot%nt, &
                             wei%weight(:,ir)*m%ref_rho,    shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
 
-                        if(is_4adjsrc) call adjsrc_L2sq(shot%dadj(:,ir))
+                        if(is_4adjsrc) call adjsrc_L2sq(shot%dadj(:,ir),oif_stack=.true.)
 
                     endif
 

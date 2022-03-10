@@ -363,6 +363,28 @@ use m_resampler
 
         if(index(corrs,'RE')>0) then
 
+            call hud('--- extd left-side Rabbit Ears (u star da) ---')
+            !re-model u
+            call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
+            call ppg%forward(fld_u); call fld_u%acquire
+            
+            !adjoint eqn Aᴴa = RᴴΔd, Aδa = Ia
+            call wei%update
+            tmp = L2sq(0.5,shot%nrcv*shot%nt,&
+                wei%weight, shot%dsyn-shot%dobs, shot%dt)
+            call adjsrc_L2sq(shot%dadj)
+            
+            !adjoint modeling
+            !grad = u★δa
+            call ppg%init_field(fld_a, name='fld_a', ois_adjoint=.true.); call fld_a%ignite
+            call ppg%init_field(fld_da,name='fld_da',ois_adjoint=.true.)
+            call ppg%adjoint_scattering_u_star_da(fld_da,fld_a,Imag_as_adjsrc,fld_u,oif_compute_grad=.true.)
+
+            cb%corr(:,:,:,3)=cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
+            call hud('---------------------------------')
+            
+            
+            
             call hud('--- extd right-side Rabbit Ears (du star a) ---')
             call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
             call ppg%init_field(fld_du,name='fld_du')
@@ -387,25 +409,7 @@ use m_resampler
             call hud('---------------------------------')
     ! pause
 
-            call hud('--- extd left-side Rabbit Ears (u star da) ---')
-            !re-model u
-            call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
-            call ppg%forward(fld_u); call fld_u%acquire
             
-            !adjoint eqn Aᴴa = RᴴΔd, Aδa = Ia
-            call wei%update
-            tmp = L2sq(0.5,shot%nrcv*shot%nt,&
-                wei%weight, shot%dsyn-shot%dobs, shot%dt)
-            call adjsrc_L2sq(shot%dadj)
-            
-            !adjoint modeling
-            !grad = u★δa
-            call ppg%init_field(fld_a, name='fld_a', ois_adjoint=.true.); call fld_a%ignite
-            call ppg%init_field(fld_da,name='fld_da',ois_adjoint=.true.)
-            call ppg%adjoint_scattering_u_star_da(fld_da,fld_a,Imag_as_adjsrc,fld_u,oif_compute_grad=.true.)
-
-            cb%corr(:,:,:,3)=cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
-            call hud('---------------------------------')
 
         endif
 

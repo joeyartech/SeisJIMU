@@ -8,8 +8,6 @@ IS_FREESURFACE          F
 
 ACQUI_GEOMETRY          spread
 FS                      '50 505 500'
-DS                      '0  20 0'
-NS                      4
 FR                      '40 10  0'
 DR                      '0  20 0'
 NR                      100
@@ -37,7 +35,7 @@ RDT			0
 PARAMETER           'vp:1000:2000'
 #PARAMETER           'vp:0:1'
 
-#CORRS          'RE'
+#CORRS          'DR'
 SMOOTHING     'none'
 PRECO        'z^0'
 

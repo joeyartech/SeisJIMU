@@ -1,5 +1,6 @@
 program main
 use m_System
+use m_Lpnorm
 use m_Modeling
 use m_Kernel
 use m_Optimization
@@ -155,9 +156,9 @@ use m_smoother_laplacian_sparse
         call wei%update!('_4IMAGING')
         
         tmp = L2sq(0.5,shot%nrcv*shot%nt,&
-            wei%weight, shot%dsyn-shot%dobs, shot%dt)
+            wei%weight, shot%dobs-shot%dsyn, shot%dt)
         
-        !adjoint eqn Aᴴa = RᴴΔd=Rᴴ(u-d)
+        !adjoint eqn Aᴴa =-RᴴΔd =Rᴴ(d-u)
         !imaging condition I := u★a
         call alloc(shot%dadj,shot%nt,shot%nrcv)
         call adjsrc_L2sq(shot%dadj)
@@ -276,7 +277,7 @@ use m_resampler
         call alloc(cb%corr,     cb%mz,cb%mx,cb%my,5)
 
 ! if(.false.) then
-        call hud('-------- FWI SK (u star a) --------')
+        call hud('-------- FWI SK (u_star_a) --------')
         !forward modeling on u
         call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite       
         call ppg%forward(fld_u);                    call fld_u%acquire
@@ -291,7 +292,6 @@ use m_resampler
         fobj%FWI_misfit = fobj%FWI_misfit + L2sq(0.5, shot%nrcv*shot%nt, &
             wei%weight, shot%dsyn-shot%dobs, shot%dt)
             
-        call alloc(shot%dadj,shot%nt,shot%nrcv)
         call adjsrc_L2sq(shot%dadj)
         
         call shot%write('FWI_dadj_',shot%dadj)
@@ -308,7 +308,7 @@ use m_resampler
 
         if(index(corrs,'RE')>0) then
 
-            call hud('--- extd right-side Rabbit Ears (du star a) ---')
+            call hud('--- extd right-side Rabbit Ear (du_star_a) ---')
             call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
             call ppg%init_field(fld_du,name='fld_du')
             
@@ -318,9 +318,9 @@ use m_resampler
             call fld_du%acquire; call shot%write('Rdu_',shot%dsyn)
             call fld_u%acquire !shot%dsyn = Ru
             
-            !adjoint eqn Aᴴa = RᴴΔd
+            !adjoint eqn Aᴴa = -RᴴΔd
             call wei%update
-            tmp = L2sq(0.5,shot%nrcv*shot%nt, wei%weight, shot%dsyn-shot%dobs, shot%dt)
+            tmp = L2sq(0.5,shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
             call adjsrc_L2sq(shot%dadj)
             
             !adjoint modeling
@@ -332,15 +332,14 @@ use m_resampler
             call hud('---------------------------------')
     ! pause
 
-            call hud('--- extd left-side Rabbit Ears (u star da) ---')
+            call hud('--- extd left-side Rabbit Ear (u_star_da) ---')
             !re-model u
             call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
             call ppg%forward(fld_u); call fld_u%acquire
             
-            !adjoint eqn Aᴴa = RᴴΔd, Aδa = Ia
+            !adjoint eqn Aᴴa = -RᴴΔd, Aδa = Ia
             call wei%update
-            tmp = L2sq(0.5,shot%nrcv*shot%nt,&
-                wei%weight, shot%dsyn-shot%dobs, shot%dt)
+            tmp = L2sq(0.5,shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
             call adjsrc_L2sq(shot%dadj)
             
             !adjoint modeling
@@ -362,10 +361,9 @@ use m_resampler
             call ppg%forward_scattering(fld_du,fld_u,Imag_as_adjsrc)
             call fld_u%acquire !shot%dsyn = Ru
 
-            !adjoint eqn Aᴴa = RᴴΔd, Aδa = Ia
+            !adjoint eqn Aᴴa = -RᴴΔd, Aδa = Ia
             call wei%update
-            tmp = L2sq(0.5,shot%nrcv*shot%nt,&
-                wei%weight, shot%dsyn-shot%dobs, shot%dt)
+            tmp = L2sq(0.5,shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
             call adjsrc_L2sq(shot%dadj)
             
             !adjoint modeling
@@ -396,9 +394,11 @@ use m_resampler
             call fld_Adj_du%ignite
             
             !adjoint modeling
-            !grad = -u★Adj(δu)
+            !grad = u★Adj(δu)
             call ppg%adjoint(fld_Adj_du,fld_u,oif_compute_grad=.true.)
             
+call hud('take corr = -u★Adj(δu)' //s_NL// &
+'I still need another minus sign. WHY?')
             cb%corr(:,:,:,5)=-cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
             call hud('---------------------------------')
 

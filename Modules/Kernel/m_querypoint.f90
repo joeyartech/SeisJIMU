@@ -54,6 +54,12 @@ use m_parametrizer
         
         logical :: if_flip
         
+        if(.not. setup%get_bool('IF_QP_SET_SIGN','IF_SET_SIGN',o_default='T')) then
+            call hud('User has said "Do NOT set sign. Do nothing." ')
+            return
+        endif
+
+
         if_flip=.false.
         
         if(present(o_sign)) then

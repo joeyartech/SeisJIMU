@@ -37,6 +37,10 @@ use m_Modeling
 
         do i=1,size(list)
 
+            if (index(list(i)%s,'topo')>0) then
+                where(m%is_freeze_zone) self%weight=0.
+            endif
+            
             if (index(list(i)%s,'custom')>0) then
                 sublist=split(list(i)%s,o_sep=':')
                 if(size(sublist)==1) then !filename is not attached, ask for it

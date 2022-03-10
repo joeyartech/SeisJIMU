@@ -3,21 +3,21 @@
 n=101
 v0=1600 #1800
 
-# FWD ##
-if [ $n -eq 101 ]; then
-    makevel nz=49 nx=$n v000=1500 > c1
-    makevel nz=3  nx=$n v000=2000 > c2
-else
-    makevel nz=98 nx=$n v000=1500 > c1
-    makevel nz=5  nx=$n v000=2000 > c2
-fi
-cat c1 c2 c1 > tmp && transp < tmp n1=$n > model
-rm c1 c2 tmp
-
-mpirun -np 2 ../../exe/FWD setup.in > out
-
-rm -r results_fwd
-mv results  results_fwd
+## FWD ##
+#if [ $n -eq 101 ]; then
+#    makevel nz=49 nx=$n v000=1500 > c1
+#    makevel nz=3  nx=$n v000=2000 > c2
+#else
+#    makevel nz=98 nx=$n v000=1500 > c1
+#    makevel nz=5  nx=$n v000=2000 > c2
+#fi
+#cat c1 c2 c1 > tmp && transp < tmp n1=$n > model
+#rm c1 c2 tmp
+#
+#../../exe/FWD setup.in > out
+#
+#rm -r results_fwd
+#mv results  results_fwd
 
 
 ## WPI ##
@@ -26,8 +26,7 @@ makevel nz=1 nx=$n v000=100 > topo
 #makevel nz=1 nx=$n v000=400 > topo
 
 rm -r results
-export OMP_NUM_THREADS=2
-mpirun -np 2 ../../exe/gradienttest_wpi  setup.in > out
+../../exe/gradienttest_wpi  setup.in > out
 
 echo '            alpha    pert%f    curr%f    (pert%f-curr%f)/alpha    curr%g_dot_d    ratio'
 grep '1st cond' out
