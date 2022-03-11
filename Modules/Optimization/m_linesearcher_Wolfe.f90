@@ -145,9 +145,9 @@ use m_Kernel
             if_2nd_cond = (pert%g_dot_d >= c2*curr%g_dot_d) !weak curvature condition
 
             if(mpiworld%is_master) then
-                print*,'1st cond',self%alpha,pert%f,curr%f,(pert%f-curr%f)/self%alpha, curr%g_dot_d, if_1st_cond
+                print*,'1st cond',self%alpha,pert%f,curr%f,(pert%f-curr%f)/self%alpha, curr%g_dot_d,  curr%g_dot_d/((pert%f-curr%f)/self%alpha), if_1st_cond
                 print*,'2nd cond',pert%g_dot_d, curr%g_dot_d, if_2nd_cond
-                print*,'alpha(3)',alphaL,alpha,alpha_R
+                !print*,'alpha(3)',alphaL,alpha,alpha_R
             endif
 
             !occasionally optimizers on processors don't have same behavior

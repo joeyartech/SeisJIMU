@@ -291,15 +291,13 @@ use m_resampler
         !grad = u★a
         fobj%FWI_misfit = fobj%FWI_misfit + L2sq(0.5, shot%nrcv*shot%nt, &
             wei%weight, shot%dsyn-shot%dobs, shot%dt)
-            
-        call adjsrc_L2sq(shot%dadj)
         
+        call alloc(shot%dadj,shot%nt,shot%nrcv)
+        call adjsrc_L2sq(shot%dadj)
         call shot%write('FWI_dadj_',shot%dadj)
 
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
-
         call fld_a%ignite
-
         call ppg%adjoint(fld_a,fld_u,oif_compute_grad=.true.)
 
         cb%corr(:,:,:,1)=cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
@@ -451,12 +449,14 @@ call hud('take corr = -u★Adj(δu)' //s_NL// &
         m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,5)
     endif
 
-
     !check if fitting the t-x domain data
     is_fitting_data = sum(m%correlate(:,:,:,1)*m%gradient(:,:,:,2))>0.
 
     deallocate(m%correlate)
     
+    !required, otherwise cb%project_back will project_back cb%corr
+    !in the sequential calling of modeling_imaging
+    deallocate(cb%corr)
         
     if(ppg%if_compute_engy) then
         call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)

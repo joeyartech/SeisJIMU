@@ -48,17 +48,17 @@ use m_arrayop
         if(either(oif_stack,.false.,present(oif_stack))) then
             do i=1,n
                 if (Wpu(i)>0.) then
-                    adjsrc(i) =            r_Lpnorm_sign4adjsrc*a
+                    adjsrc(i) = adjsrc(i) +r_Lpnorm_sign4adjsrc*a
                 else
-                    adjsrc(i) =           -r_Lpnorm_sign4adjsrc*a
+                    adjsrc(i) = adjsrc(i) -r_Lpnorm_sign4adjsrc*a
                 endif
             enddo
         else
             do i=1,n
                 if (Wpu(i)>0.) then
-                    adjsrc(i) = adjsrc(i) +r_Lpnorm_sign4adjsrc*a
+                    adjsrc(i) =            r_Lpnorm_sign4adjsrc*a
                 else
-                    adjsrc(i) = adjsrc(i) -r_Lpnorm_sign4adjsrc*a
+                    adjsrc(i) =           -r_Lpnorm_sign4adjsrc*a
                 endif
             enddo
         endif
@@ -91,9 +91,9 @@ use m_arrayop
         logical,optional :: oif_stack
         
         if(either(oif_stack,.false.,present(oif_stack))) then
-            adjsrc(1:n) =              r_Lpnorm_sign4adjsrc*2.*a*Wpu
-        else
             adjsrc(1:n) = adjsrc(1:n) +r_Lpnorm_sign4adjsrc*2.*a*Wpu
+        else
+            adjsrc(1:n) =              r_Lpnorm_sign4adjsrc*2.*a*Wpu
         endif
 
         deallocate(Wpu)
