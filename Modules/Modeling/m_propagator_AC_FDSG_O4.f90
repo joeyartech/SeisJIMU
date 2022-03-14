@@ -85,6 +85,8 @@ use m_cpml
         procedure :: update_velocities_adjoint
         procedure :: extract_adjoint
 
+        procedure :: adjoint_WPI
+
         final :: final
 
     end type
@@ -1281,6 +1283,213 @@ use m_cpml
         endif
 
     end subroutine
+
+    subroutine adjoint_WPI(self,fld_da,fld_a,fld_Adj_du,fld_du,fld_u,W2imag,corrs)
+        class(t_propagator) :: self
+        type(t_field) :: fld_da,fld_a, fld_Adj_du
+        type(t_field) :: fld_du,fld_u
+        real,dimension(cb%mz,cb%mx,cb%my) :: W2imag
+        character(*) :: corrs
+        
+        real,parameter :: time_dir=-1. !time direction
+        
+        !reinitialize absorbing boundary for incident wavefield reconstruction
+        ! if(present(o_sf)) then
+                                          fld_du%dvz_dz=0.
+                                           fld_u%dvz_dz=0.
+                                          fld_du%dvx_dx=0.
+                                           fld_u%dvx_dx=0.
+            ! if(allocated(fld_du%dvy_dy))  fld_du%dvy_dy=0.
+            ! if(allocated( fld_u%dvy_dy))   fld_u%dvy_dy=0.
+                                          fld_du%dp_dz=0.
+                                           fld_u%dp_dz=0.
+                                          fld_du%dp_dx=0.
+                                           fld_u%dp_dx=0.
+        ! endif
+
+        !timing
+        tt1=0.; tt2=0.; tt3=0.
+        tt4=0.; tt5=0.; tt6=0.
+        tt7=0.; tt8=0.; tt9=0.
+        tt10=0.;tt11=0.; tt12=0.; tt13=0.
+        
+        ift=1; ilt=self%nt
+
+! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        
+        do it=ilt,ift,int(time_dir)
+            if(mod(it,500)==0 .and. mpiworld%is_master) then
+                write(*,*) 'it----',it
+                call fld_da%check_value
+                call fld_a%check_value
+                call fld_Adj_du%check_value
+                call fld_du%check_value
+                call fld_u%check_value
+            endif            
+
+            !do backward time stepping to reconstruct the source (incident) wavefield
+            !and adjoint time stepping to compute the receiver (adjoint) field
+            !step# conforms with forward time stepping
+
+            ! if(present(o_sf)) then
+                !backward step 6: retrieve v^it+1 at boundary layers (BC)
+                call cpu_time(tic)
+                call fld_du%boundary_transport('load',it)
+                call  fld_u%boundary_transport('load',it)
+                call cpu_time(toc)
+                tt1=tt1+toc-tic
+                
+                !backward step 4: s^it+1.5 -> s^it+0.5 by FD of v^it+1
+                call cpu_time(tic)
+                call self%update_stresses(fld_du,time_dir,it)
+                call self%update_stresses( fld_u,time_dir,it)
+                call cpu_time(toc)
+                tt2=tt2+toc-tic
+
+                !backward step 3: rm pressure from s^it+0.5
+                call cpu_time(tic)
+                call self%inject_stresses_scattering(fld_du,fld_u%p(1:cb%mz,1:cb%mx,1:cb%my)*W2imag,time_dir)
+                call self%inject_stresses( fld_u,time_dir,it)
+                call cpu_time(toc)
+                tt3=tt3+toc-tic
+            ! endif
+
+            !--------------------------------------------------------!
+
+            !adjoint step 5: inject to s^it+1.5 at receivers
+            call cpu_time(tic)
+            call self%inject_stresses_scattering(fld_da,fld_a%p(1:cb%mz,1:cb%mx,1:cb%my)*W2imag,time_dir)
+            call self%inject_stresses_adjoint(fld_a,time_dir,it)
+            call self%inject_stresses_adjoint(fld_Adj_du,time_dir,it)
+            call cpu_time(toc)
+            tt4=tt4+toc-tic
+
+            !adjoint step 4: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
+            call cpu_time(tic)
+            call self%update_stresses_adjoint(fld_da,time_dir,it)
+            call self%update_stresses_adjoint(fld_a, time_dir,it)
+            call self%update_stresses_adjoint(fld_Adj_du, time_dir,it)
+            call cpu_time(toc)
+            tt5=tt5+toc-tic
+
+            !gkpa: sfield%s_dt^it+0.5 \dot rfield%s^it+0.5
+            !use sfield%v^it+1 to compute sfield%s_dt^it+0.5, as backward step 4
+            if(mod(it,irdt)==0) then
+                call cpu_time(tic)
+                
+                !corr(:,:,:,1) = FWI SK (u_star_a)
+                call gradient_moduli(fld_a,fld_u,it,cb%corr(:,:,:,1))
+
+                if(index(corrs,'RE')>0) then
+                    !corr(:,:,:,2) = extd right-side RE (du_star_a)
+                    call gradient_moduli(fld_a,fld_du,it,cb%corr(:,:,:,2))
+                    !corr(:,:,:,3) = extd left-side  RE ( u_star_da)
+                    call gradient_moduli(fld_da,fld_u,it,cb%corr(:,:,:,3))
+                endif
+                
+                ! if(index(corrs,'2ndMI')>0) then
+                !     !corr(:,:,:,4) = 2ndMI (du_star_da)
+                !     call gradient_moduli(fld_da,fld_du,it,cb%corr(:,:,:,4))
+                ! endif
+                
+                if(index(corrs,'DR')>0) then
+                    !corr(:,:,:,5) = demig-remig (u_star_Adj(du))
+                    call gradient_moduli(fld_Adj_du,fld_u,it,cb%corr(:,:,:,5))
+                endif
+
+                call cpu_time(toc)
+                tt6=tt6+toc-tic
+            endif
+                
+            !========================================================!
+
+            ! if(present(o_sf)) then
+                !backward step 2: v^it+1 -> v^it by FD of s^it+0.5
+                call cpu_time(tic)
+                call self%update_velocities(fld_du,time_dir,it)
+                call self%update_velocities( fld_u,time_dir,it)
+                call cpu_time(toc)
+                tt7=tt7+toc-tic
+
+                !backward step 1: rm forces from v^it
+                call cpu_time(tic)
+                ! call self%inject_velocities(fld_du,fld_u,it)
+                call self%inject_velocities( fld_u,time_dir,it)
+                call cpu_time(toc)
+                tt8=tt8+toc-tic
+            ! endif
+
+            !--------------------------------------------------------!
+
+            !adjoint step 5: inject to v^it+1 at receivers
+            call cpu_time(tic)
+            call self%inject_velocities_adjoint(fld_a,time_dir,it)
+            call cpu_time(toc)
+            tt9=tt9+toc-tic
+
+            !adjoint step 2: v^it+1 -> v^it by FD^T of s^it+0.5
+            call cpu_time(tic)
+            call self%update_velocities_adjoint(fld_da,time_dir,it)
+            call self%update_velocities_adjoint(fld_a, time_dir,it)
+            call self%update_velocities_adjoint(fld_Adj_du, time_dir,it)
+            call cpu_time(toc)
+            tt10=tt10+toc-tic
+            
+            ! !adjoint step 1: sample v^it or s^it+0.5 at source position
+            ! if(if_record_adjseismo) then
+            !     call cpu_time(tic)
+            !     call self%extract_adjoint(fld_da,it)
+            !     call cpu_time(toc)
+            !     tt11=tt11+toc-tic
+            ! endif
+                        
+            !snapshot
+            call fld_u%write(it,o_suffix='_rev')
+            call fld_du%write(it,o_suffix='_rev')
+            call fld_a%write(it,o_suffix='_rev')
+            call fld_da%write(it,o_suffix='_rev')
+            
+                call fld_u%write_ext(it,'grad_u_dot_a' ,cb%corr(:,:,:,1),size(cb%corr(:,:,:,1)))
+
+            if(index(corrs,'RE')>0) then
+                call fld_u%write_ext(it,'grad_du_dot_a' ,cb%corr(:,:,:,2),size(cb%corr(:,:,:,2)))
+                call fld_u%write_ext(it,'grad_u_dot_da' ,cb%corr(:,:,:,3),size(cb%corr(:,:,:,3)))
+            endif
+
+            if(index(corrs,'DR')>0) then
+                call fld_u%write_ext(it,'grad_u_dot_Adj(du)' ,cb%corr(:,:,:,5),size(cb%corr(:,:,:,5)))
+            endif
+
+        enddo
+        
+        !postprocess gradient
+        !if(if_compute_grad) call gradient_postprocess
+        !gkpa
+        do i=1,5
+        cb%corr(:,:,:,i) = r_ppg_sign4gradient*cb%corr(:,:,:,i) * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my)) *m%cell_volume*rdt
+        enddo
+        !preparing for cb%project_back
+        cb%corr(1,:,:,:) = cb%corr(2,:,:,:)
+
+        
+        if(mpiworld%is_master) then
+            write(*,*) 'Elapsed time to load boundary            ',tt1/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update stresses          ',tt2/mpiworld%max_threads
+            write(*,*) 'Elapsed time to rm source stresses       ',tt3/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update velocities        ',tt7/mpiworld%max_threads
+            write(*,*) 'Elapsed time to rm source velocities     ',tt8/mpiworld%max_threads
+            write(*,*) 'Elapsed time ----------------------------'
+            write(*,*) 'Elapsed time to add adjsource stresses   ',tt4/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update adj stresses      ',tt5/mpiworld%max_threads
+            write(*,*) 'Elapsed time to add adjsource velocities ',tt9/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update adj velocities    ',tt10/mpiworld%max_threads
+            write(*,*) 'Elapsed time to extract&write fields     ',tt11/mpiworld%max_threads
+            write(*,*) 'Elapsed time to correlate                ',tt6/mpiworld%max_threads
+
+        endif
+
+    end subroutine
+
 
     !add RHS to v^it
     subroutine inject_velocities(self,f,time_dir,it)
