@@ -327,7 +327,7 @@ use m_resampler
         call alloc(cb%corr,     cb%mz,cb%mx,cb%my,5)
 
 ! if(.false.) then
-        call hud('-------- FWI SK (u star a) --------')
+        call hud('-------- FWI SK (u_star_a) --------')
         !forward modeling on u
         call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite       
         call ppg%forward(fld_u);                    call fld_u%acquire
@@ -359,7 +359,7 @@ use m_resampler
 
         if(index(corrs,'RE')>0) then
 
-            call hud('--- extd right-side Rabbit Ears (du star a) ---')
+            call hud('--- extd right-side Rabbit Ear (du_star_a) ---')
             call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
             call ppg%init_field(fld_du,name='fld_du')
             
@@ -380,7 +380,7 @@ use m_resampler
             call hud('---------------------------------')
     ! pause
 
-            call hud('--- extd left-side Rabbit Ears (u star da) ---')
+            call hud('--- extd left-side Rabbit Ear (u_star_da) ---')
             !re-model u
             call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
             call ppg%forward(fld_u)
@@ -467,7 +467,10 @@ use m_resampler
 
     deallocate(m%correlate)
     
-        
+    !required, otherwise cb%project_back will project_back cb%corr
+    !in the sequential calling of modeling_imaging
+    deallocate(cb%corr)
+    
     if(ppg%if_compute_engy) then
         call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     endif

@@ -3,7 +3,7 @@ use m_System
 use m_Lpnorm
 use m_Modeling
 use m_Kernel
-use m_linesearcher
+use m_Optimization
 
     type(t_checkpoint) :: chp_shls, chp_qp
     type(t_querypoint),target :: qp0
@@ -31,7 +31,7 @@ use m_linesearcher
 
     !print propagator info
     call ppg%print_info
-    
+
     !remove minus sign convention for adjsrc & gradient computations
     !as we have considered it in theory
     !and this can simplify the coding
@@ -45,8 +45,8 @@ use m_linesearcher
     ! call sfield%estim_RAM
     ! call rfield%estim_RAM
     
-!     !checkpoint
-!     call checkpoint_init
+    !checkpoint
+    call checkpoint_init
 
     !model
     call m%init
@@ -96,72 +96,18 @@ use m_linesearcher
 
     call hud('qp0%f, ║g║₂² = '//num2str(qp0%f)//', '//num2str(norm2(qp0%g)))
 
-    call internal_optimizer_init_loop(qp0)
-        
+    !if just estimate the wavelet or compute the gradient then this is it.
+    if(setup%get_str('JOB')=='gradient') then
+        call mpiworld%final
+        stop
+    endif
+
+    !optimization
+    call optimizer_init(qp0)
+    call optimizer_loop
+    
     call mpiworld%final
     
-    contains
-
-    subroutine internal_optimizer_init_loop(qp0)        
-    use m_System
-    use m_Modeling
-    use m_Kernel
-    use m_linesearcher
-
-        type(t_querypoint),target :: qp0 !initial (model) parameters
-        type(t_querypoint),target :: qp1
-        type(t_querypoint),pointer :: curr, pert
-        character(:),allocatable :: str
-
-        !subroutine optimizer_init:
-        
-            !current point
-            curr=>qp0
-            !choose descent direction
-            str=setup%get_str('DESCENT_DIR',o_default='-curr%pg')
-            
-            if(str=='-curr%pg') then !steepest descent
-                curr%d=-curr%pg
-                
-            elseif(str=='random') then !random descent
-                allocate(curr%d,source=curr%pg)
-                call random_number(curr%d) ! ∈[0,1)
-                curr%d=curr%d*2.-1. ! ∈[-1,1)
-                
-            elseif(str=='random_perturb') then !random perturbation to steepest descent
-                allocate(curr%d,source=curr%pg)
-                call random_number(curr%d) ! ∈[0,1)
-                curr%d=curr%d*2.-1. ! ∈[-1,1)
-                
-                curr%d = sum(abs(curr%pg))/sum(abs(curr%d)) *curr%d
-                curr%d = -curr%pg +0.5*curr%d
-                
-            elseif(str=='random_normal') then !random normal direction to steepest descent
-                allocate(curr%d,source=curr%pg)
-                call random_number(curr%d) !unlikely to // with curr%pg
-                !   d·pg/‖pg‖ = ‖d‖cosθ = projection of d onto pg
-                !d-(d·pg/‖pg‖)pg/‖pg‖ = normal direction to pg
-                tmp=sum(curr%d*curr%pg)/norm2(curr%pg)
-                curr%d = curr%d - tmp*curr%pg
-                
-            endif
-            
-            !ensure good magnitudes
-            curr%d = sum(abs(curr%pg))/sum(abs(curr%d)) *curr%d
-                
-            curr%g_dot_d = sum(curr%g*curr%d) !inner product
-            
-            !perturbed point
-            pert=>qp1
-            !perturbed querypoint
-            call pert%init('qp')
-        
-        !subroutine optimizer_loop:
-            !linesearch
-            call ls%search(curr,pert)
-        
-    end subroutine
-
 end
 
 subroutine modeling_imaging
