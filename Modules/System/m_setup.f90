@@ -6,6 +6,8 @@ use m_message
 
     character(:),allocatable :: file
 
+    character(:),allocatable :: previous
+
     type,public :: t_setup
         logical :: exist=.true.
         character(:),allocatable :: dir_in
@@ -23,6 +25,15 @@ use m_message
         !procedure :: get_files
         procedure :: get_bool
         !procedure :: get_bools
+
+        procedure :: previous_int
+        procedure :: previous_ints
+        procedure :: previous_real
+        procedure :: previous_reals
+        procedure :: previous_str
+        procedure :: previous_strs
+        procedure :: previous_file
+        procedure :: previous_bool
 
     end type
     
@@ -53,6 +64,8 @@ use m_message
         call hud('Setup file: '//file)
 
         self%dir_in='./'
+
+        previous=''
         
     end subroutine
 
@@ -87,6 +100,10 @@ use m_message
         close(10)
 
         res=lalign(tmp_res)
+
+        !update variable previous
+        if(allocated(previous)) deallocate(previous)
+        previous=res
 
     end function
 
@@ -146,9 +163,13 @@ use m_message
         character(*),optional :: o_alias !alias of inquired key
         logical :: exist
 
-        exist=.false.
-
-        if(find(key,o_alias)/='') exist=.true.
+        if(find(key,o_alias)/='') then
+            call hud(key//'is found in '//file)
+            exist=.true.
+        else
+            call hud(key//'is NOT found in '//file)
+            exist=.false.
+        endif
         
     end function
 
@@ -338,6 +359,75 @@ use m_message
 
         res=str2bool(read(key,o_alias,o_default,o_mandatory))
 
+    end function
+
+
+
+    function previous_int(self) result(res)
+        class(t_setup) :: self
+        integer :: res
+        
+        res=str2int(previous)
+
+    end function
+
+    function previous_ints(self,o_sep) result(res)
+        class(t_setup) :: self
+        character(1),optional :: o_sep
+        integer,dimension(:),allocatable :: res
+        
+        res=strs2ints(split(previous,o_sep=o_sep))
+
+    end function
+
+    function previous_real(self) result(res)
+        class(t_setup) :: self
+        real :: res
+
+        res=str2real(previous)
+
+    end function
+
+    function previous_reals(self,o_sep) result(res)
+        class(t_setup) :: self
+        character(1),optional :: o_sep
+        real,dimension(:),allocatable :: res
+
+        res=strs2reals(split(previous,o_sep=o_sep))
+
+    end function
+
+    function previous_str(self) result(res)
+        class(t_setup) :: self
+        character(:),allocatable :: res
+
+        res=previous
+
+    end function
+
+    function previous_strs(self,o_sep) result(res)
+        class(t_setup) :: self
+        character(1),optional :: o_sep
+        type(t_string),dimension(:),allocatable :: res
+
+        res=split(previous,o_sep=o_sep)
+
+    end function
+
+    function previous_file(self) result(res)
+        class(t_setup) :: self
+        character(:),allocatable :: res
+
+        res=previous
+
+    end function
+
+    function previous_bool(self) result(res)
+        class(t_setup) :: self
+        logical :: res
+
+        res=str2bool(previous)
+        
     end function
 
 end
