@@ -968,7 +968,7 @@ use m_cpml
             !use sfield%v^it+1 to compute sfield%s_dt^it+0.5, as backward step 4
             if(if_compute_grad.and.mod(it,irdt)==0) then
                 call cpu_time(tic)
-                call gradient_moduli(fld_da,fld_u,it,cb%grad(:,:,:,2))
+                call gradient_moduli(fld_u,fld_da,it,cb%grad(:,:,:,2))
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             endif
@@ -1175,7 +1175,7 @@ use m_cpml
             !use sfield%v^it+1 to compute sfield%s_dt^it+0.5, as backward step 4
             if(if_compute_grad.and.mod(it,irdt)==0) then
                 call cpu_time(tic)
-                call gradient_moduli(fld_da,fld_du,it,cb%grad(:,:,:,2))
+                call gradient_moduli(fld_du,fld_da,it,cb%grad(:,:,:,2))
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             endif
@@ -1377,24 +1377,24 @@ use m_cpml
             if(mod(it,irdt)==0) then
                 call cpu_time(tic)
                 
-                !corr(:,:,:,1) = FWI SK (u_star_a)
-                call gradient_moduli(fld_a,fld_u,it,cb%corr(:,:,:,1))
+                !corr(:,:,:,1) = u_star_a
+                call gradient_moduli(fld_u,fld_a,it,cb%corr(:,:,:,1))
 
                 if(index(corrs,'RE')>0) then
-                    !corr(:,:,:,2) = extd right-side RE (du_star_a)
-                    call gradient_moduli(fld_a,fld_du,it,cb%corr(:,:,:,2))
-                    !corr(:,:,:,3) = extd left-side  RE ( u_star_da)
-                    call gradient_moduli(fld_da,fld_u,it,cb%corr(:,:,:,3))
+                    !corr(:,:,:,2) = du_star_a
+                    call gradient_moduli(fld_du,fld_a,it,cb%corr(:,:,:,2))
+                    !corr(:,:,:,3) =  u_star_da
+                    call gradient_moduli(fld_u,fld_da,it,cb%corr(:,:,:,3))
                 endif
                 
                 ! if(index(corrs,'2ndMI')>0) then
-                !     !corr(:,:,:,4) = 2ndMI (du_star_da)
+                !     !corr(:,:,:,4) = du_star_da
                 !     call gradient_moduli(fld_da,fld_du,it,cb%corr(:,:,:,4))
                 ! endif
                 
                 if(index(corrs,'DR')>0) then
-                    !corr(:,:,:,5) = demig-remig (u_star_Adj(du))
-                    call gradient_moduli(fld_Adj_du,fld_u,it,cb%corr(:,:,:,5))
+                    !corr(:,:,:,5) = u_star_Adj(du)
+                    call gradient_moduli(fld_u,fld_Adj_du,it,cb%corr(:,:,:,5))
                 endif
 
                 call cpu_time(toc)
@@ -1487,6 +1487,12 @@ use m_cpml
             write(*,*) 'Elapsed time to correlate                ',tt6/mpiworld%max_threads
 
         endif
+
+        call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
+        call hud('ximage < snap_rfield%*  n1='//num2str(cb%nz)//' perc=99')
+        call hud('xmovie < snap_rfield%*  n1='//num2str(cb%nz)//' n2='//num2str(cb%nx)//' clip=?e-?? loop=2 title=%g')
+        call hud('ximage < snap_*  n1='//num2str(cb%mz)//' perc=99')
+        call hud('xmovie < snap_*  n1='//num2str(cb%mz)//' n2='//num2str(cb%mx)//' clip=?e-?? loop=2 title=%g')
 
     end subroutine
 
@@ -1866,7 +1872,11 @@ use m_cpml
     subroutine gradient_moduli(sf,rf,it,grad)
         type(t_field), intent(in) :: sf, rf
         real,dimension(cb%mz,cb%mx,cb%my) :: grad
-        
+
+        !sanity check
+        if(sf%is_adjoint) call error('Source field is an adjoint field!')
+        if(.not. rf%is_adjoint) call error('Receiver field is NOT an adjoint field!')
+
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
         ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
@@ -1907,6 +1917,10 @@ use m_cpml
     subroutine imaging(sf,rf,it,imag)
         type(t_field), intent(in) :: sf, rf
         real,dimension(cb%mz,cb%mx,cb%my) :: imag
+
+        !sanity check
+        if(sf%is_adjoint) call error('Source field is an adjoint field!')
+        if(.not. rf%is_adjoint) call error('Receiver field is NOT an adjoint field!')
         
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
@@ -1943,7 +1957,7 @@ use m_cpml
     subroutine energy(sf,it,engy)
         type(t_field),intent(in) :: sf
         real,dimension(cb%mz,cb%mx,cb%my) :: engy
-        
+
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),2)
         ilz=min(sf%bloom(2,it),cb%mz)

@@ -420,6 +420,12 @@ use m_System
 
         close(13)
 
+        if(allocated(self%image)) then
+            open(13,file=dir_out//'image'//suf,access='direct',recl=4*self%n,action='write')
+            write(13,rec=1) self%image
+            close(13)
+        endif
+
     end subroutine
 
 end
