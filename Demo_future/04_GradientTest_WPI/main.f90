@@ -1,1 +1,1 @@
-main_full.f90
+main_onlyRE.f90

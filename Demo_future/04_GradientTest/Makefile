@@ -43,7 +43,7 @@ mod :
 	(cd ../../Modules/Optimization; make m_linesearcher_$(LineS).o)
 
 
-exe : main.o
+exe : main.o sub_optimizer_init_loop.o
 	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../../exe/1stWolfe_$(WaveEq)_$(Solver)_$(Order)
 	(cd ../../exe; ln -sf 1stWolfe_$(WaveEq)_$(Solver)_$(Order) 1stWolfe )
 

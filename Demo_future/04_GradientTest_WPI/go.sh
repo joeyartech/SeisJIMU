@@ -1,23 +1,23 @@
 #!/bin/bash
 
-n=101
-v0=1600 #1800
+n=201
+v0=1800
 
-## FWD ##
-#if [ $n -eq 101 ]; then
-#    makevel nz=49 nx=$n v000=1500 > c1
-#    makevel nz=3  nx=$n v000=2000 > c2
-#else
-#    makevel nz=98 nx=$n v000=1500 > c1
-#    makevel nz=5  nx=$n v000=2000 > c2
-#fi
-#cat c1 c2 c1 > tmp && transp < tmp n1=$n > model
-#rm c1 c2 tmp
-#
-#../../exe/FWD setup.in > out
-#
-#rm -r results_fwd
-#mv results  results_fwd
+# FWD ##
+if [ $n -eq 101 ]; then
+   makevel nz=49 nx=$n v000=1500 > c1
+   makevel nz=3  nx=$n v000=2000 > c2
+else
+   makevel nz=98 nx=$n v000=1500 > c1
+   makevel nz=5  nx=$n v000=2000 > c2
+fi
+cat c1 c2 c1 > tmp && transp < tmp n1=$n > model
+rm c1 c2 tmp
+
+../../exe/FWD setup.in > out
+
+rm -r results_fwd
+mv results  results_fwd
 
 
 ## WPI ##

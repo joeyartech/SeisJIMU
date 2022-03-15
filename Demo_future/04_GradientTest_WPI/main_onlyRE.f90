@@ -95,72 +95,17 @@ use m_linesearcher
     call ls%scale(qp0)
 
     call hud('qp0%f, ║g║₂² = '//num2str(qp0%f)//', '//num2str(norm2(qp0%g)))
+    
+    !if just estimate the wavelet or compute the gradient then this is it.
+    if(setup%get_str('JOB')=='gradient') then
+        call mpiworld%final
+        stop
+    endif
 
-    call internal_optimizer_init_loop(qp0)
+    !enumerate alpha's
+    call optimizer_init_loop(qp0)
         
     call mpiworld%final
-    
-    contains
-
-    subroutine internal_optimizer_init_loop(qp0)        
-    use m_System
-    use m_Modeling
-    use m_Kernel
-    use m_linesearcher
-
-        type(t_querypoint),target :: qp0 !initial (model) parameters
-        type(t_querypoint),target :: qp1
-        type(t_querypoint),pointer :: curr, pert
-        character(:),allocatable :: str
-
-        !subroutine optimizer_init:
-        
-            !current point
-            curr=>qp0
-            !choose descent direction
-            str=setup%get_str('DESCENT_DIR',o_default='-curr%pg')
-            
-            if(str=='-curr%pg') then !steepest descent
-                curr%d=-curr%pg
-                
-            elseif(str=='random') then !random descent
-                allocate(curr%d,source=curr%pg)
-                call random_number(curr%d) ! ∈[0,1)
-                curr%d=curr%d*2.-1. ! ∈[-1,1)
-                
-            elseif(str=='random_perturb') then !random perturbation to steepest descent
-                allocate(curr%d,source=curr%pg)
-                call random_number(curr%d) ! ∈[0,1)
-                curr%d=curr%d*2.-1. ! ∈[-1,1)
-                
-                curr%d = sum(abs(curr%pg))/sum(abs(curr%d)) *curr%d
-                curr%d = -curr%pg +0.5*curr%d
-                
-            elseif(str=='random_normal') then !random normal direction to steepest descent
-                allocate(curr%d,source=curr%pg)
-                call random_number(curr%d) !unlikely to // with curr%pg
-                !   d·pg/‖pg‖ = ‖d‖cosθ = projection of d onto pg
-                !d-(d·pg/‖pg‖)pg/‖pg‖ = normal direction to pg
-                tmp=sum(curr%d*curr%pg)/norm2(curr%pg)
-                curr%d = curr%d - tmp*curr%pg
-                
-            endif
-            
-            !ensure good magnitudes
-            curr%d = sum(abs(curr%pg))/sum(abs(curr%d)) *curr%d
-                
-            curr%g_dot_d = sum(curr%g*curr%d) !inner product
-            
-            !perturbed point
-            pert=>qp1
-            !perturbed querypoint
-            call pert%init('qp')
-        
-        !subroutine optimizer_loop:
-            !linesearch
-            call ls%search(curr,pert)
-        
-    end subroutine
 
 end
 
@@ -211,7 +156,7 @@ use m_smoother_laplacian_sparse
         
         !adjoint eqn Aᴴa = Rᴴd
         !imaging condition I := u★a
-        shot%dadj=shot%dobs
+        shot%dadj=shot%dobs*wei%weight
         call shot%write('Imag_dadj_',shot%dadj)
 
         !adjoint modeling
@@ -295,9 +240,6 @@ use m_resampler
     
     call sysio_write('Imag_as_adjsrc',Imag_as_adjsrc,size(Imag_as_adjsrc))
     
-    !save RAM
-    deallocate(m%image)
-    
     
     !FWI misfit
     fobj%FWI_misfit=0.
@@ -326,36 +268,36 @@ use m_resampler
 
         call alloc(cb%corr,     cb%mz,cb%mx,cb%my,5)
 
-! if(.false.) then
-        call hud('-------- FWI SK (u_star_a) --------')
-        !forward modeling on u
-        call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite       
-        call ppg%forward(fld_u);                    call fld_u%acquire
-
-        call shot%write('Ru_',shot%dsyn)
-
-        call wei%update!('_4FWI')
-
-        !compute FWI data misfit C_data=║Δd║²
-        !adjoint modeling Aᴴa = RᴴΔd
-        !grad = u★a
-        fobj%FWI_misfit = fobj%FWI_misfit + L2sq(0.5, shot%nrcv*shot%nt, &
-            wei%weight, shot%dsyn-shot%dobs, shot%dt)
-            
-        call alloc(shot%dadj,shot%nt,shot%nrcv)
-        call adjsrc_L2sq(shot%dadj)
-        
-        call shot%write('FWI_dadj_',shot%dadj)
-
-        call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
-
-        call fld_a%ignite
-
-        call ppg%adjoint(fld_a,fld_u,oif_compute_grad=.true.)
-
-        cb%corr(:,:,:,1)=cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
-        call hud('---------------------------------')
-! endif
+! ! if(.false.) then
+!         call hud('-------- FWI SK (-u_star_a) --------')
+!         !forward modeling on u
+!         call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite       
+!         call ppg%forward(fld_u);                    call fld_u%acquire
+! 
+!         call shot%write('Ru_',shot%dsyn)
+! 
+!         call wei%update!('_4FWI')
+! 
+!         !compute FWI data misfit C_data=║Δd║²
+!         !adjoint modeling Aᴴa = Rᴴ(d-u)
+!         !FWI gradient = -u★a
+!         fobj%FWI_misfit = fobj%FWI_misfit + L2sq(0.5, shot%nrcv*shot%nt, &
+!             wei%weight, shot%dobs-shot%dsyn, shot%dt)
+!             
+!         call alloc(shot%dadj,shot%nt,shot%nrcv)
+!         call adjsrc_L2sq(shot%dadj)
+!         call shot%write('FWI_dadj_',shot%dadj)
+! 
+!         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
+!         call fld_a%ignite
+!         call ppg%adjoint(fld_a,fld_u,oif_compute_grad=.true.)
+! 
+!         call hud('take FWI SK = -u★a' //s_NL// &
+!             'minus sign is from adjoint source.')
+!         cb%corr(:,:,:,1)=-cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
+! 
+!         call hud('---------------------------------')
+! ! endif
 
         if(index(corrs,'RE')>0) then
 
@@ -369,7 +311,8 @@ use m_resampler
             call fld_du%acquire; call shot%write('Rdu_',shot%dsyn)
             
             !adjoint eqn Aᴴa = Rᴴd
-            shot%dadj=shot%dobs
+            call wei%update
+            shot%dadj=shot%dobs*wei%weight
             
             !adjoint modeling
             !grad = δu★a
@@ -380,13 +323,14 @@ use m_resampler
             call hud('---------------------------------')
     ! pause
 
-            call hud('--- extd left-side Rabbit Ear (u_star_da) ---')
+            call hud('--- extd left-side Rabbit Ear (-u_star_da) ---')
             !re-model u
             call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
             call ppg%forward(fld_u)
             
             !adjoint eqn Aᴴa = Rᴴd, Aδa = Ia
-            shot%dadj=shot%dobs
+            call wei%update
+            shot%dadj=shot%dobs*wei%weight
             
             !adjoint modeling
             !grad = u★δa
@@ -394,28 +338,9 @@ use m_resampler
             call ppg%init_field(fld_da,name='fld_da',ois_adjoint=.true.)
             call ppg%adjoint_scattering_u_star_da(fld_da,fld_a,Imag_as_adjsrc,fld_u,oif_compute_grad=.true.)
 
-            cb%corr(:,:,:,3)=cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
-            call hud('---------------------------------')
-
-        endif
-
-        if(index(corrs,'2ndMI')>0) then
-
-            call hud('-------- du_star_da --- (just for curiosity)')
-            call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
-            call ppg%init_field(fld_du,name='fld_du')
-            call ppg%forward_scattering(fld_du,fld_u,Imag_as_adjsrc)
-
-            !adjoint eqn Aᴴa = Rᴴd, Aδa = Ia
-            shot%dadj=shot%dobs
-            
-            !adjoint modeling
-            !grad = δu★δa
-            call ppg%init_field(fld_a, name='fld_a', ois_adjoint=.true.); call fld_a%ignite
-            call ppg%init_field(fld_da,name='fld_da',ois_adjoint=.true.)
-            call ppg%adjoint_scattering_du_star_da(fld_da,fld_a,fld_du,fld_u,Imag_as_adjsrc,oif_compute_grad=.true.)
-
-            cb%corr(:,:,:,4)=cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
+            call hud('take one of RE terms = -u★δa' //s_NL// &
+                'Why needing this minus sign?')
+            cb%corr(:,:,:,3)=-cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
             call hud('---------------------------------')
 
         endif
@@ -443,27 +368,25 @@ use m_resampler
     call shls%scale(m%n*5,o_from_sampled=m%correlate)
 
     if(mpiworld%is_master) then
-            call sysio_write('u_star_a',      m%correlate(:,:,:,1),m%n)
+!             call sysio_write('-u_star_a',     m%correlate(:,:,:,1),m%n)
         if(index(corrs,'RE')>0) then
             call sysio_write('du_star_a',     m%correlate(:,:,:,2),m%n)
-            call sysio_write('u_star_da',     m%correlate(:,:,:,3),m%n)
-        endif
-        if(index(corrs,'2ndMI')>0) then
-            call sysio_write('du_star_da',    m%correlate(:,:,:,4),m%n)
+            call sysio_write('-u_star_da',    m%correlate(:,:,:,3),m%n)
+            call sysio_write('RE',            m%correlate(:,:,:,2)+m%correlate(:,:,:,3),m%n)
         endif
     endif
 
     m%gradient=0.
-    if(index(corrs,'FWI')>0) then
-        m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,1)
-    endif
+!     if(index(corrs,'FWI')>0) then
+!         m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,1)
+!     endif
     if(index(corrs,'RE')>0) then
         m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,2)+m%correlate(:,:,:,3)
     endif
 
 
-    !check if fitting the t-x domain data
-    is_fitting_data = sum(m%correlate(:,:,:,1)*m%gradient(:,:,:,2))>0.
+!     !check if fitting the t-x domain data
+!     is_fitting_data = sum(m%correlate(:,:,:,1)*m%gradient(:,:,:,2))>0.
 
     deallocate(m%correlate)
     

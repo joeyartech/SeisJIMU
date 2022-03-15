@@ -44,12 +44,14 @@ mod :
 	(cd ../../Modules/Optimization; make m_linesearcher_$(LineS).o)
 
 
-exe : main.o
+exe : main.o ../04_GradientTest/sub_optimizer_init_loop.o #../../WPI/sub_modeling_gradient.o
 	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../../exe/gradienttest_wpi_$(WaveEq)_$(Solver)_$(Order)
 	(cd ../../exe; ln -sf gradienttest_wpi_$(WaveEq)_$(Solver)_$(Order) gradienttest_wpi )
 
 clean :
 	-rm main.o
+	-rm ../04_GradientTest/sub_optimizer_init_loop.o
+	-rm ../../WPI/sub_modeling_gradient.o
 
 cleanall :
 	#System
@@ -64,6 +66,7 @@ cleanall :
 	(cd ../../Modules/Kernel; make clean)
 	#Optimization
 	(cd ../../Modules/Optimization; make clean)
+	rm ../../Modules/Optimization/*.o
 	#
 	rm ../../mod/*.mod
 	#
