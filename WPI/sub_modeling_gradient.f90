@@ -100,6 +100,9 @@ use m_resampler
     ! character(:),allocatable :: update_wavelet
     ! real,dimension(:,:),allocatable :: Rmu, Rdiff
 
+    !info
+    call hud('Entering modeling_gradient_slow')
+
     if(setup%get_file('IMAGE')/='') then
         call alloc(m%image,m%nz,m%nx,m%ny,1)
         call sysio_read(setup%get_file('IMAGE'),m%image,size(m%image))
@@ -383,6 +386,9 @@ use m_resampler
     ! character(:),allocatable :: update_wavelet
     ! real,dimension(:,:),allocatable :: Rmu, Rdiff
 
+    !info
+    call hud('Entering modeling_gradient_costRAM')
+
     !First do imaging
     ! call modeling_imaging
     if(setup%get_file('IMAGE')/='') then
@@ -526,7 +532,7 @@ use m_resampler
             call sysio_write('-u_star_a',     m%correlate(:,:,:,1),m%n)
         if(index(corrs,'RE')>0) then
             call sysio_write('du_star_a',     m%correlate(:,:,:,2),m%n)
-            call sysio_write('u_star_da',     m%correlate(:,:,:,3),m%n)
+            call sysio_write('-u_star_da',     m%correlate(:,:,:,3),m%n)
             call sysio_write('RE',            m%correlate(:,:,:,2)+m%correlate(:,:,:,3),m%n)
         endif
         if(index(corrs,'DR')>0) then

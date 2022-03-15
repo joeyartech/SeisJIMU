@@ -113,7 +113,7 @@ subroutine modeling_gradient(is_fitting_data)
     logical is_fitting_data
 
     !change here to choose which subroutine to run
-    ! call modeling_gradient_costRAM(is_fitting_data)
+!     call modeling_gradient_costRAM(is_fitting_data)
     call modeling_gradient_slow(is_fitting_data)
     
 end subroutine
