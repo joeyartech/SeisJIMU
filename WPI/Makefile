@@ -44,7 +44,7 @@ mod :
 	#Optimization
 	(cd ../Modules/Optimization; make App=WPI)
 
-exe : main.o
+exe : sub_modeling_gradient.o main.o
 	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/wpi_$(WaveEq)_$(Solver)_$(Order)_$(LineS)_$(Optim)
 	(cd ../exe; ln -sf wpi_$(WaveEq)_$(Solver)_$(Order)_$(LineS)_$(Optim) WPI )
 
