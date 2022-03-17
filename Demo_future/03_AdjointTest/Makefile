@@ -1,6 +1,6 @@
 mod_dir=../../mod/
-include ../../make.inc
-include ../../setup.inc
+include ../../compiler.inc
+include ../../modules.inc
 
 
 obj = \
@@ -13,8 +13,8 @@ obj = \
 all : exe
 
 exe : main.o
-	mpif90 $(FLAGF90) $(MOD) $(obj) $^ -o ../../exe/dotproduct_$(WaveEq)_$(Solver)_$(Order)
-	(cd ../../exe; ln -sf dotproduct_$(WaveEq)_$(Solver)_$(Order) DotProduct )
+	mpif90 $(FLAGF90) $(MOD) $(obj) $^ -o ../../exe/adjointtest_$(WaveEq)_$(Solver)_$(Order)
+	(cd ../../exe; ln -sf adjointtest_$(WaveEq)_$(Solver)_$(Order) AdjointTest )
 
 clean :
 	-rm main.o

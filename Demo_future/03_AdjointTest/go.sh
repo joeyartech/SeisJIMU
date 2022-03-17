@@ -12,7 +12,7 @@ fi
 
 # makevel nx=201 nz=201 v000=2000 > model
 
-../../exe/DotProduct  setup_simple.in
+../../exe/AdjointTest  setup_simple.in
 
 # suximage <  u.su  legend=1  title='u' &
 # suximage <  v.su  legend=1  title='v' &

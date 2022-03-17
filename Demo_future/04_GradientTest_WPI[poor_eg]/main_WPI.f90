@@ -31,13 +31,6 @@ use m_linesearcher
 
     !print propagator info
     call ppg%print_info
-    
-    !remove minus sign convention for adjsrc & gradient computations
-    !as we have considered it in theory
-    !and this can simplify the coding
-    r_ppg_sign4gradient=1.
-    r_ppg_sign4imaging=1.
-    r_Lpnorm_sign4adjsrc=1.
 
     ! !estimate required memory
     ! call m%estim_RAM

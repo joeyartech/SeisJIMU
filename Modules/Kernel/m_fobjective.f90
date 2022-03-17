@@ -66,7 +66,7 @@ use m_preconditioner
             self%dnorm_normalizers=setup%get_reals('DATA_NORM_NORMALIZERS','DNORMALIZERS',o_mandatory=self%n_dnorms)
             if_has_dnorm_normalizers=.true.
         endif
-        
+
         !parameter norms
         self%s_xnorms=setup%get_strs('PARAMETER_NORMS','XNORMS',o_default='none')
         self%n_xnorms=size(self%s_xnorms)
@@ -91,18 +91,20 @@ use m_preconditioner
         
     end subroutine
     
-    recursive subroutine stack_dnorms(self)
+    recursive subroutine stack_dnorms(self,o_sign4adjsrc)
     use mpi
         class(t_fobjective) :: self
+        real,optional :: o_sign4adjsrc
 
+        real :: sign4adjsrc
         real,dimension(:,:),allocatable :: Wdres
         logical :: is_4adjsrc
         real :: numer, denom, time(shot%nt), v(shot%nt)
         
         !In theory,
-        !e.g. C(u) = ║u║₂² = 0.5*Σ_rcv ∫ (u-d)² δ_rcv dx3 dt, and
+        !e.g. C(u) = ½║u║₂² = ½Σ_rcv ∫ (u-d)² δ_rcv dx3 dt, and
         !∇C = Σ_rcv ∫ (u-d)² δ_rcv,
-        !adjoint source = - Σ_rcv ∫ (u-d)² δ_rcv
+        !adjoint source = sign4adjsrc*∇C
         !where δ_rcv is the Dirac delta function centered at receiver positions.
         !Because δ_rcv=1/dx3, in the implementation we take
         !C(u) = 0.5*Σ_rcv ∫ (u-d)² dt, and
@@ -110,6 +112,8 @@ use m_preconditioner
         !by the RHS of adjoint weq
         !(ie. when calling to rfield%ignite, to be same as sfield%ignite)
 
+        sign4adjsrc=either(o_sign4adjsrc,1.,present(o_sign4adjsrc))
+        
         !reinitialize adjoint source
         if(if_has_dnorm_normalizers) call alloc(shot%dadj,shot%nt,shot%nrcv)
 
@@ -127,13 +131,13 @@ use m_preconditioner
                         self%dnorms(i) = self%dnorms(i) + L1(self%dnorm_normalizers(i), shot%nt, &
                             wei%weight(:,ir)*m%ref_inv_vp, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
                             
-                        if(is_4adjsrc) call adjsrc_L1(shot%dadj(:,ir),oif_stack=.true.)
+                        if(is_4adjsrc) call nabla_L1(shot%dadj(:,ir),oif_stack=.true.)
                         
                     else !velocities data, use ref_rho to balance amplitudes versus pressure data
                         self%dnorms(i) = self%dnorms(i) + L1(self%dnorm_normalizers(i), shot%nt, &
                             wei%weight(:,ir)*m%ref_rho,    shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
 
-                        if(is_4adjsrc) call adjsrc_L1(shot%dadj(:,ir),oif_stack=.true.)
+                        if(is_4adjsrc) call nabla_L1(shot%dadj(:,ir),oif_stack=.true.)
 
                     endif
 
@@ -150,13 +154,13 @@ use m_preconditioner
                         self%dnorms(i) = self%dnorms(i) + L2sq(0.5*self%dnorm_normalizers(i), shot%nt, &
                             wei%weight(:,ir)*m%ref_inv_vp, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
                             
-                        if(is_4adjsrc) call adjsrc_L2sq(shot%dadj(:,ir),oif_stack=.true.)
+                        if(is_4adjsrc) call nabla_L2sq(shot%dadj(:,ir),oif_stack=.true.)
                         
                     else !velocity data
                         self%dnorms(i) = self%dnorms(i) + L2sq(0.5*self%dnorm_normalizers(i), shot%nt, &
                             wei%weight(:,ir)*m%ref_rho,    shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
 
-                        if(is_4adjsrc) call adjsrc_L2sq(shot%dadj(:,ir),oif_stack=.true.)
+                        if(is_4adjsrc) call nabla_L2sq(shot%dadj(:,ir),oif_stack=.true.)
 
                     endif
 
@@ -213,7 +217,13 @@ use m_preconditioner
 
         enddo
         
-        if(if_has_dnorm_normalizers) call shot%write('dadj_',shot%dadj)
+        if(if_has_dnorm_normalizers) then
+            !set sign on adjsrc
+            shot%dadj = shot%dadj*sign4adjsrc
+
+            !write
+            call shot%write('dadj_',shot%dadj)
+        endif
         
         if(if_has_dnorm_normalizers) return
         
@@ -233,7 +243,7 @@ use m_preconditioner
         
         !and redo the computations for adjoint sources
         self%dnorms=0.
-        call self%stack_dnorms
+        call self%stack_dnorms(sign4adjsrc)
         
     end subroutine
 

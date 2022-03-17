@@ -32,13 +32,6 @@ use m_linesearcher
     !print propagator info
     call ppg%print_info
     
-    !remove minus sign convention for adjsrc & gradient computations
-    !as we have considered it in theory
-    !and this can simplify the coding
-    r_ppg_sign4gradient=1.
-    r_ppg_sign4imaging=1.
-    r_Lpnorm_sign4adjsrc=1.
-
     ! !estimate required memory
     ! call m%estim_RAM
     ! call cb%estim_RAM
@@ -203,7 +196,7 @@ use m_resampler
     type(t_field) :: fld_u, fld_du, fld_Adj_du, fld_a, fld_da
     ! real,dimension(:,:),allocatable :: Wdres
     ! real,dimension(:,:,:),allocatable :: WImag
-    real,dimension(:,:,:),allocatable :: Imag_as_adjsrc
+    real,dimension(:,:,:),allocatable :: W2Idt
     ! character(:),allocatable :: update_wavelet
     ! real,dimension(:,:),allocatable :: Rmu, Rdiff
 
@@ -234,11 +227,22 @@ use m_resampler
     !      =  ∫ a(t₁)a(t₂)u(t₁)δu(t₂) dt₁dt₂dx³
     !      =  ∫ I a δu dtdx³
     !∇ᵤ║I║² = I a
+        
+    !L = C -<λ|Au-s> -<μ|Aa+Rᴴd>
+    !  ≐ C +<Aλ|u> +<Aμ|a> !ppg gives Aᵀ=-A
+    !0=∇ᵤL = ∇ᵤC + Aλ => Aλ =-Ia => λ=-δa
+    !0=∇ₐL = ∇ₐC + Aμ => Aμ =-Iu => μ=-δu
+    !∇ₘL = -λ ∇ₘA u -μ ∇ₘA a
+    !    = δa★Du + δu★Da
     fobj%dnorms(2) = L2sq(0.5,m%n,iwei%weight,m%image,m%cell_volume)
-    call alloc(Imag_as_adjsrc,m%nz,m%nx,m%ny)
-    call adjsrc_L2sq(Imag_as_adjsrc) !Imag_as_adjsrc=W*W*I
+    call alloc(W2Idt,m%nz,m%nx,m%ny)
+    call nabla_L2sq(W2Idt)
     
-    call sysio_write('Imag_as_adjsrc',Imag_as_adjsrc,size(Imag_as_adjsrc))
+    !times dt in the RHS for propagation
+    W2Idt=W2Idt*shot%dt
+    
+    W2Idt=-W2Idt !WHY?
+    call sysio_write('-W2Idt',W2Idt,size(W2Idt))
     
     
     !FWI misfit
@@ -268,79 +272,47 @@ use m_resampler
 
         call alloc(cb%corr,     cb%mz,cb%mx,cb%my,5)
 
-! ! if(.false.) then
-!         call hud('-------- FWI SK (-u_star_a) --------')
-!         !forward modeling on u
-!         call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite       
-!         call ppg%forward(fld_u);                    call fld_u%acquire
-! 
-!         call shot%write('Ru_',shot%dsyn)
-! 
-!         call wei%update!('_4FWI')
-! 
-!         !compute FWI data misfit C_data=║Δd║²
-!         !adjoint modeling Aᴴa = Rᴴ(d-u)
-!         !FWI gradient = -u★a
-!         fobj%FWI_misfit = fobj%FWI_misfit + L2sq(0.5, shot%nrcv*shot%nt, &
-!             wei%weight, shot%dobs-shot%dsyn, shot%dt)
-!             
-!         call alloc(shot%dadj,shot%nt,shot%nrcv)
-!         call adjsrc_L2sq(shot%dadj)
-!         call shot%write('FWI_dadj_',shot%dadj)
-! 
-!         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
-!         call fld_a%ignite
-!         call ppg%adjoint(fld_a,fld_u,oif_compute_grad=.true.)
-! 
-!         call hud('take FWI SK = -u★a' //s_NL// &
-!             'minus sign is from adjoint source.')
-!         cb%corr(:,:,:,1)=-cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
-! 
-!         call hud('---------------------------------')
-! ! endif
-
         if(index(corrs,'RE')>0) then
 
-            call hud('--- extd right-side Rabbit Ear (du_star_a) ---')
+            call hud('--- extd right-side Rabbit Ear (du_star_Da) ---')
             call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
             call ppg%init_field(fld_du,name='fld_du')
             
             !forward scattering
             !Aδu = Iu
-            call ppg%forward_scattering(fld_du,fld_u,Imag_as_adjsrc)
+            call ppg%forward_scattering(fld_du,fld_u,W2Idt)
             call fld_du%acquire; call shot%write('Rdu_',shot%dsyn)
+            call fld_u%acquire !shot%dsyn = Ru
             
             !adjoint eqn Aᴴa = Rᴴd
             call wei%update
-            shot%dadj=shot%dobs*wei%weight
+            shot%dadj=shot%dobs*wei%weight*wei%weight
             
             !adjoint modeling
-            !grad = δu★a
+            !grad = δu★Da
             call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite
-            call ppg%adjoint_du_star_a(fld_a,fld_du,fld_u,Imag_as_adjsrc,oif_compute_grad=.true.) !,oif_compute_imag=.true.)
+            call ppg%adjoint_du_star_Da(fld_du,fld_a,fld_u,W2Idt,oif_compute_grad=.true.) !,oif_compute_imag=.true.)
 
             cb%corr(:,:,:,2)=cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
             call hud('---------------------------------')
     ! pause
 
-            call hud('--- extd left-side Rabbit Ear (-u_star_da) ---')
+            call hud('--- extd left-side Rabbit Ear (da_star_Du) ---')
             !re-model u
             call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
-            call ppg%forward(fld_u)
+            call ppg%forward(fld_u); call fld_u%acquire
             
             !adjoint eqn Aᴴa = Rᴴd, Aδa = Ia
             call wei%update
-            shot%dadj=shot%dobs*wei%weight
+            shot%dadj=shot%dobs*wei%weight*wei%weight
             
             !adjoint modeling
-            !grad = u★δa
+            !grad = da★Du
             call ppg%init_field(fld_a, name='fld_a', ois_adjoint=.true.); call fld_a%ignite
             call ppg%init_field(fld_da,name='fld_da',ois_adjoint=.true.)
-            call ppg%adjoint_scattering_u_star_da(fld_da,fld_a,Imag_as_adjsrc,fld_u,oif_compute_grad=.true.)
+            call ppg%adjoint_da_star_Du(fld_da,fld_u,fld_a,W2Idt,oif_compute_grad=.true.)
 
-            call hud('take one of RE terms = -u★δa' //s_NL// &
-                'Why needing this minus sign?')
-            cb%corr(:,:,:,3)=-cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
+            cb%corr(:,:,:,3)=cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
             call hud('---------------------------------')
 
         endif
@@ -368,11 +340,10 @@ use m_resampler
     call shls%scale(m%n*5,o_from_sampled=m%correlate)
 
     if(mpiworld%is_master) then
-!             call sysio_write('-u_star_a',     m%correlate(:,:,:,1),m%n)
         if(index(corrs,'RE')>0) then
-            call sysio_write('du_star_a',     m%correlate(:,:,:,2),m%n)
-            call sysio_write('-u_star_da',    m%correlate(:,:,:,3),m%n)
-            call sysio_write('RE',            m%correlate(:,:,:,2)+m%correlate(:,:,:,3),m%n)
+            call sysio_write('du_star_Da',     m%correlate(:,:,:,2),m%n)
+            call sysio_write('da_star_Du',     m%correlate(:,:,:,3),m%n)
+            call sysio_write('RE',             m%correlate(:,:,:,2)+m%correlate(:,:,:,3),m%n)
         endif
     endif
 

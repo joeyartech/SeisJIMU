@@ -21,7 +21,7 @@ FILE_WAVELET            'fricker_dt6000.su'
 #IF_BLOOM        F
 #IF_HICKS        F
 
-IF_USE_RANDOM   F
+#IF_USE_RANDOM   F
 
 NT           500
 DT           0.006

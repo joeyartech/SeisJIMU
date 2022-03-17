@@ -153,6 +153,13 @@ use m_smoother_laplacian_sparse
         !data weighting
         call wei%update
         
+        !L2 norm of data misfit as objective function
+        !C(u) = ½║u║² = ½∫ (u-d)² δxr dtdx³
+        !∇ᵤC = (u-d)δxr
+        !L = C - <λ|Au-s> ≐ C + < Aλ|u> !ppg gives Aᵀ=-A
+        !0=∇ᵤL = ∇ᵤC + Aa => Aλ=-∇ᵤC => λ=-a
+        !∇ₘL = -λ ∇ₘA u = a ∇ₘA u = a★∂u
+
         !objective function and adjoint source
         call fobj%stack_dnorms
         

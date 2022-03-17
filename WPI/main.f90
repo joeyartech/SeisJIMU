@@ -1,6 +1,6 @@
 program main
 use m_System
-use m_Lpnorm
+use m_math
 use m_Modeling
 use m_Kernel
 use m_Optimization
@@ -31,13 +31,6 @@ use m_Optimization
 
     !print propagator info
     call ppg%print_info
-
-    !remove minus sign convention for adjsrc & gradient computations
-    !as we have considered it in theory
-    !and this can simplify the coding
-    r_ppg_sign4gradient=1.
-    r_ppg_sign4imaging=1.
-    r_Lpnorm_sign4adjsrc=1.
 
     ! !estimate required memory
     ! call m%estim_RAM
@@ -89,7 +82,7 @@ use m_Optimization
 
     call sysio_write('qp0%g',qp0%g,size(qp0%g))
     call sysio_write('qp0%pg',qp0%pg,size(qp0%pg))
-    call sysio_write('qp0%I', m%image,size(m%image))
+    call sysio_write('init_model%image', m%image,size(m%image))
 
     !scale problem by linesearcher
     call ls%init
@@ -115,8 +108,8 @@ subroutine modeling_gradient(is_fitting_data)
     logical is_fitting_data
 
     !change here to choose which subroutine to run
-    ! call modeling_gradient_costRAM(is_fitting_data)
-    call modeling_gradient_slow(is_fitting_data)
+    call modeling_gradient_costRAM(is_fitting_data)
+    ! call modeling_gradient_slow(is_fitting_data)
     
 end subroutine
 

@@ -26,7 +26,7 @@ makevel nz=1 nx=$n v000=100 > topo
 #makevel nz=1 nx=$n v000=400 > topo
 
 rm -r results
-../../exe/1stWolfe  setup.in > out
+../../exe/GradientTest  setup.in > out
 
 echo '            alpha    pert%f    curr%f    (pert%f-curr%f)/alpha    curr%g_dot_d    if_1st_cond'
 grep '1st cond' out

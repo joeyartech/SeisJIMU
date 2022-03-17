@@ -56,6 +56,7 @@ use m_Modeling
     call hud('===== START LOOP OVER SHOTS =====')
     
     do i=1,1 !shls%nshots_per_processor
+    
         call shot%init(shls%yield(i))
         call shot%read_from_setup
         call shot%set_var_time
@@ -68,9 +69,9 @@ use m_Modeling
 
         call ppg%check_discretization
         call ppg%init
-        call ppg%init_field(sfield,name='sfield',origin='src',oif_will_reconstruct=.true.)
         call ppg%init_abslayer
-
+        
+        call ppg%init_field(sfield,name='sfield')
         
         if_use_random=setup%get_bool('IF_USE_RANDOM',o_default='T')
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -97,7 +98,7 @@ use m_Modeling
         !call shot%write('dsyn_')
         call suformat_write('Lu',Lu,ppg%nt,shot%nrcv,o_dt=ppg%dt)
 
-        call ppg%init_field(rfield,name='rfield',origin='rcv')
+        call ppg%init_field(rfield,name='rfield',ois_adjoint=.true.)
 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !variables for dotproduct test
@@ -111,15 +112,15 @@ use m_Modeling
         call suformat_write('v',v,ppg%nt,shot%nrcv,o_dt=ppg%dt)
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-        call rfield%ignite(o_wavelet=v,ois_adjoint=.true.)
+        call rfield%ignite(o_wavelet=v)
 
         !adjoint modeling
-        call ppg%adjoint(rfield,oif_record_adjseismo=.true.,o_sf=sfield,oif_compute_grad=.true.)
+        call ppg%adjoint(rfield,sfield,oif_record_adjseismo=.true.,oif_compute_grad=.true.)
 
         call rfield%acquire(o_seismo=Ladj_v)
         call suformat_write('Ladj_v',Ladj_v,ppg%nt,1,o_dt=ppg%dt)
         
-        call cb%project_back(m%gradient,cb%grad,ppg%ngrad)
+        call cb%project_back
         
     enddo
     
@@ -128,11 +129,11 @@ use m_Modeling
     call sysio_write('grho',m%gradient(:,:,:,1),size(m%gradient(:,:,:,1)))
     call sysio_write('gkpa',m%gradient(:,:,:,2),size(m%gradient(:,:,:,2)))
 
-    print*,'shape(u)=',     shape(u),    '||u||=',      norm2(u)*sqrt(ppg%dt)
+    print*,'shape(u)=',     shape(u),    '║u║=',      norm2(u)*sqrt(ppg%dt)
     !||u||=sqrt(int u^2*dt) = sqrt(sum(u^2)*dt) = norm2(u)*sqrt(dt)
-    print*,'shape(v)=',     shape(v),    '||v||=',      norm2(v)*sqrt(ppg%dt)
-    print*,'shape(Lu)=',    shape(Lu),   '||Lu||=',     norm2(Lu)*sqrt(ppg%dt)
-    print*,'shape(Ladj_v)=',shape(Ladj_v),'||Ladj_v||=',norm2(Ladj_v)*sqrt(ppg%dt)
+    print*,'shape(v)=',     shape(v),    '║v║=',      norm2(v)*sqrt(ppg%dt)
+    print*,'shape(Lu)=',    shape(Lu),   '║Lu║=',     norm2(Lu)*sqrt(ppg%dt)
+    print*,'shape(Ladj_v)=',shape(Ladj_v),'║Ladj_v║=',norm2(Ladj_v)*sqrt(ppg%dt)
 
     !<v|Lu> =?= <L^Tv|u>
     !<v|Lu>=int v*Lu*dt = sum(v*Lu)*dt

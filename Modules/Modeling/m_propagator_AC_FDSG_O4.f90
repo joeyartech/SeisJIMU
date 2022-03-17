@@ -76,16 +76,16 @@ use m_cpml
         procedure :: extract
 
         procedure :: adjoint
-        procedure :: adjoint_du_star_a
-        procedure :: adjoint_scattering_u_star_da
-        procedure :: adjoint_scattering_du_star_da
+        procedure :: adjoint_du_star_Da
+        procedure :: adjoint_da_star_Du
+        procedure :: adjoint_da_star_Ddu
+        procedure :: adjoint_WPI
         procedure :: inject_stresses_adjoint
         procedure :: update_stresses_adjoint
         procedure :: inject_velocities_adjoint
         procedure :: update_velocities_adjoint
         procedure :: extract_adjoint
 
-        procedure :: adjoint_WPI
 
         final :: final
 
@@ -93,14 +93,11 @@ use m_cpml
 
     type(t_propagator),public :: ppg
 
-    real,public :: r_ppg_sign4gradient=-1.
-    real,public :: r_ppg_sign4imaging=1.
-
     logical :: if_hicks
     integer :: irdt
     real :: rdt
 
-! real,dimension(:,:,:),allocatable :: sf_p_save
+    ! real,dimension(:,:,:),allocatable :: sf_p_save
 
     contains
     
@@ -256,7 +253,7 @@ use m_cpml
     
     !========= forward modeling =================
     !WE: M du_dt = Du + s
-    !u=[vx vy vz p]^T, p=(sxx+syy+szz)/3=sxx+syy+szz, s=[fvx fvy fvz fp]^T*delta(x-xs)
+    !u=[vx vy vz p]ᵀ, p=(sxx+syy+szz)/3=sxx+syy+szz, s=[fvx fvy fvz fp]ᵀδ(x-xs)
     !
     !  [rho   0  ]    [0   0   0   dx]
     !M=[ 0  1/kpa], D=|0   0   0   dy|
@@ -271,8 +268,8 @@ use m_cpml
     ! vy(iz,ix,iy):=  vy[iz,ix,iy-0.5]^it,it+1,...
 
     !========= adjoint propagation =================
-    !WEq:      Mdu_dt   = Du   + src
-    !Adjoint:  Mdv_dt^T = D^Tv + adjsrc
+    !WEq:      Mdu_dt  = D u   + src
+    !Adjoint:  Mdv_dtᵀ = Dᵀv + adjsrc
     !
     !Discrete form (staggered grid in space and time, 2D as example):
     ! M  [ [vx^it+1  ] [vx^it    ] ]   [ 0     0    dx(-)][vx^it+1  ]
@@ -282,26 +279,25 @@ use m_cpml
     !dx(+):=c1(v(ixp1)-v(ix))+c2(v(ixp2)-v(ixm1))  (O(x4))
     !
     !Adjoint:
-    ! M  [ [vx^it    ] [vx^it+1  ] ]   [ 0       0      dx(+)^T][vx^it+1  ]
-    !----| |vz^it    |-|vz^it+1  | | = | 0       0      dz(+)^T||vz^it+1  |  +src
-    ! dt [ [ s^it+0.5] [ s^it+1.5] ]   [dx(-)^T dz(-)^T  0     ][ s^it+0.5]
-    !dx(+)^T=c1(s(ixm1)-s(ix))+c2(s(ixm2)-s(ixp1))=-dx(-)
-    !dx(-)^T=c1(v(ix)-v(ixp1))+c2(v(ixm1)-v(ixp2))=-dx(+)
-    !i.e. D^T=-D, allowing to use same code with a negated sign for dt.
+    ! M  [ [vx^it    ] [vx^it+1  ] ]   [ 0      0     dx(+)ᵀ][vx^it+1  ]
+    !----| |vz^it    |-|vz^it+1  | | = | 0      0     dz(+)ᵀ||vz^it+1  |  +src
+    ! dt [ [ s^it+0.5] [ s^it+1.5] ]   [dx(-)ᵀ dz(-)ᵀ  0    ][ s^it+0.5]
+    !dx(+)ᵀ=c1(s(ixm1)-s(ix))+c2(s(ixm2)-s(ixp1))=-dx(-)
+    !dx(-)ᵀ=c1(v(ix)-v(ixp1))+c2(v(ixm1)-v(ixp2))=-dx(+)
+    !i.e. Dᵀ=-D, allowing to use same code with a negated sign for dt.
     !
     !transposes of time derivatives centered on v^it+0.5 and s^it+1
     !so v^it+1   - v^it     => v^it - v^it+1
     !   s^it+1.5 - s^it+0.5 => s^it+0.5 - s^it+1.5
     !
-    !In each time step:
-    !d=RGAsrc, src:source term, A:put source, G:propagator, R:sampling at receivers
-    !d=[vx vy vz p]^T, R=[I  0   0 ], A=[diag3(b) 0], src=[fx fy fz p]^T
-    !                    |0 2/3 1/3|    [   0     1]
-    !                    [   0    1]
-    !Adjoint: src=A^T N G^T M R^T d
-    !M R^T:put adjoint sources, 
-    !G^T:  adjoint propagator,
-    !A^T N:get adjoint fields
+    !In each time step: d=RGANs
+    !s:source wavelet, N=M^-1:scale by local model
+    !A:inject source into field, G:propagator, R:extract at receivers
+    !d=[vx vy vz p]ᵀ, R=[I  0   0 ], N=[diag3(b) 0  ], s=[fx fy fz p]ᵀ
+    !                   |0 2/3 1/3|    [   0     kpa]
+    !                   [   0    1]
+    !Adjoint: s=NAᵀGᵀRᵀd=AᵀGᵀRᵀNd
+    !Rᵀ:inject adjoint sources, Gᵀ:adjoint propagator, Aᵀ:extract adjoint fields
 
     subroutine forward(self,fld_u)
         class(t_propagator) :: self
@@ -381,10 +377,10 @@ use m_cpml
 
     end subroutine
 
-    subroutine forward_scattering(self,fld_du,fld_u,W2imag)
+    subroutine forward_scattering(self,fld_du,fld_u,W2Idt)
         class(t_propagator) :: self
         type(t_field) :: fld_du,fld_u
-        real,dimension(cb%mz,cb%mx,cb%my) :: W2imag
+        real,dimension(cb%mz,cb%mx,cb%my) :: W2Idt
 
         real,parameter :: time_dir=1. !time direction
 
@@ -420,7 +416,7 @@ use m_cpml
             !step 3: add pressure to s^it+0.5
             call cpu_time(tic)
             call self%inject_stresses(fld_u,time_dir,it)
-            call self%inject_stresses_scattering(fld_du,fld_u%p(1:cb%mz,1:cb%mx,1:cb%my)*W2imag,time_dir)
+            call self%inject_stresses_scattering(fld_du,fld_u,W2Idt,time_dir)
             call cpu_time(toc)
             tt3=tt3+toc-tic
 
@@ -500,7 +496,7 @@ use m_cpml
         
         ift=1; ilt=self%nt
 
-! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        ! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
@@ -548,18 +544,18 @@ use m_cpml
             call cpu_time(toc)
             tt5=tt5+toc-tic
 
-            !gkpa: sfield%s_dt^it+0.5 \dot rfield%s^it+0.5
-            !use sfield%v^it+1 to compute sfield%s_dt^it+0.5, as backward step 4
+            !gkpa: rf%s^it+0.5 star D sf%s_dt^it+0.5
+            !use sf%v^it+1 to compute sf%s_dt^it+0.5, as backward step 4
             if(if_compute_grad.and.mod(it,irdt)==0) then
                 call cpu_time(tic)
-                call gradient_moduli(fld_u,fld_a,it,cb%grad(:,:,:,2))
+                call gradient_moduli(fld_a,fld_u,it,cb%grad(:,:,:,2))
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             endif
 
             if(if_compute_imag.and.mod(it,irdt)==0) then
                 call cpu_time(tic)
-                call imaging(fld_u,fld_a,it,cb%imag)
+                call imaging(fld_a,fld_u,it,cb%imag)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             endif
@@ -602,13 +598,13 @@ use m_cpml
             call cpu_time(toc)
             tt10=tt10+toc-tic
             
-            ! !adjoint step 1: sample v^it or s^it+0.5 at source position
-            ! if(if_record_adjseismo) then
-            !     call cpu_time(tic)
-            !     call self%extract_adjoint(fld_a,it)
-            !     call cpu_time(toc)
-            !     tt11=tt11+toc-tic
-            ! endif
+            !adjoint step 1: sample v^it or s^it+0.5 at source position
+            if(if_record_adjseismo) then
+                call cpu_time(tic)
+                call self%extract_adjoint(fld_a,it)
+                call cpu_time(toc)
+                tt11=tt11+toc-tic
+            endif
             
             ! !grho: sfield%v_dt^it \dot rfield%v^it
             ! !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
@@ -628,7 +624,7 @@ use m_cpml
             if(if_compute_grad) then
                 ! call fld_a%write_ext(it,'grad_density',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
                 ! call fld_a%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
-                call fld_a%write_ext(it,'grad_u_dot_a' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+                call fld_a%write_ext(it,'grad_a_star_Du' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
             endif
             if(self%if_compute_engy) then
                 call fld_a%write_ext(it,'engy',cb%engy(:,:,:,1),size(cb%engy(:,:,:,1)))
@@ -664,10 +660,10 @@ use m_cpml
         
     end subroutine
 
-    subroutine adjoint_du_star_a(self,fld_a,fld_du,fld_u,W2imag,oif_compute_imag,oif_compute_grad)
+    subroutine adjoint_du_star_Da(self,fld_du,fld_a,fld_u,W2Idt,oif_compute_imag,oif_compute_grad)
         class(t_propagator) :: self
-        type(t_field) :: fld_a,fld_du,fld_u
-        real,dimension(cb%mz,cb%mx,cb%my) :: W2imag
+        type(t_field) :: fld_du,fld_a,fld_u
+        real,dimension(cb%mz,cb%mx,cb%my) :: W2Idt
         logical,optional :: oif_compute_imag,oif_compute_grad
         
         real,parameter :: time_dir=-1. !time direction
@@ -707,7 +703,7 @@ use m_cpml
         
         ift=1; ilt=self%nt
 
-! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        ! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
@@ -739,7 +735,7 @@ use m_cpml
 
                 !backward step 3: rm pressure from s^it+0.5
                 call cpu_time(tic)
-                call self%inject_stresses_scattering(fld_du,fld_u%p(1:cb%mz,1:cb%mx,1:cb%my)*W2imag,time_dir)
+                call self%inject_stresses_scattering(fld_du,fld_u,W2Idt,time_dir)
                 call self%inject_stresses(fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt3=tt3+toc-tic
@@ -768,12 +764,12 @@ use m_cpml
                 tt6=tt6+toc-tic
             endif
 
-            if(if_compute_imag.and.mod(it,irdt)==0) then
-                call cpu_time(tic)
-                call imaging(fld_du,fld_a,it,cb%imag)
-                call cpu_time(toc)
-                tt6=tt6+toc-tic
-            endif
+            ! if(if_compute_imag.and.mod(it,irdt)==0) then
+            !     call cpu_time(tic)
+            !     call imaging(fld_du,fld_a,it,cb%imag)
+            !     call cpu_time(toc)
+            !     tt6=tt6+toc-tic
+            ! endif
 
             ! !energy term of sfield
             ! if(self%if_compute_engy.and.mod(it,irdt)==0) then
@@ -795,7 +791,7 @@ use m_cpml
 
                 !backward step 1: rm forces from v^it
                 call cpu_time(tic)
-                ! call self%inject_velocities_ext(fld_du,fld_u,W2imag)
+                ! call self%inject_velocities_ext(fld_du,fld_u,imag)
                 call self%inject_velocities(fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt8=tt8+toc-tic
@@ -837,12 +833,10 @@ use m_cpml
             call fld_du%write(it,o_suffix='_rev')
             ! call fld_u%write(it,o_suffix='_back2')
             if(if_compute_imag) then
-                call fld_a%write_ext(it,'imag_du_dot_a' ,cb%imag,size(cb%imag))
+                call fld_a%write_ext(it,'imag_du_star_a' ,cb%imag,size(cb%imag))
             endif
             if(if_compute_grad) then
-                ! call fld_a%write_ext(it,'grad_density',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
-                ! call fld_a%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
-                call fld_a%write_ext(it,'grad_du_dot_a' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+                call fld_a%write_ext(it,'grad_du_star_Da' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
             endif
             ! if(self%if_compute_engy) then
             !     call fld_a%write_ext(it,'engy',cb%engy(:,:,:,1),size(cb%engy(:,:,:,1)))
@@ -877,10 +871,10 @@ use m_cpml
         
     end subroutine
 
-    subroutine adjoint_scattering_u_star_da(self,fld_da,fld_a,W2imag,fld_u,oif_record_adjseismo,oif_compute_grad)
+    subroutine adjoint_da_star_Du(self,fld_da,fld_u,fld_a,W2Idt,oif_record_adjseismo,oif_compute_grad)
         class(t_propagator) :: self
-        type(t_field) :: fld_da,fld_a,fld_u
-        real,dimension(cb%mz,cb%mx,cb%my) :: W2imag
+        type(t_field) :: fld_da,fld_u,fld_a
+        real,dimension(cb%mz,cb%mx,cb%my) :: W2Idt
         logical,optional :: oif_record_adjseismo, oif_compute_grad
         
         real,parameter :: time_dir=-1. !time direction
@@ -914,7 +908,7 @@ use m_cpml
         
         ift=1; ilt=self%nt
         
-! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        ! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
@@ -952,7 +946,7 @@ use m_cpml
 
             !adjoint step 5: inject to s^it+1.5 at receivers
             call cpu_time(tic)
-            call self%inject_stresses_scattering(fld_da,fld_a%p(1:cb%mz,1:cb%mx,1:cb%my)*W2imag,time_dir)
+            call self%inject_stresses_scattering(fld_da,fld_a,W2Idt,time_dir)
             call self%inject_stresses_adjoint(fld_a,time_dir,it)
             call cpu_time(toc)
             tt4=tt4+toc-tic
@@ -968,7 +962,7 @@ use m_cpml
             !use sfield%v^it+1 to compute sfield%s_dt^it+0.5, as backward step 4
             if(if_compute_grad.and.mod(it,irdt)==0) then
                 call cpu_time(tic)
-                call gradient_moduli(fld_u,fld_da,it,cb%grad(:,:,:,2))
+                call gradient_moduli(fld_da,fld_u,it,cb%grad(:,:,:,2))
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             endif
@@ -1038,15 +1032,13 @@ use m_cpml
             
             !snapshot
             call fld_da%write(it,o_suffix='_rev')
-            ! call fld_a%write(it,o_suffix='_back3')
-            ! call fld_u%write(it,o_suffix='_back3')
+            ! call fld_a%write(it,o_suffix='_rev')
+            ! call fld_u%write(it,o_suffix='_rev')
             ! if(if_compute_imag) then
                 ! call fld_lda%write_ext(it,'imag' ,cb%imag,size(cb%imag))
             ! endif
             if(if_compute_grad) then
-                ! call fld_da%write_ext(it,'grad_density',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
-                ! call fld_da%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
-                call fld_da%write_ext(it,'grad_u_dot_da' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+                call fld_da%write_ext(it,'grad_da_star_Du' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
             endif
             ! if(self%if_compute_engy) then
                 ! call fld_a%write_ext(it,'engy',cb%engy(:,:,:,1),size(cb%engy(:,:,:,1)))
@@ -1075,11 +1067,11 @@ use m_cpml
 
     end subroutine
 
-    subroutine adjoint_scattering_du_star_da(self,fld_da,fld_a,fld_du,fld_u,W2imag,oif_record_adjseismo,oif_compute_grad)
+    subroutine adjoint_da_star_Ddu(self,fld_da,fld_du,fld_a,fld_u,W2Idt,oif_record_adjseismo,oif_compute_grad)
         class(t_propagator) :: self
         type(t_field) :: fld_da,fld_a
         type(t_field) :: fld_du,fld_u
-        real,dimension(cb%mz,cb%mx,cb%my) :: W2imag
+        real,dimension(cb%mz,cb%mx,cb%my) :: W2Idt
         logical,optional :: oif_record_adjseismo, oif_compute_grad
         
         real,parameter :: time_dir=-1. !time direction
@@ -1117,7 +1109,7 @@ use m_cpml
         
         ift=1; ilt=self%nt
 
-! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        ! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
@@ -1149,7 +1141,7 @@ use m_cpml
 
                 !backward step 3: rm pressure from s^it+0.5
                 call cpu_time(tic)
-                call self%inject_stresses_scattering(fld_du,fld_u%p(1:cb%mz,1:cb%mx,1:cb%my)*W2imag,time_dir)
+                call self%inject_stresses_scattering(fld_du,fld_u,W2Idt,time_dir)
                 call self%inject_stresses( fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt3=tt3+toc-tic
@@ -1159,7 +1151,7 @@ use m_cpml
 
             !adjoint step 5: inject to s^it+1.5 at receivers
             call cpu_time(tic)
-            call self%inject_stresses_scattering(fld_da,fld_a%p(1:cb%mz,1:cb%mx,1:cb%my)*W2imag,time_dir)
+            call self%inject_stresses_scattering(fld_da,fld_a,W2Idt,time_dir)
             call self%inject_stresses_adjoint(fld_a,time_dir,it)
             call cpu_time(toc)
             tt4=tt4+toc-tic
@@ -1175,14 +1167,14 @@ use m_cpml
             !use sfield%v^it+1 to compute sfield%s_dt^it+0.5, as backward step 4
             if(if_compute_grad.and.mod(it,irdt)==0) then
                 call cpu_time(tic)
-                call gradient_moduli(fld_du,fld_da,it,cb%grad(:,:,:,2))
+                call gradient_moduli(fld_da,fld_du,it,cb%grad(:,:,:,2))
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             endif
 
             ! if(if_compute_imag.and.mod(it,irdt)==0) then
             !     call cpu_time(tic)
-            !     call imaging(fld_u,fld_a,it,cb%imag)
+            !     call imaging(fld_a,fld_u,it,cb%imag)
             !     call cpu_time(toc)
             !     tt6=tt6+toc-tic
             ! endif
@@ -1253,9 +1245,7 @@ use m_cpml
                 ! call fld_lda%write_ext(it,'imag' ,cb%imag,size(cb%imag))
             ! endif
             if(if_compute_grad) then
-                ! call fld_da%write_ext(it,'grad_density',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
-                ! call fld_da%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
-                call fld_da%write_ext(it,'grad_du_dot_da' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+                call fld_da%write_ext(it,'grad_da_star_Ddu' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
             endif
             ! if(self%if_compute_engy) then
                 ! call fld_a%write_ext(it,'engy',cb%engy(:,:,:,1),size(cb%engy(:,:,:,1)))
@@ -1284,11 +1274,11 @@ use m_cpml
 
     end subroutine
 
-    subroutine adjoint_WPI(self,fld_da,fld_a,fld_Adj_du,fld_du,fld_u,W2imag,corrs)
+    subroutine adjoint_WPI(self,fld_da,fld_a,fld_Adj_du,fld_du,fld_u,W2Idt,corrs)
         class(t_propagator) :: self
         type(t_field) :: fld_da,fld_a, fld_Adj_du
         type(t_field) :: fld_du,fld_u
-        real,dimension(cb%mz,cb%mx,cb%my) :: W2imag
+        real,dimension(cb%mz,cb%mx,cb%my) :: W2Idt
         character(*) :: corrs
         
         real,parameter :: time_dir=-1. !time direction
@@ -1315,7 +1305,7 @@ use m_cpml
         
         ift=1; ilt=self%nt
 
-! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        ! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
@@ -1348,8 +1338,8 @@ use m_cpml
 
                 !backward step 3: rm pressure from s^it+0.5
                 call cpu_time(tic)
-                call self%inject_stresses_scattering(fld_du,fld_u%p(1:cb%mz,1:cb%mx,1:cb%my)*W2imag,time_dir)
-                call self%inject_stresses( fld_u,time_dir,it)
+                call self%inject_stresses_scattering(fld_du,fld_u,W2Idt,time_dir)
+                call self%inject_stresses(fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt3=tt3+toc-tic
             ! endif
@@ -1358,7 +1348,7 @@ use m_cpml
 
             !adjoint step 5: inject to s^it+1.5 at receivers
             call cpu_time(tic)
-            call self%inject_stresses_scattering(fld_da,fld_a%p(1:cb%mz,1:cb%mx,1:cb%my)*W2imag,time_dir)
+            call self%inject_stresses_scattering(fld_da,fld_a,W2Idt,time_dir)
             call self%inject_stresses_adjoint(fld_a,time_dir,it)
             call self%inject_stresses_adjoint(fld_Adj_du,time_dir,it)
             call cpu_time(toc)
@@ -1377,24 +1367,24 @@ use m_cpml
             if(mod(it,irdt)==0) then
                 call cpu_time(tic)
                 
-                !corr(:,:,:,1) = u_star_a
-                call gradient_moduli(fld_u,fld_a,it,cb%corr(:,:,:,1))
+                !corr(:,:,:,1) = FWI SK = a_star_Du
+                call gradient_moduli(fld_a,fld_u,it,cb%corr(:,:,:,1))
 
                 if(index(corrs,'RE')>0) then
-                    !corr(:,:,:,2) = du_star_a
+                    !corr(:,:,:,2) = du_star_Da
                     call gradient_moduli(fld_du,fld_a,it,cb%corr(:,:,:,2))
-                    !corr(:,:,:,3) =  u_star_da
-                    call gradient_moduli(fld_u,fld_da,it,cb%corr(:,:,:,3))
+                    !corr(:,:,:,3) = da_star_Du
+                    call gradient_moduli(fld_da,fld_u,it,cb%corr(:,:,:,3))
                 endif
                 
                 ! if(index(corrs,'2ndMI')>0) then
-                !     !corr(:,:,:,4) = du_star_da
+                !     !corr(:,:,:,4) = da_star_Ddu
                 !     call gradient_moduli(fld_da,fld_du,it,cb%corr(:,:,:,4))
                 ! endif
                 
                 if(index(corrs,'DR')>0) then
-                    !corr(:,:,:,5) = u_star_Adj(du)
-                    call gradient_moduli(fld_u,fld_Adj_du,it,cb%corr(:,:,:,5))
+                    !corr(:,:,:,5) = Adj(du)_star_Du
+                    call gradient_moduli(fld_Adj_du,fld_u,it,cb%corr(:,:,:,5))
                 endif
 
                 call cpu_time(toc)
@@ -1449,25 +1439,30 @@ use m_cpml
             call fld_a%write(it,o_suffix='_rev')
             call fld_da%write(it,o_suffix='_rev')
             
-                call fld_u%write_ext(it,'grad_u_dot_a' ,cb%corr(:,:,:,1),size(cb%corr(:,:,:,1)))
+                call fld_u%write_ext(it,'grad_a_star_Du' ,cb%corr(:,:,:,1),size(cb%corr(:,:,:,1)))
 
             if(index(corrs,'RE')>0) then
-                call fld_u%write_ext(it,'grad_du_dot_a' ,cb%corr(:,:,:,2),size(cb%corr(:,:,:,2)))
-                call fld_u%write_ext(it,'grad_u_dot_da' ,cb%corr(:,:,:,3),size(cb%corr(:,:,:,3)))
+                call fld_u%write_ext(it,'grad_du_star_Da' ,cb%corr(:,:,:,2),size(cb%corr(:,:,:,2)))
+                call fld_u%write_ext(it,'grad_da_star_Du' ,cb%corr(:,:,:,3),size(cb%corr(:,:,:,3)))
             endif
 
             if(index(corrs,'DR')>0) then
-                call fld_u%write_ext(it,'grad_u_dot_Adj(du)' ,cb%corr(:,:,:,5),size(cb%corr(:,:,:,5)))
+                call fld_u%write_ext(it,'grad_Adj(du)_star_Du' ,cb%corr(:,:,:,5),size(cb%corr(:,:,:,5)))
             endif
 
         enddo
         
         !postprocess gradient
-        !if(if_compute_grad) call gradient_postprocess
+
+        !add minus sign due to backpropagation (dt->-dt)
+        !and scale by m%cell_volume*rdt tobe a gradient in the discretized world
+        cb%corr = -cb%corr*m%cell_volume*rdt
+
         !gkpa
         do i=1,5
-        cb%corr(:,:,:,i) = r_ppg_sign4gradient*cb%corr(:,:,:,i) * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my)) *m%cell_volume*rdt
+        cb%corr(:,:,:,i) = cb%corr(:,:,:,i) * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my))
         enddo
+
         !preparing for cb%project_back
         cb%corr(1,:,:,:) = cb%corr(2,:,:,:)
 
@@ -1537,15 +1532,6 @@ use m_cpml
         endif
         
     end subroutine
-
-    ! subroutine inject_velocities_ext(self,f,RHS)
-    !     class(t_propagator) :: self
-    !     type(t_field) :: f, RHS
-
-    !     f%vz = f%vz + RHS%vz
-    !     f%vx = f%vx + RHS%vx
-    !     f%vy = f%vy + RHS%vy
-    ! end subroutine
     
     !v^it -> v^it+1 by FD of s^it+0.5
     subroutine update_velocities(self,f,time_dir,it)
@@ -1606,13 +1592,14 @@ use m_cpml
         
     end subroutine
     
-    subroutine inject_stresses_scattering(self,f,RHS,time_dir)
+    subroutine inject_stresses_scattering(self,fld_d,fld,W2Idt,time_dir)
         class(t_propagator) :: self
-        type(t_field) :: f
-        real,dimension(cb%mz,cb%mx,cb%my) :: RHS
+        type(t_field) :: fld_d, fld
+        real,dimension(cb%mz,cb%mx,cb%my) :: W2Idt
         real :: time_dir
 
-        f%p(1:cb%mz,1:cb%mx,1:cb%my) = f%p(1:cb%mz,1:cb%mx,1:cb%my) + time_dir*RHS*self%kpa(1:cb%mz,1:cb%mx,1:cb%my) *self%dt
+        fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) = fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) + time_dir*W2Idt*fld%p(1:cb%mz,1:cb%mx,1:cb%my)*self%kpa(1:cb%mz,1:cb%mx,1:cb%my)
+
     end subroutine
 
     !s^it+0.5 -> s^it+1.5 by FD of v^it+1
@@ -1834,19 +1821,15 @@ use m_cpml
         call dealloc(self%buox, self%buoy, self%buoz, self%kpa, self%inv_kpa)
     end subroutine
 
-    !========= for wavefield correlation ===================   
-    !grho = -adjv · dv_dt
-    !     = -adjv · b ∇p
+    !========= for gradient computation ===================   
+    !grho = adjv · dv_dt
+    !     = adjv · b∇p
     !
-    !gkpa = -adjp · -1/kpa2 dp_dt
-    !     = -adjp · -1/kpa  ∇·v
-    !
-    !v^it+1, p^it+0.5, adjp^it+0.5
-    !p^it+0.5, v^it, adjv^it
-    !use (v[i+1]+v[i])/2 to approximate v[i+0.5], so is adjv
-    
-    subroutine gradient_density(sf,rf,it,grad)
-        type(t_field), intent(in) :: sf, rf
+    !gkpa = adjp · -1/kpa^2 dp_dt
+    !     = adjp · -1/kpa   ∇·v
+
+    subroutine gradient_density(rf,sf,it,grad)
+        type(t_field), intent(in) :: rf, sf
         real,dimension(cb%mz,cb%mx,cb%my) :: grad
         
         !nonzero only when sf touches rf
@@ -1858,24 +1841,20 @@ use m_cpml
         ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
         
         if(m%is_cubic) then
-            call grad3d_density(sf%p,rf%vz,rf%vx,rf%vy,&
+            call grad3d_density(rf%vz,rf%vx,rf%vy,sf%p,&
                                 grad,                  &
                                 ifz,ilz,ifx,ilx,ify,ily)
         else
-            call grad2d_density(sf%p,rf%vz,rf%vx,&
+            call grad2d_density(rf%vz,rf%vx,sf%p,&
                                 grad,            &
                                 ifz,ilz,ifx,ilx)
         endif
         
     end subroutine
 
-    subroutine gradient_moduli(sf,rf,it,grad)
-        type(t_field), intent(in) :: sf, rf
+    subroutine gradient_moduli(rf,sf,it,grad)
+        type(t_field), intent(in) :: rf, sf
         real,dimension(cb%mz,cb%mx,cb%my) :: grad
-
-        !sanity check
-        if(sf%is_adjoint) call error('Source field is an adjoint field!')
-        if(.not. rf%is_adjoint) call error('Receiver field is NOT an adjoint field!')
 
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
@@ -1886,17 +1865,17 @@ use m_cpml
         ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
         
         if(m%is_cubic) then
-            call grad3d_moduli(sf%vz,sf%vx,sf%vy,rf%p,&
+            call grad3d_moduli(rf%p,sf%vz,sf%vx,sf%vy,&
                                grad,                  &
                                ifz,ilz,ifx,ilx,ify,ily)
         else
-            ! call grad2d_moduli(sf%p,sf_p_save,rf%p,&
+            ! call grad2d_moduli(rf%p,sf%p,sf_p_save,&
             !                    grad,            &
             !                    ifz,ilz,ifx,ilx)
             ! sf_p_save = sf%p
             
             !inexact greadient
-            call grad2d_moduli(sf%vz,sf%vx,rf%p,&
+            call grad2d_moduli(rf%p,sf%vz,sf%vx,&
                                grad,            &
                                ifz,ilz,ifx,ilx)
         endif
@@ -1904,23 +1883,24 @@ use m_cpml
     end subroutine
     
     subroutine gradient_postprocess
+
+        !scale by m%cell_volume*rdt tobe a gradient in the discretized world
+        !and minus sign comes from FD
+        cb%grad = -cb%grad*m%cell_volume*rdt
+        
         !grho
-        cb%grad(:,:,:,1) = r_ppg_sign4gradient*cb%grad(:,:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)         *m%cell_volume*rdt !scaled by m%cell_volume*rdt tobe a gradient in the discretized world
+        cb%grad(:,:,:,1) = cb%grad(:,:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
         !gkpa
-        cb%grad(:,:,:,2) = r_ppg_sign4gradient*cb%grad(:,:,:,2) * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my)) *m%cell_volume*rdt
+        cb%grad(:,:,:,2) = cb%grad(:,:,:,2) * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my))
                 
         !preparing for cb%project_back
         cb%grad(1,:,:,:) = cb%grad(2,:,:,:)
 
     end subroutine
 
-    subroutine imaging(sf,rf,it,imag)
-        type(t_field), intent(in) :: sf, rf
+    subroutine imaging(rf,sf,it,imag)
+        type(t_field), intent(in) :: rf, sf
         real,dimension(cb%mz,cb%mx,cb%my) :: imag
-
-        !sanity check
-        if(sf%is_adjoint) call error('Source field is an adjoint field!')
-        if(.not. rf%is_adjoint) call error('Receiver field is NOT an adjoint field!')
         
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
@@ -1931,27 +1911,30 @@ use m_cpml
         ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
         
         ! if(m%is_cubic) then
-        !     call imag3d_xcorr(sf%p,rf%p,&
+        !     call imag3d_xcorr(rf%p,sf%p,&
         !                       imag,                  &
         !                       ifz,ilz,ifx,ilx,ify,ily)
         ! else
-            call imag2d_xcorr(sf%p,rf%p,&
+            call imag2d_xcorr(rf%p,sf%p,&
                               imag,            &
                               ifz,ilz,ifx,ilx)
         ! endif
 
-        ! call imag2d_xcorr(sf%p,sf%vz,sf%vx,&
-        !                   rf%p,rf%vz,rf%vx,&
+        ! call imag2d_xcorr(rf%p,rf%vz,rf%vx,&
+        !                   sf%p,sf%vz,sf%vx,&
         !                   imag,            &
         !                   ifz,ilz,ifx,ilx)
 
     end subroutine
 
     subroutine imaging_postprocess
-        cb%imag = r_ppg_sign4imaging*cb%imag*rdt
+
+        !scale by rdt
+        cb%imag = cb%imag*rdt
 
         !for cb%project_back
         cb%imag(1,:,:,:) = cb%imag(2,:,:,:)
+
     end subroutine
 
     subroutine energy(sf,it,engy)
@@ -2277,10 +2260,10 @@ use m_cpml
     end subroutine
 
     
-    subroutine grad3d_moduli(sf_vz,sf_vx,sf_vy,rf_p,&
+    subroutine grad3d_moduli(rf_p,sf_vz,sf_vx,sf_vy,&
                              grad,                  &
                              ifz,ilz,ifx,ilx,ify,ily)
-        real,dimension(*) :: sf_vz,sf_vx,sf_vy,rf_p
+        real,dimension(*) :: rf_p,sf_vz,sf_vx,sf_vy
         real,dimension(*) :: grad
         
         nz=cb%nz
@@ -2290,8 +2273,8 @@ use m_cpml
         dvx_dx=0.
         dvy_dx=0.
         
-        dsp=0.
          rp=0.
+        dsp=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,iy,i,j,&
@@ -2299,7 +2282,7 @@ use m_cpml
         !$omp         iz_ixm1_iy,iz_ixp1_iy,iz_ixp2_iy,&
         !$omp         iz_ix_iym1,iz_ix_iyp1,iz_ix_iyp2,&
         !$omp         dvz_dz,dvx_dx,dvy_dy,&
-        !$omp         dsp,rp)
+        !$omp         rp,dsp)
         !$omp do schedule(dynamic) collapse(2)
         do iy=ify,ily
         do ix=ifx,ilx
@@ -2327,10 +2310,10 @@ use m_cpml
                 dvx_dx = c1x*(sf_vx(iz_ixp1_iy)-sf_vx(iz_ix_iy)) +c2x*(sf_vx(iz_ixp2_iy)-sf_vx(iz_ixm1_iy))
                 dvy_dy = c1y*(sf_vy(iz_ix_iyp1)-sf_vy(iz_ix_iy)) +c2y*(sf_vy(iz_ix_iyp2)-sf_vy(iz_ix_iym1))
                 
-                dsp = dvz_dz +dvx_dx +dvy_dy
                  rp = rf_p(i)
+                dsp = dvz_dz +dvx_dx +dvy_dy
                 
-                grad(j)=grad(j) - dsp*rp
+                grad(j)=grad(j) + rp*dsp
                 
             end do
             
@@ -2341,16 +2324,16 @@ use m_cpml
         
     end subroutine
 
-    ! subroutine grad2d_moduli(sf_p,sf_p_save,rf_p,&
+    ! subroutine grad2d_moduli(rf_p,sf_p,sf_p_save,&
     !                          grad,            &
     !                          ifz,ilz,ifx,ilx)
-    !     real,dimension(*) :: sf_p,sf_p_save,rf_p
+    !     real,dimension(*) :: rf_p,sf_p,sf_p_save
     !     real,dimension(*) :: grad
         
     !     nz=cb%nz
         
-    !     dsp=0.
     !      rp=0.
+    !     dsp=0.
         
     !     !$omp parallel default (shared)&
     !     !$omp private(iz,ix,i,j,&
@@ -2367,10 +2350,10 @@ use m_cpml
     !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
     !             j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
                 
-    !             dsp = sf_p_save(i) - sf_p(i)
     !              rp = rf_p(i)
+    !             dsp = sf_p_save(i) - sf_p(i)
                 
-    !             grad(j)=grad(j) - dsp*rp
+    !             grad(j)=grad(j) + rp*dsp
                 
     !         end do
             
@@ -2380,10 +2363,10 @@ use m_cpml
 
     ! end subroutine
 
-    subroutine grad2d_moduli(sf_vz,sf_vx,rf_p,&
+    subroutine grad2d_moduli(rf_p,sf_vz,sf_vx,&
                              grad,            &
                              ifz,ilz,ifx,ilx)
-        real,dimension(*) :: sf_vz,sf_vx,rf_p
+        real,dimension(*) :: rf_p,sf_vz,sf_vx
         real,dimension(*) :: grad
         
         nz=cb%nz
@@ -2391,15 +2374,15 @@ use m_cpml
         dvz_dz=0.
         dvx_dx=0.
         
-        dsp=0.
          rp=0.
+        dsp=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
         !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
         !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
         !$omp         dvz_dz,dvx_dx,&
-        !$omp         dsp,rp)
+        !$omp         rp,dsp)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
         
@@ -2421,10 +2404,10 @@ use m_cpml
                 dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
                 dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
                 
-                dsp = dvz_dz +dvx_dx
                  rp = rf_p(i)
+                dsp = dvz_dz +dvx_dx
                 
-                grad(j)=grad(j) - dsp*rp
+                grad(j)=grad(j) + rp*dsp
                 
             end do
             
@@ -2434,10 +2417,10 @@ use m_cpml
 
     end subroutine
     
-    subroutine grad3d_density(sf_p,rf_vz,rf_vx,rf_vy,&
+    subroutine grad3d_density(rf_vz,rf_vx,rf_vy,sf_p,&
                               grad,                  &
                               ifz,ilz,ifx,ilx,ify,ily)
-        real,dimension(*) :: sf_p,rf_vz,rf_vx,rf_vy
+        real,dimension(*) :: rf_vz,rf_vx,rf_vy,sf_p
         real,dimension(*) :: grad
         
         nz=cb%nz
@@ -2451,8 +2434,8 @@ use m_cpml
         !$omp         izm2_ix_iy,izm1_ix_iy,iz_ix_iy,izp1_ix_iy,izp2_ix_iy,&
         !$omp         iz_ixm2_iy,iz_ixm1_iy,iz_ixp1_iy,iz_ixp2_iy,&
         !$omp         iz_ix_iym2,iz_ix_iym1,iz_ix_iyp1,iz_ix_iyp2,&
-        !$omp         dsvz,dsvx,dsvy,&
-        !$omp          rvz, rvx, rvy)
+        !$omp          rvz, rvx, rvy,&
+        !$omp         dsvz,dsvx,dsvy)
         !$omp do schedule(dynamic) collapse(2)
         do iy=ify,ily
         do ix=ifx,ilx
@@ -2478,6 +2461,10 @@ use m_cpml
                 iz_ix_iym1=i    -nz*nx  !iz,ix,iy-1
                 iz_ix_iyp1=i    +nz*nx  !iz,ix,iy+1
                 iz_ix_iyp2=i  +2*nz*nx  !iz,ix,iy+2               
+                
+                rvz = rf_vz(izp1_ix_iy) +rf_vz(iz_ix_iy)
+                rvx = rf_vx(iz_ixp1_iy) +rf_vx(iz_ix_iy)
+                rvy = rf_vy(iz_ix_iyp1) +rf_vy(iz_ix_iy)
 
                 dsvz = (c1z*(sf_p(iz_ix_iy  )-sf_p(izm1_ix_iy)) +c2z*(sf_p(izp1_ix_iy)-sf_p(izm2_ix_iy))) &
                       +(c1z*(sf_p(izp1_ix_iy)-sf_p(iz_ix_iy  )) +c2z*(sf_p(izp2_ix_iy)-sf_p(izm1_ix_iy)))
@@ -2489,11 +2476,7 @@ use m_cpml
                 !complete equation with unnecessary terms e.g. sf_p(iz_ix) for better understanding
                 !with flag -O, the compiler should automatically detect such possibilities of simplification
                 
-                rvz = rf_vz(izp1_ix_iy) +rf_vz(iz_ix_iy)
-                rvx = rf_vx(iz_ixp1_iy) +rf_vx(iz_ix_iy)
-                rvy = rf_vy(iz_ix_iyp1) +rf_vy(iz_ix_iy)
-                
-                grad(j)=grad(j) - 0.25*( dsvz*rvz + dsvx*rvx + dsvy*rvy )
+                grad(j)=grad(j) + 0.25*( rvz*dsvz + rvx*dsvx + rvy*dsvy )
                 
             enddo
             
@@ -2504,10 +2487,10 @@ use m_cpml
         
     end subroutine
     
-    subroutine grad2d_density(sf_p,rf_vz,rf_vx,&
+    subroutine grad2d_density(rf_vz,rf_vx,sf_p,&
                               grad,            &
                               ifz,ilz,ifx,ilx)
-        real,dimension(*) :: sf_p,rf_vz,rf_vx
+        real,dimension(*) :: rf_vz,rf_vx,sf_p
         real,dimension(*) :: grad
         
         nz=cb%nz
@@ -2519,8 +2502,8 @@ use m_cpml
         !$omp private(iz,ix,i,j,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
         !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dsvz,dsvx,&
-        !$omp          rvz, rvx)
+        !$omp          rvz, rvx,&
+        !$omp         dsvz,dsvx)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
         
@@ -2541,6 +2524,9 @@ use m_cpml
                 iz_ixp1=i    +nz  !iz,ix+1
                 iz_ixp2=i  +2*nz  !iz,ix+2
                 
+                rvz = rf_vz(iz_ix) +rf_vz(izp1_ix)
+                rvx = rf_vx(iz_ix) +rf_vx(iz_ixp1)
+                
                 dsvz = (c1z*(sf_p(iz_ix  )-sf_p(izm1_ix)) +c2z*(sf_p(izp1_ix)-sf_p(izm2_ix))) &
                       +(c1z*(sf_p(izp1_ix)-sf_p(iz_ix  )) +c2z*(sf_p(izp2_ix)-sf_p(izm1_ix)))
                 dsvx = (c1x*(sf_p(iz_ix  )-sf_p(iz_ixm1)) +c2x*(sf_p(iz_ixp1)-sf_p(iz_ixm2))) &
@@ -2548,10 +2534,7 @@ use m_cpml
                 !complete equation with unnecessary terms e.g. sf_p(iz_ix) for better understanding
                 !with flag -Ox, the compiler should automatically detect such possible simplification
                 
-                rvz = rf_vz(iz_ix) +rf_vz(izp1_ix)
-                rvx = rf_vx(iz_ix) +rf_vx(iz_ixp1)
-                
-                grad(j)=grad(j) - 0.25*( dsvz*rvz + dsvx*rvx )
+                grad(j)=grad(j) + 0.25*( rvz*dsvz + rvx*dsvx )
                 
             enddo
             
@@ -2562,21 +2545,21 @@ use m_cpml
     end subroutine
 
 
-    subroutine imag3d_xcorr(sf_p,rf_p,             &
+    subroutine imag3d_xcorr(rf_p,sf_p,             &
                             imag,                  &
                             ifz,ilz,ifx,ilx,ify,ily)
-        real,dimension(*) :: sf_p,rf_p
+        real,dimension(*) :: rf_p,sf_p
         real,dimension(*) :: imag
         
         nz=cb%nz
         nx=cb%nx
         
-        sp=0.
         rp=0.
+        sp=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,iy,i,j,&
-        !$omp         sp,rp)
+        !$omp         rp,sp)
         !$omp do schedule(dynamic) collapse(2)
         do iy=ify,ily
         do ix=ifx,ilx
@@ -2587,10 +2570,10 @@ use m_cpml
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
                 j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !grad has no boundary layers
                 
-                sp = sf_p(i)
                 rp = rf_p(i)
+                sp = sf_p(i)
                 
-                imag(j)=imag(j) + sp*rp
+                imag(j)=imag(j) + rp*sp
                 
             end do
             
@@ -2601,12 +2584,12 @@ use m_cpml
         
     end subroutine
 
-    ! subroutine imag2d_xcorr(sf_p,sf_vz,sf_vx,&
-    !                         rf_p,rf_vz,rf_vx,&
+    ! subroutine imag2d_xcorr(rf_p,rf_vz,rf_vx,&
+    !                         sf_p,sf_vz,sf_vx,&
     !                         imag,          &
     !                         ifz,ilz,ifx,ilx)
-    !     real,dimension(*) :: sf_p,sf_vz,sf_vx
     !     real,dimension(*) :: rf_p,rf_vz,rf_vx
+    !     real,dimension(*) :: sf_p,sf_vz,sf_vx
     !     real,dimension(*) :: imag
         
     !     nz=cb%nz
@@ -2623,7 +2606,7 @@ use m_cpml
     !             j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
                 
     !             imag(j)=imag(j) + &
-    !                 sf_p(i)*rf_p(i) + sf_vz(i)*rf_vz(i) + sf_vx(i)*rf_vx(i)
+    !                 rf_p(i)*sf_p(i) + rf_vz(i)*sf_vz(i) + rf_vx(i)*sf_vx(i)
                 
     !         end do
             
@@ -2633,20 +2616,20 @@ use m_cpml
 
     ! end subroutine
 
-    subroutine imag2d_xcorr(sf_p,rf_p,     &
+    subroutine imag2d_xcorr(rf_p,sf_p,     &
                             imag,          &
                             ifz,ilz,ifx,ilx)
-        real,dimension(*) :: sf_p,rf_p
+        real,dimension(*) :: rf_p,sf_p
         real,dimension(*) :: imag
         
         nz=cb%nz
         
-        sp=0.
         rp=0.
+        sp=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
-        !$omp         sp,rp)
+        !$omp         rp,sp)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
         
@@ -2656,10 +2639,10 @@ use m_cpml
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
                 j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
                 
-                sp = sf_p(i)
                 rp = rf_p(i)
+                sp = sf_p(i)
                 
-                imag(j)=imag(j) + sp*rp
+                imag(j)=imag(j) + rp*sp
                 
             end do
             
