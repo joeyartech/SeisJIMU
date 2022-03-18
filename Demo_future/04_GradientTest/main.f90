@@ -82,6 +82,12 @@ use m_linesearcher
     
     call hud('qp0%f, ║g║₂² = '//num2str(qp0%f)//', '//num2str(norm2(qp0%g)))
     
+    !if just estimate the wavelet or compute the gradient then this is it.
+    if(setup%get_str('JOB')=='gradient') then
+        call mpiworld%final
+        stop
+    endif
+    
     call optimizer_init_loop(qp0)
         
     call mpiworld%final

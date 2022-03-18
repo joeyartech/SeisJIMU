@@ -1384,8 +1384,9 @@ use m_cpml
                 ! endif
                 
                 if(index(corrs,'DR')>0) then
-                    !corr(:,:,:,5) = Adj(du)_star_Du
+                    !corr(:,:,:,5) = -Adj(du)_star_Du
                     call gradient_moduli(fld_Adj_du,fld_u,it,cb%corr(:,:,:,5))
+                    !will add the minus sign outside timestepping loop
                 endif
 
                 call cpu_time(toc)
@@ -1454,6 +1455,8 @@ use m_cpml
         enddo
         
         !postprocess gradient
+        !take the DR term = -Adj(du)_star_Du
+        cb%corr(:,:,:,5)=-cb%corr(:,:,:,5)
 
         !scale by m%cell_volume*rdt tobe a gradient in the discretized world
         cb%corr = cb%corr*m%cell_volume*rdt
