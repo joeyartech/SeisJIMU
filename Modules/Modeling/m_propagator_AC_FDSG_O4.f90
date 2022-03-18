@@ -252,11 +252,11 @@ use m_cpml
     end subroutine
     
     !========= forward modeling =================
-    !WE: M du_dt = Du + s
+    !PDE: M du/dt = Du + s
     !u=[vx vy vz p]ᵀ, p=(sxx+syy+szz)/3=sxx+syy+szz, s=[fvx fvy fvz fp]ᵀδ(x-xs)
     !
     !  [rho   0  ]    [0   0   0   dx]
-    !M=[ 0  1/kpa], D=|0   0   0   dy|
+    !M=[ 0  kpa⁻¹], D=|0   0   0   dy|
     !                 |0   0   0   dz|
     !                 [dx  dy  dz  0 ]
     !
@@ -268,8 +268,9 @@ use m_cpml
     ! vy(iz,ix,iy):=  vy[iz,ix,iy-0.5]^it,it+1,...
 
     !========= adjoint propagation =================
-    !WEq:      Mdu_dt  = D u   + src
-    !Adjoint:  Mdv_dtᵀ = Dᵀv + adjsrc
+    !PDE:      M du/dt   = D u + src
+    !Adjoint:  M(da/dt)ᵀ = Dᵀa + adjsrc
+    !   where a is the adjoint field
     !
     !Discrete form (staggered grid in space and time, 2D as example):
     ! M  [ [vx^it+1  ] [vx^it    ] ]   [ 0     0    dx(-)][vx^it+1  ]
@@ -1454,9 +1455,8 @@ use m_cpml
         
         !postprocess gradient
 
-        !add minus sign due to backpropagation (dt->-dt)
-        !and scale by m%cell_volume*rdt tobe a gradient in the discretized world
-        cb%corr = -cb%corr*m%cell_volume*rdt
+        !scale by m%cell_volume*rdt tobe a gradient in the discretized world
+        cb%corr = cb%corr*m%cell_volume*rdt
 
         !gkpa
         do i=1,5
@@ -1885,8 +1885,7 @@ use m_cpml
     subroutine gradient_postprocess
 
         !scale by m%cell_volume*rdt tobe a gradient in the discretized world
-        !and minus sign comes from FD
-        cb%grad = -cb%grad*m%cell_volume*rdt
+        cb%grad = cb%grad*m%cell_volume*rdt
         
         !grho
         cb%grad(:,:,:,1) = cb%grad(:,:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
@@ -1929,7 +1928,7 @@ use m_cpml
 
     subroutine imaging_postprocess
 
-        !scale by rdt
+        !scale by rdt tobe an image in the discretized world
         cb%imag = cb%imag*rdt
 
         !for cb%project_back
@@ -2313,7 +2312,7 @@ use m_cpml
                  rp = rf_p(i)
                 dsp = dvz_dz +dvx_dx +dvy_dy
                 
-                grad(j)=grad(j) + rp*dsp
+                grad(j)=grad(j) - rp*dsp  !minus sign due to reverse time direction of the adjoint propagation (-dt)
                 
             end do
             
@@ -2353,7 +2352,7 @@ use m_cpml
     !              rp = rf_p(i)
     !             dsp = sf_p_save(i) - sf_p(i)
                 
-    !             grad(j)=grad(j) + rp*dsp
+    !             grad(j)=grad(j) - rp*dsp  !minus sign due to reverse time direction of the adjoint propagation (-dt)
                 
     !         end do
             
@@ -2407,7 +2406,7 @@ use m_cpml
                  rp = rf_p(i)
                 dsp = dvz_dz +dvx_dx
                 
-                grad(j)=grad(j) + rp*dsp
+                grad(j)=grad(j) - rp*dsp  !minus sign due to reverse time direction of the adjoint propagation (-dt)
                 
             end do
             
@@ -2476,7 +2475,7 @@ use m_cpml
                 !complete equation with unnecessary terms e.g. sf_p(iz_ix) for better understanding
                 !with flag -O, the compiler should automatically detect such possibilities of simplification
                 
-                grad(j)=grad(j) + 0.25*( rvz*dsvz + rvx*dsvx + rvy*dsvy )
+                grad(j)=grad(j) - 0.25*( rvz*dsvz + rvx*dsvx + rvy*dsvy )  !minus sign due to reverse time direction of the adjoint propagation (-dt)
                 
             enddo
             
@@ -2534,7 +2533,7 @@ use m_cpml
                 !complete equation with unnecessary terms e.g. sf_p(iz_ix) for better understanding
                 !with flag -Ox, the compiler should automatically detect such possible simplification
                 
-                grad(j)=grad(j) + 0.25*( rvz*dsvz + rvx*dsvx )
+                grad(j)=grad(j) - 0.25*( rvz*dsvz + rvx*dsvx )  !minus sign due to reverse time direction of the adjoint propagation (-dt)
                 
             enddo
             
@@ -2573,7 +2572,7 @@ use m_cpml
                 rp = rf_p(i)
                 sp = sf_p(i)
                 
-                imag(j)=imag(j) + rp*sp
+                imag(j)=imag(j) - rp*sp  !minus sign due to reverse time direction of the adjoint propagation (-dt)
                 
             end do
             
@@ -2605,8 +2604,8 @@ use m_cpml
     !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
     !             j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
                 
-    !             imag(j)=imag(j) + &
-    !                 rf_p(i)*sf_p(i) + rf_vz(i)*sf_vz(i) + rf_vx(i)*sf_vx(i)
+    !             imag(j)=imag(j) - &
+    !                 rf_p(i)*sf_p(i) - rf_vz(i)*sf_vz(i) - rf_vx(i)*sf_vx(i)  !minus sign due to reverse time direction of the adjoint propagation (-dt)
                 
     !         end do
             
@@ -2642,7 +2641,7 @@ use m_cpml
                 rp = rf_p(i)
                 sp = sf_p(i)
                 
-                imag(j)=imag(j) + rp*sp
+                imag(j)=imag(j) - rp*sp  !minus sign due to reverse time direction of the adjoint propagation (-dt)
                 
             end do
             

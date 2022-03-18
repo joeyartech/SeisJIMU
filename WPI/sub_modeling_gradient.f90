@@ -151,9 +151,7 @@ use m_resampler
 
     !times dt in the RHS for propagation
     W2Idt=W2Idt*shot%dt
-
-    W2Idt=-W2Idt !WHY?
-    call sysio_write('-W2Idt',W2Idt,size(W2Idt))
+    call sysio_write('W2Idt',W2Idt,size(W2Idt))
     
     
     !FWI misfit
@@ -446,9 +444,7 @@ use m_resampler
     
     !times dt in the RHS for propagation
     W2Idt=W2Idt*shot%dt
-
-    W2Idt=-W2Idt !WHY?
-    call sysio_write('-W2Idt',W2Idt,size(W2Idt))
+    call sysio_write('W2Idt',W2Idt,size(W2Idt))
         
     
     !FWI misfit
