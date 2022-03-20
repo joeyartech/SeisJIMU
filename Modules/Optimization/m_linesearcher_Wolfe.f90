@@ -32,8 +32,10 @@ use m_Kernel
     !thresholding
     real,parameter :: thres=0.
 
-    !initial steplength
+    !priors for steplength
     real,parameter :: alpha0=1.
+    real,parameter :: alphaL0=1e-4 !~=2^-10
+    real,parameter :: alphaR0=1e4  !=10^4
 
     type,public :: t_linesearcher
         real :: alpha  !steplength
@@ -82,8 +84,15 @@ use m_Kernel
 
         logical :: if_1st_cond, if_2nd_cond
 
-        self%alphaL=0.
-        self%alphaR=huge(1.)
+        !alpha probably can't be outside [alphaL0,alphaR0]
+        !a prudent range as we've appropriately scaled the optimization problem
+        !by the norm of the gradient (linesearcher scaler)
+        !if alpha < alphaL0 then probably no significant model updates
+        !if alpha > alphaR0 then probably too-large model updates
+        self%alphaL=alphaL0  !0.
+        self%alphaR=alphaR0  !huge(1.)
+
+        !reset alpha = alpha0 if requested by the optimization algorithm
         if(if_reinit_alpha) self%alpha=alpha0
         
         ! if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Initial alphaL/alpha/alphaR =',alphaL,alpha,alphaR

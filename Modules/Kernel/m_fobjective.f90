@@ -91,29 +91,25 @@ use m_preconditioner
         
     end subroutine
     
-    recursive subroutine stack_dnorms(self,o_sign4adjsrc)
+    recursive subroutine stack_dnorms(self)
     use mpi
         class(t_fobjective) :: self
-        real,optional :: o_sign4adjsrc
 
-        real :: sign4adjsrc
         real,dimension(:,:),allocatable :: Wdres
         logical :: is_4adjsrc
         real :: numer, denom, time(shot%nt), v(shot%nt)
         
-        !In theory,
-        !e.g. C(u) = ½║u║₂² = ½Σ_rcv ∫ (u-d)² δ_rcv dx3 dt, and
-        !∇C = Σ_rcv ∫ (u-d)² δ_rcv,
-        !adjoint source = sign4adjsrc*∇C
-        !where δ_rcv is the Dirac delta function centered at receiver positions.
-        !Because δ_rcv=1/dx3, in the implementation we take
-        !C(u) = 0.5*Σ_rcv ∫ (u-d)² dt, and
-        !the presence of δ_rcv in the adjoint source is accounted for
+        !In theory, (L2 norm sq for example)
+        !C(u) = ½║u║₂² = ½Σ_xr ∫ (u-d)² δ(x-xr) dx3 dt, and
+        !∇C = Σ_xr ∫ (u-d)² δ(x-xr)
+        !where δ(x-xr) is the Dirac delta function centered at receiver positions.
+        !In the discretized world, δ(x-xr)={0,1}/dx3,
+        !in the implementation we take
+        !C(u) = 0.5*Σ_xr ∫ (u-d)² dt, and
+        !the presence of δ(x-xr) in the adjoint source is accounted for
         !by the RHS of adjoint weq
-        !(ie. when calling to rfield%ignite, to be same as sfield%ignite)
+        !(ie. when calling rfield%ignite, to be same as sfield%ignite)
 
-        sign4adjsrc=either(o_sign4adjsrc,1.,present(o_sign4adjsrc))
-        
         !reinitialize adjoint source
         if(if_has_dnorm_normalizers) call alloc(shot%dadj,shot%nt,shot%nrcv)
 
@@ -217,13 +213,7 @@ use m_preconditioner
 
         enddo
         
-        if(if_has_dnorm_normalizers) then
-            !set sign on adjsrc
-            shot%dadj = shot%dadj*sign4adjsrc
-
-            !write
-            call shot%write('dadj_',shot%dadj)
-        endif
+        if(if_has_dnorm_normalizers) call shot%write('dadj_',shot%dadj)
         
         if(if_has_dnorm_normalizers) return
         
@@ -243,7 +233,7 @@ use m_preconditioner
         
         !and redo the computations for adjoint sources
         self%dnorms=0.
-        call self%stack_dnorms(sign4adjsrc)
+        call self%stack_dnorms
         
     end subroutine
 

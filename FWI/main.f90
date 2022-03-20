@@ -34,8 +34,8 @@ use m_Optimization
     ! !estimate required memory
     ! call m%estim_RAM
     ! call cb%estim_RAM
-    ! call sfield%estim_RAM
-    ! call rfield%estim_RAM
+    ! call fld_u%estim_RAM
+    ! call fld_a%estim_RAM
     
     !checkpoint
     call checkpoint_init
@@ -110,7 +110,7 @@ use m_smoother_laplacian_sparse
     logical :: is_fitting_data
 
     logical,save :: is_first_in=.true.
-    type(t_field) :: sfield, rfield
+    type(t_field) :: fld_u, fld_a
     character(:),allocatable :: update_wavelet
 
     is_fitting_data=.true.
@@ -136,10 +136,10 @@ use m_smoother_laplacian_sparse
         call ppg%init
         call ppg%init_abslayer
 
-        call ppg%init_field(sfield,name='sfield');  call sfield%ignite
+        call ppg%init_field(fld_u,name='fld_u');  call fld_u%ignite
         
         !forward modeling
-        call ppg%forward(sfield);   call sfield%acquire
+        call ppg%forward(fld_u);   call fld_u%acquire
 
         if(mpiworld%is_master) call shot%write('draw_',shot%dsyn)
 
@@ -153,15 +153,17 @@ use m_smoother_laplacian_sparse
         !data weighting
         call wei%update
         
-        !L2 norm of data misfit as objective function
-        !C(u) = ½║u║² = ½∫ (u-d)² δxr dtdx³
-        !∇ᵤC = (u-d)δxr
-        !L = C - <λ|Au-s> ≐ C + < Aλ|u> !ppg gives Aᵀ=-A
-        !0=∇ᵤL = ∇ᵤC + Aa => Aλ=-∇ᵤC => λ=-a
-        !∇ₘL = -λ ∇ₘA u = a ∇ₘA u = a★∂u
+        !Adjoint state method with Lagrangian formulation
+        !to compute the gradient (L2 norm example)
+        !C = ½║u║² = ½∫ (u-d)² δ(x-xr) dtdx³
+        !∇ᵤC = (u-d)δ(x-xr)
+        !L = C + <a|Au-s> ≐ C + <Aᴴa|u>
+        !0 = ∇ᵤL = ∇ᵤC + Aᴴa => Aᴴa = -∇ᵤC = (d-u)δ(x-xr)
+        !∇ₘL = a ∇ₘA u =: a★Du
 
         !objective function and adjoint source
         call fobj%stack_dnorms
+        shot%dadj=-shot%dadj
         
         if(mpiworld%is_master) call fobj%print_dnorms('Shotloop-stacked','upto Shot#'//shot%sindex)
         ! if(either(oif_gradient,.true.,present(oif_gradient))) then
@@ -169,12 +171,12 @@ use m_smoother_laplacian_sparse
             !adjoint source
             if(update_wavelet/='no') call shot%update_adjsource
             
-            call ppg%init_field(rfield,name='rfield',ois_adjoint=.true.)
+            call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
             
-            call rfield%ignite
+            call fld_a%ignite
             
             !adjoint modeling
-            call ppg%adjoint(rfield,sfield,oif_compute_grad=.true.)
+            call ppg%adjoint(fld_a,fld_u,oif_compute_grad=.true.)
             
             call cb%project_back
             

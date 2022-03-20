@@ -1,5 +1,5 @@
-MODEL_SIZE              '201 201 1'
-MODEL_SPACING           '10 10 1'
+MODEL_SIZE              '101 101 1'
+MODEL_SPACING           '20 20 1'
 FILE_MODEL              'model'
 MODEL_ATTRIBUTES        vp #'vp rho'
 FILE_TOPO               'topo'
@@ -27,6 +27,7 @@ FILE_DATA_PREFIX    './results_fwd/dsyn_'
 #ISHOT               1
 NBATCH              4
 WEIGHTING           'none'
+#IWEI                'topo'
 
 FPEAK        6.4
 UPDATE_WAVELET		'no'

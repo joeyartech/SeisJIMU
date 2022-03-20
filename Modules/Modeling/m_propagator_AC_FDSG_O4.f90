@@ -28,9 +28,9 @@ use m_cpml
             'Required model attributes: vp, rho'//s_NL// &
             'Required field components: vz, vx, vy(3D), p'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
-            'Basic gradients: grho gkpa'//s_NL// &
             'Imaging conditions: P-Pxcorr'//s_NL// &
-            'Energy terms: Σ_shot ∫ sfield%p² dt'
+            'Energy terms: Σ_shot ∫ sfield%p² dt'//s_NL// &
+            'Basic gradients: grho gkpa'
 
         integer :: nbndlayer=max(2,hicks_r) !minimum absorbing layer thickness
         integer :: ngrad=2 !number of basic gradients
@@ -38,17 +38,6 @@ use m_cpml
         integer :: nengy=1 !number of energy terms
 
         logical :: if_compute_engy=.false.
-
-        !shorthand for greek letters
-        !alfa bta gma del(dta) eps
-        !zta eta thta iota 
-        !kpa lda mu nu
-        !xi omi pi rho
-        !sgma tau ups phi chi psi oga
-        !
-        !buo : buoyancy
-        !vx,vy : horizontal velocities
-        !leading _ : inverse
 
         !local models shared between fields
         real,dimension(:,:,:),allocatable :: buoz, buox, buoy, kpa, inv_kpa
@@ -68,23 +57,19 @@ use m_cpml
 
         procedure :: forward
         procedure :: forward_scattering
-        procedure :: inject_velocities
-        procedure :: update_velocities
-        procedure :: inject_stresses
-        procedure :: inject_stresses_scattering
-        procedure :: update_stresses
-        procedure :: extract
-
+        
         procedure :: adjoint
-        procedure :: adjoint_du_star_Da
+        procedure :: adjoint_a_star_Ddu
         procedure :: adjoint_da_star_Du
         procedure :: adjoint_da_star_Ddu
         procedure :: adjoint_WPI
-        procedure :: inject_stresses_adjoint
-        procedure :: update_stresses_adjoint
-        procedure :: inject_velocities_adjoint
-        procedure :: update_velocities_adjoint
-        procedure :: extract_adjoint
+        
+        procedure :: inject_velocities
+        procedure :: inject_stresses
+        procedure :: inject_stresses_scattering
+        procedure :: update_velocities
+        procedure :: update_stresses
+        procedure :: extract
 
 
         final :: final
@@ -251,54 +236,118 @@ use m_cpml
 
     end subroutine
     
-    !========= forward modeling =================
-    !PDE: M du/dt = Du + s
-    !u=[vx vy vz p]ᵀ, p=(sxx+syy+szz)/3=sxx+syy+szz, s=[fvx fvy fvz fp]ᵀδ(x-xs)
+    !========= Derivations =================
+    !PDE:      A u = M ∂ₜ u - D u = f
+    !Adjoint:  Aᵀa = M ∂ₜᵀa - Dᵀa = d
+    !where
+    !u=[vz vx vy p]ᵀ, [vz vx vy] are velocities, p=(szz+sxx+syy)/3 is pressure
+    !f=[fz fx fy fp]ᵀδ(x-xs), d is recorded data
+    !M=[diag(ρ) κ⁻¹], N=M⁻¹=[diag(b) κ], b=ρ⁻¹ is buoyancy,
+    !  [0   0   0   ∂z]
+    !D=|0   0   0   ∂ₓ|
+    !` |0   0   0   ∂y|
+    !` [∂z  ∂ₓ  ∂y  0 ]
+    !and a=[vxᵃ vyᵃ vzᵃ pᵃ]ᵀ is the adjoint field
     !
-    !  [rho   0  ]    [0   0   0   dx]
-    !M=[ 0  kpa⁻¹], D=|0   0   0   dy|
-    !                 |0   0   0   dz|
-    !                 [dx  dy  dz  0 ]
+    !Continuous case:
+    !<a|Au> = ∫ a(x,t) (M∂ₜ-D)u(x,t) dx³dt
+    !Integration by parts, eg.:
+    !∫aᵀM∂ₜu dt = aMu|t=0,T - ∫(∂ₜa)ᵀMu dt, and freely choosing a(t=T)=0 (final condition),
+    !∫aᵀM∂ₜu dt = -∫(∂ₜa)ᵀMu dt
+    !Similar procedure on spatial derivatives, we have
+    !∫aᵀDu dx³ = -∫(Dᵀa)ᵀ u dx³, with same boundary conditions on a
+    !Therefore, Aᵀa = ∂ₜa - Dᵀa
+    !However, this method (finding the adjoint FD eqn by integration by parts)
+    !is NOT working in discrete case.
     !
-    !Discretization (staggered grid in space and time):
-    !  (grid index)     (real index)
-    !  s(iz,ix,iy):=   s[iz,ix,iy]^it+0.5,it+1.5,...
-    ! vz(iz,ix,iy):=  vy[iz-0.5,ix,iy]^it,it+1,...
-    ! vx(iz,ix,iy):=  vx[iz,ix-0.5,iy]^it,it+1,...
-    ! vy(iz,ix,iy):=  vy[iz,ix,iy-0.5]^it,it+1,...
-
-    !========= adjoint propagation =================
-    !PDE:      M du/dt   = D u + src
-    !Adjoint:  M(da/dt)ᵀ = Dᵀa + adjsrc
-    !   where a is the adjoint field
+    !Discrete case:
+    !Meshing with taggered grids in time and space (2D example):
+    !                               -½ vz
+    !                      |      |    |    |    |
+    !  -v--p-v-p-v-→ t    -p--vx--p-vx-p-vx-p-vx-p-→ x
+    !  -1 -½ 0 ½ 1        -2 -1½ -1 -½ 0  ½ 1 1½ 2    
+    !                      |      |    |    |    |
+    !                      |      |  ½ vz   |    |
+    !                      |      |    |    |    |
+    !                     -|------|--1-p----|----|-
+    !                      |      |    |    |    |
+    !                      |      | 1½ vz   |    |
+    !                      |      |    |    |    |
+    !                                z ↓
     !
-    !Discrete form (staggered grid in space and time, 2D as example):
-    ! M  [ [vx^it+1  ] [vx^it    ] ]   [ 0     0    dx(-)][vx^it+1  ]
-    !----| |vz^it+1  |-|vz^it    | | = | 0     0    dz(-)||vz^it+1  |  +src
-    ! dt [ [ s^it+1.5] [ s^it+0.5] ]   [dx(+) dz(+)  0   ][ s^it+0.5]
-    !dx(-):=c1(s(ix)-s(ixm1))+c2(s(ixp1)-s(ixm2))  (O(x4))
-    !dx(+):=c1(v(ixp1)-v(ix))+c2(v(ixp2)-v(ixm1))  (O(x4))
+    !Forward:
+    !FD eqn:
+    !      [vz^n  ]   [ 0     0    ∂ₓᵇ][vz^n+1]      [∂zᵇ p^n+½              ] 
+    !M ∂ₜᶠ |vx^n  | = | 0     0    ∂zᵇ||vx^n+1| +f = |∂ₓᵇ p^n+½              | +f
+    !      [ p^n+1]   [∂ₓᶠ   ∂zᶠ    0 ][ p^n+½]      [∂zᶠ vz^n+1 + ∂ₓᶠ vx^n+1]
+    !where
+    !∂ₜᶠ*dt := v^n+1 - v^n                             ~O(t²)
+    !∂zᵇ*dz := c₁(p[i  ]-p[i-½]) +c₂(p[i+ ½]-p[i-1½])  ~O(x⁴)
+    !∂zᶠ*dz := c₁(v[i+½]-v[i  ]) +c₂(v[i+1½]-v[i- ½])  ~O(x⁴)
+    !
+    !Time marching:
+    ![vx^n+1 ]   [vx^n  ]      [∂ₓᵇ p^n+½              ]
+    !|vz^n+1 | = |vz^n  | + M⁻¹|∂zᵇ p^n+½              |dt  +M⁻¹f*dt
+    ![ p^n+1½]   [ p^n+½]      [∂ₓᶠ vx^n+1 + ∂zᶠ vz^n+1]
+    !Step #1: v^n += src
+    !Step #2: v^n+1 = v^n + spatial FD(p^n+½)
+    !Step #3: p^n+½ += src
+    !Step #4: p^n+1½ = p^n+½ + spatial FD(v^n+1)
+    !Step #5: sample v^n & p^n++½ at receivers
+    !Step #6: save v^n+1 to boundary values
+    !
+    !Reverse time marching (for wavefield reconstruction)
+    ![ p^n+½]   [ p^n+1½]      [∂ₓᶠ vx^n+1 + ∂zᶠ vz^n+1]
+    !|vz^n  | = |vz^n+1 | - M⁻¹|∂zᵇ p^n+½              |dt  -M⁻¹f*dt
+    ![vx^n  ]   [vx^n+1 ]      [∂ₓᵇ p^n+½              ]
+    !Step #6: load boundary values for v^n+1
+    !Step #4: p^n+½ = p^n+1½ - spatial FD(v^n+1)
+    !Step #3: p^n+½ -= src
+    !Step #2: v^n+1 = v^n - spatial FD(p^n+½)
+    !Step #1: v^n -= src
+    !N.B. Same codes for spatial FDs as in forward time marching, with a negated dt.
     !
     !Adjoint:
-    ! M  [ [vx^it    ] [vx^it+1  ] ]   [ 0      0     dx(+)ᵀ][vx^it+1  ]
-    !----| |vz^it    |-|vz^it+1  | | = | 0      0     dz(+)ᵀ||vz^it+1  |  +src
-    ! dt [ [ s^it+0.5] [ s^it+1.5] ]   [dx(-)ᵀ dz(-)ᵀ  0    ][ s^it+0.5]
-    !dx(+)ᵀ=c1(s(ixm1)-s(ix))+c2(s(ixm2)-s(ixp1))=-dx(-)
-    !dx(-)ᵀ=c1(v(ix)-v(ixp1))+c2(v(ixm1)-v(ixp2))=-dx(+)
-    !i.e. Dᵀ=-D, allowing to use same code with a negated sign for dt.
+    !FD eqn:
+    !      [vxᵃ^n  ]   [ 0      0     ∂ₓᶠᵀ][vxᵃ^n+1]
+    !M ∂ₜᶠᵀ|vzᵃ^n  | = | 0      0     ∂zᶠᵀ||vzᵃ^n+1|  +d
+    !      [ pᵃ^n+1]   [∂ₓᵇᵀ   ∂zᵇᵀ    0  ][ pᵃ^n+½]
+    !∂ₜᶠᵀ = v^n-1 -v^n   = -∂ₜᵇ
+    !∂zᵇᵀ = c₁(v[i  ]-v[i+½]) +c₂(v[i- ½]-v[i+1½]) = -∂ₓᶠ
+    !∂zᶠᵀ = c₁(p[i-½]-p[i  ]) +c₂(p[i-1½]-p[i+ ½]) = -∂ₓᵇ
+    !      [vxᵃ^n  ]   [ 0      0     ∂ₓᵇ ][vxᵃ^n+1]
+    !M ∂ₜᵇ |vzᵃ^n  | = | 0      0     ∂zᵇ ||vzᵃ^n+1|  -d
+    !      [ pᵃ^n+1]   [∂ₓᶠ    ∂zᶠ    0   ][ pᵃ^n+½]
+    !ie. Dᵀ=-D, antisymmetric
     !
-    !transposes of time derivatives centered on v^it+0.5 and s^it+1
-    !so v^it+1   - v^it     => v^it - v^it+1
-    !   s^it+1.5 - s^it+0.5 => s^it+0.5 - s^it+1.5
+    !Time marching:
+    ![vxᵃ^n+1 ]   [vxᵃ^n  ]      [∂ₓᵇ pᵃ^n+½               ]
+    !|vzᵃ^n+1 | = |vzᵃ^n  | + M⁻¹|∂zᵇ pᵃ^n+½               |dt  -M⁻¹d*dt
+    ![ pᵃ^n+1½]   [ pᵃ^n+½]      [∂ₓᶠ vxᵃ^n+1 + ∂zᶠ vzᵃ^n+1]
+    !but we have to do it in reverse time:
+    ![ pᵃ^n+½]   [ pᵃ^n+1½]      [∂ₓᶠ vxᵃ^n+1 + ∂zᶠ vzᵃ^n+1]
+    !|vzᵃ^n  | = |vzᵃ^n+1 | - M⁻¹|∂zᵇ pᵃ^n+½               |dt  +M⁻¹d*dt
+    ![vxᵃ^n  ]   [vxᵃ^n+1 ]      [∂ₓᵇ pᵃ^n+½               ]
+    !Step #5: pᵃ^n+1½ += adjsrc
+    !Step #4: pᵃ^n+½ = pᵃ^n+1½ - spatial FD(vᵃ^n+1)
+    !Step #3: vᵃ^n+1 += adjsrc
+    !Step #2: vᵃ^n = vᵃ^n+1 - spatial FD(pᵃ^n+½)
+    !N.B. Same codes for spatial FDs as in forward time marching, with a negated dt, but the RHS should use a "+" sign (regardless of the reverse time direction).
     !
-    !In each time step: d=RGANs
-    !s:source wavelet, N=M^-1:scale by local model
-    !A:inject source into field, G:propagator, R:extract at receivers
-    !d=[vx vy vz p]ᵀ, R=[I  0   0 ], N=[diag3(b) 0  ], s=[fx fy fz p]ᵀ
-    !                   |0 2/3 1/3|    [   0     kpa]
-    !                   [   0    1]
-    !Adjoint: s=NAᵀGᵀRᵀd=AᵀGᵀRᵀNd
+    !For adjoint test:
+    !In each step of forward time marching: dsyn=RGANf
+    !f:source wavelet, N=M⁻¹dt: diagonal
+    !A:inject source into field, G:propagator, R:extract field at receivers
+    !while in each step of reverse-time adjoint marching: dadj=NAᵀGᵀRᵀdsyn=AᵀGᵀRᵀNdsyn
     !Rᵀ:inject adjoint sources, Gᵀ:adjoint propagator, Aᵀ:extract adjoint fields
+    !
+    !Convention for half-integer index:
+    !(array index)  =>    (real index)     
+    ! vz(iz,ix,iy)  =>  vz[i-½,j,  k  ]^n  
+    ! vx(iz,ix,iy)  =>  vx[i,  j-½,k  ]^n  
+    ! vy(iz,ix,iy)  =>  vy[i,  j,  k-½]^n  
+    !  p(iz,ix,iy)  =>   p[i,  j,  k  ]^n+½
+    !
 
     subroutine forward(self,fld_u)
         class(t_propagator) :: self
@@ -403,7 +452,8 @@ use m_cpml
             !do forward time stepping (step# conforms with backward & adjoint time stepping)
             ! !step 1: add forces to v^it
             ! call cpu_time(tic)
-            ! call self%inject_velocities_ext(fld_mu,-fld_a)
+            ! call self%inject_velocities(fld_u,time_dir,it)
+            ! call self%inject_velocities_scattering(fld_du,fld_u,W2Idt,time_dir)
             ! call cpu_time(toc)
             ! tt1=tt1+toc-tic
 
@@ -462,6 +512,7 @@ use m_cpml
     end subroutine
 
     subroutine adjoint(self,fld_a,fld_u,oif_record_adjseismo,oif_compute_imag,oif_compute_grad)
+    !adjoint_a_star_Du
         class(t_propagator) :: self
         type(t_field) :: fld_a,fld_u
         logical,optional :: oif_record_adjseismo, oif_compute_imag, oif_compute_grad
@@ -535,13 +586,13 @@ use m_cpml
 
             !adjoint step 5: inject to s^it+1.5 at receivers
             call cpu_time(tic)
-            call self%inject_stresses_adjoint(fld_a,time_dir,it)
+            call self%inject_stresses(fld_a,time_dir,it)
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
             !adjoint step 4: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
             call cpu_time(tic)
-            call self%update_stresses_adjoint(fld_a,time_dir,it)
+            call self%update_stresses(fld_a,time_dir,it)
             call cpu_time(toc)
             tt5=tt5+toc-tic
 
@@ -587,22 +638,22 @@ use m_cpml
 
             !--------------------------------------------------------!
 
-            !adjoint step 5: inject to v^it+1 at receivers
+            !adjoint step 3: inject to v^it+1 at receivers
             call cpu_time(tic)
-            call self%inject_velocities_adjoint(fld_a,time_dir,it)
+            call self%inject_velocities(fld_a,time_dir,it)
             call cpu_time(toc)
             tt9=tt9+toc-tic
 
             !adjoint step 2: v^it+1 -> v^it by FD^T of s^it+0.5
             call cpu_time(tic)
-            call self%update_velocities_adjoint(fld_a,time_dir,it)
+            call self%update_velocities(fld_a,time_dir,it)
             call cpu_time(toc)
             tt10=tt10+toc-tic
             
             !adjoint step 1: sample v^it or s^it+0.5 at source position
             if(if_record_adjseismo) then
                 call cpu_time(tic)
-                call self%extract_adjoint(fld_a,it)
+                call self%extract(fld_a,it)
                 call cpu_time(toc)
                 tt11=tt11+toc-tic
             endif
@@ -661,7 +712,64 @@ use m_cpml
         
     end subroutine
 
-    subroutine adjoint_du_star_Da(self,fld_du,fld_a,fld_u,W2Idt,oif_compute_imag,oif_compute_grad)
+    !Forward scattering:
+    !FD eqn:
+    !      [vz^n  ]   [∂zᵇ p^n+½              ] 
+    !M ∂ₜᶠ |vx^n  | = |∂ₓᵇ p^n+½              | +I
+    !      [ p^n+1]   [∂zᶠ vz^n+1 + ∂ₓᶠ vx^n+1]
+    !Time marching:
+    ![vx^n+1 ]   [vx^n  ]      [∂ₓᵇ p^n+½              ]
+    !|vz^n+1 | = |vz^n  | + M⁻¹|∂zᵇ p^n+½              |dt  +M⁻¹f*dt
+    ![ p^n+1½]   [ p^n+½]      [∂ₓᶠ vx^n+1 + ∂zᶠ vz^n+1]
+    !Step #1 : v^n += src
+    !Step #1s: v^n += src
+    !Step #2 : v^n+1 = v^n + spatial FD(p^n+½)
+    !Step #2s: v^n+1 = v^n + spatial FD(p^n+½)
+    !Step #3 : p^n+½ += src
+    !Step #3s: p^n+½ += src
+    !Step #4:  p^n+1½ = p^n+½ + spatial FD(v^n+1)
+    !Step #4s: p^n+1½ = p^n+½ + spatial FD(v^n+1)
+    !
+    !Reverse time marching (for wavefield reconstruction)
+    ![ p^n+½]   [ p^n+1½]      [∂ₓᶠ vx^n+1 + ∂zᶠ vz^n+1]
+    !|vz^n  | = |vz^n+1 | - M⁻¹|∂zᵇ p^n+½              |dt  -M⁻¹f*dt
+    ![vx^n  ]   [vx^n+1 ]      [∂ₓᵇ p^n+½              ]
+    !Step #4s: p^n+½ = p^n+1½ - spatial FD(v^n+1)
+    !Step #4 : p^n+½ = p^n+1½ - spatial FD(v^n+1)
+    !Step #3s: p^n+½ -= src
+    !Step #3 : p^n+½ -= src
+    !Step #2s: v^n+1 = v^n - spatial FD(p^n+½)
+    !Step #2 : v^n+1 = v^n - spatial FD(p^n+½)
+    !Step #1s: v^n -= src
+    !Step #1 : v^n -= src
+    !
+    !Adjoint scattering:
+    !Time marching:
+    ![vxᵃ^n+1 ]   [vxᵃ^n  ]      [∂ₓᵇ pᵃ^n+½               ]
+    !|vzᵃ^n+1 | = |vzᵃ^n  | + M⁻¹|∂zᵇ pᵃ^n+½               |dt  -M⁻¹d*dt
+    ![ pᵃ^n+1½]   [ pᵃ^n+½]      [∂ₓᶠ vxᵃ^n+1 + ∂zᶠ vzᵃ^n+1]
+    !Step #2 : vᵃ^n = vᵃ^n+1 - spatial FD(pᵃ^n+½)
+    !Step #2s: vᵃ^n = vᵃ^n+1 - spatial FD(pᵃ^n+½)
+    !Step #3 : vᵃ^n+1 += adjsrc
+    !Step #3s: vᵃ^n+1 += adjsrc
+    !Step #4 : pᵃ^n+½ = pᵃ^n+1½ - spatial FD(vᵃ^n+1)
+    !Step #4s: pᵃ^n+½ = pᵃ^n+1½ - spatial FD(vᵃ^n+1)
+    !Step #5 : pᵃ^n+1½ += adjsrc
+    !Step #5s: pᵃ^n+1½ += adjsrc
+    !but we have to do it in reverse time:
+    ![ pᵃ^n+½]   [ pᵃ^n+1½]      [∂ₓᶠ vxᵃ^n+1 + ∂zᶠ vzᵃ^n+1]
+    !|vzᵃ^n  | = |vzᵃ^n+1 | - M⁻¹|∂zᵇ pᵃ^n+½               |dt  +M⁻¹d*dt
+    ![vxᵃ^n  ]   [vxᵃ^n+1 ]      [∂ₓᵇ pᵃ^n+½               ]
+    !Step #5s: pᵃ^n+1½ += adjsrc
+    !Step #5 : pᵃ^n+1½ += adjsrc
+    !Step #4s: pᵃ^n+½ = pᵃ^n+1½ - spatial FD(vᵃ^n+1)
+    !Step #4 : pᵃ^n+½ = pᵃ^n+1½ - spatial FD(vᵃ^n+1)
+    !Step #3s: vᵃ^n+1 += adjsrc
+    !Step #3 : vᵃ^n+1 += adjsrc
+    !Step #2s: vᵃ^n = vᵃ^n+1 - spatial FD(pᵃ^n+½)
+    !Step #2 : vᵃ^n = vᵃ^n+1 - spatial FD(pᵃ^n+½)
+
+    subroutine adjoint_a_star_Ddu(self,fld_a,fld_du,fld_u,W2Idt,oif_compute_imag,oif_compute_grad)
         class(t_propagator) :: self
         type(t_field) :: fld_du,fld_a,fld_u
         real,dimension(cb%mz,cb%mx,cb%my) :: W2Idt
@@ -746,13 +854,13 @@ use m_cpml
 
             !adjoint step 5: inject to s^it+1.5 at receivers
             call cpu_time(tic)
-            call self%inject_stresses_adjoint(fld_a,time_dir,it)
+            call self%inject_stresses(fld_a,time_dir,it)
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
             !adjoint step 4: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
             call cpu_time(tic)
-            call self%update_stresses_adjoint(fld_a,time_dir,it)
+            call self%update_stresses(fld_a,time_dir,it)
             call cpu_time(toc)
             tt5=tt5+toc-tic
 
@@ -760,7 +868,7 @@ use m_cpml
             !use sfield%v^it+1 to compute sfield%s_dt^it+0.5, as backward step 4
             if(if_compute_grad.and.mod(it,irdt)==0) then
                 call cpu_time(tic)
-                call gradient_moduli(fld_du,fld_a,it,cb%grad(:,:,:,2))
+                call gradient_moduli(fld_a,fld_du,it,cb%grad(:,:,:,2))
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             endif
@@ -800,22 +908,22 @@ use m_cpml
 
             !--------------------------------------------------------!
 
-            !adjoint step 5: inject to v^it+1 at receivers
+            !adjoint step 3: inject to v^it+1 at receivers
             call cpu_time(tic)
-            call self%inject_velocities_adjoint(fld_a,time_dir,it)
+            call self%inject_velocities(fld_a,time_dir,it)
             call cpu_time(toc)
             tt9=tt9+toc-tic
 
             !adjoint step 2: v^it+1 -> v^it by FD^T of s^it+0.5
             call cpu_time(tic)
-            call self%update_velocities_adjoint(fld_a,time_dir,it)
+            call self%update_velocities(fld_a,time_dir,it)
             call cpu_time(toc)
             tt10=tt10+toc-tic
             
             ! !adjoint step 1: sample v^it or s^it+0.5 at source position
             ! if(if_record_adjseismo) then
             !     call cpu_time(tic)
-            !     call self%extract_adjoint(fld_a,it)
+            !     call self%extract(fld_a,it)
             !     call cpu_time(toc)
             !     tt11=tt11+toc-tic
             ! endif
@@ -834,10 +942,10 @@ use m_cpml
             call fld_du%write(it,o_suffix='_rev')
             ! call fld_u%write(it,o_suffix='_back2')
             if(if_compute_imag) then
-                call fld_a%write_ext(it,'imag_du_star_a' ,cb%imag,size(cb%imag))
+                call fld_a%write_ext(it,'imag_a_star_du' ,cb%imag,size(cb%imag))
             endif
             if(if_compute_grad) then
-                call fld_a%write_ext(it,'grad_du_star_Da' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+                call fld_a%write_ext(it,'grad_a_star_Ddu' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
             endif
             ! if(self%if_compute_engy) then
             !     call fld_a%write_ext(it,'engy',cb%engy(:,:,:,1),size(cb%engy(:,:,:,1)))
@@ -948,14 +1056,14 @@ use m_cpml
             !adjoint step 5: inject to s^it+1.5 at receivers
             call cpu_time(tic)
             call self%inject_stresses_scattering(fld_da,fld_a,W2Idt,time_dir)
-            call self%inject_stresses_adjoint(fld_a,time_dir,it)
+            call self%inject_stresses(fld_a,time_dir,it)
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
             !adjoint step 4: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
             call cpu_time(tic)
-            call self%update_stresses_adjoint(fld_da,time_dir,it)
-            call self%update_stresses_adjoint(fld_a, time_dir,it)
+            call self%update_stresses(fld_da,time_dir,it)
+            call self%update_stresses(fld_a, time_dir,it)
             call cpu_time(toc)
             tt5=tt5+toc-tic
 
@@ -1001,23 +1109,23 @@ use m_cpml
 
             !--------------------------------------------------------!
 
-            !adjoint step 5: inject to v^it+1 at receivers
+            !adjoint step 3: inject to v^it+1 at receivers
             call cpu_time(tic)
-            call self%inject_velocities_adjoint(fld_a,time_dir,it)
+            call self%inject_velocities(fld_a,time_dir,it)
             call cpu_time(toc)
             tt9=tt9+toc-tic
 
             !adjoint step 2: v^it+1 -> v^it by FD^T of s^it+0.5
             call cpu_time(tic)
-            call self%update_velocities_adjoint(fld_da,time_dir,it)
-            call self%update_velocities_adjoint(fld_a, time_dir,it)
+            call self%update_velocities(fld_da,time_dir,it)
+            call self%update_velocities(fld_a, time_dir,it)
             call cpu_time(toc)
             tt10=tt10+toc-tic
             
             !adjoint step 1: sample v^it or s^it+0.5 at source position
             if(if_record_adjseismo) then
                 call cpu_time(tic)
-                call self%extract_adjoint(fld_da,it)
+                call self%extract(fld_da,it)
                 call cpu_time(toc)
                 tt11=tt11+toc-tic
             endif
@@ -1153,14 +1261,14 @@ use m_cpml
             !adjoint step 5: inject to s^it+1.5 at receivers
             call cpu_time(tic)
             call self%inject_stresses_scattering(fld_da,fld_a,W2Idt,time_dir)
-            call self%inject_stresses_adjoint(fld_a,time_dir,it)
+            call self%inject_stresses(fld_a,time_dir,it)
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
             !adjoint step 4: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
             call cpu_time(tic)
-            call self%update_stresses_adjoint(fld_da,time_dir,it)
-            call self%update_stresses_adjoint(fld_a, time_dir,it)
+            call self%update_stresses(fld_da,time_dir,it)
+            call self%update_stresses(fld_a, time_dir,it)
             call cpu_time(toc)
             tt5=tt5+toc-tic
 
@@ -1208,23 +1316,23 @@ use m_cpml
 
             !--------------------------------------------------------!
 
-            !adjoint step 5: inject to v^it+1 at receivers
+            !adjoint step 3: inject to v^it+1 at receivers
             call cpu_time(tic)
-            call self%inject_velocities_adjoint(fld_a,time_dir,it)
+            call self%inject_velocities(fld_a,time_dir,it)
             call cpu_time(toc)
             tt9=tt9+toc-tic
 
             !adjoint step 2: v^it+1 -> v^it by FD^T of s^it+0.5
             call cpu_time(tic)
-            call self%update_velocities_adjoint(fld_da,time_dir,it)
-            call self%update_velocities_adjoint(fld_a, time_dir,it)
+            call self%update_velocities(fld_da,time_dir,it)
+            call self%update_velocities(fld_a, time_dir,it)
             call cpu_time(toc)
             tt10=tt10+toc-tic
             
             !adjoint step 1: sample v^it or s^it+0.5 at source position
             if(if_record_adjseismo) then
                 call cpu_time(tic)
-                call self%extract_adjoint(fld_da,it)
+                call self%extract(fld_da,it)
                 call cpu_time(toc)
                 tt11=tt11+toc-tic
             endif
@@ -1350,16 +1458,16 @@ use m_cpml
             !adjoint step 5: inject to s^it+1.5 at receivers
             call cpu_time(tic)
             call self%inject_stresses_scattering(fld_da,fld_a,W2Idt,time_dir)
-            call self%inject_stresses_adjoint(fld_a,time_dir,it)
-            call self%inject_stresses_adjoint(fld_Adj_du,time_dir,it)
+            call self%inject_stresses(fld_a,time_dir,it)
+            call self%inject_stresses(fld_Adj_du,time_dir,it)
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
             !adjoint step 4: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
             call cpu_time(tic)
-            call self%update_stresses_adjoint(fld_da,time_dir,it)
-            call self%update_stresses_adjoint(fld_a, time_dir,it)
-            call self%update_stresses_adjoint(fld_Adj_du, time_dir,it)
+            call self%update_stresses(fld_da,time_dir,it)
+            call self%update_stresses(fld_a, time_dir,it)
+            call self%update_stresses(fld_Adj_du, time_dir,it)
             call cpu_time(toc)
             tt5=tt5+toc-tic
 
@@ -1368,14 +1476,14 @@ use m_cpml
             if(mod(it,irdt)==0) then
                 call cpu_time(tic)
                 
-                !corr(:,:,:,1) = FWI SK = a_star_Du
+                !a★Du
                 call gradient_moduli(fld_a,fld_u,it,cb%corr(:,:,:,1))
 
                 if(index(corrs,'RE')>0) then
-                    !corr(:,:,:,2) = du_star_Da
-                    call gradient_moduli(fld_du,fld_a,it,cb%corr(:,:,:,2))
-                    !corr(:,:,:,3) = da_star_Du
-                    call gradient_moduli(fld_da,fld_u,it,cb%corr(:,:,:,3))
+                    !δa★Du
+                    call gradient_moduli(fld_da,fld_u,it,cb%corr(:,:,:,2))
+                    !a★Dδu
+                    call gradient_moduli(fld_a, fld_du,it,cb%corr(:,:,:,3))
                 endif
                 
                 ! if(index(corrs,'2ndMI')>0) then
@@ -1384,7 +1492,7 @@ use m_cpml
                 ! endif
                 
                 if(index(corrs,'DR')>0) then
-                    !corr(:,:,:,5) = -Adj(du)_star_Du
+                    !Adj(δu)★Du
                     call gradient_moduli(fld_Adj_du,fld_u,it,cb%corr(:,:,:,5))
                     !will add the minus sign outside timestepping loop
                 endif
@@ -1413,24 +1521,24 @@ use m_cpml
 
             !--------------------------------------------------------!
 
-            !adjoint step 5: inject to v^it+1 at receivers
+            !adjoint step 3: inject to v^it+1 at receivers
             call cpu_time(tic)
-            call self%inject_velocities_adjoint(fld_a,time_dir,it)
+            call self%inject_velocities(fld_a,time_dir,it)
             call cpu_time(toc)
             tt9=tt9+toc-tic
 
             !adjoint step 2: v^it+1 -> v^it by FD^T of s^it+0.5
             call cpu_time(tic)
-            call self%update_velocities_adjoint(fld_da,time_dir,it)
-            call self%update_velocities_adjoint(fld_a, time_dir,it)
-            call self%update_velocities_adjoint(fld_Adj_du, time_dir,it)
+            call self%update_velocities(fld_da,time_dir,it)
+            call self%update_velocities(fld_a, time_dir,it)
+            call self%update_velocities(fld_Adj_du, time_dir,it)
             call cpu_time(toc)
             tt10=tt10+toc-tic
             
             ! !adjoint step 1: sample v^it or s^it+0.5 at source position
             ! if(if_record_adjseismo) then
             !     call cpu_time(tic)
-            !     call self%extract_adjoint(fld_da,it)
+            !     call self%extract(fld_da,it)
             !     call cpu_time(toc)
             !     tt11=tt11+toc-tic
             ! endif
@@ -1455,9 +1563,7 @@ use m_cpml
         enddo
         
         !postprocess gradient
-        !take the DR term = -Adj(du)_star_Du
-        cb%corr(:,:,:,5)=-cb%corr(:,:,:,5)
-
+        
         !scale by m%cell_volume*rdt tobe a gradient in the discretized world
         cb%corr = cb%corr*m%cell_volume*rdt
 
@@ -1495,48 +1601,97 @@ use m_cpml
     end subroutine
 
 
-    !add RHS to v^it
+    !forward: add RHS to v^it
+    !adjoint: add RHS to v^it+1
     subroutine inject_velocities(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
         
-        ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
-        ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
-        ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
-        
-        wl=time_dir*f%wavelet(1,it)
-        
-        if(if_hicks) then
-            select case (shot%src%comp)
-                case ('vz')
-                f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoz(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
-                
-                case ('vx')
-                f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buox(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
-                
-                case ('vy')
-                f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoy(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
-                
-            end select
+        if(.not. f%is_adjoint) then
+
+            ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
+            ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
+            ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
             
-        else
-            select case (shot%src%comp)
-                case ('vz') !vertical force     on vz[iz-0.5,ix,iy]
-                f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + wl*self%buoz(iz,ix,iy)
-                
-                case ('vx') !horizontal x force on vx[iz,ix-0.5,iy]
-                f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + wl*self%buox(iz,ix,iy)
-                
-                case ('vy') !horizontal y force on vy[iz,ix,iy-0.5]
-                f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + wl*self%buoy(iz,ix,iy)
-                
-            end select
+            wl=time_dir*f%wavelet(1,it)
             
+            if(if_hicks) then
+                select case (shot%src%comp)
+                    case ('vz')
+                    f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoz(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
+                    
+                    case ('vx')
+                    f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buox(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
+                    
+                    case ('vy')
+                    f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoy(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
+                    
+                end select
+                
+            else
+                select case (shot%src%comp)
+                    case ('vz') !vertical force     on vz[iz-0.5,ix,iy]
+                    f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + wl*self%buoz(iz,ix,iy)
+                    
+                    case ('vx') !horizontal x force on vx[iz,ix-0.5,iy]
+                    f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + wl*self%buox(iz,ix,iy)
+                    
+                    case ('vy') !horizontal y force on vy[iz,ix,iy-0.5]
+                    f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + wl*self%buoy(iz,ix,iy)
+                    
+                end select
+                
+            endif
+
+            return
+
         endif
+
+
+            do i=1,shot%nrcv
+                ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
+                ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
+                ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
+                
+                wl=f%wavelet(i,it)
+                
+                if(if_hicks) then
+                    select case (shot%rcv(i)%comp)
+                        case ('vz') !vertical z adjsource
+                        f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
+
+                        case ('vx') !horizontal x adjsource
+                        f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buox(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
+                        
+                        case ('vy') !horizontal y adjsource
+                        f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
+                        
+                    end select
+                    
+                else
+                    select case (shot%rcv(i)%comp)
+                        case ('vz') !vertical z adjsource
+                        !vz[ix,iy,iz-0.5]
+                        f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + wl*self%buoz(iz,ix,iy) !no time_dir needed!
+
+                        case ('vx') !horizontal x adjsource
+                        !vx[ix-0.5,iy,iz]
+                        f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + wl*self%buox(iz,ix,iy) !no time_dir needed!
+                        
+                        case ('vy') !horizontal y adjsource
+                        !vy[ix,iy-0.5,iz]
+                        f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + wl*self%buoy(iz,ix,iy) !no time_dir needed!
+                        
+                    end select
+                    
+                endif
+                
+            enddo
         
     end subroutine
     
-    !v^it -> v^it+1 by FD of s^it+0.5
+    !forward: v^it -> v^it+1 by FD of s^it+0.5
+    !adjoint: v^it+1 -> v^it by FD^T of s^it+0.5
     subroutine update_velocities(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
@@ -1569,29 +1724,61 @@ use m_cpml
 
     end subroutine
     
-    !add RHS to s^it+0.5
+    !forward: add RHS to s^it+0.5
+    !adjoint: add RHS to s^it+1.5
     subroutine inject_stresses(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
-        
-        ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
-        ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
-        ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
-        
-        wl=time_dir*f%wavelet(1,it)
-        
-        if(if_hicks) then
-            if(shot%src%comp=='p') then
-                f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
-            endif
+
+        if(.not. f%is_adjoint) then
+
+            ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
+            ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
+            ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
             
-        else
-            if(shot%src%comp=='p') then
-                !explosion on s[iz,ix,iy]
-                f%p(iz,ix,iy) = f%p(iz,ix,iy) + wl*self%kpa(iz,ix,iy)
-            endif
+            wl=time_dir*f%wavelet(1,it)
             
+            if(if_hicks) then
+                if(shot%src%comp=='p') then
+                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
+                endif
+                
+            else
+                if(shot%src%comp=='p') then
+                    !explosion on s[iz,ix,iy]
+                    f%p(iz,ix,iy) = f%p(iz,ix,iy) + wl*self%kpa(iz,ix,iy)
+                endif
+                
+            endif
+
+            return
+
         endif
+
+            do i=1,shot%nrcv
+
+                if(shot%rcv(i)%comp=='p') then
+
+                    ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
+                    ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
+                    ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
+                    
+                    !adjsource for pressure
+                    wl=f%wavelet(i,it)
+                    
+                    if(if_hicks) then 
+
+                        f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
+
+                    else           
+                        !p[iz,ix,iy]
+                        f%p(iz,ix,iy) = f%p(iz,ix,iy) +wl*self%kpa(iz,ix,iy) !no time_dir needed!
+
+                    endif
+
+                endif
+
+            enddo
         
     end subroutine
     
@@ -1601,11 +1788,17 @@ use m_cpml
         real,dimension(cb%mz,cb%mx,cb%my) :: W2Idt
         real :: time_dir
 
-        fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) = fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) + time_dir*W2Idt*fld%p(1:cb%mz,1:cb%mx,1:cb%my)*self%kpa(1:cb%mz,1:cb%mx,1:cb%my)
+        if(.not.fld%is_adjoint) then
+            fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) = fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) + time_dir*W2Idt*fld%p(1:cb%mz,1:cb%mx,1:cb%my)*self%kpa(1:cb%mz,1:cb%mx,1:cb%my)
+            return
+        endif
+
+            fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) = fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) +          W2Idt*fld%p(1:cb%mz,1:cb%mx,1:cb%my)*self%kpa(1:cb%mz,1:cb%mx,1:cb%my)
 
     end subroutine
 
-    !s^it+0.5 -> s^it+1.5 by FD of v^it+1
+    !forward: s^it+0.5 -> s^it+1.5 by FD of v^it+1
+    !adjoint: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
     subroutine update_stresses(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
@@ -1640,196 +1833,110 @@ use m_cpml
         class(t_propagator) :: self
         type(t_field) :: f
         
-        do i=1,shot%nrcv
-            ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
-            ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
-            ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
+        if(.not.f%is_adjoint) then
 
-            if(if_hicks) then
-                select case (shot%rcv(i)%comp)
-                    
-                    case ('p')
-                    f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef)
-                    case ('vz')
-                    f%seismo(i,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
-                    case ('vx')
-                    f%seismo(i,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
-                    case ('vy')
-                    f%seismo(i,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
-                end select
-                
-            else
-                select case (shot%rcv(i)%comp)
-                    case ('p') !p[iz,ix,iy]
-                    f%seismo(i,it)=f%p(iz,ix,iy)
-                    case ('vz') !vz[iz-0.5,ix,iy]
-                    f%seismo(i,it)=f%vz(iz,ix,iy)
-                    case ('vx') !vx[iz,ix-0.5,iy]
-                    f%seismo(i,it)=f%vx(iz,ix,iy)
-                    case ('vy') !vy[iz,ix,iy-0.5]
-                    f%seismo(i,it)=f%vy(iz,ix,iy)
-                end select
-                
-            endif
-
-        enddo
-        
-    end subroutine
-
-    !add RHS to s^it+1.5
-    subroutine inject_stresses_adjoint(self,f,time_dir,it)
-        class(t_propagator) :: self
-        type(t_field) :: f
-
-        do i=1,shot%nrcv
-
-            if(shot%rcv(i)%comp=='p') then
-
+            do i=1,shot%nrcv
                 ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
                 ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
                 ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
-                
-                !adjsource for pressure
-                wl=f%wavelet(i,it)
-                
-                if(if_hicks) then 
 
-                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef
-
-                else           
-                    !p[iz,ix,iy]
-                    f%p(iz,ix,iy) = f%p(iz,ix,iy) +wl*self%kpa(iz,ix,iy)
-
+                if(if_hicks) then
+                    select case (shot%rcv(i)%comp)
+                        
+                        case ('p')
+                        f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef)
+                        case ('vz')
+                        f%seismo(i,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                        case ('vx')
+                        f%seismo(i,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                        case ('vy')
+                        f%seismo(i,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                    end select
+                    
+                else
+                    select case (shot%rcv(i)%comp)
+                        case ('p') !p[iz,ix,iy]
+                        f%seismo(i,it)=f%p(iz,ix,iy)
+                        case ('vz') !vz[iz-0.5,ix,iy]
+                        f%seismo(i,it)=f%vz(iz,ix,iy)
+                        case ('vx') !vx[iz,ix-0.5,iy]
+                        f%seismo(i,it)=f%vx(iz,ix,iy)
+                        case ('vy') !vy[iz,ix,iy-0.5]
+                        f%seismo(i,it)=f%vy(iz,ix,iy)
+                    end select
+                    
                 endif
 
-            endif
+            enddo
 
-        enddo
-        
-    end subroutine
-    
-    !s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
-    subroutine update_stresses_adjoint(self,f,time_dir,it)
-        class(t_propagator) :: self
-        type(t_field) :: f
-        
-        !same code with -dt
-        call self%update_stresses(f,time_dir,it)
-        
-    end subroutine
-    
-    !add RHS to v^it+1
-    subroutine inject_velocities_adjoint(self,f,time_dir,it)
-        class(t_propagator) :: self
-        type(t_field) :: f
+            return
 
-        do i=1,shot%nrcv
-            ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
-            ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
-            ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
-            
-            wl=f%wavelet(i,it)
+        endif
+
+            ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
+            ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
+            ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
             
             if(if_hicks) then
-                select case (shot%rcv(i)%comp)
-                    case ('vz') !vertical z adjsource
-                    f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef
-
-                    case ('vx') !horizontal x adjsource
-                    f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buox(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef
+                select case (shot%src%comp)
+                    case ('p')
+                    f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef)
                     
-                    case ('vy') !horizontal y adjsource
-                    f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef
+                    case ('vz')
+                    f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    
+                    case ('vx')
+                    f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    
+                    case ('vy')
+                    f%seismo(1,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
                     
                 end select
                 
             else
-                select case (shot%rcv(i)%comp)
-                    case ('vz') !vertical z adjsource
-                    !vz[ix,iy,iz-0.5]
-                    f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + wl*self%buoz(iz,ix,iy)
-
-                    case ('vx') !horizontal x adjsource
-                    !vx[ix-0.5,iy,iz]
-                    f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + wl*self%buox(iz,ix,iy)
+                select case (shot%src%comp)
+                    case ('p') !p[iz,ix,iy]
+                    f%seismo(1,it)=f%p(iz,ix,iy)
                     
-                    case ('vy') !horizontal y adjsource
-                    !vy[ix,iy-0.5,iz]
-                    f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + wl*self%buoy(iz,ix,iy)
+                    case ('vz') !vz[iz-0.5,ix,iy]
+                    f%seismo(1,it)=f%vz(iz,ix,iy)
+                    
+                    case ('vx') !vx[iz,ix-0.5,iy]
+                    f%seismo(1,it)=f%vx(iz,ix,iy)
+                    
+                    case ('vy') !vy[iz,ix,iy-0.5]
+                    f%seismo(1,it)=f%vy(iz,ix,iy)
                     
                 end select
                 
             endif
-            
-        enddo
         
     end subroutine
     
-    !v^it+1 -> v^it by FD^T of s^it+0.5
-    subroutine update_velocities_adjoint(self,f,time_dir,it)
-        class(t_propagator) :: self
-        type(t_field) :: f
-        
-        !same code with -dt
-        call self%update_velocities(f,time_dir,it)
-        
-    end subroutine
-    
-    subroutine extract_adjoint(self,f,it)
-        class(t_propagator) :: self
-        type(t_field) :: f
-        
-        ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
-        ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
-        ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
-        
-        if(if_hicks) then
-            select case (shot%src%comp)
-                case ('p')
-                f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef)
-                
-                case ('vz')
-                f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
-                
-                case ('vx')
-                f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
-                
-                case ('vy')
-                f%seismo(1,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
-                
-            end select
-            
-        else
-            select case (shot%src%comp)
-                case ('p') !p[iz,ix,iy]
-                f%seismo(1,it)=f%p(iz,ix,iy)
-                
-                case ('vz') !vz[iz-0.5,ix,iy]
-                f%seismo(1,it)=f%vz(iz,ix,iy)
-                
-                case ('vx') !vx[iz,ix-0.5,iy]
-                f%seismo(1,it)=f%vx(iz,ix,iy)
-                
-                case ('vy') !vy[iz,ix,iy-0.5]
-                f%seismo(1,it)=f%vy(iz,ix,iy)
-                
-            end select
-            
-        endif
-        
-    end subroutine
-
     subroutine final(self)
         type(t_propagator) :: self
         call dealloc(self%buox, self%buoy, self%buoz, self%kpa, self%inv_kpa)
     end subroutine
 
-    !========= for gradient computation ===================   
-    !grho = adjv · dv_dt
-    !     = adjv · b∇p
+    !========= gradient, imaging or other correlations ===================
+    !For gradient:
+    !∇ₘ<a|M∂ₜu-Du-f> = ∫ a ∇ₘM ∂ₜu dt
+    !since it's cumbersome to get ∂ₜu, we replace it by M⁻¹Du
+    !ie. re-use the PDE but neglect f,
+    !which introduce singularities in the gradient at source positions
+    !ie. ∫ a ∇ₘM ∂ₜu dt ≐ ∫ a ∇ₘln(M) Du dt ≐ a★Du
+    !where
+    !                    [ 0   0   ∂ₓᵇ] [vx]
+    !a★Du = [vxᵃ vzᵃ pᵃ] | 0   0   ∂zᵇ| |vz|
+    !                    [∂ₓᶠ  ∂zᶠ  0 ] [p ]
+    !In particular, we compute
+    !  grho = vᵃ · ∂ₜv
+    !       = vᵃ · b∇p
+    !  gkpa = pᵃ · -1/kpa^2 ∂ₜp
+    !       = pᵃ · -1/kpa   ∇·v
     !
-    !gkpa = adjp · -1/kpa^2 dp_dt
-    !     = adjp · -1/kpa   ∇·v
+    !For imaging:
+    !I = ∫ a u dt = a★u
 
     subroutine gradient_density(rf,sf,it,grad)
         type(t_field), intent(in) :: rf, sf
@@ -2315,7 +2422,7 @@ use m_cpml
                  rp = rf_p(i)
                 dsp = dvz_dz +dvx_dx +dvy_dy
                 
-                grad(j)=grad(j) - rp*dsp  !minus sign due to reverse time direction of the adjoint propagation (-dt)
+                grad(j)=grad(j) + rp*dsp
                 
             end do
             
@@ -2355,7 +2462,7 @@ use m_cpml
     !              rp = rf_p(i)
     !             dsp = sf_p_save(i) - sf_p(i)
                 
-    !             grad(j)=grad(j) - rp*dsp  !minus sign due to reverse time direction of the adjoint propagation (-dt)
+    !             grad(j)=grad(j) + rp*dsp
                 
     !         end do
             
@@ -2409,7 +2516,7 @@ use m_cpml
                  rp = rf_p(i)
                 dsp = dvz_dz +dvx_dx
                 
-                grad(j)=grad(j) - rp*dsp  !minus sign due to reverse time direction of the adjoint propagation (-dt)
+                grad(j)=grad(j) + rp*dsp
                 
             end do
             
@@ -2478,7 +2585,7 @@ use m_cpml
                 !complete equation with unnecessary terms e.g. sf_p(iz_ix) for better understanding
                 !with flag -O, the compiler should automatically detect such possibilities of simplification
                 
-                grad(j)=grad(j) - 0.25*( rvz*dsvz + rvx*dsvx + rvy*dsvy )  !minus sign due to reverse time direction of the adjoint propagation (-dt)
+                grad(j)=grad(j) + 0.25*( rvz*dsvz + rvx*dsvx + rvy*dsvy )
                 
             enddo
             
@@ -2536,7 +2643,7 @@ use m_cpml
                 !complete equation with unnecessary terms e.g. sf_p(iz_ix) for better understanding
                 !with flag -Ox, the compiler should automatically detect such possible simplification
                 
-                grad(j)=grad(j) - 0.25*( rvz*dsvz + rvx*dsvx )  !minus sign due to reverse time direction of the adjoint propagation (-dt)
+                grad(j)=grad(j) + 0.25*( rvz*dsvz + rvx*dsvx )
                 
             enddo
             
@@ -2575,7 +2682,7 @@ use m_cpml
                 rp = rf_p(i)
                 sp = sf_p(i)
                 
-                imag(j)=imag(j) - rp*sp  !minus sign due to reverse time direction of the adjoint propagation (-dt)
+                imag(j)=imag(j) + rp*sp
                 
             end do
             
@@ -2607,8 +2714,8 @@ use m_cpml
     !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
     !             j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
                 
-    !             imag(j)=imag(j) - &
-    !                 rf_p(i)*sf_p(i) - rf_vz(i)*sf_vz(i) - rf_vx(i)*sf_vx(i)  !minus sign due to reverse time direction of the adjoint propagation (-dt)
+    !             imag(j)=imag(j) + &
+    !                 rf_p(i)*sf_p(i) + rf_vz(i)*sf_vz(i) + rf_vx(i)*sf_vx(i)
                 
     !         end do
             
@@ -2644,7 +2751,7 @@ use m_cpml
                 rp = rf_p(i)
                 sp = sf_p(i)
                 
-                imag(j)=imag(j) - rp*sp  !minus sign due to reverse time direction of the adjoint propagation (-dt)
+                imag(j)=imag(j) + rp*sp
                 
             end do
             

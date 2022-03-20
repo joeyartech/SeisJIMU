@@ -1,6 +1,5 @@
 program main
 use m_System
-use m_Lpnorm
 use m_Modeling
 use m_Kernel
 use m_linesearcher

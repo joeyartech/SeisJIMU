@@ -27,7 +27,7 @@ obj = \
 ../../Modules/Optimization/m_linesearcher_$(LineS).o
 
 
-all : mod exe
+all : mod exe exe_onlyRE
 
 mod :
 	#System
@@ -44,12 +44,16 @@ mod :
 	(cd ../../Modules/Optimization; make m_linesearcher_$(LineS).o)
 
 
-exe : main.o ../04_GradientTest/sub_optimizer_init_loop.o #../../WPI/sub_modeling_gradient.o
+exe : main_WPI.o ../04_GradientTest/sub_optimizer_init_loop.o ../../WPI/sub_modeling_gradient.o
 	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../../exe/gradienttest_wpi_$(WaveEq)_$(Solver)_$(Order)
 	(cd ../../exe; ln -sf gradienttest_wpi_$(WaveEq)_$(Solver)_$(Order) GradientTest_WPI )
 
+exe_onlyRE : main_onlyRE.o ../04_GradientTest/sub_optimizer_init_loop.o
+	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../../exe/gradienttest_onlyRE_$(WaveEq)_$(Solver)_$(Order)
+	(cd ../../exe; ln -sf gradienttest_onlyRE_$(WaveEq)_$(Solver)_$(Order) GradientTest_onlyRE )
+
 clean :
-	-rm main.o
+	-rm main*.o
 	-rm ../04_GradientTest/sub_optimizer_init_loop.o
 	-rm ../../WPI/sub_modeling_gradient.o
 

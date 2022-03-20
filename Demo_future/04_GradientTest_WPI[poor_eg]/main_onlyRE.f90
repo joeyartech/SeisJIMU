@@ -1,6 +1,5 @@
 program main
 use m_System
-use m_Lpnorm
 use m_Modeling
 use m_Kernel
 use m_linesearcher
@@ -31,15 +30,15 @@ use m_linesearcher
 
     !print propagator info
     call ppg%print_info
-    
+
     ! !estimate required memory
     ! call m%estim_RAM
     ! call cb%estim_RAM
     ! call sfield%estim_RAM
     ! call rfield%estim_RAM
     
-!     !checkpoint
-!     call checkpoint_init
+    !checkpoint
+    call checkpoint_init
 
     !model
     call m%init
@@ -82,13 +81,14 @@ use m_linesearcher
 
     call sysio_write('qp0%g',qp0%g,size(qp0%g))
     call sysio_write('qp0%pg',qp0%pg,size(qp0%pg))
+    call sysio_write('init_model%image', m%image,size(m%image))
 
     !scale problem by linesearcher
     call ls%init
     call ls%scale(qp0)
 
     call hud('qp0%f, ║g║₂² = '//num2str(qp0%f)//', '//num2str(norm2(qp0%g)))
-    
+
     !if just estimate the wavelet or compute the gradient then this is it.
     if(setup%get_str('JOB')=='gradient') then
         call mpiworld%final
@@ -97,10 +97,47 @@ use m_linesearcher
 
     !enumerate alpha's
     call optimizer_init_loop(qp0)
-        
+    
     call mpiworld%final
-
+    
 end
+
+subroutine modeling_gradient(is_fitting_data)
+    logical :: is_fitting_data
+    call modeling_gradient_costRAM(is_fitting_data)
+end subroutine
+
+
+!copy-paste from WPI/
+
+!adjoint eqn from FWI: Aᴴa = Rᴴd
+!imaging condition I := a★u (~FWI gradient),
+!which leads to Rδu w/ same reflection phases as in d
+!but minus signs in front of the RE terms of the WPI gradient
+
+!L2 norm of image
+!I(x) = ∫ a(x,t)u(x,t) dt
+!C= ½║I║² = ½∫ I(x)² dx³ = ½∫ a(x,t₁)u(x,t₁) a(x,t₂)u(x,t₂) dt₁dt₂dx³
+!δC = ½∫ a(t₁)a(t₂)(u(t₁)δu(t₂)+δu(t₁)u(t₂)) dt₁dt₂dx³
+!   =  ∫ a(t₁)a(t₂)u(t₁)δu(t₂) dt₁dt₂dx³
+!   =  ∫ I a δu dtdx³
+!∇ᵤC = Ia
+!similarly, ∇ₐC = Iu
+!
+!Adjoint state method with Lagrangian formulation
+!to compute the gradient
+!A u=f
+!Aᴴa =Rᴴd
+!L = C +<λ|Au-f> +<Aᴴa-Rᴴd|μ>
+!  ≐ C +<Aᴴλ|u>  +<a|Aμ>
+!0 = ∇ᵤL = ∇ᵤC +Aᴴλ => Aᴴλ =-Ia => λ=-δa
+!0 = ∇ₐL = ∇ₐC +Aμ  => Aμ  =-Iu => μ=-δu
+!where
+!Aᴴδa =Ia,
+!A δu =Iu
+!∇ₘL = λ ∇ₘA u + a ∇ₘA μ
+!    = -δa★Du -a★Dδu
+
 
 subroutine modeling_imaging
 use mpi
@@ -147,11 +184,9 @@ use m_smoother_laplacian_sparse
         !weighting on the adjoint source for the image
         call wei%update!('_4IMAGING')
         
-        !adjoint eqn Aᴴa = Rᴴd
-        !imaging condition I := u★a
-        shot%dadj=shot%dobs*wei%weight
+        shot%dadj = shot%dobs*wei%weight*wei%weight
         call shot%write('Imag_dadj_',shot%dadj)
-
+        
         !adjoint modeling
         call ppg%init_field(fld_a,name='Imag_fld_a',ois_adjoint=.true.); call fld_a%ignite
         call ppg%adjoint(fld_a,fld_u,oif_compute_imag=.true.)
@@ -175,8 +210,7 @@ use m_smoother_laplacian_sparse
 
 end subroutine
 
-
-subroutine modeling_gradient(is_fitting_data)
+subroutine modeling_gradient_costRAM(is_fitting_data)
 use mpi
 use m_System
 use m_Modeling
@@ -195,11 +229,15 @@ use m_resampler
     character(:),allocatable :: corrs
     type(t_field) :: fld_u, fld_du, fld_Adj_du, fld_a, fld_da
     ! real,dimension(:,:),allocatable :: Wdres
-    ! real,dimension(:,:,:),allocatable :: WImag
     real,dimension(:,:,:),allocatable :: W2Idt
     ! character(:),allocatable :: update_wavelet
     ! real,dimension(:,:),allocatable :: Rmu, Rdiff
 
+    !info
+    call hud('Entering modeling_gradient_costRAM')
+
+    !First do imaging
+    ! call modeling_imaging
     if(setup%get_file('IMAGE')/='') then
         call alloc(m%image,m%nz,m%nx,m%ny,1)
         call sysio_read(setup%get_file('IMAGE'),m%image,size(m%image))
@@ -220,30 +258,14 @@ use m_resampler
     !L1 norm of image
     fobj%dnorms(1) = L1  (1. ,m%n,iwei%weight,m%image,m%cell_volume)
 
-    !L2 norm of image and adjoint source
-    !I(x) = ∫ a(x,t)u(x,t) dt
-    ! ║I║² = ½∫ I(x)² dx³ = ½∫ a(x,t₁)u(x,t₁) a(x,t₂)u(x,t₂) dt₁dt₂dx³
-    !δ║I║² = ½∫ a(t₁)a(t₂)(u(t₁)δu(t₂)+δu(t₁)u(t₂)) dt₁dt₂dx³
-    !      =  ∫ a(t₁)a(t₂)u(t₁)δu(t₂) dt₁dt₂dx³
-    !      =  ∫ I a δu dtdx³
-    !∇ᵤ║I║² = I a
-        
-    !L = C -<λ|Au-s> -<μ|Aa+Rᴴd>
-    !  ≐ C +<Aλ|u> +<Aμ|a> !ppg gives Aᵀ=-A
-    !0=∇ᵤL = ∇ᵤC + Aλ => Aλ =-Ia => λ=-δa
-    !0=∇ₐL = ∇ₐC + Aμ => Aμ =-Iu => μ=-δu
-    !∇ₘL = -λ ∇ₘA u -μ ∇ₘA a
-    !    = δa★Du + δu★Da
     fobj%dnorms(2) = L2sq(0.5,m%n,iwei%weight,m%image,m%cell_volume)
     call alloc(W2Idt,m%nz,m%nx,m%ny)
     call nabla_L2sq(W2Idt)
     
     !times dt in the RHS for propagation
     W2Idt=W2Idt*shot%dt
-    
-    W2Idt=-W2Idt !WHY?
-    call sysio_write('-W2Idt',W2Idt,size(W2Idt))
-    
+    call sysio_write('W2Idt',W2Idt,size(W2Idt))
+        
     
     !FWI misfit
     fobj%FWI_misfit=0.
@@ -271,52 +293,45 @@ use m_resampler
         call ppg%init_abslayer
 
         call alloc(cb%corr,     cb%mz,cb%mx,cb%my,5)
+        !corr(:,:,:,1) = FWI gradient a★Du
+        !corr(:,:,:,2) = one RE -δa★Du
+        !corr(:,:,:,3) = one RE -a★Dδu
+        !!corr(:,:,:,4) = 2ndMI δa★Dδu
+        !!corr(:,:,:,5) = demig-remig (DR) Adj(δu)★Du
 
-        if(index(corrs,'RE')>0) then
 
-            call hud('--- extd right-side Rabbit Ear (du_star_Da) ---')
-            call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
-            call ppg%init_field(fld_du,name='fld_du')
-            
-            !forward scattering
-            !Aδu = Iu
-            call ppg%forward_scattering(fld_du,fld_u,W2Idt)
-            call fld_du%acquire; call shot%write('Rdu_',shot%dsyn)
-            call fld_u%acquire !shot%dsyn = Ru
-            
-            !adjoint eqn Aᴴa = Rᴴd
-            call wei%update
-            shot%dadj=shot%dobs*wei%weight*wei%weight
-            
-            !adjoint modeling
-            !grad = δu★Da
-            call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite
-            call ppg%adjoint_du_star_Da(fld_du,fld_a,fld_u,W2Idt,oif_compute_grad=.true.) !,oif_compute_imag=.true.)
+        call ppg%init_field(fld_u, name='fld_u');    call fld_u%ignite
+        call ppg%init_field(fld_du,name='fld_du')
 
-            cb%corr(:,:,:,2)=cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
-            call hud('---------------------------------')
-    ! pause
+        !forward modeling
+        !A u = f
+        !Aδu = Iu
+        call ppg%forward_scattering(fld_du,fld_u,W2Idt)
+        call fld_du%acquire; call shot%write('Rdu_',shot%dsyn)
+        call fld_u%acquire;  call shot%write('Ru_', shot%dsyn)
 
-            call hud('--- extd left-side Rabbit Ear (da_star_Du) ---')
-            !re-model u
-            call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
-            call ppg%forward(fld_u); call fld_u%acquire
-            
-            !adjoint eqn Aᴴa = Rᴴd, Aδa = Ia
-            call wei%update
-            shot%dadj=shot%dobs*wei%weight*wei%weight
-            
-            !adjoint modeling
-            !grad = da★Du
-            call ppg%init_field(fld_a, name='fld_a', ois_adjoint=.true.); call fld_a%ignite
-            call ppg%init_field(fld_da,name='fld_da',ois_adjoint=.true.)
-            call ppg%adjoint_da_star_Du(fld_da,fld_u,fld_a,W2Idt,oif_compute_grad=.true.)
-
-            cb%corr(:,:,:,3)=cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
-            call hud('---------------------------------')
-
-        endif
+        !compute FWI data misfit C_data=║Δd║²
+        call wei%update
+        fobj%FWI_misfit = fobj%FWI_misfit &
+            + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
         
+        !adjoint modeling
+        !Aᴴ a = Rᴴd
+        !Aᴴδa = Ia
+        shot%dadj = shot%dobs*wei%weight*wei%weight
+        
+        call ppg%init_field(fld_a, name='fld_a' ,ois_adjoint=.true.); call fld_a%ignite
+        call ppg%init_field(fld_da,name='fld_da',ois_adjoint=.true.)
+        
+        call ppg%init_field(fld_Adj_du,name='fld_Adj_du',ois_adjoint=.true.)
+        call fld_du%acquire
+        shot%dadj=shot%dsyn*wei%weight*wei%weight
+        if(mpiworld%is_master) call shot%write('Wei_Rdu_',shot%dadj)
+        call fld_Adj_du%ignite
+                
+        call ppg%adjoint_WPI(fld_da,fld_a,fld_Adj_du,fld_du,fld_u,W2Idt,corrs)
+        cb%corr(:,:,:,2:3)=-cb%corr(:,:,:,2:3)
+
         call cb%project_back
 
     enddo
@@ -340,39 +355,40 @@ use m_resampler
     call shls%scale(m%n*5,o_from_sampled=m%correlate)
 
     if(mpiworld%is_master) then
+            call sysio_write( 'a_star_Du',     m%correlate(:,:,:,1),m%n)
         if(index(corrs,'RE')>0) then
-            call sysio_write('du_star_Da',     m%correlate(:,:,:,2),m%n)
-            call sysio_write('da_star_Du',     m%correlate(:,:,:,3),m%n)
+            call sysio_write('-da_star_Du',    m%correlate(:,:,:,2),m%n)
+            call sysio_write('-a_star_Ddu',    m%correlate(:,:,:,3),m%n)
             call sysio_write('RE',             m%correlate(:,:,:,2)+m%correlate(:,:,:,3),m%n)
         endif
     endif
 
-    m%gradient=0.
-!     if(index(corrs,'FWI')>0) then
-!         m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,1)
-!     endif
+    call alloc(m%gradient,m%nz,m%nx,m%ny,2)
+    if(index(corrs,'FWI')>0) then
+        m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,1)
+    endif
     if(index(corrs,'RE')>0) then
         m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,2)+m%correlate(:,:,:,3)
     endif
 
-
-!     !check if fitting the t-x domain data
-!     is_fitting_data = sum(m%correlate(:,:,:,1)*m%gradient(:,:,:,2))>0.
+    !check if fitting the t-x domain data
+    is_fitting_data = sum(m%correlate(:,:,:,1)*m%gradient(:,:,:,2))>0.
 
     deallocate(m%correlate)
     
     !required, otherwise cb%project_back will project_back cb%corr
     !in the sequential calling of modeling_imaging
     deallocate(cb%corr)
-    
-    if(ppg%if_compute_engy) then
-        call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-    endif
+        
+    ! if(ppg%if_compute_engy) then
+    !     call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    ! endif
     
     
     call mpiworld%barrier
 
 end subroutine
+
 
 
 subroutine print_manual

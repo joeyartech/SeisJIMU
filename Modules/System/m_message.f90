@@ -6,26 +6,26 @@ use m_mpienv
     private
     public :: hud, warn, error, fatal
 
-!ANSI colors
-!http://fortranwiki.org/fortran/show/ansi_colors
-!https://rosettacode.org/wiki/Terminal_control/Coloured_text#Fortran
-!http://pueblo.sourceforge.net/doc/manual/ansi_color_codes.html
+    !ANSI colors
+    !http://fortranwiki.org/fortran/show/ansi_colors
+    !https://rosettacode.org/wiki/Terminal_control/Coloured_text#Fortran
+    !http://pueblo.sourceforge.net/doc/manual/ansi_color_codes.html
 
-!foreground
-character(*), parameter :: red     =achar(27)//'[31m'
-character(*), parameter :: green   =achar(27)//'[32m'
-character(*), parameter :: yellow  =achar(27)//'[33m'
-character(*), parameter :: blue    =achar(27)//'[34m'
-character(*), parameter :: magenta =achar(27)//'[35m'
-character(*), parameter :: cyan    =achar(27)//'[36m'
-character(*), parameter :: grey    =achar(27)//'[90m' !Bright-Black 
-!one background color
-character(*), parameter :: bg_black =achar(27)//'[40m'
-character(*), parameter :: bg_default =achar(27)//'[49m'
-!others
-character(*), parameter :: bold = achar(27)//'[1m'
-character(*), parameter :: bold_blink = achar(27)//'[1;5m'
-character(*), parameter :: reset = achar(27)//'[0m' ! Terminates an ANSI code.
+    !foreground
+    character(*), parameter :: red     =achar(27)//'[31m'
+    character(*), parameter :: green   =achar(27)//'[32m'
+    character(*), parameter :: yellow  =achar(27)//'[33m'
+    character(*), parameter :: blue    =achar(27)//'[34m'
+    character(*), parameter :: magenta =achar(27)//'[35m'
+    character(*), parameter :: cyan    =achar(27)//'[36m'
+    character(*), parameter :: grey    =achar(27)//'[90m' !Bright-Black 
+    !one background color
+    character(*), parameter :: bg_black =achar(27)//'[40m'
+    character(*), parameter :: bg_default =achar(27)//'[49m'
+    !others
+    character(*), parameter :: bold = achar(27)//'[1m'
+    character(*), parameter :: bold_blink = achar(27)//'[1;5m'
+    character(*), parameter :: reset = achar(27)//'[0m' ! Terminates an ANSI code.
 
     contains
     

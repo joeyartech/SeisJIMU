@@ -1,11 +1,57 @@
 module m_math
 
+    !Sometimes non-programmable characters, like Greek letters,
+    !are more desirable than Fortran-programmable characters
+    !(which actually are quite limited, unlike in Julia).
+    !In this case, I have to spell a symbol's full or shortened name.
+    !They are listed below (to be completed):
+    !alfa, alpha - α
+    !bta  - β
+    !gma  - γ
+    !del, dta, d - δ
+    !eps  - ε
+    !zta  - ζ
+    !eta  - η
+    !thta - θ
+    !iota - ι
+    !kpa  - κ
+    !lda  - λ
+    !mu   - μ
+    !nu   - ν
+    !xi   - ξ
+    !omi  - ο
+    !pi   - π
+    !rho  - ρ
+    !sgma - σ
+    !tau  - τ
+    !ups  - υ
+    !phi  - φ
+    !chi  - χ
+    !psi  - ψ
+    !omga - ω
+    !d    - ∂
+    !nbla, nabla - ∇
+    !_    - subscript, inverse, division, duplicate etc.
+
+    !Nomenclature for public entities:
+    !i_   - integer type
+    !r_   - (single-precision) real type
+    !d_   - double-precision real type
+    !c_   - (single-precision) complex type
+    !z_   - double-precision complex type
+    !s_   - character or string type
+    !p_   - pointer
+    !t_   - derived type
+    !o_   - optional argument for procedures
+    !m_   - module
+    !if_,is_ - logical type
+    !oif_,ois_ - logical type optional argument
+    
     !math constants
     real,parameter :: r_pi = 3.1415927
     double precision,parameter :: d_pi = 3.1415926535897932d0
     !real,parameter :: r_epsilon = epsilon(r_pi)
-    real,parameter :: r_epsilon=1e-3
-    real,parameter :: r_eps=1e-15
+    real,parameter :: r_eps=1e-15 !1e-3
     
     contains
 
