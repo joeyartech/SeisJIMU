@@ -12,20 +12,27 @@
 !∇ᵤC = Ia
 !similarly, ∇ₐC = Iu
 !
-!Adjoint state method with Lagrangian formulation
-!to compute the gradient
+!Adjoint state method with Lagrangian formulation to compute the gradient
 !A u=f
 !Aᴴa =Rᴴ(d-u)
-!L = C +<λ|Au-f> +<Aᴴa-Rᴴ(d-u)|μ>
-!  ≐ C +<Aᴴλ|u>  +<a|Aμ> +<Rμ|u>
-!0 = ∇ᵤL = ∇ᵤC +Aᴴλ +Rμ => Aᴴλ =-Ia -Rμ => λ=-δa +Adj(δu)
+!L = C +<λ|Au-f> +<μ|Aᴴa-Rᴴ(d-u)>
+!  ≐ C +<Aᴴλ|u>  +<Aμ|a> +<Rμ|u>
+!0 = ∇ᵤL = ∇ᵤC +Aᴴλ +Rμ => Aᴴλ =-Ia -Rμ => λ=-δa +Adj(Rᴴδu)
 !0 = ∇ₐL = ∇ₐC +Aμ      => Aμ  =-Iu     => μ=-δu
 !where
-!Aᴴδa =Ia, Aᴴ(Adj(δu))=Adj(δu)
+!Aᴴδa =Ia, Aᴴ(Adj(Rᴴδu))=Adj(Rᴴδu)
 !A δu =Iu
-!∇ₘL = λ ∇ₘA u + a ∇ₘA μ
-!    = -δa★Du -a★Dδu +Adj(δu)★Du
-
+!∇ₘL = λᴴ ∇ₘA u + μᴴ ∇ₘAᴴ a
+!    = -δa★Du +δu★Da +Adj(Rᴴδu)★Du
+!
+!For PDE:      A u = M ∂ₜ u - D u = f
+!    Adjoint:  Aᵀa = M ∂ₜᵀa - Dᵀa = d
+!    μᴴ ∇ₘAᵀ a
+!= -δuᴴ ∇ₘM ∂ₜᵀa
+!≐ -δuᴴ ∇ₘM (M⁻¹Dᵀa)
+!=  δuᴴ ∇ₘM (M⁻¹D a)
+!=  δu★Da  (more accurate)
+!= -a★Dδu  (symmetric to -δa★Du, looks nicer)
 
 subroutine modeling_imaging
 use mpi
@@ -237,7 +244,7 @@ use m_resampler
 
             !pause
 
-            call hud('--- extd Rabbit Ear (-a_star_Ddu) ---')
+            call hud('--- extd Rabbit Ear (du_star_Da) ---')
             call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
             call ppg%init_field(fld_du,name='fld_du')
             
@@ -253,11 +260,11 @@ use m_resampler
             call nabla_L2sq(shot%dadj)
             
             !adjoint modeling
-            !grad = -a★Dδu
+            !grad = δu★Da
             call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite
-            call ppg%adjoint_a_star_Ddu(fld_a,fld_du,fld_u,W2Idt,oif_compute_grad=.true.) !,oif_compute_imag=.true.)
+            call ppg%adjoint_du_star_Da(fld_a,fld_du,fld_u,W2Idt,oif_compute_grad=.true.) !,oif_compute_imag=.true.)
 
-            cb%corr(:,:,:,3)=-cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
+            cb%corr(:,:,:,3)=cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
             call hud('---------------------------------')
 
         endif
@@ -337,7 +344,7 @@ use m_resampler
             call sysio_write('a_star_Du',      m%correlate(:,:,:,1),m%n)
         if(index(corrs,'RE')>0) then
             call sysio_write('-da_star_Du',    m%correlate(:,:,:,2),m%n)
-            call sysio_write('-a_star_Ddu',    m%correlate(:,:,:,3),m%n)
+            call sysio_write(' du_star_Da',    m%correlate(:,:,:,3),m%n)
             call sysio_write('RE',             m%correlate(:,:,:,2)+m%correlate(:,:,:,3),m%n)
         endif
         if(index(corrs,'2ndMI')>0) then
@@ -463,9 +470,9 @@ use m_resampler
         call alloc(cb%corr,     cb%mz,cb%mx,cb%my,5)
         !corr(:,:,:,1) = FWI gradient a★Du
         !corr(:,:,:,2) = one RE -δa★Du
-        !corr(:,:,:,3) = one RE -a★Dδu
+        !corr(:,:,:,3) = one RE  δu★Da
         !corr(:,:,:,4) = 2ndMI δa★Dδu
-        !corr(:,:,:,5) = demig-remig (DR) Adj(δu)★Du
+        !corr(:,:,:,5) = demig-remig (DR) Adj(Rᴴδu)★Du
 
 
         call ppg%init_field(fld_u, name='fld_u');    call fld_u%ignite
@@ -500,7 +507,7 @@ use m_resampler
         call fld_Adj_du%ignite
                 
         call ppg%adjoint_WPI(fld_da,fld_a,fld_Adj_du,fld_du,fld_u,W2Idt,corrs)
-        if(index(corrs,'RE')>0) cb%corr(:,:,:,2:3)=-cb%corr(:,:,:,2:3)
+        if(index(corrs,'RE')>0) cb%corr(:,:,:,2)=-cb%corr(:,:,:,2)
 
         call cb%project_back
 
@@ -528,7 +535,7 @@ use m_resampler
             call sysio_write( 'a_star_Du',     m%correlate(:,:,:,1),m%n)
         if(index(corrs,'RE')>0) then
             call sysio_write('-da_star_Du',    m%correlate(:,:,:,2),m%n)
-            call sysio_write('-a_star_Ddu',    m%correlate(:,:,:,3),m%n)
+            call sysio_write( 'a_star_Ddu',    m%correlate(:,:,:,3),m%n)
             call sysio_write('RE',             m%correlate(:,:,:,2)+m%correlate(:,:,:,3),m%n)
         endif
         if(index(corrs,'DR')>0) then

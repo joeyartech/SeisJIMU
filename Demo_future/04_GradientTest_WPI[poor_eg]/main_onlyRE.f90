@@ -124,19 +124,17 @@ end subroutine
 !∇ᵤC = Ia
 !similarly, ∇ₐC = Iu
 !
-!Adjoint state method with Lagrangian formulation
-!to compute the gradient
+!Adjoint state method with Lagrangian formulation to compute the gradient
 !A u=f
-!Aᴴa =Rᴴd
-!L = C +<λ|Au-f> +<Aᴴa-Rᴴd|μ>
-!  ≐ C +<Aᴴλ|u>  +<a|Aμ>
+!Aᴴa =Rᴴ(d-u)
+!L = C +<λ|Au-f> +<μ|Aᴴa-Rᴴd>
+!  ≐ C +<Aᴴλ|u>  +<Aμ|a>
 !0 = ∇ᵤL = ∇ᵤC +Aᴴλ => Aᴴλ =-Ia => λ=-δa
 !0 = ∇ₐL = ∇ₐC +Aμ  => Aμ  =-Iu => μ=-δu
 !where
-!Aᴴδa =Ia,
-!A δu =Iu
-!∇ₘL = λ ∇ₘA u + a ∇ₘA μ
-!    = -δa★Du -a★Dδu
+!Aᴴδa =Ia, A δu =Iu
+!∇ₘL = λᴴ ∇ₘA u + μᴴ ∇ₘAᴴ a
+!    = -δa★Du +δu★Da
 
 
 subroutine modeling_imaging
@@ -295,10 +293,10 @@ use m_resampler
         call alloc(cb%corr,     cb%mz,cb%mx,cb%my,5)
         !corr(:,:,:,1) = FWI gradient a★Du
         !corr(:,:,:,2) = one RE -δa★Du
-        !corr(:,:,:,3) = one RE -a★Dδu
+        !corr(:,:,:,3) = one RE  δu★Da
         !!corr(:,:,:,4) = 2ndMI δa★Dδu
-        !!corr(:,:,:,5) = demig-remig (DR) Adj(δu)★Du
-
+        !!corr(:,:,:,5) = demig-remig (DR) Adj(Rᴴδu)★Du
+        
 
         call ppg%init_field(fld_u, name='fld_u');    call fld_u%ignite
         call ppg%init_field(fld_du,name='fld_du')
@@ -330,7 +328,7 @@ use m_resampler
         call fld_Adj_du%ignite
                 
         call ppg%adjoint_WPI(fld_da,fld_a,fld_Adj_du,fld_du,fld_u,W2Idt,corrs)
-        cb%corr(:,:,:,2:3)=-cb%corr(:,:,:,2:3)
+        cb%corr(:,:,:,2)=-cb%corr(:,:,:,2)
 
         call cb%project_back
 
@@ -358,7 +356,7 @@ use m_resampler
             call sysio_write( 'a_star_Du',     m%correlate(:,:,:,1),m%n)
         if(index(corrs,'RE')>0) then
             call sysio_write('-da_star_Du',    m%correlate(:,:,:,2),m%n)
-            call sysio_write('-a_star_Ddu',    m%correlate(:,:,:,3),m%n)
+            call sysio_write( 'a_star_Ddu',    m%correlate(:,:,:,3),m%n)
             call sysio_write('RE',             m%correlate(:,:,:,2)+m%correlate(:,:,:,3),m%n)
         endif
     endif

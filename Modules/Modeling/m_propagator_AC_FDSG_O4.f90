@@ -59,8 +59,8 @@ use m_cpml
         procedure :: forward_scattering
         
         procedure :: adjoint
-        procedure :: adjoint_a_star_Ddu
         procedure :: adjoint_da_star_Du
+        procedure :: adjoint_du_star_Da
         procedure :: adjoint_da_star_Ddu
         procedure :: adjoint_WPI
         
@@ -245,8 +245,8 @@ use m_cpml
     !M=[diag(ρ) κ⁻¹], N=M⁻¹=[diag(b) κ], b=ρ⁻¹ is buoyancy,
     !  [0   0   0   ∂z]
     !D=|0   0   0   ∂ₓ|
-    !` |0   0   0   ∂y|
-    !` [∂z  ∂ₓ  ∂y  0 ]
+    !  |0   0   0   ∂y|
+    !  [∂z  ∂ₓ  ∂y  0 ]
     !and a=[vxᵃ vyᵃ vzᵃ pᵃ]ᵀ is the adjoint field
     !
     !Continuous case:
@@ -258,37 +258,42 @@ use m_cpml
     !∫aᵀDu dx³ = -∫(Dᵀa)ᵀ u dx³, with same boundary conditions on a
     !Therefore, Aᵀa = ∂ₜa - Dᵀa
     !However, this method (finding the adjoint FD eqn by integration by parts)
-    !is NOT working in discrete case.
+    !is NOT accurate enough in the discrete world to pass the adjoint test.
     !
     !Discrete case:
-    !Meshing with taggered grids in time and space (2D example):
-    !                               -½ vz
-    !                      |      |    |    |    |
-    !  -v--p-v-p-v-→ t    -p--vx--p-vx-p-vx-p-vx-p-→ x
-    !  -1 -½ 0 ½ 1        -2 -1½ -1 -½ 0  ½ 1 1½ 2    
-    !                      |      |    |    |    |
-    !                      |      |  ½ vz   |    |
-    !                      |      |    |    |    |
-    !                     -|------|--1-p----|----|-
-    !                      |      |    |    |    |
-    !                      |      | 1½ vz   |    |
-    !                      |      |    |    |    |
-    !                                z ↓
+    !Meshing with staggered grids in time and space (2D example):
+    !                      |      |   -½ vz     |      |
+    !                      |      |     buoz    |      |
+    !                      |      |      |      |      |
+    !                      κ buox κ buox κ buox κ buox κ
+    !  -v--p-v-p-v-→ t    -p--vx--p--vx--p--vx--p--vx--p-→ x
+    !  -1 -½ 0 ½ 1        -2 -1½ -1  -½  0   ½  1  1½  2    
+    !                      |      |      |      |      | 
+    !                      |      |    ½ vz     |      | 
+    !                      |      |     buoz    |      | 
+    !                      |      |      |      |      | 
+    !                     -|------|----1-p------|------|-
+    !                      |      |      κ      |      | 
+    !                      |      |      |      |      | 
+    !                      |      |   1½ vz     |      | 
+    !                      |      |     buoz    |      | 
+    !                      |      |      |      |      | 
+    !                                  z ↓
     !
     !Forward:
     !FD eqn:
-    !      [vz^n  ]   [ 0     0    ∂ₓᵇ][vz^n+1]      [∂zᵇ p^n+½              ] 
-    !M ∂ₜᶠ |vx^n  | = | 0     0    ∂zᵇ||vx^n+1| +f = |∂ₓᵇ p^n+½              | +f
-    !      [ p^n+1]   [∂ₓᶠ   ∂zᶠ    0 ][ p^n+½]      [∂zᶠ vz^n+1 + ∂ₓᶠ vx^n+1]
+    !      [vz^n  ]   [ 0     0    ∂zᵇ][vz^n+1]      [∂zᵇ p^n+½              ] 
+    !M ∂ₜᶠ |vx^n  | = | 0     0    ∂ₓᵇ||vx^n+1| +f = |∂ₓᵇ p^n+½              | +f
+    !      [ p^n+1]   [∂zᶠ   ∂ₓᶠ    0 ][ p^n+½]      [∂zᶠ vz^n+1 + ∂ₓᶠ vx^n+1]
     !where
     !∂ₜᶠ*dt := v^n+1 - v^n                             ~O(t²)
     !∂zᵇ*dz := c₁(p[i  ]-p[i-½]) +c₂(p[i+ ½]-p[i-1½])  ~O(x⁴)
     !∂zᶠ*dz := c₁(v[i+½]-v[i  ]) +c₂(v[i+1½]-v[i- ½])  ~O(x⁴)
     !
     !Time marching:
-    ![vx^n+1 ]   [vx^n  ]      [∂ₓᵇ p^n+½              ]
-    !|vz^n+1 | = |vz^n  | + M⁻¹|∂zᵇ p^n+½              |dt  +M⁻¹f*dt
-    ![ p^n+1½]   [ p^n+½]      [∂ₓᶠ vx^n+1 + ∂zᶠ vz^n+1]
+    ![vz^n+1 ]   [vz^n  ]      [∂zᵇ p^n+½              ]
+    !|vx^n+1 | = |vx^n  | + M⁻¹|∂ₓᵇ p^n+½              |dt  +M⁻¹f*dt
+    ![ p^n+1½]   [ p^n+½]      [∂zᶠ vz^n+1 + ∂ₓᶠ vx^n+1]
     !Step #1: v^n += src
     !Step #2: v^n+1 = v^n + spatial FD(p^n+½)
     !Step #3: p^n+½ += src
@@ -297,9 +302,9 @@ use m_cpml
     !Step #6: save v^n+1 to boundary values
     !
     !Reverse time marching (for wavefield reconstruction)
-    ![ p^n+½]   [ p^n+1½]      [∂ₓᶠ vx^n+1 + ∂zᶠ vz^n+1]
-    !|vz^n  | = |vz^n+1 | - M⁻¹|∂zᵇ p^n+½              |dt  -M⁻¹f*dt
-    ![vx^n  ]   [vx^n+1 ]      [∂ₓᵇ p^n+½              ]
+    ![ p^n+½]   [ p^n+1½]      [∂zᶠ vz^n+1 + ∂ₓᶠ vx^n+1]
+    !|vx^n  | = |vx^n+1 | - M⁻¹|∂ₓᵇ p^n+½              |dt  -M⁻¹f*dt
+    ![vz^n  ]   [vz^n+1 ]      [∂zᵇ p^n+½              ]
     !Step #6: load boundary values for v^n+1
     !Step #4: p^n+½ = p^n+1½ - spatial FD(v^n+1)
     !Step #3: p^n+½ -= src
@@ -309,25 +314,25 @@ use m_cpml
     !
     !Adjoint:
     !FD eqn:
-    !      [vxᵃ^n  ]   [ 0      0     ∂ₓᶠᵀ][vxᵃ^n+1]
-    !M ∂ₜᶠᵀ|vzᵃ^n  | = | 0      0     ∂zᶠᵀ||vzᵃ^n+1|  +d
-    !      [ pᵃ^n+1]   [∂ₓᵇᵀ   ∂zᵇᵀ    0  ][ pᵃ^n+½]
+    !      [vzᵃ^n  ]   [ 0      0     ∂zᶠᵀ][vzᵃ^n+1]
+    !M ∂ₜᶠᵀ|vxᵃ^n  | = | 0      0     ∂ₓᶠᵀ||vxᵃ^n+1|  +d
+    !      [ pᵃ^n+1]   [∂zᵇᵀ   ∂ₓᵇᵀ    0  ][ pᵃ^n+½]
     !∂ₜᶠᵀ = v^n-1 -v^n   = -∂ₜᵇ
     !∂zᵇᵀ = c₁(v[i  ]-v[i+½]) +c₂(v[i- ½]-v[i+1½]) = -∂ₓᶠ
     !∂zᶠᵀ = c₁(p[i-½]-p[i  ]) +c₂(p[i-1½]-p[i+ ½]) = -∂ₓᵇ
-    !      [vxᵃ^n  ]   [ 0      0     ∂ₓᵇ ][vxᵃ^n+1]
-    !M ∂ₜᵇ |vzᵃ^n  | = | 0      0     ∂zᵇ ||vzᵃ^n+1|  -d
-    !      [ pᵃ^n+1]   [∂ₓᶠ    ∂zᶠ    0   ][ pᵃ^n+½]
+    !      [vzᵃ^n  ]   [ 0      0     ∂zᵇ ][vzᵃ^n+1]
+    !M ∂ₜᵇ |vxᵃ^n  | = | 0      0     ∂ₓᵇ ||vxᵃ^n+1|  -d
+    !      [ pᵃ^n+1]   [∂zᶠ    ∂ₓᶠ    0   ][ pᵃ^n+½]
     !ie. Dᵀ=-D, antisymmetric
     !
     !Time marching:
-    ![vxᵃ^n+1 ]   [vxᵃ^n  ]      [∂ₓᵇ pᵃ^n+½               ]
-    !|vzᵃ^n+1 | = |vzᵃ^n  | + M⁻¹|∂zᵇ pᵃ^n+½               |dt  -M⁻¹d*dt
-    ![ pᵃ^n+1½]   [ pᵃ^n+½]      [∂ₓᶠ vxᵃ^n+1 + ∂zᶠ vzᵃ^n+1]
+    ![vzᵃ^n+1 ]   [vzᵃ^n  ]      [∂zᵇ pᵃ^n+½               ]
+    !|vxᵃ^n+1 | = |vxᵃ^n  | + M⁻¹|∂ₓᵇ pᵃ^n+½               |dt  -M⁻¹d*dt
+    ![ pᵃ^n+1½]   [ pᵃ^n+½]      [∂zᶠ vzᵃ^n+1 + ∂ₓᶠ vxᵃ^n+1]
     !but we have to do it in reverse time:
-    ![ pᵃ^n+½]   [ pᵃ^n+1½]      [∂ₓᶠ vxᵃ^n+1 + ∂zᶠ vzᵃ^n+1]
-    !|vzᵃ^n  | = |vzᵃ^n+1 | - M⁻¹|∂zᵇ pᵃ^n+½               |dt  +M⁻¹d*dt
-    ![vxᵃ^n  ]   [vxᵃ^n+1 ]      [∂ₓᵇ pᵃ^n+½               ]
+    ![ pᵃ^n+½]   [ pᵃ^n+1½]      [∂zᶠ vzᵃ^n+1 + ∂ₓᶠ vxᵃ^n+1]
+    !|vxᵃ^n  | = |vxᵃ^n+1 | - M⁻¹|∂ₓᵇ pᵃ^n+½               |dt  +M⁻¹d*dt
+    ![vzᵃ^n  ]   [vzᵃ^n+1 ]      [∂zᵇ pᵃ^n+½               ]
     !Step #5: pᵃ^n+1½ += adjsrc
     !Step #4: pᵃ^n+½ = pᵃ^n+1½ - spatial FD(vᵃ^n+1)
     !Step #3: vᵃ^n+1 += adjsrc
@@ -424,90 +429,6 @@ use m_cpml
         call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
         call hud('ximage < snap_sfield%*  n1='//num2str(cb%nz)//' perc=99')
         call hud('xmovie < snap_sfield%*  n1='//num2str(cb%nz)//' n2='//num2str(cb%nx)//' clip=?e-?? loop=2 title=%g')
-
-    end subroutine
-
-    subroutine forward_scattering(self,fld_du,fld_u,W2Idt)
-        class(t_propagator) :: self
-        type(t_field) :: fld_du,fld_u
-        real,dimension(cb%mz,cb%mx,cb%my) :: W2Idt
-
-        real,parameter :: time_dir=1. !time direction
-
-        !seismo
-        call alloc(fld_u%seismo, shot%nrcv,self%nt)
-        call alloc(fld_du%seismo,shot%nrcv,self%nt)
-        
-        tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.
-        
-        ift=1; ilt=self%nt
-
-        do it=ift,ilt
-            if(mod(it,500)==0 .and. mpiworld%is_master) then
-                write(*,*) 'it----',it
-                call fld_du%check_value
-                 call fld_u%check_value
-            endif
-
-            !do forward time stepping (step# conforms with backward & adjoint time stepping)
-            ! !step 1: add forces to v^it
-            ! call cpu_time(tic)
-            ! call self%inject_velocities(fld_u,time_dir,it)
-            ! call self%inject_velocities_scattering(fld_du,fld_u,W2Idt,time_dir)
-            ! call cpu_time(toc)
-            ! tt1=tt1+toc-tic
-
-            !step 2: from v^it to v^it+1 by differences of s^it+0.5
-            call cpu_time(tic)
-            call self%update_velocities(fld_u, time_dir,it)
-            call self%update_velocities(fld_du,time_dir,it)
-            call cpu_time(toc)
-            tt2=tt2+toc-tic
-
-            !step 3: add pressure to s^it+0.5
-            call cpu_time(tic)
-            call self%inject_stresses(fld_u,time_dir,it)
-            call self%inject_stresses_scattering(fld_du,fld_u,W2Idt,time_dir)
-            call cpu_time(toc)
-            tt3=tt3+toc-tic
-
-            !step 4: from s^it+0.5 to s^it+1.5 by differences of v^it+1
-            call cpu_time(tic)
-            call self%update_stresses(fld_u, time_dir,it)
-            call self%update_stresses(fld_du,time_dir,it)
-            call cpu_time(toc)
-            tt4=tt4+toc-tic
-
-            !step 5: sample v^it+1 or s^it+1.5 at receivers
-            call cpu_time(tic)
-            call self%extract(fld_u,it)
-            call self%extract(fld_du,it)
-            call cpu_time(toc)
-            tt5=tt5+toc-tic
-
-            !snapshot
-            ! call fld_u%write(it,o_suffix='_for2')
-            call fld_du%write(it)
-
-            !step 6: save v^it+1 in boundary layers
-            ! if(fld_u%if_will_reconstruct) then
-                call cpu_time(tic)
-                call  fld_u%boundary_transport('save',it)
-                call fld_du%boundary_transport('save',it)
-                call cpu_time(toc)
-                tt6=tt6+toc-tic
-            ! endif
-
-        enddo
-
-        if(mpiworld%is_master) then
-            write(*,*) 'Elapsed time to add source velocities',tt1/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update velocities    ',tt2/mpiworld%max_threads
-            write(*,*) 'Elapsed time to add source stresses  ',tt3/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update stresses      ',tt4/mpiworld%max_threads
-            write(*,*) 'Elapsed time to extract field        ',tt5/mpiworld%max_threads
-            write(*,*) 'Elapsed time to save boundary        ',tt6/mpiworld%max_threads
-        endif
 
     end subroutine
 
@@ -712,64 +633,141 @@ use m_cpml
         
     end subroutine
 
-    !Forward scattering:
-    !FD eqn:
-    !      [vz^n  ]   [∂zᵇ p^n+½              ] 
-    !M ∂ₜᶠ |vx^n  | = |∂ₓᵇ p^n+½              | +I
-    !      [ p^n+1]   [∂zᶠ vz^n+1 + ∂ₓᶠ vx^n+1]
-    !Time marching:
-    ![vx^n+1 ]   [vx^n  ]      [∂ₓᵇ p^n+½              ]
-    !|vz^n+1 | = |vz^n  | + M⁻¹|∂zᵇ p^n+½              |dt  +M⁻¹f*dt
-    ![ p^n+1½]   [ p^n+½]      [∂ₓᶠ vx^n+1 + ∂zᶠ vz^n+1]
-    !Step #1 : v^n += src
-    !Step #1s: v^n += src
-    !Step #2 : v^n+1 = v^n + spatial FD(p^n+½)
-    !Step #2s: v^n+1 = v^n + spatial FD(p^n+½)
-    !Step #3 : p^n+½ += src
-    !Step #3s: p^n+½ += src
-    !Step #4:  p^n+1½ = p^n+½ + spatial FD(v^n+1)
-    !Step #4s: p^n+1½ = p^n+½ + spatial FD(v^n+1)
-    !
-    !Reverse time marching (for wavefield reconstruction)
-    ![ p^n+½]   [ p^n+1½]      [∂ₓᶠ vx^n+1 + ∂zᶠ vz^n+1]
-    !|vz^n  | = |vz^n+1 | - M⁻¹|∂zᵇ p^n+½              |dt  -M⁻¹f*dt
-    ![vx^n  ]   [vx^n+1 ]      [∂ₓᵇ p^n+½              ]
-    !Step #4s: p^n+½ = p^n+1½ - spatial FD(v^n+1)
-    !Step #4 : p^n+½ = p^n+1½ - spatial FD(v^n+1)
-    !Step #3s: p^n+½ -= src
-    !Step #3 : p^n+½ -= src
-    !Step #2s: v^n+1 = v^n - spatial FD(p^n+½)
-    !Step #2 : v^n+1 = v^n - spatial FD(p^n+½)
-    !Step #1s: v^n -= src
-    !Step #1 : v^n -= src
-    !
-    !Adjoint scattering:
-    !Time marching:
-    ![vxᵃ^n+1 ]   [vxᵃ^n  ]      [∂ₓᵇ pᵃ^n+½               ]
-    !|vzᵃ^n+1 | = |vzᵃ^n  | + M⁻¹|∂zᵇ pᵃ^n+½               |dt  -M⁻¹d*dt
-    ![ pᵃ^n+1½]   [ pᵃ^n+½]      [∂ₓᶠ vxᵃ^n+1 + ∂zᶠ vzᵃ^n+1]
-    !Step #2 : vᵃ^n = vᵃ^n+1 - spatial FD(pᵃ^n+½)
-    !Step #2s: vᵃ^n = vᵃ^n+1 - spatial FD(pᵃ^n+½)
-    !Step #3 : vᵃ^n+1 += adjsrc
-    !Step #3s: vᵃ^n+1 += adjsrc
-    !Step #4 : pᵃ^n+½ = pᵃ^n+1½ - spatial FD(vᵃ^n+1)
-    !Step #4s: pᵃ^n+½ = pᵃ^n+1½ - spatial FD(vᵃ^n+1)
-    !Step #5 : pᵃ^n+1½ += adjsrc
-    !Step #5s: pᵃ^n+1½ += adjsrc
-    !but we have to do it in reverse time:
-    ![ pᵃ^n+½]   [ pᵃ^n+1½]      [∂ₓᶠ vxᵃ^n+1 + ∂zᶠ vzᵃ^n+1]
-    !|vzᵃ^n  | = |vzᵃ^n+1 | - M⁻¹|∂zᵇ pᵃ^n+½               |dt  +M⁻¹d*dt
-    ![vxᵃ^n  ]   [vxᵃ^n+1 ]      [∂ₓᵇ pᵃ^n+½               ]
-    !Step #5s: pᵃ^n+1½ += adjsrc
-    !Step #5 : pᵃ^n+1½ += adjsrc
-    !Step #4s: pᵃ^n+½ = pᵃ^n+1½ - spatial FD(vᵃ^n+1)
-    !Step #4 : pᵃ^n+½ = pᵃ^n+1½ - spatial FD(vᵃ^n+1)
-    !Step #3s: vᵃ^n+1 += adjsrc
-    !Step #3 : vᵃ^n+1 += adjsrc
-    !Step #2s: vᵃ^n = vᵃ^n+1 - spatial FD(pᵃ^n+½)
-    !Step #2 : vᵃ^n = vᵃ^n+1 - spatial FD(pᵃ^n+½)
+    ! => FD eqn:
+    !   [     ] [ vz^n  ]   [ 0     0    ∂zᵇ               ][ vz^n+1]   
+    !   | ∂ₜᶠ | | vx^n  |   | 0     0    ∂ₓᵇ       0       || vx^n+1|   
+    ! M |     |⨂|  p^n+1| = |∂zᶠ   ∂ₓᶠ    0                ||  p^n+½| +f  
+    !   |     | |vzᵃ^n  |   |                0     0    ∂zᵇ||vzᵃ^n+1|   
+    !   | ∂ₜᵇ | |vxᵃ^n  |   |       0        0     0    ∂ₓᵇ||vxᵃ^n+1|   
+    !   [     ] [ pᵃ^n+1]   [               ∂zᶠ   ∂ₓᶠ    0 ][ pᵃ^n+½]   
+    ! where
+    ! f=[fz fx fp ... -dz -dx -dp]ᵀ
 
-    subroutine adjoint_a_star_Ddu(self,fld_a,fld_du,fld_u,W2Idt,oif_compute_imag,oif_compute_grad)
+    ! Time marching:
+    ! [ vz^n+1 ]   [ vz^n  ]      [∂zᵇ p^n+½                ]
+    ! | vx^n+1 |   | vx^n  |      |∂ₓᵇ p^n+½                |
+    ! |  p^n+1½| = |  p^n+½| + M⁻¹[∂zᶠ vz^n+1 + ∂ₓᶠ vx^n+1  |dt +M⁻¹f*dt
+    ! |vzᵃ^n+1 |   |vzᵃ^n  |      [∂zᵇ pᵃ^n+½               |
+    ! |vxᵃ^n+1 |   |vxᵃ^n  |      |∂ₓᵇ pᵃ^n+½               |
+    ! [ pᵃ^n+1½]   [ pᵃ^n+½]      [∂zᶠ vzᵃ^n+1 + ∂ₓᶠ vxᵃ^n+1]
+
+    ! Reverse time marching:
+    ! [ vz^n  ]   [ vz^n+1 ]      [∂zᵇ p^n+½                ]
+    ! | vx^n  |   | vx^n+1 |      |∂ₓᵇ p^n+½                |
+    ! |  p^n+½| = |  p^n+1½| - M⁻¹[∂zᶠ vz^n+1 + ∂ₓᶠ vx^n+1  |dt -M⁻¹f*dt
+    ! |vzᵃ^n  |   |vzᵃ^n+1 |      [∂zᵇ pᵃ^n+½               |
+    ! |vxᵃ^n  |   |vxᵃ^n+1 |      |∂ₓᵇ pᵃ^n+½               |
+    ! [ pᵃ^n+½]   [ pᵃ^n+1½]      [∂zᶠ vzᵃ^n+1 + ∂ₓᶠ vxᵃ^n+1]
+
+    ! <= FD eqn:
+    !   [     ] [ vzλ^n  ]   [ 0     0    ∂zᵇ               ][ vzλ^n+1]   
+    !   | ∂ₜᵇ | | vxλ^n  |   | 0     0    ∂ₓᵇ       0       || vxλ^n+1|   
+    ! M |     |⨂|  pλ^n+1| = |∂zᶠ   ∂ₓᶠ    0                ||  pλ^n+½| -g
+    !   |     | | vzμ^n  |   |                0     0    ∂zᵇ|| vzμ^n+1|   
+    !   | ∂ₜᶠ | | vxμ^n  |   |       0        0     0    ∂ₓᵇ|| vxμ^n+1|   
+    !   [     ] [  pμ^n+1]   [               ∂zᶠ   ∂ₓᶠ    0 ][  pμ^n+½]   
+
+    ! Time marching:
+    ! [ vzλ^n+1 ]   [ vzλ^n  ]      [∂zᵇ  pλ^n+½              ]
+    ! | vxλ^n+1 |   | vxλ^n  |      |∂ₓᵇ  pλ^n+½              |
+    ! |  pλ^n+1½| = |  pλ^n+½| + M⁻¹[∂zᶠ vzλ^n+1 + ∂ₓᶠ vxλ^n+1|dt -M⁻¹g*dt
+    ! | vzμ^n+1 |   | vzμ^n  |      [∂zᵇ  pμ^n+½              |
+    ! | vxμ^n+1 |   | vxμ^n  |      |∂ₓᵇ  pμ^n+½              |
+    ! [  pμ^n+1½]   [  pμ^n+½]      [∂zᶠ vzμ^n+1 + ∂ₓᶠ vxμ^n+1]
+
+    ! Reverse time marching:
+    ! [ vzλ^n  ]   [ vzλ^n+1 ]      [∂zᵇ  pλ^n+½              ]
+    ! | vxλ^n  |   | vxλ^n+1 |      |∂ₓᵇ  pλ^n+½              |
+    ! |  pλ^n+½| = |  pλ^n+1½| - M⁻¹[∂zᶠ vzλ^n+1 + ∂ₓᶠ vxλ^n+1|dt +M⁻¹g*dt
+    ! | vzμ^n  |   | vzμ^n+1 |      [∂zᵇ  pμ^n+½              |
+    ! | vxμ^n  |   | vxμ^n+1 |      |∂ₓᵇ  pμ^n+½              |
+    ! [  pμ^n+½]   [  pμ^n+1½]      [∂zᶠ vzμ^n+1 + ∂ₓᶠ vxμ^n+1]
+
+    subroutine forward_scattering(self,fld_du,fld_u,W2Idt)
+        class(t_propagator) :: self
+        type(t_field) :: fld_du,fld_u
+        real,dimension(cb%mz,cb%mx,cb%my) :: W2Idt
+
+        real,parameter :: time_dir=1. !time direction
+
+        !seismo
+        call alloc(fld_u%seismo, shot%nrcv,self%nt)
+        call alloc(fld_du%seismo,shot%nrcv,self%nt)
+        
+        tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.
+        
+        ift=1; ilt=self%nt
+
+        do it=ift,ilt
+            if(mod(it,500)==0 .and. mpiworld%is_master) then
+                write(*,*) 'it----',it
+                call fld_du%check_value
+                 call fld_u%check_value
+            endif
+
+            !do forward time stepping (step# conforms with backward & adjoint time stepping)
+            ! !step 1: add forces to v^it
+            ! call cpu_time(tic)
+            ! call self%inject_velocities(fld_u,time_dir,it)
+            ! call self%inject_velocities_scattering(fld_du,fld_u,W2Idt,time_dir)
+            ! call cpu_time(toc)
+            ! tt1=tt1+toc-tic
+
+            !step 2: from v^it to v^it+1 by differences of s^it+0.5
+            call cpu_time(tic)
+            call self%update_velocities(fld_u, time_dir,it)
+            call self%update_velocities(fld_du,time_dir,it)
+            call cpu_time(toc)
+            tt2=tt2+toc-tic
+
+            !step 3: add pressure to s^it+0.5
+            call cpu_time(tic)
+            call self%inject_stresses(fld_u,time_dir,it)
+            call self%inject_stresses_scattering(fld_du,fld_u,W2Idt,time_dir)
+            call cpu_time(toc)
+            tt3=tt3+toc-tic
+
+            !step 4: from s^it+0.5 to s^it+1.5 by differences of v^it+1
+            call cpu_time(tic)
+            call self%update_stresses(fld_u, time_dir,it)
+            call self%update_stresses(fld_du,time_dir,it)
+            call cpu_time(toc)
+            tt4=tt4+toc-tic
+
+            !step 5: sample v^it+1 or s^it+1.5 at receivers
+            call cpu_time(tic)
+            call self%extract(fld_u,it)
+            call self%extract(fld_du,it)
+            call cpu_time(toc)
+            tt5=tt5+toc-tic
+
+            !snapshot
+            ! call fld_u%write(it,o_suffix='_for2')
+            call fld_du%write(it)
+
+            !step 6: save v^it+1 in boundary layers
+            ! if(fld_u%if_will_reconstruct) then
+                call cpu_time(tic)
+                call  fld_u%boundary_transport('save',it)
+                call fld_du%boundary_transport('save',it)
+                call cpu_time(toc)
+                tt6=tt6+toc-tic
+            ! endif
+
+        enddo
+
+        if(mpiworld%is_master) then
+            write(*,*) 'Elapsed time to add source velocities',tt1/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update velocities    ',tt2/mpiworld%max_threads
+            write(*,*) 'Elapsed time to add source stresses  ',tt3/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update stresses      ',tt4/mpiworld%max_threads
+            write(*,*) 'Elapsed time to extract field        ',tt5/mpiworld%max_threads
+            write(*,*) 'Elapsed time to save boundary        ',tt6/mpiworld%max_threads
+        endif
+
+    end subroutine
+
+    subroutine adjoint_du_star_Da(self,fld_a,fld_du,fld_u,W2Idt,oif_compute_imag,oif_compute_grad)
         class(t_propagator) :: self
         type(t_field) :: fld_du,fld_a,fld_u
         real,dimension(cb%mz,cb%mx,cb%my) :: W2Idt
@@ -868,7 +866,7 @@ use m_cpml
             !use sfield%v^it+1 to compute sfield%s_dt^it+0.5, as backward step 4
             if(if_compute_grad.and.mod(it,irdt)==0) then
                 call cpu_time(tic)
-                call gradient_moduli(fld_a,fld_du,it,cb%grad(:,:,:,2))
+                call gradient_moduli(fld_du,fld_a,it,cb%grad(:,:,:,2))
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             endif
@@ -1482,8 +1480,8 @@ use m_cpml
                 if(index(corrs,'RE')>0) then
                     !δa★Du
                     call gradient_moduli(fld_da,fld_u,it,cb%corr(:,:,:,2))
-                    !a★Dδu
-                    call gradient_moduli(fld_a, fld_du,it,cb%corr(:,:,:,3))
+                    !δu★Da
+                    call gradient_moduli(fld_du,fld_a,it,cb%corr(:,:,:,3))
                 endif
                 
                 ! if(index(corrs,'2ndMI')>0) then
@@ -1492,7 +1490,7 @@ use m_cpml
                 ! endif
                 
                 if(index(corrs,'DR')>0) then
-                    !Adj(δu)★Du
+                    !Adj(Rᴴδu)★Du
                     call gradient_moduli(fld_Adj_du,fld_u,it,cb%corr(:,:,:,5))
                     !will add the minus sign outside timestepping loop
                 endif
@@ -1920,23 +1918,23 @@ use m_cpml
 
     !========= gradient, imaging or other correlations ===================
     !For gradient:
-    !∇ₘ<a|M∂ₜu-Du-f> = ∫ a ∇ₘM ∂ₜu dt
-    !since it's cumbersome to get ∂ₜu, we replace it by M⁻¹Du
-    !ie. re-use the PDE but neglect f,
-    !which introduce singularities in the gradient at source positions
-    !ie. ∫ a ∇ₘM ∂ₜu dt ≐ ∫ a ∇ₘln(M) Du dt ≐ a★Du
+    !∇ₘ<a|Au> = ∇ₘ<a|M∂ₜu-Du> = ∫ aᵀ ∇ₘM ∂ₜu dt
+    !Since it's cumbersome to get ∂ₜu by time marching,
+    !replace ∂ₜu by M⁻¹Du and neglect f
+    !ie. M∂ₜu=Du+f -> ∂ₜu=M⁻¹Du+M⁻¹f ≐ M⁻¹Du
+    !This simplification introduces singularities in the gradient only at source positions, which are probably removed by gradient masking.
+    !
+    !Therefore, ∫ aᵀ ∇ₘM ∂ₜu dt ≐ ∫ aᵀ ∇ₘln(M) Du dt =: a★Du
     !where
-    !                    [ 0   0   ∂ₓᵇ] [vx]
-    !a★Du = [vxᵃ vzᵃ pᵃ] | 0   0   ∂zᵇ| |vz|
-    !                    [∂ₓᶠ  ∂zᶠ  0 ] [p ]
+    !                            [ 0   0   ∂ₓᵇ] [vx]
+    !a★Du = [vxᵃ vzᵃ pᵃ] ∇ₘln(M) | 0   0   ∂zᵇ| |vz|
+    !                            [∂ₓᶠ  ∂zᶠ  0 ] [p ]
     !In particular, we compute
-    !  grho = vᵃ · ∂ₜv
-    !       = vᵃ · b∇p
-    !  gkpa = pᵃ · -1/kpa^2 ∂ₜp
-    !       = pᵃ · -1/kpa   ∇·v
+    !  grho = vᵃ ∂ₜv = vᵃ b∇p
+    !  gkpa = pᵃ (-κ⁻²) ∂ₜp = = pᵃ (-κ⁻¹) ∇·v
     !
     !For imaging:
-    !I = ∫ a u dt = a★u
+    !I = ∫ a u dt =: a★u
 
     subroutine gradient_density(rf,sf,it,grad)
         type(t_field), intent(in) :: rf, sf

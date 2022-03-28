@@ -159,7 +159,7 @@ use m_smoother_laplacian_sparse
         !∇ᵤC = (u-d)δ(x-xr)
         !L = C + <a|Au-s> ≐ C + <Aᴴa|u>
         !0 = ∇ᵤL = ∇ᵤC + Aᴴa => Aᴴa = -∇ᵤC = (d-u)δ(x-xr)
-        !∇ₘL = a ∇ₘA u =: a★Du
+        !∇ₘL = aᴴ ∇ₘA u =: a★Du
 
         !objective function and adjoint source
         call fobj%stack_dnorms
