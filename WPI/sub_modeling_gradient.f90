@@ -103,6 +103,7 @@ use m_smoother_laplacian_sparse
     call mpiworld%barrier
 
     if(setup%get_str('JOB')=='imaging') then
+        call sysio_write('Image',m%image,size(m%image))
         call mpiworld%final
         stop
     endif
@@ -137,9 +138,9 @@ use m_resampler
     !info
     call hud('Entering modeling_gradient_slow')
 
-    if(setup%get_file('IMAGE')/='') then
+    if(setup%get_file('FILE_IMAGE')/='') then
         call alloc(m%image,m%nz,m%nx,m%ny,1)
-        call sysio_read(setup%get_file('IMAGE'),m%image,size(m%image))
+        call sysio_read(setup%get_file('FILE_IMAGE'),m%image,size(m%image))
         call sysio_write('loaded_I',m%image,size(m%image))    
         
         !get shot%dt
@@ -369,7 +370,7 @@ use m_resampler
     !check if fitting the t-x domain data
     is_fitting_data = sum(m%correlate(:,:,:,1)*m%gradient(:,:,:,2))>0.
 
-    deallocate(m%correlate)
+    !deallocate(m%correlate)
     
     !required, otherwise cb%project_back will project_back cb%corr
     !in the sequential calling of modeling_imaging
@@ -413,9 +414,9 @@ use m_resampler
 
     !First do imaging
     ! call modeling_imaging
-    if(setup%get_file('IMAGE')/='') then
+    if(setup%get_file('FILE_IMAGE')/='') then
         call alloc(m%image,m%nz,m%nx,m%ny,1)
-        call sysio_read(setup%get_file('IMAGE'),m%image,size(m%image))
+        call sysio_read(setup%get_file('FILE_IMAGE'),m%image,size(m%image))
         call sysio_write('loaded_I',m%image,size(m%image))    
         
         !get shot%dt
@@ -557,7 +558,7 @@ use m_resampler
     !check if fitting the t-x domain data
     is_fitting_data = sum(m%correlate(:,:,:,1)*m%gradient(:,:,:,2))>0.
 
-    deallocate(m%correlate)
+    !deallocate(m%correlate)
     
     !required, otherwise cb%project_back will project_back cb%corr
     !in the sequential calling of modeling_imaging

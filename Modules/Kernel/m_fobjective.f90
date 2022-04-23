@@ -349,6 +349,9 @@ use m_preconditioner
         character(:),allocatable :: smask
         real,dimension(:,:,:),allocatable :: mask
 
+        real,dimension(:,:,:),allocatable ::  FWI, RE, DR
+        real,dimension(:),allocatable :: tmp
+
         !update model
         if(either(oif_update_m,.true.,present(oif_update_m))) then
             call param%transform(o_dir='x->m',o_x=qp%x)
@@ -416,6 +419,42 @@ use m_preconditioner
         !save some RAM
         call dealloc(m%gradient,m%energy)
 
+
+        if(allocated(m%correlate)) then !in case WPI
+            !correlate(:,:,:,1) = FWI gradient a★Du
+            !correlate(:,:,:,2) = one RE -δa★Du
+            !correlate(:,:,:,3) = one RE  δu★Da
+            !correlate(:,:,:,5) = demig-remig (DR) Adj(Rᴴδu)★Du
+            call alloc(FWI,m%nz,m%nx,m%ny); FWI=m%correlate(:,:,:,1)
+            call alloc( RE,m%nz,m%nx,m%ny); RE =m%correlate(:,:,:,2)+m%correlate(:,:,:,3)
+            call alloc( DR,m%nz,m%nx,m%ny); DR =m%correlate(:,:,:,5)
+            where(m%is_freeze_zone)
+                FWI=0.; RE=0.; DR=0.
+            endwhere
+
+            call hud('dot product btw FWI & RE terms= '//dotprod_terms(FWI,RE))
+            call hud('dot product btw FWI & DR terms= '//dotprod_terms(FWI,DR))
+            call hud('dot product btw RE  & DR terms= '//dotprod_terms(RE,DR))
+            call hud('dot product btw RE  & RE+DR terms= '//dotprod_terms(RE,RE+DR))
+
+            ! !prcondition by z^1
+            ! call alloc(tmp,m%nz,o_init=1.)
+            ! tmp=[(((iz-1)*m%dz)**1,iz=1,m%nz)]
+            ! do iy=1,m%ny; do ix=1,m%nx
+            !     RE(:,ix,iy)=RE(:,ix,iy)*tmp(:)
+            !     DR(:,ix,iy)=DR(:,ix,iy)*tmp(:)
+            ! enddo; enddo
+
+            ! norm1=sqrt(sum(RE*RE))
+            ! norm2=sqrt(sum(DR*DR))
+            ! call hud('cos(pRE,pDR) = '//num2str( sum(RE*DR)/norm1/norm2 ))
+
+            deallocate(FWI,RE,DR)
+            ! deallocate(tmp)
+
+            !deallocate(m%correlate)
+        endif
+
     end subroutine
 
     subroutine regularize(fobj,qp)
@@ -425,5 +464,18 @@ use m_preconditioner
         if(mpiworld%is_master) call fobj%stack_xnorms(qp%x,qp%g)
 
     end subroutine
+
+    function dotprod_terms(vec1,vec2) result(res)
+        real,dimension(m%n):: vec1,vec2
+        character(:),allocatable :: res
+
+        real :: n1, n2
+
+        n1=sqrt(norm2(vec1))
+        n2=sqrt(norm2(vec2))
+
+        res = num2str(sum(vec1*vec2)/n1/n2)//'( '//num2str(n1)//' , '//num2str(n2)//' )'
+
+    end function
 
 end

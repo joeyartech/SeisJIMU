@@ -53,36 +53,38 @@ use m_linesearcher
         pert=>tmp
     end subroutine
 
-    subroutine optimizer_write(message,o_title)
-        character(*) :: message
+    subroutine optimizer_write(task,o_title)
+        character(*) :: task
         character(*),optional :: o_title
+
+        character(*),parameter :: fmt='(x,i5,2x,5x,2x,i5,2x,es8.2,7x,es10.4,2x,f5.1,5x,f5.1,7x,es9.2)'
         
         if(mpiworld%is_master) then
         
-            select case (message)
+            select case (task)
             case('start')
                 ! call execute_command_line('rm '//dir_out//'iterate.log', wait=.true.)
-                open(16,file=dir_out//'iterate.log',position='append',action='write')
+                open(16,file=dir_out//'optimization.log',position='append',action='write')
                 write(16,'(a)'      ) ' **********************************************************************'
-                if(present(o_title)) then
-                write(16,'(a)'      ) '    '//o_title
-                endif
-                write(16,'(a)'      ) ' **********************************************************************'
-                write(16,'(a,es8.2)') '     Min descent allowed      =',  min_descent
-                write(16,'(a,i5)'   ) '     Max iterates allowed     =',  max_iterate
-                write(16,'(a,i5)'   ) '     Max linesearches allowed =',  ls%max_search
-                write(16,'(a,i5)'   ) '     Max gradients allowed    =',  ls%max_gradient
-                write(16,'(a,es8.2)') '     Initial fobjective (f0)  =',  f0
-                write(16,'(a,es8.2)') '     Initial gradient norm2 (║g0║₂²)  =',  g0norm2
-                write(16,'(a)'      ) ' **********************************************************************'
-                write(16,'(a)'      ) '  Iter#      f         f/f0    ║g║₂²/║g0║₂²    alpha     nls  Gradient#'
-                               !e.g.  !    0    z1.00E+00    1.00E+00    1.00E+00    1.00E+00      0       1
-                write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, curr%f, curr%f/f0, norm2(curr%g)/g0norm2, ls%alpha, ls%isearch, ls%igradient
+                if(present(o_title)) write(16,'(a)'      ) '    '//o_title
+                write(16,'(a)'       ) ' **********************************************************************'
+                write(16,'(a,es10.4)') '     Min descent allowed      =',  min_descent
+                write(16,'(a,i5)'    ) '     Max iterates allowed     =',  max_iterate
+                write(16,'(a,i5)'    ) '     Max linesearches allowed =',  ls%max_search
+                write(16,'(a,i5)'    ) '     Max gradients allowed    =',  ls%max_gradient
+                write(16,*           ) '     Linesearch scaler        =',  ls%scaler
+                write(16,'(a,es10.4)') '     Initial gradient norm2 (║g0║₂²)  =',  g0norm2
+                write(16,'(a)'       ) ' **********************************************************************'
+                write(16,'(a)'       ) '  Iter#         Grad#     α    curr%       f    f/f0(%) ║g║₂²/║g0║₂²(%)   g·d'
+                write(16,'(a)'       ) '         LinS#  Grad#     α    pert%       f                              g·d   Wolfe_cond'
+                write(16,'(a)'       ) ' ========================================================================================='
+                write(16,fmt)  iterate, ls%igradient, ls%alpha, curr%f, curr%f/f0*100., norm2(curr%g)/g0norm2*100., curr%g_dot_d
                 close(16)
                 
             case('update')
-                open(16,file=dir_out//'iterate.log',position='append',action='write')
-                write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, curr%f, curr%f/f0, norm2(curr%g)/g0norm2, ls%alpha, ls%isearch, ls%igradient
+                open(16,file=dir_out//'optimization.log',position='append',action='write')
+                write(16,'(a)') ' -----------------------------------------------------------------------------------------'
+                write(16,fmt)  iterate, ls%igradient, ls%alpha, curr%f, curr%f/f0*100., norm2(curr%g)/g0norm2*100., curr%g_dot_d
                 close(16)
                 
                 call param%transform('x->m',o_x=curr%x)
@@ -90,29 +92,33 @@ use m_linesearcher
                 call sysio_write('descent_Iter'//int2str(iterate),curr%d,size(curr%d))
                 call shot%write('dsyn_Iter'//int2str(iterate)//'_',shot%dsyn)
 
+                if(allocated(m%correlate)) then
+                    call sysio_write('correlate_Iter'//int2str(iterate),m%correlate,size(m%correlate))
+                endif
+
             case('maximum')
-                open(16,file=dir_out//'iterate.log',position='append',action='write')
+                open(16,file=dir_out//'optimization.log',position='append',action='write')
                 write(16,'(a)'      ) ' **********************************************************************'
                 write(16,'(a)'      ) '     STOP: MAXIMUM MODELING NUMBER REACHED                             '
                 write(16,'(a)'      ) ' **********************************************************************'
                 close(16)
 
             case('criteria')
-                open(16,file=dir_out//'iterate.log',position='append',action='write')
+                open(16,file=dir_out//'optimization.log',position='append',action='write')
                 write(16,'(a)'      ) ' **********************************************************************'
                 write(16,'(a)'      ) '     STOP: CONVERGENCE CRITERIA SATISFIED                              '
                 write(16,'(a)'      ) ' **********************************************************************'
                 close(16)
 
             case('failure')
-                open(16,file=dir_out//'iterate.log',position='append',action='write')
+                open(16,file=dir_out//'optimization.log',position='append',action='write')
                 write(16,'(a)'      ) ' **********************************************************************'
                 write(16,'(a)'      ) '     STOP: LINE SEARCH FAILURE                                         '
                 write(16,'(a)'      ) ' **********************************************************************'
                 close(16)
 
             case('finalize')
-                open(16,file=dir_out//'iterate.log',position='append',action='write')
+                open(16,file=dir_out//'optimization.log',position='append',action='write')
                 write(16,'(a)'      ) ' **********************************************************************'
                 write(16,'(a)'      ) '     FINALIZE                                         '
                 write(16,'(a)'      ) ' **********************************************************************'

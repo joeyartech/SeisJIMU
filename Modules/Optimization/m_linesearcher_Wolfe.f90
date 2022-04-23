@@ -37,6 +37,9 @@ use m_Kernel
     real,parameter :: alphaL0=1e-4 !~=2^-10
     real,parameter :: alphaR0=1e4  !=10^4
 
+    !Wolfe conditions
+    logical :: if_1st_cond, if_2nd_cond
+
     type,public :: t_linesearcher
         real :: alpha  !steplength
         real :: alphaL, alphaR !search interval: alpha \in [alphaL, alphaR]
@@ -53,6 +56,7 @@ use m_Kernel
         procedure :: init
         procedure :: search
         procedure :: scale
+        procedure :: write
     end type
 
     type(t_linesearcher),public :: ls
@@ -81,8 +85,6 @@ use m_Kernel
         real,dimension(:,:,:,:,:),optional :: o_gradient_history
 
         type(t_checkpoint),save :: chp
-
-        logical :: if_1st_cond, if_2nd_cond
 
         !alpha probably can't be outside [alphaL0,alphaR0]
         !a prudent range as we've appropriately scaled the optimization problem
@@ -153,16 +155,12 @@ use m_Kernel
             !if_2nd_cond = (abs(pert%g_dot_d) >= c2*abs(curr%g_dot_d)) !strong curvature condition
             if_2nd_cond = (pert%g_dot_d >= c2*curr%g_dot_d) !weak curvature condition
 
-            if(mpiworld%is_master) then
-                print*,'1st cond',self%alpha,pert%f,curr%f,(pert%f-curr%f)/self%alpha, curr%g_dot_d,  curr%g_dot_d/((pert%f-curr%f)/self%alpha), if_1st_cond
-                print*,'2nd cond',pert%g_dot_d, curr%g_dot_d, if_2nd_cond
-                !print*,'alpha(3)',alphaL,alpha,alpha_R
-            endif
-
             !occasionally optimizers on processors don't have same behavior
             !try to avoid this by broadcast controlling logicals.
             call mpi_bcast(if_1st_cond, 1, mpi_logical, 0, mpiworld%communicator, mpiworld%ierr)
             call mpi_bcast(if_2nd_cond, 1, mpi_logical, 0, mpiworld%communicator, mpiworld%ierr)
+
+            call self%write(pert)
 
             !1st condition OK, 2nd condition OK => use alpha
             if(if_1st_cond .and. if_2nd_cond) then
@@ -187,7 +185,7 @@ use m_Kernel
                     call hud("Curvature condition is not satified. Now try a larger alpha")
                     self%result='perturb'
                     self%alphaL=self%alpha
-                    if(self%alphaR < huge(1.)) then
+                    if(self%alphaR < alphaR0) then
                         self%alpha=0.5*(self%alphaL+self%alphaR) !shrink the search interval
                     else
                         self%alpha=self%alpha*multiplier !extend search interval
@@ -297,6 +295,20 @@ use m_Kernel
         qp%g=qp%g*self%scaler
         qp%pg=qp%pg*self%scaler
         
+    end subroutine
+
+    subroutine write(self,pert)
+        class(t_linesearcher) :: self
+        type(t_querypoint) :: pert
+
+        character(*),parameter :: fmt='(x,5x,2x,i5,2x,i5,2x,es8.2,7x,es10.4,24x,es9.2,3x,l,x,l)'
+
+        open(16,file=dir_out//'optimization.log',position='append',action='write')
+        write(16,fmt)  ls%isearch, ls%igradient, ls%alpha, pert%f, pert%g_dot_d, if_1st_cond, if_2nd_cond
+        !write(16,'(a)') 'pert%f (pert%f-curr%f)/α pert%g·d curr%g·d'
+        !write(16,*) pert%f, (pert%f-curr%f)/self%alpha, pert%g_dot_d, curr%g_dot_d
+        close(16)
+
     end subroutine
     
 

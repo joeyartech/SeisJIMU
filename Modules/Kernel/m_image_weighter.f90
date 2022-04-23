@@ -13,6 +13,7 @@ use m_Modeling
 
         procedure :: update
 
+        procedure :: by_depth
         procedure :: by_custom
 
     end type
@@ -40,6 +41,12 @@ use m_Modeling
             if (index(list(i)%s,'topo')>0) then
                 where(m%is_freeze_zone) self%weight=0.
             endif
+
+            if(index(list(i)%s,'z^')>0) then
+                sublist=split(list(i)%s,o_sep='^')
+                call hud('Will weight the image by z^'//sublist(2)%s)
+                call self%by_depth(o_power=str2real(sublist(2)%s))
+            endif
             
             if (index(list(i)%s,'custom')>0) then
                 sublist=split(list(i)%s,o_sep=':')
@@ -49,13 +56,40 @@ use m_Modeling
                     file=sublist(2)%s
                 endif
 
-                call hud('Will weight image in a custom way defined in '//file)
+                call hud('Will weight the image in a custom way defined in '//file)
                 call self%by_custom(file)
             endif
 
         enddo
 
         if(mpiworld%is_master) call sysio_write('Imag_weights',self%weight,size(self%weight))
+        
+    end subroutine
+
+    subroutine by_depth(self,o_power,o_factor)
+        class(t_image_weighter) :: self
+        real,optional :: o_power, o_factor
+
+        real,dimension(:),allocatable :: tmp
+
+        if(present(o_power)) then
+            call alloc(tmp,m%nz,o_init=1.)
+
+            tmp=[(((iz-1)*m%dz)**o_power,iz=1,m%nz)]
+            do iy=1,m%ny; do ix=1,m%nx
+                self%weight(:,ix,iy)=tmp(:)
+            enddo; enddo
+
+            deallocate(tmp)
+
+        endif
+
+        ! if(present(o_factor)) then
+        !     preco_in_m(:,1,1)=[(((iz-1)*m%dz)*o_factor,iz=1,m%nz)]
+        !     do iy=1,m%ny; do ix=1,m%nx
+        !         preco_in_m(:,ix,iy)=preco_in_m(:,1,1)
+        !     enddo; enddo
+        ! endif
         
     end subroutine
 
