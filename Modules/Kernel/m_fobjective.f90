@@ -432,10 +432,10 @@ use m_preconditioner
                 FWI=0.; RE=0.; DR=0.
             endwhere
 
-            call hud('dot product btw FWI & RE terms= '//dotprod_terms(FWI,RE))
-            call hud('dot product btw FWI & DR terms= '//dotprod_terms(FWI,DR))
-            call hud('dot product btw RE  & DR terms= '//dotprod_terms(RE,DR))
-            call hud('dot product btw RE  & RE+DR terms= '//dotprod_terms(RE,RE+DR))
+            call hud('angle btw FWI & RE terms=    '//angle_terms(FWI,RE))
+            call hud('angle btw FWI & DR terms=    '//angle_terms(FWI,DR))
+            call hud('angle btw RE  & DR terms=    '//angle_terms(RE,DR))
+            call hud('angle btw RE  & RE+DR terms= '//angle_terms(RE,RE+DR))
 
             ! !prcondition by z^1
             ! call alloc(tmp,m%nz,o_init=1.)
@@ -465,16 +465,17 @@ use m_preconditioner
 
     end subroutine
 
-    function dotprod_terms(vec1,vec2) result(res)
+    function angle_terms(vec1,vec2) result(res)
         real,dimension(m%n):: vec1,vec2
         character(:),allocatable :: res
 
         real :: n1, n2
 
-        n1=sqrt(norm2(vec1))
-        n2=sqrt(norm2(vec2))
+        n1=norm2(vec1)
+        n2=norm2(vec2)
 
-        res = num2str(sum(vec1*vec2)/n1/n2)//'( '//num2str(n1)//' , '//num2str(n2)//' )'
+        res = num2str(acos(sum(vec1*vec2)/n1/n2)*180./r_pi,o_format='(f6.2)')// &
+        ' ( '//num2str(n1,o_format='(es10.4)')//' , '//num2str(n2,o_format='(es10.4)')//' )'
 
     end function
 

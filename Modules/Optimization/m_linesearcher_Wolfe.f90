@@ -303,11 +303,15 @@ use m_Kernel
 
         character(*),parameter :: fmt='(x,5x,2x,i5,2x,i5,2x,es8.2,7x,es10.4,24x,es9.2,3x,l,x,l)'
 
-        open(16,file=dir_out//'optimization.log',position='append',action='write')
-        write(16,fmt)  ls%isearch, ls%igradient, ls%alpha, pert%f, pert%g_dot_d, if_1st_cond, if_2nd_cond
-        !write(16,'(a)') 'pert%f (pert%f-curr%f)/α pert%g·d curr%g·d'
-        !write(16,*) pert%f, (pert%f-curr%f)/self%alpha, pert%g_dot_d, curr%g_dot_d
-        close(16)
+        if(mpiworld%is_master) then
+            
+            open(16,file=dir_out//'optimization.log',position='append',action='write')
+            write(16,fmt)  ls%isearch, ls%igradient, ls%alpha, pert%f, pert%g_dot_d, if_1st_cond, if_2nd_cond
+            !write(16,'(a)') 'pert%f (pert%f-curr%f)/α pert%g·d curr%g·d'
+            !write(16,*) pert%f, (pert%f-curr%f)/self%alpha, pert%g_dot_d, curr%g_dot_d
+            close(16)
+
+        endif
 
     end subroutine
     

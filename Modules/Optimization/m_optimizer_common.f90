@@ -57,7 +57,7 @@ use m_linesearcher
         character(*) :: task
         character(*),optional :: o_title
 
-        character(*),parameter :: fmt='(x,i5,2x,5x,2x,i5,2x,es8.2,7x,es10.4,2x,f5.1,5x,f5.1,7x,es9.2)'
+        character(*),parameter :: fmt='(x,i5,2x,5x,2x,i5,10x,7x,es10.4,2x,f5.1,5x,f5.1,7x,es9.2)'
         
         if(mpiworld%is_master) then
         
@@ -75,16 +75,16 @@ use m_linesearcher
                 write(16,*           ) '     Linesearch scaler        =',  ls%scaler
                 write(16,'(a,es10.4)') '     Initial gradient norm2 (║g0║₂²)  =',  g0norm2
                 write(16,'(a)'       ) ' **********************************************************************'
-                write(16,'(a)'       ) '  Iter#         Grad#     α    curr%       f    f/f0(%) ║g║₂²/║g0║₂²(%)   g·d'
+                write(16,'(a)'       ) '  Iter#         Grad#          curr%       f    f/f0(%) ║g║₂²/║g0║₂²(%)   g·d'
                 write(16,'(a)'       ) '         LinS#  Grad#     α    pert%       f                              g·d   Wolfe_cond'
                 write(16,'(a)'       ) ' ========================================================================================='
-                write(16,fmt)  iterate, ls%igradient, ls%alpha, curr%f, curr%f/f0*100., norm2(curr%g)/g0norm2*100., curr%g_dot_d
+                write(16,fmt)  iterate, ls%igradient, curr%f, curr%f/f0*100., norm2(curr%g)/g0norm2*100., curr%g_dot_d
                 close(16)
                 
             case('update')
                 open(16,file=dir_out//'optimization.log',position='append',action='write')
                 write(16,'(a)') ' -----------------------------------------------------------------------------------------'
-                write(16,fmt)  iterate, ls%igradient, ls%alpha, curr%f, curr%f/f0*100., norm2(curr%g)/g0norm2*100., curr%g_dot_d
+                write(16,fmt)  iterate, ls%igradient, curr%f, curr%f/f0*100., norm2(curr%g)/g0norm2*100., curr%g_dot_d
                 close(16)
                 
                 call param%transform('x->m',o_x=curr%x)
