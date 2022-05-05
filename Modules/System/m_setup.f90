@@ -164,10 +164,10 @@ use m_message
         logical :: exist
 
         if(find(key,o_alias)/='') then
-            call hud(key//'is found in '//file)
+            call hud(key//' is found in '//file)
             exist=.true.
         else
-            call hud(key//'is NOT found in '//file)
+            call hud(key//' is NOT found in '//file)
             exist=.false.
         endif
         

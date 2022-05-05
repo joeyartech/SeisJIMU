@@ -9,7 +9,7 @@ use m_linesearcher
     real,dimension(:,:,:,:),allocatable :: prev_d  !descent direction of previous point (no need for another t_querypoint instance)
 
     real f0 !initial fobjective
-    real g0norm2 !initial gradient norm2
+    real g0norm1 !initial gradient norm2
     
     !counter
     integer :: iterate=0 !number of iteration performed 
@@ -29,7 +29,7 @@ use m_linesearcher
 
         !initial values
         f0=curr%f
-        g0norm2=norm2(curr%g)
+        g0norm1=sum(abs(curr%g))
         
         !perturbed point
         pert=>qp1
@@ -57,7 +57,7 @@ use m_linesearcher
         character(*) :: task
         character(*),optional :: o_title
 
-        character(*),parameter :: fmt='(x,i5,2x,5x,2x,i5,10x,7x,es10.4,2x,f5.1,5x,f5.1,7x,es9.2)'
+        character(*),parameter :: fmt='(x,i5,2x,5x,2x,i5,10x,7x,es10.4,x,f7.3,2x,f7.3,5x,es9.2)'
         
         if(mpiworld%is_master) then
         
@@ -72,25 +72,26 @@ use m_linesearcher
                 write(16,'(a,i5)'    ) '     Max iterates allowed     =',  max_iterate
                 write(16,'(a,i5)'    ) '     Max linesearches allowed =',  ls%max_search
                 write(16,'(a,i5)'    ) '     Max gradients allowed    =',  ls%max_gradient
-                write(16,*           ) '     Linesearch scaler        =',  ls%scaler
-                write(16,'(a,es10.4)') '     Initial gradient norm2 (║g0║₂²)  =',  g0norm2
+                write(16,'(a,es14.8)') '     Linesearch scaler        =',  ls%scaler
+                write(16,'(a,es10.4)') '     Initial gradient L1norm (║g0║₁)  =',  g0norm1
                 write(16,'(a)'       ) ' **********************************************************************'
-                write(16,'(a)'       ) '  Iter#         Grad#          curr%       f    f/f0(%) ║g║₂²/║g0║₂²(%)   g·d'
-                write(16,'(a)'       ) '         LinS#  Grad#     α    pert%       f                              g·d   Wolfe_cond'
-                write(16,'(a)'       ) ' ========================================================================================='
-                write(16,fmt)  iterate, ls%igradient, curr%f, curr%f/f0*100., norm2(curr%g)/g0norm2*100., curr%g_dot_d
+                write(16,'(a)'       ) '         LinS#  Grad#     α    pert%       f                            g·d   Wolfe_cond'
+                write(16,'(a)'       ) '  Iter#         Grad#          curr%       f    f/f0(%) ║g║₁/║g0║₁(%)   g·d'
+                write(16,'(a)'       ) ' ========================================================================================'
+                write(16,fmt)  iterate, ls%igradient, curr%f, curr%f/f0*100., sum(abs(curr%g))/g0norm1*100., curr%g_dot_d
                 close(16)
                 
             case('update')
                 open(16,file=dir_out//'optimization.log',position='append',action='write')
-                write(16,'(a)') ' -----------------------------------------------------------------------------------------'
-                write(16,fmt)  iterate, ls%igradient, curr%f, curr%f/f0*100., norm2(curr%g)/g0norm2*100., curr%g_dot_d
+                write(16,fmt)  iterate, ls%igradient, curr%f, curr%f/f0*100., sum(abs(curr%g))/g0norm1*100., curr%g_dot_d
+                write(16,'(a)') ' ----------------------------------------------------------------------------------------'
                 close(16)
                 
                 call param%transform('x->m',o_x=curr%x)
                 call m%write(o_suffix='_Iter'//int2str(iterate))
                 call sysio_write('descent_Iter'//int2str(iterate),curr%d,size(curr%d))
                 call shot%write('dsyn_Iter'//int2str(iterate)//'_',shot%dsyn)
+                if(allocated(shot%dsyn_aux)) call shot%write('dsyn_aux_Iter'//int2str(iterate)//'_',shot%dsyn_aux)
 
                 if(allocated(m%correlate)) then
                     call sysio_write('correlate_Iter'//int2str(iterate),m%correlate,size(m%correlate))

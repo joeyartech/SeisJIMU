@@ -50,7 +50,7 @@ use m_Kernel
         integer :: isearch !number of linesearch performed in each iterate
         integer :: max_search !max number of linesearch allowed per iteration
         integer :: igradient=1 !total number of gradient computed
-        integer :: max_gradient=30 !max total number of gradient computation allowed
+        integer :: max_gradient !max total number of gradient computation allowed
     
         contains
         procedure :: init
@@ -99,7 +99,7 @@ use m_Kernel
         
         ! if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Initial alphaL/alpha/alphaR =',alphaL,alpha,alphaR
         call hud('Initial alpha = '//num2str(self%alpha))
-        call hud('Current qp%f, ║g║₂² = '//num2str(curr%f)//', '//num2str(norm2(curr%g)))
+        call hud('Current qp%f, ║g║₁ = '//num2str(curr%f)//', '//num2str(sum(abs(curr%g))))
 
         !save gradients
         if(present(o_gradient_history)) then
@@ -143,11 +143,11 @@ use m_Kernel
                 i=i+1; if(i>l) i=1
             endif
 
-            call hud('Iterate.Linesearch.Gradient# = '//num2str(iterate)//'.'//num2str(self%isearch)//'.'//num2str(self%igradient))
+            call hud('Iterate.LineSearch.Gradient# = '//num2str(iterate)//'.'//num2str(self%isearch)//'.'//num2str(self%igradient))
 
             !if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Linesearch alphaL/alpha/alphaR =',alphaL,alpha,alphaR
-            call hud('alpha = '//num2str(self%alpha)//' in ['//num2str(self%alphaL)//','//num2str(self%alphaR)//']')
-            call hud('Perturb qp%f, ║g║₂² = '//num2str(pert%f)//', '//num2str(norm2(pert%g)))
+            call hud('alpha (α) = '//num2str(self%alpha)//' in ['//num2str(self%alphaL)//','//num2str(self%alphaR)//']')
+            call hud('Perturb qp%f, ║g║₁ = '//num2str(pert%f)//', '//num2str(sum(abs(pert%g))))
             
             !Wolfe conditions
             if_1st_cond = (pert%f <= curr%f+c1*self%alpha*curr%g_dot_d) !sufficient descent condition
@@ -170,11 +170,12 @@ use m_Kernel
                 exit loop
             endif
             
-            if(self%isearch<self%max_search) then
+            !bracketing-dichotomy strategy to find alpha
+            if(self%isearch<self%max_search-1) then
             
                 !1st condition BAD => [ <-]
                 if(.not. if_1st_cond) then
-                    call hud("Sufficient decrease condition is not satified. Now try a smaller alpha")
+                    call hud("Sufficient decrease condition NOT satified. Now try a smaller alpha (α)")
                     self%result='perturb'
                     self%alphaR=self%alpha
                     self%alpha=0.5*(self%alphaL+self%alphaR) !shrink the search interval
@@ -182,7 +183,7 @@ use m_Kernel
                 
                 !2nd condition BAD => [-> ]
                 if(if_1st_cond .and. .not. if_2nd_cond) then
-                    call hud("Curvature condition is not satified. Now try a larger alpha")
+                    call hud("Curvature condition is NOT satified. Now try a larger alpha (α)")
                     self%result='perturb'
                     self%alphaL=self%alpha
                     if(self%alphaR < alphaR0) then
@@ -194,22 +195,37 @@ use m_Kernel
                 
             endif
 
-            if(self%isearch==self%max_search) then
-            
-                !1st condition BAD => failure
+            !exit loop, 1st condition has priority over 2nd condition
+            !unless re-use alphaL if necessary
+            if(self%isearch==self%max_search-1) then
                 if(.not. if_1st_cond) then
-                    call hud("Linesearch failure: can't find good alpha.")
-                    self%result='failure'
-                    exit loop
-                endif
+                    call hud("Sufficient decrease condition NOT satified && LinS# = max_search-1.")
+                    if(self%alphaL>alphaL0) then
+                        call hud("Redo linesearch with alpha = alphaL")
+                        self%alpha=self%alphaL
+                    else
+                        call hud("alphaL==alphaL0. No need to do the last search.")
+                        call hud("Linesearch failure: can't find good alpha.")
+                        self%result='failure'
+                        exit loop
+                    endif
                 
-                !2nd condition BAD => use alpha
-                if(.not. if_2nd_cond) then
-                    call hud("Maximum linesearch number reached. Use alpha although curvature condition is not satisfied")
+                else
+                    if(.not. if_2nd_cond) call hud("LinS# = max_search-1. Use alpha although curvature condition is not satisfied")
                     call hud('Enter new iterate')
                     self%result='success'
                     exit loop
+
                 endif
+
+            endif
+
+            !last
+            if(self%isearch==self%max_search) then
+                if(.not. if_2nd_cond) call hud("Linesearch max_search reached. Use alpha although curvature condition is not satisfied")
+                call hud('Enter new iterate')
+                self%result='success'
+                exit loop
                 
             endif
 
@@ -301,7 +317,7 @@ use m_Kernel
         class(t_linesearcher) :: self
         type(t_querypoint) :: pert
 
-        character(*),parameter :: fmt='(x,5x,2x,i5,2x,i5,2x,es8.2,7x,es10.4,24x,es9.2,3x,l,x,l)'
+        character(*),parameter :: fmt='(x,5x,2x,i5,2x,i5,2x,es8.2,7x,es10.4,22x,es9.2,3x,l,x,l)'
 
         if(mpiworld%is_master) then
             

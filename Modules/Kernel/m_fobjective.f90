@@ -350,7 +350,8 @@ use m_preconditioner
         real,dimension(:,:,:),allocatable :: mask
 
         real,dimension(:,:,:),allocatable ::  FWI, RE, DR
-        real,dimension(:),allocatable :: tmp
+        !real,dimension(:),allocatable :: tmp
+        real,dimension(:),allocatable :: precond
 
         !update model
         if(either(oif_update_m,.true.,present(oif_update_m))) then
@@ -388,6 +389,15 @@ use m_preconditioner
             where(m%is_freeze_zone) m%gradient(:,:,:,i)=0.
         enddo
 
+print*,'Im here'
+if(setup%get_bool('IF_STICK_TO_RE',o_default='false')) then
+call hud('Stick to RE: qp%pg -> RE')
+call alloc(qp%pg,m%nz,m%nx,m%ny,1)
+qp%pg(:,:,:,1) = (m%correlate(:,:,:,2)+m%correlate(:,:,:,3))
+where(m%is_freeze_zone) qp%pg(:,:,:,1)=0.
+endif
+print*,'Im here2'
+
         !soft mask
         smask=setup%get_file('GRADIENT_SOFT_MASK','MASK')
         if(smask/='') then
@@ -415,6 +425,28 @@ use m_preconditioner
         !preconditioner
         call preco%update
         call preco%apply(qp%g,qp%pg)
+
+if(setup%get_bool('IF_STICK_TO_RE',o_default='false')) then
+!transform to parameter space
+qp%pg(:,:,:,1) = qp%pg(:,:,:,1)*2*m%rho*m%vp
+!normaliz by allowed vp range
+qp%pg=qp%pg*param%pars(1)%range
+!should be in good direction
+if(sum(qp%pg*qp%g)<0.) then
+    call hud('flip sign of qp%pg (RE) tobe in good direction')
+    qp%pg=-qp%pg
+endif
+call hud('L1norm(qp%pg) before precond: '//num2str(sum(abs(qp%pg))))
+!depth precond
+call alloc(precond,m%nz)
+precond=[(((iz-1)*m%dz)**1.,iz=1,m%nz)]
+do iy=1,m%ny; do ix=1,m%nx
+    qp%pg(:,ix,iy,1)=qp%pg(:,ix,iy,1)*precond
+enddo; enddo
+call hud('L1norm(qp%pg) after precond: '//num2str(sum(abs(qp%pg))))
+!scale to gradient magnitude
+qp%pg = sum(abs(qp%g))/sum(abs(qp%pg)) *qp%pg
+endif
 
         !save some RAM
         call dealloc(m%gradient,m%energy)

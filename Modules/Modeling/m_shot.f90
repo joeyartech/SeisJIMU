@@ -53,6 +53,7 @@ use m_model
 
         real,dimension(:,:),allocatable :: dobs !observed seismogram
         real,dimension(:,:),allocatable :: dsyn !synthetic seismogram
+        real,dimension(:,:),allocatable :: dsyn_aux !auxiliary synthetic seismogram
         !real,dimension(:,:),allocatable :: dres !residual seismogram
         real,dimension(:,:),allocatable :: dadj !adjoint source seismogram
         

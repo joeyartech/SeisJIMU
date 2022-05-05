@@ -1,7 +1,8 @@
 !adjoint eqn from FWI: Aᴴa = Rᴴ(d-u)
 !imaging condition I := a★u (~FWI gradient),
-!which leads to Rδu w/ same reflection phases as in d
-!but minus signs in front of the RE terms of the WPI gradient
+!leading to similar phases in Rᴴδu and Rᴴ(d-u) (data residuals)
+!therefore, Rᴴδu is a migrated-then-demigrated version of Rᴴ(d-u) (simpler, smoother)
+!on the other hand, this choice gives a minus signs in front of the RE terms of the WPI gradient
 
 !L2 norm of image
 !I(x) = ∫ a(x,t)u(x,t) dt
@@ -201,6 +202,7 @@ use m_resampler
         call ppg%forward(fld_u);                    call fld_u%acquire
 
         call shot%write('Ru_',shot%dsyn)
+        shot%dsyn_aux=shot%dsyn
 
         call wei%update!('_4FWI')
 
@@ -485,6 +487,7 @@ use m_resampler
         call ppg%forward_scattering(fld_du,fld_u,W2Idt)
         call fld_du%acquire; call shot%write('Rdu_',shot%dsyn)
         call fld_u%acquire;  call shot%write('Ru_', shot%dsyn)
+        shot%dsyn_aux=shot%dsyn
 
         !compute FWI data misfit C_data=║Δd║²
         call wei%update
