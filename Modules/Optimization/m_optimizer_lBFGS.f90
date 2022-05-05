@@ -24,7 +24,7 @@ use m_optimizer_common
     ! Algorithm 7.4 & 7.5 p. 178-179 !
     
     character(*),parameter :: info='Optimization: limited-memory BFGS'//s_NL// &
-                                   'with preconditioned gradients'
+                                   'with preconditioned gradient'
 
     !history of vector pairs
     real,dimension(:,:),allocatable :: sk,yk
@@ -37,7 +37,7 @@ use m_optimizer_common
         type(t_querypoint),pointer :: tmp
         ! real nom, denom
 
-        integer m !declaration here can avoid conflict with m in m_model.f90
+        integer m !not to confuse with m in m_model.f90
         real,dimension(:),allocatable :: q, alpha, rho, r
 
 
@@ -55,7 +55,7 @@ use m_optimizer_common
         call hud('============ START OPTIMIZATON ============')
         call chp%init('FWI_shotlist_optimizer','Iter#',oif_fuse=.true.)
 
-        call optimizer_write('start','LIMITED MEMORY BFGS ALGORITHM')
+        call optimizer_write('start','LIMITED-MEMORY BFGS ALGORITHM')
 
         !iteration loop
         loop: do iterate=1,max_iterate
@@ -89,9 +89,9 @@ use m_optimizer_common
                 call switch_curr_pert
 
 
-                !!!!!!!!!!!!!!!!!!!
-                !! Precond LBFGS !!
-                !!!!!!!!!!!!!!!!!!!
+                !!!!!!!!!!!!!!!!!!!!!!!!!!
+                !! Preconditioned LBFGS !!
+                !!!!!!!!!!!!!!!!!!!!!!!!!!
                 !update sk,yk pairs
                 m=min(iterate,l)
                 sk(:,m)=reshape(curr%x,[param%n])-sk(:,m)
@@ -130,6 +130,7 @@ use m_optimizer_common
                     r    = r + (alpha(i)-beta)*sk(:,i)
                 enddo
 
+                !new descent direction
                 curr%d = reshape(-r,[param%n1,param%n2,param%n3,param%npars])
 
 ! print*,gamma,gamma_num,gamma_denom

@@ -142,7 +142,7 @@ use m_Modeling
 
             case ('vs' )
                 if(is_AC) then
-                    call hud('vs parameter from PARAMETER is neglected as the PDE is ACoustic.')
+                    call hud('vs in PARAMETER is neglected as the PDE is ACoustic.')
                     cycle loop
                 endif
                 self%pars(i)%name='vs'
@@ -150,7 +150,7 @@ use m_Modeling
 
             case ('rho')
                 if(is_empirical) then
-                    call hud('rho parameter from PARAMETER is neglected as EMPIRICAL_LAW is read (rho becomes a passive parameter).')
+                    call hud('rho in PARAMETER is neglected as EMPIRICAL_LAW is read (rho becomes a passive parameter).')
                     cycle loop
                 endif
                 self%pars(i)%name='rho'
@@ -209,7 +209,7 @@ use m_Modeling
                         end select
                 enddo
 
-            else !x<-m
+            else !x->m
                 do i=1,self%npars
                     select case (self%pars(i)%name)
                     case ('vp' ); m%vp = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min

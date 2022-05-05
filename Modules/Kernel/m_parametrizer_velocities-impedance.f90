@@ -130,7 +130,7 @@ use m_Modeling
 
             case ('vs' )
                 if(is_AC) then
-                    call hud('vs parameter from PARAMETER is neglected as the PDE is ACoustic.')
+                    call hud('vs in PARAMETER is neglected as the PDE is ACoustic.')
                     cycle loop
                 endif
                 self%pars(i)%name='vs'
@@ -138,7 +138,7 @@ use m_Modeling
 
             case ('ip')
                 if(is_empirical) then
-                    call hud('ip parameter from PARAMETER is neglected as EMPIRICAL_LAW is read (ip becomes a passive parameter).')
+                    call hud('ip in PARAMETER is neglected as EMPIRICAL_LAW is read (ip becomes a passive parameter).')
                     cycle loop
                 endif
                 self%pars(i)%name='ip'
@@ -165,7 +165,6 @@ use m_Modeling
         self%d1=m%dz
         self%d2=m%dx
         self%d3=m%dy
-        self%cell_volume_in_Pa=self%d1*self%d2*self%d3*m%ref_kpa
 
     end subroutine
 
@@ -174,6 +173,8 @@ use m_Modeling
         class(t_parametrizer) :: self
         character(4),optional :: o_dir
         real,dimension(:,:,:,:),allocatable,optional :: o_x,o_xprior,o_g
+
+        real,dimension(:,:,:),allocatable :: tmp_vp
 
         if(present(o_x)) then
             call alloc(o_x,self%n1,self%n2,self%n3,self%npars,oif_protect=.true.)
@@ -187,19 +188,19 @@ use m_Modeling
                         end select
                 enddo
 
-            else
+            else !x->m
                 do i=1,self%npars
                     select case (self%pars(i)%name)
                     case ('vp')
-                        call alloc(tmp_vp,m%nz,m%nx,m%ny,initialize=.false.)
-                        tmp_vp = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
-                        m%rho      = m%vp*m%rho      / tmp_vp
-                        m%vp = tmp_vp
+                        tmp_vp = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min  !implicit allocation
+                        m%rho = m%vp*m%rho / tmp_vp
+                        m%vp  = tmp_vp
                         deallocate(tmp_vp)
-                    case ('vs'); m%vs  =  o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
+                    case ('vs'); m%vs = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
                     case ('ip'); m%rho = (o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min)/m%vp
                     end select
                 enddo
+
                 ! + gardner
                 if(is_gardner) m%rho = a*m%vp**b
                 call m%apply_freeze_zone
@@ -218,6 +219,7 @@ use m_Modeling
                 case ('ip'); o_x(:,:,:,i) = (m%vp_prior*m%rho_prior-self%pars(i)%min)/self%pars(i)%range
                 end select
             enddo
+
         endif
 
         if(present(o_g)) then

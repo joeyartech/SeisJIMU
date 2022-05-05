@@ -98,7 +98,7 @@ use m_optimizer_common
                 beta=nom/denom
                 
                 !Safeguard 
-                if((beta.ge.1e5).or.(beta.le.-1e5)) beta=0.
+                if((beta >= 1e5).or.(beta <= -1e5)) beta=0.
                 
                 !new descent direction
                 curr%d=-curr%pg+beta*prev_d

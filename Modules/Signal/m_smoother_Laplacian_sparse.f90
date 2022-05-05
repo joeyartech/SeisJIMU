@@ -1,8 +1,8 @@
-module m_smoother_laplacian_sparse
+module m_smoother_Laplacian_sparse
 use m_System
 
     private
-    public :: smoother_laplacian_init, smoother_laplacian_extend_mirror, smoother_laplacian_pseudo_stationary, smoother_laplacian_pseudo_nonstationary
+    public :: smoother_Laplacian_init, smoother_Laplacian_extend_mirror, smoother_Laplacian_pseudo_stationary, smoother_Laplacian_pseudo_nonstationary
     
     integer :: nz,nx,ny, iaddmirror
     real    :: dz,dx,dy
@@ -90,7 +90,7 @@ use m_System
     end subroutine
     
     
-    subroutine smoother_laplacian_init(n,d,freq_,o_addmirror,o_frac,o_preserve)
+    subroutine smoother_Laplacian_init(n,d,freq_,o_addmirror,o_frac,o_preserve)
         integer,dimension(3) :: n
         real,dimension(3) :: d
         
@@ -131,7 +131,7 @@ use m_System
 
     end subroutine
     
-    subroutine smoother_laplacian_extend_mirror(grad,itopo)
+    subroutine smoother_Laplacian_extend_mirror(grad,itopo)
     !to avoid leakage into the mask zone after smoothing
     !this subroutine mirrors the grad wrt midway between points itopo+iaddmirror-1 & itopo+iaddmirror-1 in depth
     !then another subroutine cleans the mask zone later
@@ -150,7 +150,7 @@ use m_System
     !Use convolutions of 1D Laplacian functions on x,y,z axes to roughly approx the 3D Laplacian function
     !Note that high-dimensional Laplacian function can't be decomposed as convolutions of 1D Laplacian functions, unlike Gaussian functions..
     !True 2D Laplacian function has a circular shape whereas this approx function has a diamond shape.   
-    subroutine smoother_laplacian_pseudo_stationary(grad,b)
+    subroutine smoother_Laplacian_pseudo_stationary(grad,b)
         real,dimension(nz,nx,ny) :: grad
         real,dimension(3) :: b
         
@@ -190,7 +190,7 @@ use m_System
         
     end subroutine
     
-    subroutine smoother_laplacian_pseudo_nonstationary(grad,velocity)
+    subroutine smoother_Laplacian_pseudo_nonstationary(grad,velocity)
         real,dimension(nz,nx,ny) :: grad,velocity
         
         real,dimension(:),allocatable :: vector,frac_lambda
