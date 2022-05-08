@@ -38,8 +38,6 @@ use m_Modeling
         integer :: npars
         type(t_string),dimension(:),allocatable :: empirical
 
-        logical,dimension(:,:,:,:),allocatable :: is_freeze_zone
-
         integer :: n1,n2,n3,n
         real :: d1,d2,d3
         
@@ -51,12 +49,13 @@ use m_Modeling
 
     type(t_parametrizer),public :: param
 
-    integer :: index_vp
+    integer :: index_vp !index of vp in param list
 
     logical :: is_empirical=.false., is_gardner=.false. !, is_castagna
-    !logical :: is_AC=.false., is_EL=.false.
 
     real :: a,b
+
+    real,dimension(:,:,:),allocatable :: freeze_zone_in_m, freeze_zone_in_x
 
     contains
     
@@ -157,6 +156,8 @@ use m_Modeling
             nz_=m%nz,   dz_=m%dz, &
             nt_=self%n1,dt_=self%d1)
 
+        call hud('pseudotime dimension nt, dt = '//num2str(self%n1)//' , '//num2str(self%d1))
+
         self%n2=m%nx
         self%n3=m%ny
         self%n=self%n1*self%n2*self%n3*self%npars
@@ -164,17 +165,20 @@ use m_Modeling
         self%d2=m%dx
         self%d3=m%dy
 
+        call alloc(freeze_zone_in_m,m%nz,m%nx,m%ny,o_init=1.)
+        where(m%is_freeze_zone) freeze_zone_in_m=0.
+        call pseudotime_z2t(freeze_zone_in_m,freeze_zone_in_x,o_v_z=m%vp)
+        deallocate(freeze_zone_in_m)
+
     end subroutine
     
     subroutine transform(self,o_dir,o_x,o_xprior,o_g)
         class(t_parametrizer) :: self
         character(4),optional :: o_dir
         real,dimension(:,:,:,:),allocatable,optional :: o_x,o_xprior,o_g
-
-        real,dimension(:,:,:),allocatable :: v_t
+        
+        real,dimension(:,:,:),allocatable :: v_t !velocity model in pseudotime domain
         real,dimension(:,:,:),allocatable :: tmp
-
-        v_t=o_x(:,:,:,index_vp)*self%pars(i)%range +self%pars(i)%min
 
         if(present(o_x)) then
             call alloc(o_x,self%n1,self%n2,self%n3,self%npars,oif_protect=.true.)
@@ -183,8 +187,8 @@ use m_Modeling
                 do i=1,self%npars
                     select case (self%pars(i)%name)
                     case ('vp' )
-                        call pseudotime_z2t(m%vp,tmp)
-                        o_x(:,:,:,i) = (tmp-self%pars(i)%min)/self%pars(i)%range
+                        call pseudotime_z2t(m%vp,v_t)
+                        o_x(:,:,:,i) = (v_t-self%pars(i)%min)/self%pars(i)%range
                     case ('rho')
                         call pseudotime_z2t(m%rho,tmp,o_v_z=m%vp)
                         o_x(:,:,:,i) = (tmp-self%pars(i)%min)/self%pars(i)%range
@@ -192,13 +196,15 @@ use m_Modeling
                 enddo
 
             else !x->m, t->z
+                !first convert velocity
+                v_t=o_x(:,:,:,index_vp)*self%pars(index_vp)%range +self%pars(index_vp)%min
                 call pseudotime_t2z(v_t,m%vp)
                 
+                !then convert other parameters
                 do i=1,self%npars
                     select case (self%pars(i)%name)
                     case ('rho')
                         call pseudotime_t2z(o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min,m%rho, o_v_t=v_t)
-                        !therefore v_t must has been converted from o_x
                     end select
                 enddo
                 ! + gardner
@@ -228,6 +234,8 @@ use m_Modeling
             call alloc(o_g,self%n1,self%n2,self%n3,self%npars)
             !m%gradient(:,:,:,1) = grho
             !m%gradient(:,:,:,2) = gkpa
+
+            call pseudotime_z2t(m%vp,v_t)
 
             !acoustic
             ! if(is_AC .and. .not. is_empirical) then
@@ -259,25 +267,24 @@ use m_Modeling
                 o_g(:,:,:,i)=o_g(:,:,:,i)*param%pars(i)%range
             enddo
             
-            ! where (param%is_freeze_zone) g=0.
+            !apply bathymetry
+            do i=1,param%npars
+                o_g(:,:,:,i)=o_g(:,:,:,i)*freeze_zone_in_x
+            enddo
+
         endif
         
-        deallocate(tmp,v_t)
-
-!deprecated
-!         if(present(o_pg)) then
-!             call alloc(o_pg,param%n1,param%n2,param%n3,param%npars,oif_protect=.true.)
-!             call transform_gradient(preco%preco,o_preco)
-!         endif
+        call dealloc(tmp,v_t)
 
     end subroutine
 
     subroutine transform_preconditioner(self,preco_in_m,preco_in_x)
         class(t_parametrizer) :: self
         real,dimension(m%nz,m%nx,m%ny) :: preco_in_m
-        real,dimension(self%n1,self%n2,self%n3) :: preco_in_x
+        real,dimension(:,:,:),allocatable :: preco_in_x
 
-        preco_in_x=preco_in_m
+        call pseudotime_z2t(preco_in_m,preco_in_x,o_v_z=m%vp)
+
     end subroutine
 
 end module

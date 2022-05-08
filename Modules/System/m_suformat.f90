@@ -442,7 +442,7 @@ use m_sysio
 
         call self%init(ns,ntr,hdr1%dt*1e-6)
 
-        if(present(o_sindex)) write(*,*) 'Shot# '//o_sindex//' will read '//num2str(self%ntr)//' traces, each trace has '//num2str(self%ns)//' samples.'       
+        if(present(o_sindex)) write(*,*) o_sindex//' will read '//num2str(self%ntr)//' traces, each trace has '//num2str(self%ns)//' samples.'       
         
         open(11,file=dir_in//file,action='read',access='stream') !access='direct',recl=4*(ns+60))
         read(11) (self%hdrs(i),self%trs(:,i), i=1,self%ntr)
@@ -458,7 +458,7 @@ use m_sysio
         character(*),optional :: o_sindex
         character(*),optional :: o_mode
 
-        if(present(o_sindex)) write(*,*) 'Shot# '//o_sindex//' will write '//num2str(self%ntr)//' traces, each trace has '//num2str(self%ns)//' samples.'
+        if(present(o_sindex)) write(*,*) o_sindex//' will write '//num2str(self%ntr)//' traces, each trace has '//num2str(self%ns)//' samples.'
 
         call sysio_rm(file//'.su')
 

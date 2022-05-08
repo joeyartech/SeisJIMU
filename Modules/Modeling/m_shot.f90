@@ -39,7 +39,7 @@ use m_model
     
     type,public :: t_shot
         integer :: index
-        character(4) :: sindex
+        character(8) :: sindex
         
         real,dimension(:),allocatable :: wavelet
         integer :: nt
@@ -65,23 +65,24 @@ use m_model
         procedure :: set_var_space
         procedure :: update_wavelet
         procedure :: update_adjsource
+        procedure :: copy
         procedure :: write
         
     end type
     
     type(t_shot),public :: shot
+
+    !shots to be saved on disk
+    integer,public :: shot_n_copies=0
+    type(t_shot),dimension(:),allocatable,public :: shot_copies
     
     contains
     
     subroutine init(self,index)
         class(t_shot) :: self
-        !character(*) :: sindex
-
-        !self%sindex=sindex
-        !self%index=str2int(sindex)
 
         self%index=index
-        self%sindex=num2str(index,'(i0.4)') !add leading zeros
+        self%sindex='Shot'//num2str(index,'(i0.4)') !add leading zeros
     
     end subroutine
 
@@ -133,7 +134,7 @@ use m_model
         character(:),allocatable :: fstoplo,fpasslo,fpasshi,fstophi
         character(:),allocatable :: astoplo,apasslo,apasshi,astophi
 
-        call sudata%read(setup%get_str('FILE_DATA_PREFIX')//self%sindex//'.su',self%sindex)
+        call sudata%read(setup%get_str('FILE_DATA_PREFIX')//self%sindex(5:8)//'.su',self%sindex)
 
         shot%nrcv=sudata%ntr
         if(allocated(self%rcv))deallocate(self%rcv)
@@ -252,10 +253,10 @@ use m_model
         if(file=='') then !not given
             if(setup%get_str('WAVELET_TYPE',o_default='sinexp')=='sinexp') then
                 call hud('Use filtered sinexp wavelet')
-                self%wavelet=sinexp(self%nt,self%dt,self%fpeak)
+                self%wavelet=wavelet_sinexp(self%nt,self%dt,self%fpeak)
             else
                 call hud('Use Ricker wavelet')
-                self%wavelet=ricker(self%nt,self%dt,self%fpeak)
+                self%wavelet=wavelet_ricker(self%nt,self%dt,self%fpeak)
             endif
 
         else !wavelet file exists
@@ -379,7 +380,7 @@ use m_model
 
         if(mpiworld%is_master) then
             write(*,*)'================================='
-            write(*,*)'Shot# '//self%sindex//' info:'
+            write(*,*) self%sindex//' info:'
             write(*,*)'================================='
             write(*,*)'  nt,dt:',self%nt,self%dt
             write(*,*)'---------------------------------'
@@ -412,7 +413,7 @@ use m_model
         
         call matchfilter_apply_to_data(self%dsyn)
 
-        if(mpiworld%is_master) call suformat_write('wavelet',self%wavelet,self%nt,1,self%dt,o_mode='append')
+        if(mpiworld%is_master) call suformat_write('updated_wavelet',self%wavelet,self%nt,1,self%dt,o_mode='append')
 
     end subroutine
     
@@ -786,6 +787,74 @@ use m_model
 
     ! end subroutine
 
+    subroutine copy(self)
+    use m_shotlist
+        class(t_shot) :: self
+        
+        type(t_string),dimension(:),allocatable :: slist
+        type(t_string),dimension(:),allocatable :: tmp
+        logical :: if_copy
+        
+        if(.not.allocated(shot_copies)) allocate(shot_copies(shls%nshots_per_processor))
+
+        !read which shots to write per iterate
+        !default to the 1st and interm shots
+        tmp=split(shls%all)
+        slist=setup%get_strs('SHOT_WRITE_PER_ITERATE',&
+            o_default='1 '// either( tmp(size(tmp)/2+1)%s, '', size(tmp)>1 ))
+        deallocate(tmp)
+
+        if_copy=.false.
+        do i=1,size(slist)
+            if( str2int(self%sindex(5:8)) == str2int(slist(i)%s) ) then !bingo
+                if_copy=.true.
+                exit
+            endif
+        enddo
+
+        if(if_copy) then
+
+            shot_n_copies=shot_n_copies+1
+            
+            !copy-paste
+            associate(copy=>shot_copies(shot_n_copies))
+                copy%index=self%index
+                copy%sindex=self%sindex
+                
+                !source wavelet
+                copy%wavelet=self%wavelet
+                copy%nt=self%nt
+                copy%dt=self%dt
+                copy%fmin=self%fmin
+                copy%fmax=self%fmax
+                copy%fpeak=self%fpeak
+
+                !source position
+                copy%src%z=self%src%z
+                copy%src%x=self%src%x
+                copy%src%y=self%src%y
+                copy%src%comp=self%src%comp
+                
+                !receiver positions
+                copy%nrcv=self%nrcv
+                if(allocated(copy%rcv)) deallocate(copy%rcv)
+                allocate(copy%rcv( self%nrcv ))
+
+                copy%rcv(:)%z=self%rcv(:)%z
+                copy%rcv(:)%x=self%rcv(:)%x
+                copy%rcv(:)%y=self%rcv(:)%y
+                copy%rcv(:)%comp=self%rcv(:)%comp
+                copy%rcv(:)%is_badtrace=self%rcv(:)%is_badtrace
+
+                !data
+                copy%dsyn = self%dsyn
+        
+            end associate
+
+        endif
+
+    end subroutine
+
     subroutine write(self,file,data)
         class(t_shot) :: self
         character(*) :: file
@@ -945,14 +1014,13 @@ use m_model
         character(:),allocatable :: str
 
         !check source positions
-        str='Shot# '//shot%sindex//' : '
+        str=shot%sindex//' : '
         if(shot%src%z<0.) then
             shot%src%z = m%dz
             call hud(str//'sz above top bnd of model! Set sz = dz.',mpiworld%iproc)
         endif
         if(shot%src%z>(m%nz-1)*m%dz) then
             shot%src%z = (m%nz-2)*m%dz
-            call hud(str//'sz below bottom bnd of model! Set sz = (nz-2)*dz.',mpiworld%iproc)
         endif
         if(shot%src%x<0.) then
             shot%src%x = m%dx
@@ -973,7 +1041,7 @@ use m_model
         deallocate(str)
 
         !check receiver positions
-        str='Shot# '//shot%sindex//' has receiver(s) '
+        str=shot%sindex//' has receiver(s) '
         if(any(shot%rcv(:)%z<0.)) then
             where(shot%rcv(:)%z<0.) shot%rcv(:)%z=m%dz
             call hud(str//'rz above top of model! Set rz = dz.',mpiworld%iproc)

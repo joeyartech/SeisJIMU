@@ -1,25 +1,19 @@
+!Find proper steplength alpha (α) based
+!first on a bracketing strategy,
+!then on a dichotomy algorithm. 
+!Ref: Numerical Optimizationn Theoretical and Practical Aspects, J.F.Bonnans, J.C.Gilbert, C. Lemaréchal, C.A. Sagastizábal,  Springer-Verlag, Universitext
+
+!This alpha should satisfy Wolfe's conditions 
+!1st_cond: sufficient descent
+!2nd_cond: sufficient curvature
+!Ref: Nocedal, Numerical Optimization, 2nd Ed, P. 33
+
 module m_linesearcher
 use m_System
 use m_Modeling
 use m_Kernel
 
     private
-    
-    ! This linesearch enforces the Wolfe          !
-    ! conditions: sufficient decrease             !
-    !             sufficient curvature            !
-    ! The Wolfe conditions can be found in        !
-    ! Nocedal, Numerical Optimization, 2nd        !
-    ! edition, p.33                               !
-    !                                             !
-    ! The linesearch method implemented here is   !
-    ! based first on a bracketing strategy, then  !
-    ! on a dichotomy algorithm. A full description!
-    ! of this strategy can be found in            !
-    ! Numerical Optimizationn Theoretical and     !
-    ! Practical Aspects, J.F.Bonnans, J.C.Gilbert,!
-    ! C. Lemaréchal, C.A. Sagastizábal,           !
-    ! Springer-Verlag, Universitext               !
     
     character(*),parameter :: info='Linesearch based on a bracketing - dichotomy algoritm'//s_NL// &
                                    'Steplength (alpha) judged by Wolfe conditions'
@@ -126,10 +120,10 @@ use m_Kernel
                 call pert%register(chp)
             endif
 
-            if(.not. curr%is_fitting_data) then
-                call hud('Negate the sign of pert due to curr')
-                call pert%set_sign(o_sign='-')
-            endif
+            ! if(.not. curr%is_fitting_data) then
+            !     call hud('Negate the sign of pert due to curr')
+            !     call pert%set_sign(o_sign='-')
+            ! endif
 
             call self%scale(pert)
 
@@ -175,7 +169,7 @@ use m_Kernel
             
                 !1st condition BAD => [ <-]
                 if(.not. if_1st_cond) then
-                    call hud("Sufficient decrease condition NOT satified. Now try a smaller alpha (α)")
+                    call hud("Sufficient descent condition NOT satified. Now try a smaller alpha (α)")
                     self%result='perturb'
                     self%alphaR=self%alpha
                     self%alpha=0.5*(self%alphaL+self%alphaR) !shrink the search interval
@@ -232,13 +226,13 @@ use m_Kernel
         enddo loop
 
 
-        if(pert%is_fitting_data) then
-            call hud('Set positive sign to pert')
-            call pert%set_sign(o_sign='+')
-        else
-            call hud('Set negative sign to pert')
-            call pert%set_sign(o_sign='-')
-        endif
+        ! if(pert%is_fitting_data) then
+        !     call hud('Set positive sign to pert')
+        !     call pert%set_sign(o_sign='+')
+        ! else
+        !     call hud('Set negative sign to pert')
+        !     call pert%set_sign(o_sign='-')
+        ! endif
 
         
         if(self%igradient>=self%max_gradient) then
@@ -284,6 +278,11 @@ use m_Kernel
         character(:),allocatable :: str
         
         if(is_first_in) then
+
+            !first do sanity check
+            if(sum(abs(qp%pg))==0.) then
+                call error('Gradient becomes absolutely zero!')
+            endif
 
             str=setup%get_str('LINESEARCHER_SCALING','LS_SCALING',o_default='by total_volume/||pg(1)||1')
 

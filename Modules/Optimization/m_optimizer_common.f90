@@ -54,6 +54,8 @@ use m_linesearcher
     end subroutine
 
     subroutine optimizer_write(task,o_title)
+    use m_shot
+
         character(*) :: task
         character(*),optional :: o_title
 
@@ -84,15 +86,12 @@ use m_linesearcher
             case('update')
                 open(16,file=dir_out//'optimization.log',position='append',action='write')
                 write(16,fmt)  iterate, ls%igradient, curr%f, curr%f/f0*100., sum(abs(curr%g))/g0norm1*100., curr%g_dot_d
-                write(16,'(a)') ' ----------------------------------------------------------------------------------------'
+                write(16,'(a)'      ) ' ----------------------------------------------------------------------------------------'
                 close(16)
-                
+
                 call param%transform('x->m',o_x=curr%x)
                 call m%write(o_suffix='_Iter'//int2str(iterate))
                 call sysio_write('descent_Iter'//int2str(iterate),curr%d,size(curr%d))
-                call shot%write('dsyn_Iter'//int2str(iterate)//'_',shot%dsyn)
-                if(allocated(shot%dsyn_aux)) call shot%write('dsyn_aux_Iter'//int2str(iterate)//'_',shot%dsyn_aux)
-
                 if(allocated(m%correlate)) then
                     call sysio_write('correlate_Iter'//int2str(iterate),m%correlate,size(m%correlate))
                 endif
@@ -121,21 +120,32 @@ use m_linesearcher
             case('finalize')
                 open(16,file=dir_out//'optimization.log',position='append',action='write')
                 write(16,'(a)'      ) ' **********************************************************************'
-                write(16,'(a)'      ) '     FINALIZE                                         '
+                write(16,'(a)'      ) '     FINALIZE                                                          '
                 write(16,'(a)'      ) ' **********************************************************************'
                 close(16)
-                
+
                 call param%transform('x->m',o_x=pert%x)
                 call m%write(o_suffix='_Iter'//int2str(iterate))
                 call execute_command_line('(cd '//dir_out//' ; ln -sf model_Iter'//int2str(iterate)//' model_final )')
                 call sysio_write('descent_Iter'//int2str(iterate),curr%d,size(curr%d))
-                call shot%write('dsyn_Iter'//int2str(iterate)//'_',shot%dsyn)
 
                 write(*,'(a,i0.4)') 'ximage < model_Iter* n1=',m%nz
 
             end select
 
         endif
+
+        !tasks for all MPI processes
+        select case (task)
+        case('update','finalize')   
+            do i=1,shot_n_copies
+                call shot_copies(i)%write('dsyn_Iter'//int2str(iterate)//'_',shot_copies(i)%dsyn)
+                
+                call suformat_write('wavelet_Iter'//int2str(iterate)//'_'//shot_copies(i)%sindex,shot_copies(i)%wavelet,shot%nt,1,shot%dt)
+                
+            enddo
+
+        end select
     
     end subroutine
 

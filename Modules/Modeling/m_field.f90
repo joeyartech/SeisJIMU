@@ -235,10 +235,10 @@ use, intrinsic :: ieee_arithmetic
         if(mpiworld%is_master) write(*,*) self%name//' minmax values:',minval(self%vz),maxval(self%vz)
         
         if(any(.not. ieee_is_finite(self%vz))) then
-            call error(self%name//' values become Infinity on Shot# '//shot%sindex//' !!')
+            call error(self%name//' values become Infinity on '//shot%sindex//' !!')
         endif
         if(any(ieee_is_nan(self%vz))) then
-            call error(self%name//' values become NaN on Shot# '//shot%sindex//' !!')
+            call error(self%name//' values become NaN on '//shot%sindex//' !!')
         endif
         
     end subroutine

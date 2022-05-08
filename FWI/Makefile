@@ -44,8 +44,8 @@ mod :
 	(cd ../Modules/Optimization; make App=FWI)
 
 exe : main.o
-	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/fwi_$(WaveEq)_$(Solver)_$(Order)_$(LineS)_$(Optim)
-	(cd ../exe; ln -sf fwi_$(WaveEq)_$(Solver)_$(Order)_$(LineS)_$(Optim) FWI )
+	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/fwi_$(WaveEq)_$(Solver)_$(Order)_$(Param)_$(LineS)_$(Optim)
+	(cd ../exe; ln -sf fwi_$(WaveEq)_$(Solver)_$(Order)_$(Param)_$(LineS)_$(Optim) FWI )
 
 clean :
 	-rm main.o

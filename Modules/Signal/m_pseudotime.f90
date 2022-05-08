@@ -9,7 +9,7 @@
 !       pseudotime(t) -> depth(z):      z = ∫₀ᵗ v(t') dt'
 !
 !   Gradient conversion t->z (chain rule):
-!       ∇ₘC(tₙ) = ∇ₘC(zₙ) - ∫_zₙ^Z ∇ₘC(z') v(z')⁻¹ dv(z')/dz' dz'
+!       ∇ₓC(tₙ) = ∇ₘC(zₙ) - ∫_zₙ^zmax ∇ₘC(z') v(z')⁻¹ dv(z')/dz' dz'
 !         where zₙ= ∫₀^tₙ v(t') dt'
 !         Note that v(tₙ) canbe different from v(zₙ) or v(z')
 
@@ -177,8 +177,7 @@ use m_arrayop
                 if (iz1==iz2) then
                     g_interp = gin(iz2,ix,iy)
                 else
-                    g_interp = gin(iz2,ix,iy)*z1 + gin(iz1,ix,iy)*z2
-                    g_interp = g_interp/dz
+                    g_interp = (gin(iz2,ix,iy)*z1 + gin(iz1,ix,iy)*z2)/dz
                 endif
 
                 ! floor v ceiling selecting, too hash..

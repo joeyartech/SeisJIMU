@@ -73,9 +73,13 @@ use m_Optimization
         call fobj%eval(qp0,oif_update_m=.false.)
         call qp0%register(chp_qp)
     endif
-
+    
     call sysio_write('qp0%g',qp0%g,size(qp0%g))
     call sysio_write('qp0%pg',qp0%pg,size(qp0%pg))
+
+    if(index(param%info,'pseudotime')>0) then
+        call sysio_write('m%gradient',m%gradient,size(m%gradient))
+    endif
 
     !scale problem by linesearcher
     call ls%init
@@ -117,6 +121,8 @@ use m_smoother_laplacian_sparse
 
     fobj%dnorms=0.
     fobj%xnorms=0.
+    
+    shot_n_copies=0
 
     call hud('===== START LOOP OVER SHOTS =====')
     
@@ -127,7 +133,7 @@ use m_smoother_laplacian_sparse
         call shot%set_var_time
         call shot%set_var_space(index(ppg%info,'FDSG')>0)
 
-        call hud('Modeling Shot# '//shot%sindex)
+        call hud('Modeling '//shot%sindex)
         
         call cb%init(ppg%nbndlayer)
         call cb%project
@@ -149,6 +155,7 @@ use m_smoother_laplacian_sparse
         
         !write synthetic data
         call shot%write('dsyn_',shot%dsyn)
+        call shot%copy
 
         !data weighting
         call wei%update

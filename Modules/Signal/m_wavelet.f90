@@ -5,7 +5,7 @@ use m_butterworth
     
     contains
 
-    function sinexp(nt,dt,fpeak) result(wavelet)
+    function wavelet_sinexp(nt,dt,fpeak) result(wavelet)
         real,dimension(:),allocatable :: wavelet
 
         a=-3.3333333*fpeak
@@ -25,7 +25,7 @@ use m_butterworth
         
     end function
     
-    function ricker(nt,dt,fpeak) result(wavelet)
+    function wavelet_ricker(nt,dt,fpeak) result(wavelet)
         real,dimension(:),allocatable :: wavelet
 
         t0=setup%get_real('RICKER_DELAYTIME','T0',o_default=num2str(1./fpeak))

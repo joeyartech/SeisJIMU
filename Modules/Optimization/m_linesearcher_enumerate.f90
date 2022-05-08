@@ -5,29 +5,7 @@ use m_Kernel
 
     private
     
-    ! This linesearch enforces the Wolfe          !
-    ! conditions: sufficient decrease             !
-    !             sufficient curvature            !
-    ! The Wolfe conditions can be found in        !
-    ! Nocedal, Numerical Optimization, 2nd        !
-    ! edition, p.33                               !
-    !                                             !
-    ! The linesearch method implemented here is   !
-    ! based first on a bracketing strategy, then  !
-    ! on a dichotomy algorithm. A full description!
-    ! of this strategy can be found in            !
-    ! Numerical Optimizationn Theoretical and     !
-    ! Practical Aspects, J.F.Bonnans, J.C.Gilbert,!
-    ! C. Lemaréchal, C.A. Sagastizábal,           !
-    ! Springer-Verlag, Universitext               !
-    
-    character(*),parameter :: info='Linesearch based on a bracketing - dichotomy algoritm'//s_NL// &
-                                   'Steplength (alpha) judged by Wolfe conditions'
-
-    !Wolfe conditions parameters (Nocedal value)
-    real,parameter :: c1=1e-4, c2=0.9 !c2=0.9 for (quasi-)Newton method, 0.1 for NLCG
-    !Bracketting parameter (Gilbert value)
-    real,parameter :: multiplier=10.
+    character(*),parameter :: info="Enumerate on alpha's"
     
     !thresholding
     logical :: if_threshold
@@ -35,6 +13,9 @@ use m_Kernel
     
     real,dimension(:),allocatable :: alphas
     integer :: nalpha
+
+    !Wolfe conditions
+    logical :: if_1st_cond, if_2nd_cond
 
     type,public :: t_linesearcher
         real :: alpha  !steplength
@@ -44,7 +25,7 @@ use m_Kernel
         integer :: isearch !number of linesearch performed in each iterate
         integer :: max_search !max number of linesearch allowed per iteration
         integer :: igradient=1 !total number of gradient computed
-        integer :: max_gradient=30 !max total number of gradient computation allowed
+        integer :: max_gradient !max total number of gradient computation allowed
     
         contains
         procedure :: init
@@ -61,7 +42,6 @@ use m_Kernel
         class(t_linesearcher) :: self
 
         call hud(info)
-        call hud('Wolfe condition parameters: c1='//num2str(c1)//', c2='//num2str(c2))
         
         alphas = setup%get_reals('TEST_ALPHAS','ALPHAS',o_default='0.001 0.01 0.1 1')
         nalpha = size(alphas)
@@ -80,7 +60,8 @@ use m_Kernel
 
         logical :: if_1st_cond, if_2nd_cond
         
-        call hud('Current qp%f, ║g║₂² = '//num2str(curr%f)//', '//num2str(norm2(curr%g)))
+        call hud('Initial alpha = '//num2str(self%alpha))
+        call hud('Current qp%f, ║g║₁ = '//num2str(curr%f)//', '//num2str(sum(abs(curr%g))))
         
         call hud('------------ START LINESEARCH ------------')
         !linesearch loop
@@ -101,11 +82,6 @@ use m_Kernel
                 ! call pert%register(chp)
             ! endif
 
-            if(.not. curr%is_fitting_data) then
-                call hud('Negate the sign of pert due to curr')
-                call pert%set_sign(o_sign='-')
-            endif
-
             call self%scale(pert)
 
             pert%g_dot_d = sum(pert%g*curr%d)
@@ -115,10 +91,10 @@ use m_Kernel
             !save gradients to disk
             if(mpiworld%is_master) call sysio_write('pert%g',pert%g,size(pert%g),o_mode='append')
 
-            call hud('Iterate.Linesearch.Gradient# = *.'//num2str(self%isearch)//'.'//num2str(self%igradient))
+            call hud('Linesearch.Gradient# = '//num2str(self%isearch)//'.'//num2str(self%igradient))
             
             call hud('alpha = '//num2str(self%alpha))
-            call hud('Perturb qp%f, ║g║₂² = '//num2str(pert%f)//', '//num2str(norm2(pert%g)))
+            call hud('Perturb qp%f, ║g║₁ = '//num2str(pert%f)//', '//num2str(sum(abs(pert%g))))
             
             !Wolfe conditions
             if_1st_cond = (pert%f <= curr%f+c1*self%alpha*curr%g_dot_d) !sufficient descent condition
@@ -139,30 +115,17 @@ use m_Kernel
             !1st condition OK, 2nd condition OK => use alpha
             if(if_1st_cond .and. if_2nd_cond) then
                 call hud('Wolfe conditions are satisfied')
-                ! call hud('Enter new iterate')
-                ! self%result='success'
-                ! exit loop
                 cycle loop
             endif
             
             !1st condition BAD
             if(.not. if_1st_cond) then
-                call hud("Sufficient decrease condition is not satified -> should try a smaller alpha")
-                ! self%result='perturb'
-                ! self%alphaR=self%alpha
-                ! self%alpha=0.5*(self%alphaL+self%alphaR) !shrink the search interval
+                call hud("Sufficient descent condition NOT satified -> should try a smaller alpha")
             endif
             
             !2nd condition BAD
             if(if_1st_cond .and. .not. if_2nd_cond) then
-                call hud("Curvature condition is not satified -> should try a larger alpha")
-                ! self%result='perturb'
-                ! self%alphaL=self%alpha
-                ! if(self%alphaR < huge(1.)) then
-                !     self%alpha=0.5*(self%alphaL+self%alphaR) !shrink the search interval
-                ! else
-                !     self%alpha=self%alpha*multiplier !extend search interval
-                ! endif
+                call hud("Curvature condition NOT satified -> should try a larger alpha")
             endif
 
         enddo loop

@@ -431,12 +431,12 @@ use m_System
         enddo
 
         !message
-        !write(*,*) ' Proc# '//mpiworld%sproc//' has '//num2str(self%nshots_per_processor)//' assigned shots'
-        call hud('Proc# 0001 has '//num2str(self%nshots_per_processor)//' assigned shots')
+        !write(*,*) mpiworld%sproc//' has '//num2str(self%nshots_per_processor)//' assigned shots'
+        call hud('Proc0001 has '//num2str(self%nshots_per_processor)//' assigned shots')
         call hud('See file "shotlist.log" for details.')
 
         !write shotlist to disk
-        call mpiworld%write(dir_out//'shotlist.log', 'Proc# '//mpiworld%sproc//' has '//num2str(self%nshots_per_processor)//' assigned shots:'// &
+        call mpiworld%write(dir_out//'shotlist.log', mpiworld%sproc//' has '//num2str(self%nshots_per_processor)//' assigned shots:'// &
             strcat(self%shots_per_processor))
 
     end subroutine

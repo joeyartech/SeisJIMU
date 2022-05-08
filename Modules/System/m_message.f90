@@ -34,7 +34,7 @@ use m_mpienv
         integer,optional :: o_iproc
         
         if(mpiworld%iproc==either(o_iproc,0,present(o_iproc))) then
-            write(*,*) either('Proc# '//mpiworld%sproc//' : ','',present(o_iproc))//msg
+            write(*,*) either(mpiworld%sproc//' : ','',present(o_iproc))//msg
         endif
         
     end subroutine
@@ -44,7 +44,7 @@ use m_mpienv
         integer,optional :: o_iproc
 
         if(mpiworld%iproc==either(o_iproc,0,present(o_iproc))) then
-            write(*,*) either('Proc# '//mpiworld%sproc//' : ','',present(o_iproc))//&
+            write(*,*) either(mpiworld%sproc//' : ','',present(o_iproc))//&
                 bg_black//yellow//bold//'WARNING:'//reset//' '//msg
         endif
         
@@ -56,7 +56,7 @@ use m_mpienv
         integer,optional :: o_iproc
 
         if(mpiworld%iproc==either(o_iproc,0,present(o_iproc))) then
-            write(*,*) either('Proc# '//mpiworld%sproc//' : ','',present(o_iproc))//&
+            write(*,*) either(mpiworld%sproc//' : ','',present(o_iproc))//&
                 bg_black//red//bold_blink//'ERROR:'//reset//' '//msg//&
                 either(s_NL//'Possible solutions:'//o_solution,'',present(o_solution))
         endif

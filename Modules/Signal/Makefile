@@ -20,5 +20,5 @@ all : $(src:.f90=.o)
 clean :
 	-rm $(src:.f90=.o)
 	@printf "\n"
-	-rm $(src:%.f90=$(mod_dir)%.mod)
+	-rm $(src:%.f90=$(mod_dir)%.mod)  $(mod_dir)m_lpnorm.mod $(mod_dir)m_smoother_laplacian_sparse.mod
 	@printf "\n"

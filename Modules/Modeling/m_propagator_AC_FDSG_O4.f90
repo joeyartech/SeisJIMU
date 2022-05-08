@@ -121,7 +121,7 @@ use m_cpml
 
         !grid dispersion condition
         if (5.*m%dmin > cb%velmin/shot%fmax) then  !O(x4) rule: 5 points per wavelength
-            call warn('Shot# '//shot%sindex//' can have grid dispersion!'//s_NL// &
+            call warn(shot%sindex//' can have grid dispersion!'//s_NL// &
                 ' 5*dz, velmin, fmax = '//num2str(5.*m%dmin)//', '//num2str(cb%velmin)//', '//num2str(shot%fmax))
         endif
         
@@ -137,14 +137,12 @@ use m_cpml
         call hud('CFL value: '//num2str(CFL))
         
         if(CFL>1.) then
-            call warn('CFL > 1 on Shot# '//shot%sindex//'!'//s_NL//&
-                'vmax, dt, 1/dx = '//num2str(cb%velmax)//', '//num2str(self%dt)//', '//num2str(m%rev_cell_diagonal) //s_NL//&
-                'Will adjust dt s.t. CFL < 1')
-
             self%dt = setup%get_real('CFL',o_default='0.9')/(sumcoef*cb%velmax*m%rev_cell_diagonal)
             self%nt=nint(time_window/self%dt)+1
 
-            write(*,*) 'Shot# '//shot%sindex//': Adjusted dt, nt =',self%dt,self%nt
+            call warn('CFL > 1 on '//shot%sindex//'!'//s_NL//&
+                'vmax, dt, 1/dx = '//num2str(cb%velmax)//', '//num2str(self%dt)//', '//num2str(m%rev_cell_diagonal) //s_NL//&
+                'Adjusted dt, nt = '//num2str(self%dt)//', '//num2str(self%nt))
 
         endif       
         

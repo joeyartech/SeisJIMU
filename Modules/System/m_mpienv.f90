@@ -23,7 +23,7 @@ use m_string
 
     type,public :: t_mpienv
         integer iproc, nproc, communicator
-        character(4) :: sproc
+        character(8) :: sproc
         logical :: is_master=.false.
         integer ierr
         character(MPI_MAX_PROCESSOR_NAME) :: node_name
@@ -56,6 +56,7 @@ use m_string
 
         call mpi_comm_rank(self%communicator,self%iproc,self%ierr)
         write(self%sproc,'(i0.4)') self%iproc
+        self%sproc='Proc'//self%sproc
         if(self%iproc==0) self%is_master=.true.
 
         call mpi_comm_size(self%communicator,self%nproc,self%ierr)

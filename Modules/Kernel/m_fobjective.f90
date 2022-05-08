@@ -341,6 +341,8 @@ use m_preconditioner
     end subroutine
 
     subroutine eval(self,qp,oif_update_m,oif_approx,oif_gradient)
+    use m_pseudotime
+
         class(t_fobjective) :: self
         type(t_querypoint) :: qp
         logical,optional :: oif_update_m,oif_approx,oif_gradient
@@ -349,9 +351,7 @@ use m_preconditioner
         character(:),allocatable :: smask
         real,dimension(:,:,:),allocatable :: mask
 
-        real,dimension(:,:,:),allocatable ::  FWI, RE, DR
-        !real,dimension(:),allocatable :: tmp
-        real,dimension(:),allocatable :: precond
+        real,dimension(:,:,:),allocatable :: freeze_zone_in_m, freeze_zone_in_x
 
         !update model
         if(either(oif_update_m,.true.,present(oif_update_m))) then
@@ -376,10 +376,10 @@ use m_preconditioner
             !Laplacian smoothing
             if(smoothings(i)%s=='Laplacian') then
                 call hud('Laplacian smoothing')
-                call smoother_laplacian_init([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%fpeak)
+                call smoother_Laplacian_init([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%fpeak)
                 do j=1,ppg%ngrad
                     !call smoother_laplacian_extend_mirror(m%gradient(:,:,:,i),m%itopo)
-                    call smoother_laplacian_pseudo_nonstationary(m%gradient(:,:,:,j),m%vp)
+                    call smoother_Laplacian_pseudo_nonstationary(m%gradient(:,:,:,j),m%vp)
                 enddo    
             endif
         enddo
@@ -388,15 +388,6 @@ use m_preconditioner
         do i=1,ppg%ngrad
             where(m%is_freeze_zone) m%gradient(:,:,:,i)=0.
         enddo
-
-print*,'Im here'
-if(setup%get_bool('IF_STICK_TO_RE',o_default='false')) then
-call hud('Stick to RE: qp%pg -> RE')
-call alloc(qp%pg,m%nz,m%nx,m%ny,1)
-qp%pg(:,:,:,1) = (m%correlate(:,:,:,2)+m%correlate(:,:,:,3))
-where(m%is_freeze_zone) qp%pg(:,:,:,1)=0.
-endif
-print*,'Im here2'
 
         !soft mask
         smask=setup%get_file('GRADIENT_SOFT_MASK','MASK')
@@ -426,66 +417,8 @@ print*,'Im here2'
         call preco%update
         call preco%apply(qp%g,qp%pg)
 
-if(setup%get_bool('IF_STICK_TO_RE',o_default='false')) then
-!transform to parameter space
-qp%pg(:,:,:,1) = qp%pg(:,:,:,1)*2*m%rho*m%vp
-!normaliz by allowed vp range
-qp%pg=qp%pg*param%pars(1)%range
-!should be in good direction
-if(sum(qp%pg*qp%g)<0.) then
-    call hud('flip sign of qp%pg (RE) tobe in good direction')
-    qp%pg=-qp%pg
-endif
-call hud('L1norm(qp%pg) before precond: '//num2str(sum(abs(qp%pg))))
-!depth precond
-call alloc(precond,m%nz)
-precond=[(((iz-1)*m%dz)**1.,iz=1,m%nz)]
-do iy=1,m%ny; do ix=1,m%nx
-    qp%pg(:,ix,iy,1)=qp%pg(:,ix,iy,1)*precond
-enddo; enddo
-call hud('L1norm(qp%pg) after precond: '//num2str(sum(abs(qp%pg))))
-!scale to gradient magnitude
-qp%pg = sum(abs(qp%g))/sum(abs(qp%pg)) *qp%pg
-endif
-
         !save some RAM
         call dealloc(m%gradient,m%energy)
-
-
-        if(allocated(m%correlate)) then !in case WPI
-            !correlate(:,:,:,1) = FWI gradient a★Du
-            !correlate(:,:,:,2) = one RE -δa★Du
-            !correlate(:,:,:,3) = one RE  δu★Da
-            !correlate(:,:,:,5) = demig-remig (DR) Adj(Rᴴδu)★Du
-            call alloc(FWI,m%nz,m%nx,m%ny); FWI=m%correlate(:,:,:,1)
-            call alloc( RE,m%nz,m%nx,m%ny); RE =m%correlate(:,:,:,2)+m%correlate(:,:,:,3)
-            call alloc( DR,m%nz,m%nx,m%ny); DR =m%correlate(:,:,:,5)
-            where(m%is_freeze_zone)
-                FWI=0.; RE=0.; DR=0.
-            endwhere
-
-            call hud('angle btw FWI & RE terms=    '//angle_terms(FWI,RE))
-            call hud('angle btw FWI & DR terms=    '//angle_terms(FWI,DR))
-            call hud('angle btw RE  & DR terms=    '//angle_terms(RE,DR))
-            call hud('angle btw RE  & RE+DR terms= '//angle_terms(RE,RE+DR))
-
-            ! !prcondition by z^1
-            ! call alloc(tmp,m%nz,o_init=1.)
-            ! tmp=[(((iz-1)*m%dz)**1,iz=1,m%nz)]
-            ! do iy=1,m%ny; do ix=1,m%nx
-            !     RE(:,ix,iy)=RE(:,ix,iy)*tmp(:)
-            !     DR(:,ix,iy)=DR(:,ix,iy)*tmp(:)
-            ! enddo; enddo
-
-            ! norm1=sqrt(sum(RE*RE))
-            ! norm2=sqrt(sum(DR*DR))
-            ! call hud('cos(pRE,pDR) = '//num2str( sum(RE*DR)/norm1/norm2 ))
-
-            deallocate(FWI,RE,DR)
-            ! deallocate(tmp)
-
-            !deallocate(m%correlate)
-        endif
 
     end subroutine
 

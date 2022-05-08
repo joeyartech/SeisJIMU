@@ -170,8 +170,8 @@ use m_parametrizer
         enddo
         pg = old_norm/sum(abs(pg)) * pg !switch to L1 tobe robust
         
-        !save some RAM
-        call dealloc(preco_in_x,preco_in_m)
+        ! !save some RAM
+        ! call dealloc(preco_in_x,preco_in_m)
 
     end subroutine
 
@@ -184,7 +184,8 @@ use m_parametrizer
         do i=1,param%npars
             pg(:,:,:,i)=g(:,:,:,i)*preco_in_x(:,:,:)
         enddo
-        pg = sqrt(old_norm/norm2(pg)) * pg
+        pg = old_norm/sum(abs(pg)) * pg
+
     end subroutine
 
 end
