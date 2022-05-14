@@ -60,8 +60,14 @@ use m_linesearcher
         character(*),optional :: o_title
 
         character(*),parameter :: fmt='(x,i5,2x,5x,2x,i5,10x,7x,es10.4,x,f7.3,2x,f7.3,5x,es9.2)'
+        character(:),allocatable :: siterate,sindex
+        type(t_string),dimension(:),allocatable :: tmp
+        integer,dimension(:),allocatable :: list
+
         
         if(mpiworld%is_master) then
+
+            siterate=int2str(iterate)
         
             select case (task)
             case('start')
@@ -90,11 +96,22 @@ use m_linesearcher
                 close(16)
 
                 call param%transform('x->m',o_x=curr%x)
-                call m%write(o_suffix='_Iter'//int2str(iterate))
-                call sysio_write('descent_Iter'//int2str(iterate),curr%d,size(curr%d))
+                call m%write(o_suffix='_Iter'//siterate)
+                call sysio_write('descent_Iter'//siterate,curr%d,size(curr%d))
                 if(allocated(m%correlate)) then
-                    call sysio_write('correlate_Iter'//int2str(iterate),m%correlate,size(m%correlate))
+                    call sysio_write('correlate_Iter'//siterate,m%correlate,size(m%correlate))
                 endif
+
+                call sysio_mv('updated_wavelet.su','updated_wavelet_Iter'//siterate//'.su')
+
+                tmp=split(shls%all)
+                list=setup%get_ints('ITERATE_KEEP_SHOT',&
+                    o_default='1 '// either( tmp(size(tmp)/2+1)%s, '', size(tmp)>1 ))
+
+                do i=1,size(list)
+                    sindex=num2str(list(i),o_format='(i0.4)')
+                    call sysio_mv('dsyn_Shot'//sindex,'dsyn_Iter'//siterate//'_Shot'//sindex)
+                enddo
 
             case('maximum')
                 open(16,file=dir_out//'optimization.log',position='append',action='write')
@@ -131,21 +148,21 @@ use m_linesearcher
 
                 write(*,'(a,i0.4)') 'ximage < model_Iter* n1=',m%nz
 
+
+                call sysio_mv('updated_wavelet.su','updated_wavelet_Iter'//siterate//'.su')
+
+                tmp=split(shls%all)
+                list=setup%get_ints('ITERATE_KEEP_SHOT',&
+                    o_default='1 '// either( tmp(size(tmp)/2+1)%s, '', size(tmp)>1 ))
+
+                do i=1,size(list)
+                    sindex=num2str(list(i),o_format='(i0.4)')
+                    call sysio_mv('dsyn_Shot'//sindex,'dsyn_Iter'//siterate//'_Shot'//sindex)
+                enddo
+
             end select
 
         endif
-
-        !tasks for all MPI processes
-        select case (task)
-        case('update','finalize')   
-            do i=1,shot_n_copies
-                call shot_copies(i)%write('dsyn_Iter'//int2str(iterate)//'_',shot_copies(i)%dsyn)
-                
-                call suformat_write('wavelet_Iter'//int2str(iterate)//'_'//shot_copies(i)%sindex,shot_copies(i)%wavelet,shot%nt,1,shot%dt)
-                
-            enddo
-
-        end select
     
     end subroutine
 

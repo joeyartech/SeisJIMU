@@ -122,8 +122,6 @@ use m_smoother_laplacian_sparse
     fobj%dnorms=0.
     fobj%xnorms=0.
     
-    shot_n_copies=0
-
     call hud('===== START LOOP OVER SHOTS =====')
     
     do i=1,shls%nshots_per_processor
@@ -155,7 +153,6 @@ use m_smoother_laplacian_sparse
         
         !write synthetic data
         call shot%write('dsyn_',shot%dsyn)
-        call shot%copy
 
         !data weighting
         call wei%update

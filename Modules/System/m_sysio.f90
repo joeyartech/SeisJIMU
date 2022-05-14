@@ -97,6 +97,16 @@ use m_setup
         
     end subroutine
 
+    subroutine sysio_mv(file_old,file_new,o_wait)
+        character(*) :: file_old,file_new
+        logical,optional :: o_wait
+
+        if(mpiworld%is_master) then
+            call execute_command_line('mv '//dir_out//file_old//' '//dir_out//file_new,wait=either(o_wait,.true.,present(o_wait)))
+        endif
+
+    end subroutine
+
     subroutine sysio_rm(file,o_wait)
         character(*) :: file
         logical,optional :: o_wait

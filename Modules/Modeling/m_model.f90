@@ -170,25 +170,25 @@ use m_System
         !freeze zone
         allocate(self%is_freeze_zone(self%nz,self%nx,self%ny),source=.false.)
 
-        !check file topo
-        file=setup%get_file('FILE_TOPO')
+        !check file bathymetry or topology
+        file=setup%get_file('FILE_BATHYMETRY','FILE_BATHY')
+        if(file=='') file=setup%get_file('FILE_TOPOLOGY','FILE_TOPO')
         if(file/='') then
             call alloc(tmp,self%nx,self%ny,1)
-            open(12,file=file,access='direct',recl=4*self%n,action='read')
-            read(12,rec=1) tmp
-            close(12)
-            call hud('topo minmax value: '//num2str(minval(tmp))//' , '//num2str(maxval(tmp)))
+            call sysio_read(file,tmp,self%n)
+            call hud('bathy minmax value: '//num2str(minval(tmp))//' , '//num2str(maxval(tmp)))
 
             do iy=1,self%ny; do ix=1,self%nx
-                self%is_freeze_zone(1:nint(tmp(ix,iy,1)/self%dz)+1,ix,iy)=.true.
+                !The 1st to (floor(topo/dz)+1)'s grid points of the model (water or air layer) are freezed.
+                self%is_freeze_zone(1:floor(tmp(ix,iy,1)/self%dz)+1,ix,iy)=.true.
             enddo; enddo
             
-            call hud('Freeze zone is set from FILE_TOPO.')
+            call hud('Freeze zone is set from FILE_BATHYMETRY or FILE_TOPOLOGY.')
         endif
 
         !2nd check vs model
         if(allocated(self%vs)) then
-            if(setup%get_bool('IF_TOPO_FROM_VS',o_default='T')) then
+            if(setup%get_bool('IF_BATHY_FROM_VS',o_default='T')) then
                 !self%itopo = maxloc(self%vs, dim=1, mask=(self%vs<10), back=.true.)+1 !the "back" argument isn't implemented in gfortran until version 9 ..
                 do iy=1,self%ny; do ix=1,self%nx
                     loopz: do iz=1,self%nz
@@ -207,9 +207,7 @@ use m_System
         file=setup%get_file('FILE_FREEZE_ZONE')
         if(file/='') then
             call alloc(tmp,self%nz,self%nx,self%ny)
-            open(12,file=file,access='direct',recl=4*self%n,action='read')
-            read(12,rec=1) tmp
-            close(12)
+            call sysio_read(file,tmp,self%n)
             
             where(tmp==0.) self%is_freeze_zone=.true.
             call hud('Freeze zone is additionally set from FILE_FREEZE_ZONE.')

@@ -65,7 +65,6 @@ use m_model
         procedure :: set_var_space
         procedure :: update_wavelet
         procedure :: update_adjsource
-        procedure :: copy
         procedure :: write
         
     end type
@@ -407,13 +406,20 @@ use m_model
     subroutine update_wavelet(self)
         class(t_shot) :: self
 
+        type(t_suformat) :: sudata
+
         call matchfilter_estimate(self%dsyn,self%dobs,self%nt,self%nrcv)!,self%index)
         
         call matchfilter_apply_to_wavelet(self%wavelet)
         
         call matchfilter_apply_to_data(self%dsyn)
 
-        if(mpiworld%is_master) call suformat_write('updated_wavelet',self%wavelet,self%nt,1,self%dt,o_mode='append')
+        call sudata%init(self%nt,1,o_dt=self%dt,o_data=self%wavelet)
+        sudata%hdrs%fldr=self%index
+
+        open(12,file=dir_out//'updated_wavelet.su',action='write',access='direct',recl=4*(60+self%nt))
+        write(12,rec=self%index) sudata%hdrs, sudata%trs
+        close(12)
 
     end subroutine
     
@@ -787,73 +793,73 @@ use m_model
 
     ! end subroutine
 
-    subroutine copy(self)
-    use m_shotlist
-        class(t_shot) :: self
+    ! subroutine copy(self)
+    ! use m_shotlist
+    !     class(t_shot) :: self
         
-        type(t_string),dimension(:),allocatable :: slist
-        type(t_string),dimension(:),allocatable :: tmp
-        logical :: if_copy
+    !     type(t_string),dimension(:),allocatable :: slist
+    !     type(t_string),dimension(:),allocatable :: tmp
+    !     logical :: if_copy
         
-        if(.not.allocated(shot_copies)) allocate(shot_copies(shls%nshots_per_processor))
+    !     if(.not.allocated(shot_copies)) allocate(shot_copies(shls%nshots_per_processor))
 
-        !read which shots to write per iterate
-        !default to the 1st and interm shots
-        tmp=split(shls%all)
-        slist=setup%get_strs('SHOT_WRITE_PER_ITERATE',&
-            o_default='1 '// either( tmp(size(tmp)/2+1)%s, '', size(tmp)>1 ))
-        deallocate(tmp)
+    !     !read which shots to write per iterate
+    !     !default to the 1st and interm shots
+    !     tmp=split(shls%all)
+    !     slist=setup%get_strs('SHOT_WRITE_PER_ITERATE',&
+    !         o_default='1 '// either( tmp(size(tmp)/2+1)%s, '', size(tmp)>1 ))
+    !     deallocate(tmp)
 
-        if_copy=.false.
-        do i=1,size(slist)
-            if( str2int(self%sindex(5:8)) == str2int(slist(i)%s) ) then !bingo
-                if_copy=.true.
-                exit
-            endif
-        enddo
+    !     if_copy=.false.
+    !     do i=1,size(slist)
+    !         if( str2int(self%sindex(5:8)) == str2int(slist(i)%s) ) then !bingo
+    !             if_copy=.true.
+    !             exit
+    !         endif
+    !     enddo
 
-        if(if_copy) then
+    !     if(if_copy) then
 
-            shot_n_copies=shot_n_copies+1
+    !         shot_n_copies=shot_n_copies+1
             
-            !copy-paste
-            associate(copy=>shot_copies(shot_n_copies))
-                copy%index=self%index
-                copy%sindex=self%sindex
+    !         !copy-paste
+    !         associate(copy=>shot_copies(shot_n_copies))
+    !             copy%index=self%index
+    !             copy%sindex=self%sindex
                 
-                !source wavelet
-                copy%wavelet=self%wavelet
-                copy%nt=self%nt
-                copy%dt=self%dt
-                copy%fmin=self%fmin
-                copy%fmax=self%fmax
-                copy%fpeak=self%fpeak
+    !             !source wavelet
+    !             copy%wavelet=self%wavelet
+    !             copy%nt=self%nt
+    !             copy%dt=self%dt
+    !             copy%fmin=self%fmin
+    !             copy%fmax=self%fmax
+    !             copy%fpeak=self%fpeak
 
-                !source position
-                copy%src%z=self%src%z
-                copy%src%x=self%src%x
-                copy%src%y=self%src%y
-                copy%src%comp=self%src%comp
+    !             !source position
+    !             copy%src%z=self%src%z
+    !             copy%src%x=self%src%x
+    !             copy%src%y=self%src%y
+    !             copy%src%comp=self%src%comp
                 
-                !receiver positions
-                copy%nrcv=self%nrcv
-                if(allocated(copy%rcv)) deallocate(copy%rcv)
-                allocate(copy%rcv( self%nrcv ))
+    !             !receiver positions
+    !             copy%nrcv=self%nrcv
+    !             if(allocated(copy%rcv)) deallocate(copy%rcv)
+    !             allocate(copy%rcv( self%nrcv ))
 
-                copy%rcv(:)%z=self%rcv(:)%z
-                copy%rcv(:)%x=self%rcv(:)%x
-                copy%rcv(:)%y=self%rcv(:)%y
-                copy%rcv(:)%comp=self%rcv(:)%comp
-                copy%rcv(:)%is_badtrace=self%rcv(:)%is_badtrace
+    !             copy%rcv(:)%z=self%rcv(:)%z
+    !             copy%rcv(:)%x=self%rcv(:)%x
+    !             copy%rcv(:)%y=self%rcv(:)%y
+    !             copy%rcv(:)%comp=self%rcv(:)%comp
+    !             copy%rcv(:)%is_badtrace=self%rcv(:)%is_badtrace
 
-                !data
-                copy%dsyn = self%dsyn
+    !             !data
+    !             copy%dsyn = self%dsyn
         
-            end associate
+    !         end associate
 
-        endif
+    !     endif
 
-    end subroutine
+    ! end subroutine
 
     subroutine write(self,file,data)
         class(t_shot) :: self
