@@ -2,214 +2,223 @@
 !Ref: R.E. Plessix, A pseudo-time formulation for acoustic full waveform inversion, Geophysical Journal International 192, No. 2 (2013): 613-630.
 !
 !   Given a background velocity model
-!       sampled in the depth domain v(z) or in the pseudotime domain v(t).
+!       regularly sampled in the depth domain v(z) or in the pseudotime domain v(t).
 !
-!   Domain conversion:
-!       depth(z) -> pseudotime(t):      t = ∫₀ᶻ v(z')⁻¹ dz'
-!       pseudotime(t) -> depth(z):      z = ∫₀ᵗ v(t') dt'
+!   Domain conversion (coordinate transformaion):
+!       depth(z) -> pseudotime(t):      dt = dz/v(z) ; t = ∫₀^∞ dz/v(z)
+!       pseudotime(t) -> depth(z):      dz = v(t)*dt ; z = ∫₀^∞ v(t)*dt
 !
-!   Gradient conversion t->z (chain rule):
-!       ∇ₓC(tₙ) = ∇ₘC(zₙ) - ∫_zₙ^zmax ∇ₘC(z') v(z')⁻¹ dv(z')/dz' dz'
-!         where zₙ= ∫₀^tₙ v(t') dt'
-!         Note that v(tₙ) canbe different from v(zₙ) or v(z')
+!   Translating the model m (include the velocity) from one domain to another
+!       Eg. z->t: dz is const but dt is not. However, we like regularly sampled v(t),
+!       so we resample v(z) at const Δt rate,
+!       where Δt is chosen as dz/vmax to be safe & simple.
+!   Large model contrasts like seafloor should be enforced after conversion.
+!
+!   Translating the kernel KₘC from depth to pseudotime domain
+!     - is a resampling problem as above if m is NOT the background velocity model; or
+!     - if m IS the background velocity, the kernels have the following relation:
+!       K_{v(t)}(z) = K_{v(z)}(z)*v(z) - ∫_z^∞ K_{v(z)}(z') dv(z')
+!           where K_{v(t)}(z) is the kernel wrt v(t), as a function of z=∫₀^t v(t')dt'
+!           K_{v(z)}(z) is the kernel wrt v(z), as a function of z
+!           dv(z) = v'(z)dz is the differential of v(z)
+!       then we can resample K_{v(t)}(z) in the pseudotime domain (same as 1st case)
+!
+!Brief proof of the relation:
+!   Objective function C=C[v]. With perturbation δv(z) in depth domain, we have
+!   δC = ∫₀^∞ K_{v(z)}(z) δv(z) dz
+!        ∫₀^∞ K_{v(z)}(z) δv(z) v(t)dt
+!   The rest is to convert δv(z) to δv(t). Two paths:
+!       1) (t꜀≠tₚ) δv(t꜀) --δzₚ=0-> δtₚ --v'(tₚ)-> δv(tₚ) -> δv(zₚ)
+!           ie. δv @t꜀ => stretch/squeeze time coord @tₚ => differential of v @zₚ
+!       2) (t꜀=tₚ) δv(t꜀)                       -> δv(tₚ) -> δv(zₚ)
+!   1st path: 0 =δzₚ =v(tₚ)δtₚ +∫₀^tₚ δv(t꜀) dt꜀
+!       => δtₚ =-v(tₚ)⁻¹∫₀^tₚ δv(t꜀) dt꜀.   Since  δv(zₚ)=δv(tₚ)=v'(tₚ)δtₚ,
+!       δv(zₚ) =-v'(tₚ)*v(tₚ)⁻¹∫₀^tₚ δv(t꜀) dt꜀
+!   2nd path: δv(zₚ) = δv(t꜀)
+!   Together, we have
+!       δv(zₚ) = ∫₀^∞ [δ(t꜀-tₚ) -v'(tₚ)*v(tₚ)⁻¹B(t꜀,tₚ)] δv(t꜀)dt꜀
+!       where B(t꜀,tₚ)=H(t-t꜀)-H(t-tₚ)
+!   Inserting to the above integration, and swapping the seq of two integrals, we have
+!   δC = ∫₀^∞ [K_{v(z)}(z꜀)v(t꜀) -∫_t꜀^∞ K_{v(z)}(zₚ)dv(tₚ)] δv(t꜀)dt꜀
+!   that is
+!   K_{v(t)}(z) = K_{v(z)}(z)v(t) - ∫ₜ^∞  K_{v(z)}(z')dv(t')
+!               = K_{v(z)}(z)v(z) - ∫_z^∞ K_{v(z)}(z')dv(t')
+!   Caveat:
+!   - In the 2nd term, we don't wanna move the differential (d) to K_{v(z)}(z'),
+!       because the kernel function can have small-scale artificial variations.
+!   - IMPORTANT for linesearch, optimization etc:
+!       In practice, we have a fixed max depth of the modeling domain (Z), 
+!       K_{v(z)}(z) = G(z)/dz*B(0,Z), where G(z) is the input computed gradient.
+!       Converting to the pseudotime domain, the corresponding max pseudotime
+!           T=∫₀^Z dz/v(z) also changes with v(z)
+!       that means ∫₀^T K_{v(t)} δv(t)dt /= δC  that we expect.
+!       Implementation: zero the elements of K_{v(t)} from index nt_real+1 to nt
+!           and nt_real is updated each time.
 
 module m_pseudotime
 use m_arrayop
 
     private
-    public :: pseudotime_init, pseudotime_z2t, pseudotime_z2t_seafloor, pseudotime_t2z, pseudotime_z2t_gradient
+    public :: pseudotime_init, pseudotime_reset, pseudotime_convert, pseudotime_convert_gradient
 
-    integer :: nz,nt,nx,ny
-    real :: dz,dt
+    integer :: nx,ny
+    integer :: nz,nt
+    real :: Dz,Dt !Δz, Δt
 
     contains
 
-    subroutine pseudotime_init(dir,vmin,vmax,nx_,ny_,nz_,dz_,nt_,dt_)
+    subroutine pseudotime_init(dir,vmin,vmax,nx_,ny_,nz_,Dz_,nt_,Dt_)
         character(4) :: dir
 
-        nx=nx_
-        ny=ny_
-
-        if(dir=='t->z') then
-            dt=dt_;  nt=nt_
-
-            !dz = dt*v(z) >= dt*vmin
-            dz=dt*vmin
-            
-            !z = ∫₀ᵗ v(t')*dt' <= (nt-1)*dt vmax 
-            zmax=(nt-1)*dt*vmax
-
-            !nz = zmax/dz
-            nz=ceiling(zmax/dz)+1
-
-            !write(*,*) 'dz,nz = ',dz,nz
-            dz_=dz;  nz_=nz
-        endif
+        nx=nx_; ny=ny_
 
         if(dir=='z->t') then
-            dz=dz_;  nz=nz_
+            Dz=Dz_;  nz=nz_
 
-            !dt = dz/v(z) >= dz/vmax
-            dt=dz/vmax
+            !Dt = dz/v(z) >= Dz/vmax
+            Dt=Dz/vmax
 
-            !t = ∫₀ᶻ dz'/v(z') <= (nz-1)*dz /vmin
-            tmax=(nz-1)*dz/vmin
+            !t = ∫₀ᶻ dz'/v(z') <= (nz-1)*Dz /vmin
+            tmax=(nz-1)*Dz/vmin
 
-            !tmax=(nz-1)*dz/(     vmin*1.5   )
-            ! tmax=(nz-1)*dz/(0.5*(vmin+vmax)) ! Mean velocity instead of max
-            !   t_max=0.
-            !   do ix=1,nx
-            !      t= 2*sum(1./v(:,ix)) - 1./v(1,ix) - 1./v(nz,ix)  !the integral
-            !      t=t*dz/2                                         !the integral
-            !      if (t>t_max) t_max=t
-            !   enddo
+            !nt <= tmax/Dt
+            nt=ceiling(tmax/Dt)+1
 
-            !nt <= tmax/dt
-            nt=ceiling(tmax/dt)+1
+            !write(*,*) 'Dt,nt = ',Dt,nt
+            dt_=Dt;  nt_=nt
+        endif
 
-            !write(*,*) 'dt,nt = ',dt,nt
-            dt_=dt;  nt_=nt
+        if(dir=='t->z') then
+            Dt=Dt;  nt=nt_
+
+            !dz = dt*v(z) >= Dt*vmin
+            dz=Dt*vmin
+            
+            !z = ∫₀ᵗ v(t')*dt' <= (nt-1)*Dt *vmax
+            zmax=(nt-1)*Dt*vmax
+
+            !nz = zmax/Dz
+            nz=ceiling(zmax/Dz)+1
+
+            !write(*,*) 'Dz,nz = ',Dz,nz
+            dz_=Dz;  nz_=nz
         endif
       
     end subroutine
 
-    !converting model to parameter z->t
-    subroutine pseudotime_z2t(min,xout,o_v_z)
-        real,dimension(nz,nx,ny) :: min
-        real,dimension(:,:,:),allocatable :: xout
+    subroutine pseudotime_reset(nz_,Dz_,nt_,Dt_)
+        nz=nz_; Dz=Dz_
+        nt=nt_; Dt=Dt_
+    end subroutine
+    
+    subroutine pseudotime_convert(dir,din,dout,o_v,o_nreal)
+        character(4) :: dir
+        real,dimension(:,:,:),target :: din
+        real,dimension(:,:,:),allocatable :: dout
+        real,dimension(:,:,:),target,optional :: o_v
+        integer,dimension(nx,ny),optional :: o_nreal
 
-        real,dimension(nz,nx,ny),optional :: o_v_z
+        real,dimension(:,:,:),pointer :: v
+        integer,dimension(nx,ny) :: nreal
 
-        call alloc(xout,nt,nx,ny)
-     
-        if(present(o_v_z)) then !converting other model
+        !background velocity model
+        if(present(o_v)) then
+            v=>o_v
+        else
+            v=>din
+        endif
+
+        if(dir=='z->t') then !convertding model to parameter
+
+            call alloc(dout,nt,nx,ny)
+
+            !real nt needed
+            nreal = ceiling(sum(Dz/v,dim=1)/Dt)
+            nreal = min(nreal,nt)
+
             do iy=1,ny; do ix=1,nx
-                z=0.
-                do it=1,nt
-                    xout(it,ix,iy)=interp(min(:,ix,iy),z,nz,dz)
-                    z=z+interp(o_v_z(:,ix,iy),z,nz,dz)*dt
-                enddo
-            enddo; enddo
 
-        else !converting vp model itself
-            do iy=1,ny; do ix=1,nx
+                !loop
                 z=0.
-                do it=1,nt
-                    v=interp(min(:,ix,iy),z,nz,dz)
-                    xout(it,ix,iy)=v
-                    z=z+v*dt
+                do it=1,nreal(ix,iy)
+                    dout(it,ix,iy)=interp(din(:,ix,iy),z,nz,Dz)
+                    z=z+interp(v(:,ix,iy),z,nz,Dz)*Dt
                 enddo
+
             enddo; enddo
 
         endif
 
-    end subroutine
+        if(dir=='t->z') then !converting parameter to model
 
+            call alloc(dout,nz,nx,ny)
 
-    ! calculates the seafloor in the time domain
-    ! enables to mute the time-domain gradient in the bathymetry
-    function pseudotime_z2t_seafloor(vw,iz) result(it)
-        it= nint(   (iz-1)*dz/vw   /dt) +1
-    end function
+            !real nz needed
+            nreal = ceiling(sum(v*Dt,dim=1)/Dz)
+            nreal = min(nreal,nz)
 
-
-    !converting parameter to model t->z
-    subroutine pseudotime_t2z(xin,mout,o_v_t)
-        real,dimension(nt,nx,ny) :: xin
-        real,dimension(:,:,:),allocatable :: mout
-
-        real,dimension(nt,nx,ny),optional :: o_v_t
-
-        call alloc(mout,nz,nx,ny)
-     
-        if(present(o_v_t)) then !converting other parameter
             do iy=1,ny; do ix=1,nx
-                t=0.
-                do iz=1,nz
-                   mout(iz,ix,iy)=interp(xin(:,ix,iy),t,nt,dt)
-                   t=t+dz/interp(o_v_t(:,ix,iy),t,nt,dt)
-                enddo
-            enddo; enddo
 
-        else !converting vp model itself
-            do iy=1,ny; do ix=1,nx
+                !loop
                 t=0.
-                do iz=1,nz
-                    v=interp(xin(:,ix,iy),t,nt,dt)
-                    mout(iz,ix,iy)=v
-                    t=t+dz/v
+                do iz=1,nreal(ix,iy)
+                   dout(iz,ix,iy)=interp(din(:,ix,iy),t,nt,Dt)
+                   t=t+Dz/interp(v(:,ix,iy),t,nt,Dt)
                 enddo
+
             enddo; enddo
 
         endif
 
+        if(present(o_nreal)) o_nreal=nreal
+
     end subroutine
 
-    ! convert the gradient from depth domain to time domain
-    subroutine pseudotime_z2t_gradient(gin,v_z,v_t,gout)
+    subroutine pseudotime_convert_gradient(gin,v_z,gout)
         real,dimension(nz,nx,ny) :: gin, v_z
-        real,dimension(nt,nx,ny) :: v_t
         real,dimension(:,:,:),allocatable :: gout
-        real,dimension(nz) :: dvdz
+
+        integer,dimension(nx,ny) :: ntreal
+        real,dimension(:,:,:),allocatable :: K, dv
+        
+        call alloc(dv,nz,nx,ny)
 
         call alloc(gout,nt,nx,ny)
+        
+        K = gin/Dz
 
         do iy=1,ny; do ix=1,nx
-            !compute dv/dz
-            !using central finite different at interior nodes
+            !compute dv
+            !using central differences at interior nodes
             do iz=2,nz-1
-               dvdz(iz)=(v_z(iz+1,ix,iy)-v_z(iz-1,ix,iy))/2/dz
+               dv(iz,1,1)=(v_z(iz+1,ix,iy)-v_z(iz-1,ix,iy))/2.
             enddo
-            !using one-side finite different at boundary nodes
-            dvdz( 1)=(v_z( 2,ix,iy)-v_z(   1,ix,iy))/dz
-            dvdz(nz)=(v_z(nz,ix,iy)-v_z(nz-1,ix,iy))/dz
+            !using one-side differences at boundary nodes
+            dv( 1,1,1)=v_z( 2,ix,iy)-v_z(   1,ix,iy)
+            dv(nz,1,1)=v_z(nz,ix,iy)-v_z(nz-1,ix,iy)
+        enddo; enddo
 
-            zn=0.
-            do it=1,nt
-
-                iz1=min(  floor(zn/dz)+1,   nz) !maximum lower index
-                iz2=min(ceiling(zn/dz)+1,   nz) !minimum upper index
-
-                z1=zn-(iz1-1)*dz !distance inside interval
-                z2=(iz2-1)*dz-zn !distance inside interval
-
-                !init value, assuming the gradient is linear inside interval
-                if (iz1==iz2) then
-                    g_interp = gin(iz2,ix,iy)
-                else
-                    g_interp = (gin(iz2,ix,iy)*z1 + gin(iz1,ix,iy)*z2)/dz
-                endif
-
-                ! floor v ceiling selecting, too hash..
-                ! g_interp=either(gin(iz1,ix), gin(iz2,ix), z1<z2)
-                
-                gout(it,ix,iy) = g_interp
-              
-              
-                !integral from zn to (iz2-1)*dz
-                !no computation as the integral should be very small
-                gout(it,ix,iy) = gout(it,ix,iy) - 0.
-
-
-                !integral from (iz2-1)*dz to (nz-1)*dz       
-                ! rectangular approx to the integral
-                s = sum(gin(iz2:nz,ix,iy)/v_z(iz2:nz,ix,iy)*dvdz(iz2:nz))*dz
-
-                ! ! trapezoidal approx to the integral, not used as it is no better than above.
-                ! s = sum(gin(iz2:nz,ix,iy)*dvdz(iz2:nz)/v_z(iz2:nz,ix,iy))
-                ! s = 2*s - gin(iz2,ix,iy)*dvdz(iz2)/v_z(iz2,ix,iy) -  gin(nz,ix,iy)*dvdz(nz)/v_z(nz,ix,iy)
-                ! s = s * (nz-iz2)*dz/2
-
-                gout(it,ix,iy) = gout(it,ix,iy) - s
-
-                zn=zn+v_t(it,ix,iy)*dt
-
+        do iy=1,ny; do ix=1,nx
+            do iz=1,nz
+                K(iz,ix,iy) =K(iz,ix,iy)*v_z(iz,ix,iy) -sum(K(iz:nz,ix,iy)*dv(iz:nz,ix,iy))
             enddo
+        enddo; enddo
 
+        ! open(12,file='Kt(z)',access='direct',recl=4*size(K))
+        ! write(12,rec=1) K
+        ! close(12)
+
+        !go to time domain
+        call pseudotime_convert('z->t',K,gout,o_v=v_z,o_nreal=ntreal)
+        gout=gout*Dt
+
+        do iy=1,ny; do ix=1,nx
+            gout(ntreal(ix,iy)+1:nt,ix,iy)=0.
         enddo; enddo
 
     end subroutine
-
+    
+    
     ! selecting one velocity value out of two adjacent values
     function interp(vin,z,n,d) result(v)
         real,dimension(n) :: vin

@@ -1,0 +1,622 @@
+ MPIWorld info:
+  MPI_INIT_THREAD level:           0
+  Number of MPI processors:           1
+  Max number of OMP threads / processor:           8
+ Working directory: (pwd)
+/home/zhouw/Codes/GitHub/SeisJIMU/Demo_future/04_GradientTest_pseudotime
+ Using executable: (ls -l $exe)
+lrwxrwxrwx 1 zhouw ondes 53 May 25 14:30 ../../exe/GradientTest -> gradienttest_AC_FDSG_O4_velocities-density_pseudotime
+ Git Commit: 47d91dd
+ Git Branch: pseudotime
+ Compiler: gfortran v9.4.0
+ Version: 9.4.0
+ Endianness:         1234
+ System date: 05/25/2022
+System time: 14:30:50
+System timezone: +02:00
+                        
+ ======================================
+       WELCOME TO SeisJIMU FWI        
+======================================
+ Setup file: setup.in
+ DIR_IN is NOT found, take default: ./
+ Input directory: ./
+ DIR_OUT is NOT found, take default: ./results/
+ Output directory:./results/
+ Invoked field & propagator modules info : 
+Time-domain ISOtropic 2D/3D ACoustic propagation
+1st-order Velocity-Stress formulation
+Vireux-Levandar Staggered-Grid Finite-Difference (FDSG) method
+Cartesian O(x4,t2) stencil
+CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal
+   -> dt ≤ 0.606(for 2D) or 0.494(3D) *Vmax/dx
+Required model attributes: vp, rho
+Required field components: vz, vx, vy(3D), p
+Required boundary layer thickness: 2
+Imaging conditions: P-Pxcorr
+Energy terms: Σ_shot ∫ sfield%p² dt
+Basic gradients: grho gkpa                              
+ FDGS Coef : 1.12500000, -4.16666679E-02
+ MODEL_SIZE (NZXY) : 101 101 1
+ MODEL_SPACING (DZXY) : 20 20 1
+ 2D geometry
+ MODEL_ORIGIN (OZXY) is NOT found, take default: 0. 0. 0.
+ FILE_MODEL : model
+ MODEL_ATTRIBUTES : vp
+ MODEL_ATTRIBUTES_WRITE is NOT found, take default: vp
+ vp model is read.
+ IS_FREESURFACE : F
+ FILE_BATHYMETRY (FILE_BATHY) is NOT found, take 0, '' or F
+ FILE_TOPOLOGY (FILE_TOPO) : topo
+ bathy minmax value: 100.000000 , 100.000000
+ Freeze zone is set from FILE_BATHYMETRY or FILE_TOPOLOGY.
+ FILE_FREEZE_ZONE is NOT found, take 0, '' or F
+ [40m[33m[1mWARNING:[0m Constant rho model (1000 kg/m³) is allocated by propagator.
+ FILE_DATA_PREFIX : ./results_fwd/dsyn_
+ SHOT_INDEX (ISHOT) is NOT found, take 0, '' or F
+ SHOT_INDEX is not given. Now count how many data files exist in the directory..
+ Found 1 sequential shots.
+ Number of processors = 1
+Number of shots = 1
+ FILE_SHOT_BATCH is NOT found, take 0, '' or F
+ SHOT_BATCH_SIZE (NBATCH) is NOT found, take default: 1
+ SHOT_SAMPLE_METHOD is NOT found, take default: cyclic
+ Proc0001 has 1 assigned shots
+ See file "shotlist.log" for details.
+ PRECONDITIONING (PRECO) is NOT found, take 0, '' or F
+ Invoked parametrizer module info : 
+Parameterization: velocities-density in pseudotime
+Allowed pars: vp, rho
+Available empirical laws: Gardner                                                                                                                                                                                                                                                                                                                                                                                                                      
+ EMPIRICAL_LAW is NOT found, take 0, '' or F
+ PARAMETER : vp:1000:2000
+ pseudotime dimension nt, dt = 201 , 9.99999978E-03
+ DATA_NORMS (DNORMS) is NOT found, take default: L1 L2sq
+ DATA_NORM_WEIGHTS (DWEIGHTS) is NOT found, take default: 0. 1.
+ DATA_NORM_NORMALIZERS is NOT found in setup.in
+ PARAMETER_NORMS (XNORMS) is NOT found, take default: none
+ PARAMETER_NORM_WEIGHTS (XWEIGHTS) is NOT found, take default: 0.
+ FILE_PRIOR_MODEL is NOT found, take 0, '' or F
+ ===== START LOOP OVER SHOTS =====
+ FILE_DATA_PREFIX : ./results_fwd/dsyn_
+ ntr, ns, file_size = 100, 500, 56000
+ Shot0001 will read 100 traces, each trace has 500 samples.
+ SU data read success.
+ FILTER_DATA (BFILT) is NOT found, take default: none
+ PEAK_FREQUENCY (FPEAK) : 6.4
+ MAX_FREQUENCY (FMAX) is NOT found, take default: 12.8000002
+ FILE_SRC_TIME_FUNC (FILE_WAVELET) is NOT found, take 0, '' or F
+ WAVELET_TYPE is NOT found, take default: sinexp
+ Use filtered sinexp wavelet
+ WAVELET_SCALING is NOT found, take 0, '' or F
+ SU data write success.
+ IF_HICKS is NOT found, take default: T
+ MODEL_REFERENCE is NOT found in setup.in
+ Reference vp value =   1600.00000    
+ Reference rho value =   1000.00000    
+ =================================
+ Shot0001 info:
+ =================================
+   nt,dt:         500   6.00000005E-03
+ ---------------------------------
+ S/R positions after removing m%oz,ox,iy,
+   sz,iz:   50.0000000               4
+   sx,ix:   505.000000              26
+   sy,iy:   0.00000000               1
+   ifz,ilz:           0           8
+   ifx,ilx:          22          30
+   ify,ily:           1           1
+ ---------------------------------
+   minmax rz,iz:   40.0000000       40.0000000               3           3
+   minmax rx,ix:   10.0000000       1990.00000               2         101
+   minmax ry,iy:   0.00000000       0.00000000               1           1
+   minmax ifz,ilz:          -1          -1           7           7
+   minmax ifx,ilx:          -2          97           6         105
+   minmax ify,ily:           1           1           1           1
+   nrcv:         100
+ ---------------------------------
+ Modeling Shot# Shot0001
+ ADD_APERTURE is NOT found, take default: -99999 99999 -99999 99999
+ REF_BNDLAYER_THICKNESS (NCPML) is NOT found, take default: 20
+ Computebox Size = [ifz,ilz] x [ifx,ilx] x [ify,ily] =        22201
+   [ifz,ilz],nz:         -23         125         149
+   [ifx,ilx],nx:         -23         125         149
+   [ify,ilx],ny:           1           1           1
+ Inner area of Computebox:
+   ioz,mz:           1         101
+   iox,mx:           1         101
+   ioy,my:           1           1
+ Computebox value ranges:
+ vp   1600.00000       1600.00000    
+ rho   1000.00000       1000.00000    
+ ip   1600000.00       1600000.00    
+ CFL value: 0.791959524
+ SNAPSHOT is NOT found, take 0, '' or F
+ REF_RECT_TIME_INTEVAL (RDT) : 0
+ rdt, irdt = 6.00000005E-03, 1
+ it----         500
+ fld_u minmax values:  -1.29572175E-06   3.16921557E-07
+ Elapsed time to add source velocities   3.15159559E-05
+ Elapsed time to update velocities       3.53603512E-02
+ Elapsed time to add source stresses     4.75719571E-05
+ Elapsed time to update stresses         2.23381445E-02
+ Elapsed time to extract field           1.11696646E-02
+ Elapsed time to save boundary           1.36643648E-04
+ Viewing the snapshots (if written) with SU ximage/xmovie:
+ ximage < snap_sfield%*  n1=149 perc=99
+ xmovie < snap_sfield%*  n1=149 n2=149 clip=?e-?? loop=2 title=%g
+ DATA_FORMAT is NOT found, take default: su
+ Found proper SU scalel = 1.00000000
+ SU_SCALEL is NOT found, take default: 1.00000000
+ Found proper SU scalco = 1.00000000
+ SU_SCALCO is NOT found, take default: 1.00000000
+ SU data write success.
+ UPDATE_WAVELET : no
+ SU data write success.
+ WEIGHTING (WEI) : none
+ SU data write success.
+ fobj%dnorm_normalizers before shotlist-scaling =  0.270842612       3.86470556    
+ fobj%dnorm_normalizers =  0.270842612       3.86470556    
+ SU data write success.
+ Shotloop-stacked fobj%dnorms upto Shot#Shot0001:  L1=    1.00000036      L2sq=   0.999999881    
+ it----         500
+ fld_a minmax values:   0.00000000       0.00000000    
+ fld_u minmax values:  -1.29393857E-06   3.13138571E-07
+ Elapsed time to load boundary               1.08018517E-04
+ Elapsed time to update stresses             3.50027531E-02
+ Elapsed time to rm source stresses          3.21716070E-05
+ Elapsed time to update velocities           1.32948458E-02
+ Elapsed time to rm source velocities        2.13831663E-05
+ Elapsed time ----------------------------
+ Elapsed time to add adjsource stresses      7.84435868E-03
+ Elapsed time to update adj stresses         2.36855000E-02
+ Elapsed time to add adjsource velocities    3.49678099E-03
+ Elapsed time to update adj velocities       3.57173532E-02
+ Elapsed time to extract&write fields        0.00000000    
+ Elapsed time to correlate                   1.30926073E-03
+ Viewing the snapshots (if written) with SU ximage/xmovie:
+ ximage < snap_rfield%*  n1=149 perc=99
+ xmovie < snap_rfield%*  n1=149 n2=149 clip=?e-?? loop=2 title=%g
+ ximage < snap_*  n1=101 perc=99
+ xmovie < snap_*  n1=101 n2=101 clip=?e-?? loop=2 title=%g
+         END LOOP OVER SHOTS        
+ Shotloop-stacked, shotlist-scaled, but yet linesearch-scaled fobj%dnorms :  L1=    1.00000036      L2sq=   0.999999881    
+ SMOOTHING (SMTH) : none
+ GRADIENT_SOFT_MASK (MASK) is NOT found, take 0, '' or F
+ PRECONDITIONING (PRECO) is NOT found, take default: z^1
+ Will precondition the gradient by z^1
+ Enumerate on alpha's
+ TEST_ALPHAS (ALPHAS) : 1e-5 1e-3 1e-1 1
+ nalpha = 4
+ LINESEARCHER_THRESHOLD is NOT found, take default: T
+ LINESEARCHER_SCALING (LS_SCALING) is NOT found, take default: by total_volume/||pg(1)||1
+ Linesearch scaler= 2.21573138
+ qp0%f, ║g║₁ = 2.21573114, 20.3009930
+ JOB is NOT found, take 0, '' or F
+ DESCENT_DIR is NOT found, take default: -curr%pg
+ Initial alpha = 0.00000000
+ Current qp%f, ║g║₁ = 2.21573114, 20.3009930
+ ------------ START LINESEARCH ------------
+ Modeling with perturbed models
+ ===== START LOOP OVER SHOTS =====
+ FILE_DATA_PREFIX : ./results_fwd/dsyn_
+ ntr, ns, file_size = 100, 500, 56000
+ Shot0001 will read 100 traces, each trace has 500 samples.
+ SU data read success.
+ FILTER_DATA (BFILT) is NOT found, take default: none
+ PEAK_FREQUENCY (FPEAK) : 6.4
+ MAX_FREQUENCY (FMAX) is NOT found, take default: 12.8000002
+ FILE_SRC_TIME_FUNC (FILE_WAVELET) is NOT found, take 0, '' or F
+ WAVELET_TYPE is NOT found, take default: sinexp
+ Use filtered sinexp wavelet
+ WAVELET_SCALING is NOT found, take 0, '' or F
+ SU data write success.
+ =================================
+ Shot0001 info:
+ =================================
+   nt,dt:         500   6.00000005E-03
+ ---------------------------------
+ S/R positions after removing m%oz,ox,iy,
+   sz,iz:   50.0000000               4
+   sx,ix:   505.000000              26
+   sy,iy:   0.00000000               1
+   ifz,ilz:           0           8
+   ifx,ilx:          22          30
+   ify,ily:           1           1
+ ---------------------------------
+   minmax rz,iz:   40.0000000       40.0000000               3           3
+   minmax rx,ix:   10.0000000       1990.00000               2         101
+   minmax ry,iy:   0.00000000       0.00000000               1           1
+   minmax ifz,ilz:          -1          -1           7           7
+   minmax ifx,ilx:          -2          97           6         105
+   minmax ify,ily:           1           1           1           1
+   nrcv:         100
+ ---------------------------------
+ Modeling Shot# Shot0001
+ ADD_APERTURE is NOT found, take default: -99999 99999 -99999 99999
+ REF_BNDLAYER_THICKNESS (NCPML) is NOT found, take default: 20
+ Computebox Size = [ifz,ilz] x [ifx,ilx] x [ify,ily] =        22201
+   [ifz,ilz],nz:         -23         125         149
+   [ifx,ilx],nx:         -23         125         149
+   [ify,ilx],ny:           1           1           1
+ Inner area of Computebox:
+   ioz,mz:           1         101
+   iox,mx:           1         101
+   ioy,my:           1           1
+ Computebox value ranges:
+ vp   1599.99829       1600.01758    
+ rho   1000.00000       1000.00000    
+ ip   1599998.25       1600017.62    
+ CFL value: 0.791968226
+ SNAPSHOT is NOT found, take 0, '' or F
+ REF_RECT_TIME_INTEVAL (RDT) : 0
+ rdt, irdt = 6.00000005E-03, 1
+ it----         500
+ fld_u minmax values:  -1.29570481E-06   3.16933352E-07
+ Elapsed time to add source velocities   2.13980675E-05
+ Elapsed time to update velocities       2.94957161E-02
+ Elapsed time to add source stresses     3.13818455E-05
+ Elapsed time to update stresses         1.65077746E-02
+ Elapsed time to extract field           8.37564468E-04
+ Elapsed time to save boundary           8.53538513E-05
+ Viewing the snapshots (if written) with SU ximage/xmovie:
+ ximage < snap_sfield%*  n1=149 perc=99
+ xmovie < snap_sfield%*  n1=149 n2=149 clip=?e-?? loop=2 title=%g
+ SU data write success.
+ UPDATE_WAVELET : no
+ SU data write success.
+ WEIGHTING (WEI) : none
+ SU data write success.
+ SU data write success.
+ Shotloop-stacked fobj%dnorms upto Shot#Shot0001:  L1=   0.999996722      L2sq=   0.999997735    
+ it----         500
+ fld_a minmax values:   0.00000000       0.00000000    
+ fld_u minmax values:  -1.29392288E-06   3.13150537E-07
+ Elapsed time to load boundary               1.09285116E-04
+ Elapsed time to update stresses             2.33613551E-02
+ Elapsed time to rm source stresses          2.94148922E-05
+ Elapsed time to update velocities           1.21473372E-02
+ Elapsed time to rm source velocities        2.31266022E-05
+ Elapsed time ----------------------------
+ Elapsed time to add adjsource stresses      9.51319933E-04
+ Elapsed time to update adj stresses         1.71159506E-02
+ Elapsed time to add adjsource velocities    2.03189254E-03
+ Elapsed time to update adj velocities       2.38949656E-02
+ Elapsed time to extract&write fields        0.00000000    
+ Elapsed time to correlate                   3.93071771E-03
+ Viewing the snapshots (if written) with SU ximage/xmovie:
+ ximage < snap_rfield%*  n1=149 perc=99
+ xmovie < snap_rfield%*  n1=149 n2=149 clip=?e-?? loop=2 title=%g
+ ximage < snap_*  n1=101 perc=99
+ xmovie < snap_*  n1=101 n2=101 clip=?e-?? loop=2 title=%g
+         END LOOP OVER SHOTS        
+ Shotloop-stacked, shotlist-scaled, but yet linesearch-scaled fobj%dnorms :  L1=   0.999996722      L2sq=   0.999997735    
+ SMOOTHING (SMTH) : none
+ GRADIENT_SOFT_MASK (MASK) is NOT found, take 0, '' or F
+ PRECONDITIONING (PRECO) is NOT found, take default: z^1
+ Will precondition the gradient by z^1
+ Linesearch.Gradient# = 1.2
+ alpha = 9.99999975E-06
+ Perturb qp%f, ║g║₁ = 2.21572638, 20.3009872
+ 1st cond   9.99999975E-06   2.21572638       2.21573114     -0.476837158     -0.303192139      0.635839999     T
+ 2nd cond -0.303192019     -0.303192139     F
+ Curvature condition NOT satified -> should try a larger alpha
+ Modeling with perturbed models
+ ===== START LOOP OVER SHOTS =====
+ FILE_DATA_PREFIX : ./results_fwd/dsyn_
+ ntr, ns, file_size = 100, 500, 56000
+ Shot0001 will read 100 traces, each trace has 500 samples.
+ SU data read success.
+ FILTER_DATA (BFILT) is NOT found, take default: none
+ PEAK_FREQUENCY (FPEAK) : 6.4
+ MAX_FREQUENCY (FMAX) is NOT found, take default: 12.8000002
+ FILE_SRC_TIME_FUNC (FILE_WAVELET) is NOT found, take 0, '' or F
+ WAVELET_TYPE is NOT found, take default: sinexp
+ Use filtered sinexp wavelet
+ WAVELET_SCALING is NOT found, take 0, '' or F
+ SU data write success.
+ =================================
+ Shot0001 info:
+ =================================
+   nt,dt:         500   6.00000005E-03
+ ---------------------------------
+ S/R positions after removing m%oz,ox,iy,
+   sz,iz:   50.0000000               4
+   sx,ix:   505.000000              26
+   sy,iy:   0.00000000               1
+   ifz,ilz:           0           8
+   ifx,ilx:          22          30
+   ify,ily:           1           1
+ ---------------------------------
+   minmax rz,iz:   40.0000000       40.0000000               3           3
+   minmax rx,ix:   10.0000000       1990.00000               2         101
+   minmax ry,iy:   0.00000000       0.00000000               1           1
+   minmax ifz,ilz:          -1          -1           7           7
+   minmax ifx,ilx:          -2          97           6         105
+   minmax ify,ily:           1           1           1           1
+   nrcv:         100
+ ---------------------------------
+ Modeling Shot# Shot0001
+ ADD_APERTURE is NOT found, take default: -99999 99999 -99999 99999
+ REF_BNDLAYER_THICKNESS (NCPML) is NOT found, take default: 20
+ Computebox Size = [ifz,ilz] x [ifx,ilx] x [ify,ily] =        22201
+   [ifz,ilz],nz:         -23         125         149
+   [ifx,ilx],nx:         -23         125         149
+   [ify,ilx],ny:           1           1           1
+ Inner area of Computebox:
+   ioz,mz:           1         101
+   iox,mx:           1         101
+   ioy,my:           1           1
+ Computebox value ranges:
+ vp   1599.95740       1600.03760    
+ rho   1000.00000       1000.00000    
+ ip   1599957.38       1600037.62    
+ CFL value: 0.791978121
+ SNAPSHOT is NOT found, take 0, '' or F
+ REF_RECT_TIME_INTEVAL (RDT) : 0
+ rdt, irdt = 6.00000005E-03, 1
+ it----         500
+ fld_u minmax values:  -1.29568423E-06   3.16944778E-07
+ Elapsed time to add source velocities   2.17556953E-05
+ Elapsed time to update velocities       1.78886950E-02
+ Elapsed time to add source stresses     3.04877758E-05
+ Elapsed time to update stresses         2.21791565E-02
+ Elapsed time to extract field           3.53553891E-03
+ Elapsed time to save boundary           8.98241997E-05
+ Viewing the snapshots (if written) with SU ximage/xmovie:
+ ximage < snap_sfield%*  n1=149 perc=99
+ xmovie < snap_sfield%*  n1=149 n2=149 clip=?e-?? loop=2 title=%g
+ SU data write success.
+ UPDATE_WAVELET : no
+ SU data write success.
+ WEIGHTING (WEI) : none
+ SU data write success.
+ SU data write success.
+ Shotloop-stacked fobj%dnorms upto Shot#Shot0001:  L1=   0.999929130      L2sq=   0.999860823    
+ it----         500
+ fld_a minmax values:   0.00000000       0.00000000    
+ fld_u minmax values:  -1.29390708E-06   3.13161991E-07
+ Elapsed time to load boundary               2.74091959E-03
+ Elapsed time to update stresses             1.12729073E-02
+ Elapsed time to rm source stresses          3.18288803E-05
+ Elapsed time to update velocities           1.69367194E-02
+ Elapsed time to rm source velocities        2.19345093E-05
+ Elapsed time ----------------------------
+ Elapsed time to add adjsource stresses      1.01703405E-02
+ Elapsed time to update adj stresses         1.67830586E-02
+ Elapsed time to add adjsource velocities    1.64687634E-04
+ Elapsed time to update adj velocities       1.41496658E-02
+ Elapsed time to extract&write fields        0.00000000    
+ Elapsed time to correlate                   1.11600757E-02
+ Viewing the snapshots (if written) with SU ximage/xmovie:
+ ximage < snap_rfield%*  n1=149 perc=99
+ xmovie < snap_rfield%*  n1=149 n2=149 clip=?e-?? loop=2 title=%g
+ ximage < snap_*  n1=101 perc=99
+ xmovie < snap_*  n1=101 n2=101 clip=?e-?? loop=2 title=%g
+         END LOOP OVER SHOTS        
+ Shotloop-stacked, shotlist-scaled, but yet linesearch-scaled fobj%dnorms :  L1=   0.999929130      L2sq=   0.999860823    
+ SMOOTHING (SMTH) : none
+ GRADIENT_SOFT_MASK (MASK) is NOT found, take 0, '' or F
+ PRECONDITIONING (PRECO) is NOT found, take default: z^1
+ Will precondition the gradient by z^1
+ Linesearch.Gradient# = 2.3
+ alpha = 1.00000005E-03
+ Perturb qp%f, ║g║₁ = 2.21542311, 20.2997665
+ 1st cond   1.00000005E-03   2.21542311       2.21573114     -0.308036804     -0.303192139      0.984272420     T
+ 2nd cond -0.303175002     -0.303192139     F
+ Curvature condition NOT satified -> should try a larger alpha
+ Modeling with perturbed models
+ ===== START LOOP OVER SHOTS =====
+ FILE_DATA_PREFIX : ./results_fwd/dsyn_
+ ntr, ns, file_size = 100, 500, 56000
+ Shot0001 will read 100 traces, each trace has 500 samples.
+ SU data read success.
+ FILTER_DATA (BFILT) is NOT found, take default: none
+ PEAK_FREQUENCY (FPEAK) : 6.4
+ MAX_FREQUENCY (FMAX) is NOT found, take default: 12.8000002
+ FILE_SRC_TIME_FUNC (FILE_WAVELET) is NOT found, take 0, '' or F
+ WAVELET_TYPE is NOT found, take default: sinexp
+ Use filtered sinexp wavelet
+ WAVELET_SCALING is NOT found, take 0, '' or F
+ SU data write success.
+ =================================
+ Shot0001 info:
+ =================================
+   nt,dt:         500   6.00000005E-03
+ ---------------------------------
+ S/R positions after removing m%oz,ox,iy,
+   sz,iz:   50.0000000               4
+   sx,ix:   505.000000              26
+   sy,iy:   0.00000000               1
+   ifz,ilz:           0           8
+   ifx,ilx:          22          30
+   ify,ily:           1           1
+ ---------------------------------
+   minmax rz,iz:   40.0000000       40.0000000               3           3
+   minmax rx,ix:   10.0000000       1990.00000               2         101
+   minmax ry,iy:   0.00000000       0.00000000               1           1
+   minmax ifz,ilz:          -1          -1           7           7
+   minmax ifx,ilx:          -2          97           6         105
+   minmax ify,ily:           1           1           1           1
+   nrcv:         100
+ ---------------------------------
+ Modeling Shot# Shot0001
+ ADD_APERTURE is NOT found, take default: -99999 99999 -99999 99999
+ REF_BNDLAYER_THICKNESS (NCPML) is NOT found, take default: 20
+ Computebox Size = [ifz,ilz] x [ifx,ilx] x [ify,ily] =        22201
+   [ifz,ilz],nz:         -23         125         149
+   [ifx,ilx],nx:         -23         125         149
+   [ify,ilx],ny:           1           1           1
+ Inner area of Computebox:
+   ioz,mz:           1         101
+   iox,mx:           1         101
+   ioy,my:           1           1
+ Computebox value ranges:
+ vp   1595.66028       1603.79089    
+ rho   1000.00000       1000.00000    
+ ip   1595660.25       1603790.88    
+ CFL value: 0.793835938
+ SNAPSHOT is NOT found, take 0, '' or F
+ REF_RECT_TIME_INTEVAL (RDT) : 0
+ rdt, irdt = 6.00000005E-03, 1
+ it----         500
+ fld_u minmax values:  -1.29260104E-06   3.19288290E-07
+ Elapsed time to add source velocities   2.29477882E-05
+ Elapsed time to update velocities       2.37321854E-02
+ Elapsed time to add source stresses     3.06367874E-05
+ Elapsed time to update stresses         2.22117305E-02
+ Elapsed time to extract field           1.28823519E-03
+ Elapsed time to save boundary           8.55922699E-05
+ Viewing the snapshots (if written) with SU ximage/xmovie:
+ ximage < snap_sfield%*  n1=149 perc=99
+ xmovie < snap_sfield%*  n1=149 n2=149 clip=?e-?? loop=2 title=%g
+ SU data write success.
+ UPDATE_WAVELET : no
+ SU data write success.
+ WEIGHTING (WEI) : none
+ SU data write success.
+ SU data write success.
+ Shotloop-stacked fobj%dnorms upto Shot#Shot0001:  L1=   0.993047953      L2sq=   0.986113548    
+ it----         500
+ fld_a minmax values:   0.00000000       0.00000000    
+ fld_u minmax values:  -1.29084515E-06   3.15509993E-07
+ Elapsed time to load boundary               1.07109547E-04
+ Elapsed time to update stresses             1.88252330E-02
+ Elapsed time to rm source stresses          3.30209732E-05
+ Elapsed time to update velocities           1.59366727E-02
+ Elapsed time to rm source velocities        2.55703926E-05
+ Elapsed time ----------------------------
+ Elapsed time to add adjsource stresses      4.38529253E-03
+ Elapsed time to update adj stresses         2.10952759E-02
+ Elapsed time to add adjsource velocities    1.66058540E-04
+ Elapsed time to update adj velocities       1.98354721E-02
+ Elapsed time to extract&write fields        0.00000000    
+ Elapsed time to correlate                   3.35496664E-03
+ Viewing the snapshots (if written) with SU ximage/xmovie:
+ ximage < snap_rfield%*  n1=149 perc=99
+ xmovie < snap_rfield%*  n1=149 n2=149 clip=?e-?? loop=2 title=%g
+ ximage < snap_*  n1=101 perc=99
+ xmovie < snap_*  n1=101 n2=101 clip=?e-?? loop=2 title=%g
+         END LOOP OVER SHOTS        
+ Shotloop-stacked, shotlist-scaled, but yet linesearch-scaled fobj%dnorms :  L1=   0.993047953      L2sq=   0.986113548    
+ SMOOTHING (SMTH) : none
+ GRADIENT_SOFT_MASK (MASK) is NOT found, take 0, '' or F
+ PRECONDITIONING (PRECO) is NOT found, take default: z^1
+ Will precondition the gradient by z^1
+ Linesearch.Gradient# = 3.4
+ alpha = 0.100000001
+ Perturb qp%f, ║g║₁ = 2.18496275, 20.1741180
+ 1st cond  0.100000001       2.18496275       2.21573114     -0.307683945     -0.303192139      0.985401213     T
+ 2nd cond -0.301383048     -0.303192139     F
+ Curvature condition NOT satified -> should try a larger alpha
+ Modeling with perturbed models
+ ===== START LOOP OVER SHOTS =====
+ FILE_DATA_PREFIX : ./results_fwd/dsyn_
+ ntr, ns, file_size = 100, 500, 56000
+ Shot0001 will read 100 traces, each trace has 500 samples.
+ SU data read success.
+ FILTER_DATA (BFILT) is NOT found, take default: none
+ PEAK_FREQUENCY (FPEAK) : 6.4
+ MAX_FREQUENCY (FMAX) is NOT found, take default: 12.8000002
+ FILE_SRC_TIME_FUNC (FILE_WAVELET) is NOT found, take 0, '' or F
+ WAVELET_TYPE is NOT found, take default: sinexp
+ Use filtered sinexp wavelet
+ WAVELET_SCALING is NOT found, take 0, '' or F
+ SU data write success.
+ =================================
+ Shot0001 info:
+ =================================
+   nt,dt:         500   6.00000005E-03
+ ---------------------------------
+ S/R positions after removing m%oz,ox,iy,
+   sz,iz:   50.0000000               4
+   sx,ix:   505.000000              26
+   sy,iy:   0.00000000               1
+   ifz,ilz:           0           8
+   ifx,ilx:          22          30
+   ify,ily:           1           1
+ ---------------------------------
+   minmax rz,iz:   40.0000000       40.0000000               3           3
+   minmax rx,ix:   10.0000000       1990.00000               2         101
+   minmax ry,iy:   0.00000000       0.00000000               1           1
+   minmax ifz,ilz:          -1          -1           7           7
+   minmax ifx,ilx:          -2          97           6         105
+   minmax ify,ily:           1           1           1           1
+   nrcv:         100
+ ---------------------------------
+ Modeling Shot# Shot0001
+ ADD_APERTURE is NOT found, take default: -99999 99999 -99999 99999
+ REF_BNDLAYER_THICKNESS (NCPML) is NOT found, take default: 20
+ Computebox Size = [ifz,ilz] x [ifx,ilx] x [ify,ily] =        22201
+   [ifz,ilz],nz:         -23         125         149
+   [ifx,ilx],nx:         -23         125         149
+   [ify,ilx],ny:           1           1           1
+ Inner area of Computebox:
+   ioz,mz:           1         101
+   iox,mx:           1         101
+   ioy,my:           1           1
+ Computebox value ranges:
+ vp   1556.91724       1637.95947    
+ rho   1000.00000       1000.00000    
+ ip   1556917.25       1637959.50    
+ CFL value: 0.810748518
+ SNAPSHOT is NOT found, take 0, '' or F
+ REF_RECT_TIME_INTEVAL (RDT) : 0
+ rdt, irdt = 6.00000005E-03, 1
+ it----         500
+ fld_u minmax values:  -1.26358134E-06   3.38652796E-07
+ Elapsed time to add source velocities   2.36630440E-05
+ Elapsed time to update velocities       1.90137625E-02
+ Elapsed time to add source stresses     3.06367874E-05
+ Elapsed time to update stresses         1.94014311E-02
+ Elapsed time to extract field           5.02908230E-03
+ Elapsed time to save boundary           8.68439674E-05
+ Viewing the snapshots (if written) with SU ximage/xmovie:
+ ximage < snap_sfield%*  n1=149 perc=99
+ xmovie < snap_sfield%*  n1=149 n2=149 clip=?e-?? loop=2 title=%g
+ SU data write success.
+ UPDATE_WAVELET : no
+ SU data write success.
+ WEIGHTING (WEI) : none
+ SU data write success.
+ SU data write success.
+ Shotloop-stacked fobj%dnorms upto Shot#Shot0001:  L1=   0.931670070      L2sq=   0.865978956    
+ it----         500
+ fld_a minmax values:   0.00000000       0.00000000    
+ fld_u minmax values:  -1.26205396E-06   3.34975368E-07
+ Elapsed time to load boundary               1.05559826E-04
+ Elapsed time to update stresses             1.44770145E-02
+ Elapsed time to rm source stresses          2.98023224E-05
+ Elapsed time to update velocities           2.17079520E-02
+ Elapsed time to rm source velocities        2.31266022E-05
+ Elapsed time ----------------------------
+ Elapsed time to add adjsource stresses      1.26771331E-02
+ Elapsed time to update adj stresses         1.65067315E-02
+ Elapsed time to add adjsource velocities    1.70886517E-04
+ Elapsed time to update adj velocities       1.27493739E-02
+ Elapsed time to extract&write fields        0.00000000    
+ Elapsed time to correlate                   4.82183695E-03
+ Viewing the snapshots (if written) with SU ximage/xmovie:
+ ximage < snap_rfield%*  n1=149 perc=99
+ xmovie < snap_rfield%*  n1=149 n2=149 clip=?e-?? loop=2 title=%g
+ ximage < snap_*  n1=101 perc=99
+ xmovie < snap_*  n1=101 n2=101 clip=?e-?? loop=2 title=%g
+         END LOOP OVER SHOTS        
+ Shotloop-stacked, shotlist-scaled, but yet linesearch-scaled fobj%dnorms :  L1=   0.931670070      L2sq=   0.865978956    
+ SMOOTHING (SMTH) : none
+ GRADIENT_SOFT_MASK (MASK) is NOT found, take 0, '' or F
+ PRECONDITIONING (PRECO) is NOT found, take default: z^1
+ Will precondition the gradient by z^1
+ Linesearch.Gradient# = 4.5
+ alpha = 1.00000000
+ Perturb qp%f, ║g║₁ = 1.91877675, 18.6645126
+ 1st cond   1.00000000       1.91877675       2.21573114     -0.296954393     -0.303192139       1.02100575     T
+ 2nd cond -0.278022140     -0.303192139     F
+ Curvature condition NOT satified -> should try a larger alpha
+ ===================================
+   SeisJIMU has finished the job   
+===================================
+ System date: 05/25/2022
+System time: 14:30:51
+System timezone: +02:00
+                        

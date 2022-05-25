@@ -80,7 +80,7 @@ use m_linesearcher
     call ls%init
     call ls%scale(qp0)
     
-    call hud('qp0%f, ║g║₂² = '//num2str(qp0%f)//', '//num2str(norm2(qp0%g)))
+    call hud('qp0%f, ║g║₁ = '//num2str(qp0%f)//', '//num2str(sum(abs(qp0%g))))
     
     !if just estimate the wavelet or compute the gradient then this is it.
     if(setup%get_str('JOB')=='gradient') then

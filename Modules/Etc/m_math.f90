@@ -29,6 +29,8 @@ module m_math
     !chi  - χ
     !psi  - ψ
     !omga - ω
+    !p    - +
+    !m    - -
     !d    - ∂
     !nbla, nabla - ∇
     !_    - subscript, inverse, division, duplicate etc.

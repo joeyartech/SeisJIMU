@@ -44,8 +44,8 @@ mod :
 
 
 exe : main.o sub_optimizer_init_loop.o
-	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../../exe/gradienttest_$(WaveEq)_$(Solver)_$(Order)
-	(cd ../../exe; ln -sf gradienttest_$(WaveEq)_$(Solver)_$(Order) GradientTest )
+	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../../exe/gradienttest_$(WaveEq)_$(Solver)_$(Order)_$(Param)
+	(cd ../../exe; ln -sf gradienttest_$(WaveEq)_$(Solver)_$(Order)_$(Param) GradientTest )
 
 clean :
 	-rm main.o
