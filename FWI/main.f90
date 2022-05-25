@@ -160,10 +160,10 @@ use m_smoother_laplacian_sparse
         !Adjoint state method with Lagrangian formulation
         !to compute the gradient (L2 norm example)
         !C = ½║u║² = ½∫ (u-d)² δ(x-xr) dtdx³
-        !∇ᵤC = (u-d)δ(x-xr)
+        !KᵤC = (u-d)δ(x-xr)
         !L = C + <a|Au-s> ≐ C + <Aᴴa|u>
-        !0 = ∇ᵤL = ∇ᵤC + Aᴴa => Aᴴa = -∇ᵤC = (d-u)δ(x-xr)
-        !∇ₘL = aᴴ ∇ₘA u =: a★Du
+        !0 = KᵤL = KᵤC + Aᴴa => Aᴴa = -KᵤC = (d-u)δ(x-xr)
+        !KₘL = aᴴ KₘA u =: a★Du
 
         !objective function and adjoint source
         call fobj%stack_dnorms

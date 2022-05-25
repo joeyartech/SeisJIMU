@@ -133,6 +133,10 @@ use m_optimizer_common
                 !new descent direction
                 curr%d = reshape(-r,[param%n1,param%n2,param%n3,param%npars])
 
+                if(index(param%info,'pseudotime')>0) then
+                    where(curr%g==0.) curr%d=0.
+                endif
+
 ! print*,gamma,gamma_num,gamma_denom
 ! print*,beta
 ! print*,current%d

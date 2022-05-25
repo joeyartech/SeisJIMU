@@ -177,9 +177,9 @@ use m_System
             call alloc(tmp,self%nx,self%ny,1)
             call sysio_read(file,tmp,self%n)
             call hud('bathy minmax value: '//num2str(minval(tmp))//' , '//num2str(maxval(tmp)))
+            call hud('water or air layer is from #1 to #(floor(bathy/dz)+1) grid points in depth')
 
-            do iy=1,self%ny; do ix=1,self%nx
-                !The 1st to (floor(topo/dz)+1)'s grid points of the model (water or air layer) are freezed.
+            do iy=1,self%ny; do ix=1,self%nx    
                 self%is_freeze_zone(1:floor(tmp(ix,iy,1)/self%dz)+1,ix,iy)=.true.
             enddo; enddo
             

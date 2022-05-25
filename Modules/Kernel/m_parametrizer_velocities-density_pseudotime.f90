@@ -209,8 +209,10 @@ use m_Modeling
                         call pseudotime_convert('t->z',o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min,m%rho, o_v=v_t)
                     end select
                 enddo
+                
                 ! + gardner
                 if(is_gardner) m%rho = a*m%vp**b
+
                 call m%apply_freeze_zone
 
             endif
@@ -240,8 +242,8 @@ use m_Modeling
             !acoustic
             ! if(is_AC .and. .not. is_empirical) then
             if(.not. is_empirical) then
-                do i=1,param%npars
-                    select case (param%pars(i)%name)
+                do i=1,self%npars
+                    select case (self%pars(i)%name)
                     case ('vp' )
                         call pseudotime_convert_gradient(m%gradient(:,:,:,2)*2*m%rho*m%vp, &
                             m%vp,tmp)
@@ -263,12 +265,12 @@ use m_Modeling
             endif
 
             !normaliz g by allowed parameter range
-            do i=1,param%npars
-                o_g(:,:,:,i)=o_g(:,:,:,i)*param%pars(i)%range
+            do i=1,self%npars
+                o_g(:,:,:,i)=o_g(:,:,:,i)*self%pars(i)%range
             enddo
             
             !apply bathymetry
-            do i=1,param%npars
+            do i=1,self%npars
                 o_g(:,:,:,i)=o_g(:,:,:,i)*freeze_zone_in_x
             enddo
 
@@ -284,7 +286,7 @@ use m_Modeling
         real,dimension(:,:,:),allocatable :: preco_in_x
 
         call pseudotime_convert('z->t',preco_in_m,preco_in_x,o_v=m%vp)
-
+        
     end subroutine
 
 end module

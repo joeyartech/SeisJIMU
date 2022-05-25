@@ -76,6 +76,8 @@ use m_Modeling
         
         type(t_string),dimension(:),allocatable :: list,sublist
 
+        call hud('Invoked parametrizer module info : '//s_NL//self%info)
+
         !read in empirical law
         list=setup%get_strs('EMPIRICAL_LAW')
 

@@ -86,9 +86,9 @@ use m_pseudotime
 
 
     if(is_vel) then
-        call pseudotime_z2t(min,xout)
+        call pseudotime_convert('z->t',min,xout)
     else
-        call pseudotime_z2t(min,xout,o_v_z=v_z)
+        call pseudotime_convert('z->t',min,xout,o_v=v_z)
     endif
     
     !write(*,*) 'Enter filename of the output depth-domain model:'
@@ -142,9 +142,9 @@ use m_pseudotime
 
 
     if(is_vel) then
-        call pseudotime_t2z(xin,mout)
+        call pseudotime_convert('t->z',xin,mout)
     else
-        call pseudotime_t2z(xin,mout,o_v_t=v_t)
+        call pseudotime_convert('t->z',xin,mout,o_v=v_t)
     endif
     
     !write(*,*) 'Enter filename of the output depth-domain model:'

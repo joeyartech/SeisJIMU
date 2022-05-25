@@ -146,7 +146,7 @@ use m_Kernel
             !Wolfe conditions
             if_1st_cond = (pert%f <= curr%f+c1*self%alpha*curr%g_dot_d) !sufficient descent condition
             !if_1st_cond = (pert%f <= curr%f)
-            !if_2nd_cond = (abs(pert%g_dot_d) >= c2*abs(curr%g_dot_d)) !strong curvature condition
+            !if_2nd_cond = (abs(pert%g_dot_d) <= c2*abs(curr%g_dot_d)) !strong curvature condition
             if_2nd_cond = (pert%g_dot_d >= c2*curr%g_dot_d) !weak curvature condition
 
             !occasionally optimizers on processors don't have same behavior

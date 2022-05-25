@@ -191,11 +191,11 @@ use m_arrayop
             !compute dv
             !using central differences at interior nodes
             do iz=2,nz-1
-               dv(iz,1,1)=(v_z(iz+1,ix,iy)-v_z(iz-1,ix,iy))/2.
+               dv(iz,ix,iy)=(v_z(iz+1,ix,iy)-v_z(iz-1,ix,iy))/2.
             enddo
             !using one-side differences at boundary nodes
-            dv( 1,1,1)=v_z( 2,ix,iy)-v_z(   1,ix,iy)
-            dv(nz,1,1)=v_z(nz,ix,iy)-v_z(nz-1,ix,iy)
+            dv( 1,ix,iy)=v_z( 2,ix,iy)-v_z(   1,ix,iy)
+            dv(nz,ix,iy)=v_z(nz,ix,iy)-v_z(nz-1,ix,iy)
         enddo; enddo
 
         do iy=1,ny; do ix=1,nx

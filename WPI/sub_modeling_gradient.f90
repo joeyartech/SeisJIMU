@@ -10,28 +10,28 @@
 !δC = ½∫ a(t₁)a(t₂)(u(t₁)δu(t₂)+δu(t₁)u(t₂)) dt₁dt₂dx³
 !   =  ∫ a(t₁)a(t₂)u(t₁)δu(t₂) dt₁dt₂dx³
 !   =  ∫ I a δu dtdx³
-!∇ᵤC = Ia
-!similarly, ∇ₐC = Iu
+!KᵤC = Ia
+!similarly, KₐC = Iu
 !
 !Adjoint state method with Lagrangian formulation to compute the gradient
 !A u=f
 !Aᴴa =Rᴴ(d-u)
 !L = C +<λ|Au-f> +<μ|Aᴴa-Rᴴ(d-u)>
 !  ≐ C +<Aᴴλ|u>  +<Aμ|a> +<Rμ|u>
-!0 = ∇ᵤL = ∇ᵤC +Aᴴλ +Rμ => Aᴴλ =-Ia -Rμ => λ=-δa +Adj(Rᴴδu)
-!0 = ∇ₐL = ∇ₐC +Aμ      => Aμ  =-Iu     => μ=-δu
+!0 = KᵤL = KᵤC +Aᴴλ +Rμ => Aᴴλ =-Ia -Rμ => λ=-δa +Adj(Rᴴδu)
+!0 = KₐL = KₐC +Aμ      => Aμ  =-Iu     => μ=-δu
 !where
 !Aᴴδa =Ia, Aᴴ(Adj(Rᴴδu))=Adj(Rᴴδu)
 !A δu =Iu
-!∇ₘL = λᴴ ∇ₘA u + μᴴ ∇ₘAᴴ a
+!KₘL = λᴴ KₘA u + μᴴ KₘAᴴ a
 !    = -δa★Du +δu★Da +Adj(Rᴴδu)★Du
 !
 !For PDE:      A u = M ∂ₜ u - D u = f
 !    Adjoint:  Aᵀa = M ∂ₜᵀa - Dᵀa = d
-!    μᴴ ∇ₘAᵀ a
-!= -δuᴴ ∇ₘM ∂ₜᵀa
-!≐ -δuᴴ ∇ₘM (M⁻¹Dᵀa)
-!=  δuᴴ ∇ₘM (M⁻¹D a)
+!    μᴴ KₘAᵀ a
+!= -δuᴴ KₘM ∂ₜᵀa
+!≐ -δuᴴ KₘM (M⁻¹Dᵀa)
+!=  δuᴴ KₘM (M⁻¹D a)
 !=  δu★Da  (more accurate)
 != -a★Dδu  (symmetric to -δa★Du, looks nicer)
 

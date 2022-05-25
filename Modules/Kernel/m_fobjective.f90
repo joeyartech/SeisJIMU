@@ -418,7 +418,7 @@ use m_preconditioner
         call preco%apply(qp%g,qp%pg)
 
         !save some RAM
-        call dealloc(m%gradient,m%energy)
+        !call dealloc(m%gradient,m%energy)
 
     end subroutine
 
