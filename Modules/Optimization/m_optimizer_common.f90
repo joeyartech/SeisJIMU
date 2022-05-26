@@ -110,7 +110,8 @@ use m_linesearcher
 
                 do i=1,size(list)
                     sindex=num2str(list(i),o_format='(i0.4)')
-                    call sysio_mv('dsyn_Shot'//sindex,'dsyn_Iter'//siterate//'_Shot'//sindex)
+                    call sysio_mv('dsyn_Shot'//sindex//'.su','dsyn_Iter'//siterate//'_Shot'//sindex//'.su')
+                    call sysio_mv('dadj_Shot'//sindex//'.su','dadj_Iter'//siterate//'_Shot'//sindex//'.su')
                 enddo
 
             case('maximum')
@@ -157,7 +158,8 @@ use m_linesearcher
 
                 do i=1,size(list)
                     sindex=num2str(list(i),o_format='(i0.4)')
-                    call sysio_mv('dsyn_Shot'//sindex,'dsyn_Iter'//siterate//'_Shot'//sindex)
+                    call sysio_mv('dsyn_Shot'//sindex//'.su','dsyn_Iter'//siterate//'_Shot'//sindex//'.su')
+                    call sysio_mv('dadj_Shot'//sindex//'.su','dadj_Iter'//siterate//'_Shot'//sindex//'.su')
                 enddo
 
             end select

@@ -133,7 +133,7 @@ use m_System
     
     subroutine smoother_Laplacian_extend_mirror(grad,itopo)
     !to avoid leakage into the mask zone after smoothing
-    !this subroutine mirrors the grad wrt midway between points itopo+iaddmirror-1 & itopo+iaddmirror-1 in depth
+    !this subroutine mirrors the gradient wrt midway between grid points #1 & #2(itopo+iaddmirror-1) in depth
     !then another subroutine cleans the mask zone later
         real,dimension(nz,nx,ny) :: grad
         integer,dimension(nx,ny) :: itopo

@@ -145,6 +145,8 @@ use m_arrayop
                     z=z+interp(v(:,ix,iy),z,nz,Dz)*Dt
                 enddo
 
+                dout(nreal(ix,iy)+1:nt,ix,iy)=dout(nreal(ix,iy),ix,iy)
+
             enddo; enddo
 
         endif
@@ -165,6 +167,8 @@ use m_arrayop
                    dout(iz,ix,iy)=interp(din(:,ix,iy),t,nt,Dt)
                    t=t+Dz/interp(v(:,ix,iy),t,nt,Dt)
                 enddo
+
+                dout(nreal(ix,iy)+1:nz,ix,iy)=dout(nreal(ix,iy),ix,iy)
 
             enddo; enddo
 

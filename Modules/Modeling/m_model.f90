@@ -25,6 +25,7 @@ use m_System
         !reference values
         real :: ref_inv_vp, ref_rho
 
+        integer,dimension(:,:),allocatable :: ibathy
         logical,dimension(:,:,:),allocatable :: is_freeze_zone
 
         real,dimension(:,:,:,:),allocatable :: gradient, image, energy, correlate
@@ -166,13 +167,16 @@ use m_System
 
         !freesurface
         self%is_freesurface=setup%get_bool('IS_FREESURFACE',o_default='T')
-                
+        
+        !bathymetry or topography
+        call alloc(self%ibathy,self%nx,self%ny)
+
         !freeze zone
         allocate(self%is_freeze_zone(self%nz,self%nx,self%ny),source=.false.)
 
-        !check file bathymetry or topology
+        !check file bathymetry or topography
         file=setup%get_file('FILE_BATHYMETRY','FILE_BATHY')
-        if(file=='') file=setup%get_file('FILE_TOPOLOGY','FILE_TOPO')
+        if(file=='') file=setup%get_file('FILE_TOPOGRAPHY','FILE_TOPO')
         if(file/='') then
             call alloc(tmp,self%nx,self%ny,1)
             call sysio_read(file,tmp,self%n)
@@ -180,16 +184,20 @@ use m_System
             call hud('water or air layer is from #1 to #(floor(bathy/dz)+1) grid points in depth')
 
             do iy=1,self%ny; do ix=1,self%nx    
-                self%is_freeze_zone(1:floor(tmp(ix,iy,1)/self%dz)+1,ix,iy)=.true.
+                self%ibathy(ix,iy)=floor(tmp(ix,iy,1)/self%dz)+1
+            enddo; enddo
+
+            do iy=1,self%ny; do ix=1,self%nx    
+                self%is_freeze_zone(1:self%ibathy(ix,iy),ix,iy)=.true.
             enddo; enddo
             
-            call hud('Freeze zone is set from FILE_BATHYMETRY or FILE_TOPOLOGY.')
+            call hud('Freeze zone is set from FILE_BATHYMETRY or FILE_TOPOGRAPHY.')
         endif
 
         !2nd check vs model
         if(allocated(self%vs)) then
             if(setup%get_bool('IF_BATHY_FROM_VS',o_default='T')) then
-                !self%itopo = maxloc(self%vs, dim=1, mask=(self%vs<10), back=.true.)+1 !the "back" argument isn't implemented in gfortran until version 9 ..
+                !self%ibathy = maxloc(self%vs, dim=1, mask=(self%vs<10), back=.true.)+1 !the "back" argument isn't implemented in gfortran until version 9 ..
                 do iy=1,self%ny; do ix=1,self%nx
                     loopz: do iz=1,self%nz
                         if(self%vs(iz,ix,iy)<10.) then
@@ -213,7 +221,7 @@ use m_System
             call hud('Freeze zone is additionally set from FILE_FREEZE_ZONE.')
         endif
 
-        if(allocated(tmp)) deallocate(tmp)
+        call dealloc(tmp)
 
     end subroutine
 

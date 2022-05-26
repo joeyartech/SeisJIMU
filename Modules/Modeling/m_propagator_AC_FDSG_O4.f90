@@ -1990,7 +1990,7 @@ use m_cpml
     
     subroutine gradient_postprocess
 
-        !scale by m%cell_volume*rdt tobe a gradient in the discretized world
+        !scale the kernel tobe a gradient in the discretized world
         cb%grad = cb%grad*m%cell_volume*rdt
         
         !grho

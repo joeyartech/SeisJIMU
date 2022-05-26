@@ -55,8 +55,6 @@ use m_Modeling
 
     real :: a,b
 
-    real,dimension(:,:,:),allocatable :: freeze_zone_in_m, freeze_zone_in_x
-
     contains
     
     subroutine init(self)
@@ -167,10 +165,10 @@ use m_Modeling
         self%d2=m%dx
         self%d3=m%dy
 
-        call alloc(freeze_zone_in_m,m%nz,m%nx,m%ny,o_init=1.)
-        where(m%is_freeze_zone) freeze_zone_in_m=0.
-        call pseudotime_convert('z->t',freeze_zone_in_m,freeze_zone_in_x,o_v=m%vp)
-        deallocate(freeze_zone_in_m)
+        !call alloc(freeze_zone_in_m,m%nz,m%nx,m%ny,o_init=1.)
+        !where(m%is_freeze_zone) freeze_zone_in_m=0.
+        !call pseudotime_convert('z->t',freeze_zone_in_m,freeze_zone_in_x,o_v=m%vp)
+        !deallocate(freeze_zone_in_m)
 
     end subroutine
     
@@ -269,10 +267,10 @@ use m_Modeling
                 o_g(:,:,:,i)=o_g(:,:,:,i)*self%pars(i)%range
             enddo
             
-            !apply bathymetry
-            do i=1,self%npars
-                o_g(:,:,:,i)=o_g(:,:,:,i)*freeze_zone_in_x
-            enddo
+            !!apply bathymetry
+            !do i=1,self%npars
+            !    o_g(:,:,:,i)=o_g(:,:,:,i)*freeze_zone_in_x
+            !enddo
 
         endif
         

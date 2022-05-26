@@ -180,7 +180,7 @@ use m_parametrizer
         real,dimension(param%n1,param%n2,param%n3,param%npars) :: g,pg
         real :: old_norm
 
-        old_norm = norm2(g)
+        old_norm = sum(abs(g))
         do i=1,param%npars
             pg(:,:,:,i)=g(:,:,:,i)*preco_in_x(:,:,:)
         enddo

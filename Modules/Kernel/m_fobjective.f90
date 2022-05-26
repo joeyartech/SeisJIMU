@@ -378,7 +378,7 @@ use m_preconditioner
                 call hud('Laplacian smoothing')
                 call smoother_Laplacian_init([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%fpeak)
                 do j=1,ppg%ngrad
-                    !call smoother_laplacian_extend_mirror(m%gradient(:,:,:,i),m%itopo)
+                    call smoother_Laplacian_extend_mirror(m%gradient(:,:,:,j),m%ibathy)
                     call smoother_Laplacian_pseudo_nonstationary(m%gradient(:,:,:,j),m%vp)
                 enddo    
             endif
@@ -393,7 +393,7 @@ use m_preconditioner
         smask=setup%get_file('GRADIENT_SOFT_MASK','MASK')
         if(smask/='') then
             call alloc(mask,m%nz,m%nx,m%ny)
-            ! call sysio_read(smask,mask,size(mask))
+            call sysio_read(smask,mask,size(mask))
             
             do i=1,ppg%ngrad
                 m%gradient(:,:,:,i)=m%gradient(:,:,:,i)*mask
