@@ -36,16 +36,19 @@ program main
         endif
     endif
 
+    write(*,*) 'vmin, vmax=? (put 000 for automatic computation)'
+    read(*,*) vmin, vmax
+
     write(*,*) 'Enter job (=1: depth to time; =2: time to depth):'
     read(*,*) job
 
-    if(job==1) call depth2time(fin,is_vel,fvel)
+    if(job==1) call depth2time(fin,is_vel,fvel,vmin,vmax)
 
-    if(job==2) call time2depth(fin,is_vel,fvel)
+    if(job==2) call time2depth(fin,is_vel,fvel,vmin,vmax)
 
 end program
 
-subroutine depth2time(fin,is_vel,fvel)
+subroutine depth2time(fin,is_vel,fvel,vmin,vmax)
 use m_pseudotime
 
     character(*) :: fin, fvel
@@ -74,7 +77,10 @@ use m_pseudotime
     read(11,rec=1)v_z
     close(11)
 
-    call pseudotime_init('z->t',vmin=minval(min),vmax=maxval(min),nx_=nx,ny_=1, &
+    if(vmin==0.) vmin=minval(min)
+    if(vmax==0.) vmax=maxval(min)
+
+    call pseudotime_init('z->t',vmin,vmax,nx_=nx,ny_=1, &
         nz_=nz, dz_=dz, &
         nt_=nt, dt_=dt)
 
@@ -101,7 +107,7 @@ use m_pseudotime
 
 end subroutine
 
-subroutine time2depth(fin,is_vel,fvel)
+subroutine time2depth(fin,is_vel,fvel,vmin,vmax)
 use m_pseudotime
 
     character(*) :: fin, fvel
@@ -130,7 +136,10 @@ use m_pseudotime
     read(11,rec=1)v_t
     close(11)
 
-    call pseudotime_init('t->z',vmin=minval(xin),vmax=maxval(xin),nx_=nx,ny_=1, &
+    if(vmin==0.) vmin=minval(xin)
+    if(vmax==0.) vmax=maxval(xin)
+
+    call pseudotime_init('t->z',vmin,vmax,nx_=nx,ny_=1, &
         nz_=nz, dz_=dz, &
         nt_=nt, dt_=dt)
 
