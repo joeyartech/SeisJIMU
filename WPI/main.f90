@@ -77,7 +77,7 @@ use m_Optimization
 
     if(.not. qp0%is_fitting_data) then
         call hud('Negate the sign of qp0 to ensure fitting the data')
-        call qp0%set_sign(o_sign='-')
+        ! call qp0%set_sign(o_sign='-')
     endif
 
     call sysio_write('qp0%g',qp0%g,size(qp0%g))

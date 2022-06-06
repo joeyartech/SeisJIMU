@@ -403,10 +403,10 @@ use m_preconditioner
         ! call sysio_write('grho',m%gradient(:,:,:,1),size(m%gradient(:,:,:,1)))
         ! call sysio_write('gkpa',m%gradient(:,:,:,2),size(m%gradient(:,:,:,2)))
 
-        !transform to x-space
+        !transform to x-domain
         call param%transform(o_g=qp%g)
 
-        !Regularization in x-space
+        !Regularization in x-domain
         ! if(either(oif_approx,.false.,present(oif_approx))) then
         !     call regularize_approximate(fobj,qp)
         ! else

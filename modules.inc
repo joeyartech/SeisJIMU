@@ -14,8 +14,8 @@ ShotDec=batching
 ##########
 # Kernel #
 ##########
-#Param=velocities-density
-Param=velocities-density_pseudotime
+Param=velocities-density
+#Param=velocities-density_pseudotime
 #Param=velocities-impedance
 #Param=slowness-density
 App=FWI
