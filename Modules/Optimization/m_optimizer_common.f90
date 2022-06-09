@@ -59,7 +59,7 @@ use m_linesearcher
         character(*) :: task
         character(*),optional :: o_title
 
-        character(*),parameter :: fmt='(x,i5,2x,5x,2x,i5,10x,7x,es10.4,x,f7.3,2x,f7.3,5x,es9.2)'
+        character(*),parameter :: fmt='(x,i5,2x,5x,2x,i5,10x,6x,es11.4,x,f7.3,2x,f7.3,5x,es9.2)'
         character(:),allocatable :: siterate,sindex
         type(t_string),dimension(:),allocatable :: tmp
         integer,dimension(:),allocatable :: list

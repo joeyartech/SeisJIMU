@@ -74,9 +74,12 @@ use m_message
         character(*),optional :: o_alias
         character(:),allocatable :: res
 
-        character(i_str_len) :: text
-        character(i_str_len+4) :: text2
-        character(i_str_slen) :: tmp_key, tmp_val, tmp_res
+        !character(i_str_len) :: text
+        !character(i_str_len+4) :: text2
+        !character(i_str_slen) :: tmp_key, tmp_val, tmp_res
+        character(i_str_xlen) :: text
+        character(i_str_xlen+4) :: text2
+        character(i_str_xlen) :: tmp_key, tmp_val, tmp_res
         tmp_res=''
 
         open(10,file=file,action='read')

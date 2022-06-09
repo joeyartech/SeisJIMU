@@ -27,7 +27,6 @@ makevel nz=1 nx=$n v000=100 > topo
 
 rm -r results
 ../../exe/GradientTest_WPI  setup.in > out
-#../../exe/GradientTest_onlyRE  setup.in > out
 
 echo '            alpha    pert%f    curr%f    (pert%f-curr%f)/alpha    curr%g_dot_d    ratio'
 grep '1st cond' out

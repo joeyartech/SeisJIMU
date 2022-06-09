@@ -101,7 +101,7 @@ use m_Optimization
     
 end
 
-subroutine modeling_gradient(is_fitting_data)!(oif_gradient)
+subroutine modeling_gradient
 use mpi
 use m_System
 use m_Modeling
@@ -110,14 +110,9 @@ use m_fobjective
 use m_matchfilter
 use m_smoother_laplacian_sparse
 
-    !logical,optional :: oif_gradient
-    logical :: is_fitting_data
-
     logical,save :: is_first_in=.true.
     type(t_field) :: fld_u, fld_a
     character(:),allocatable :: update_wavelet
-
-    is_fitting_data=.true.
 
     fobj%dnorms=0.
     fobj%xnorms=0.

@@ -12,7 +12,7 @@ use m_setup
         logical exist
 
         !input directory
-        dir_in=setup%get_str('DIR_IN',o_default='./') 
+        dir_in=setup%get_str('DIR_IN',o_default='./')
 
 #ifdef gfortran
         inquire(file=dir_in,exist=exist)
@@ -20,6 +20,9 @@ use m_setup
 #ifdef ifort
         inquire(directory=dir_in,exist=exist)
 #endif
+
+        n=len(dir_in)
+        if(dir_in(n:n)/='/') dir_in=dir_in//'/'
         
         if(.not.exist) then !input directory not exist
             call hud('Input directory: '//dir_in//' does NOT exist, reset to ./')
@@ -32,6 +35,8 @@ use m_setup
 
         !output directory
         dir_out=setup%get_str('DIR_OUT',o_default='./results/')
+        n=len(dir_out)
+        if(dir_out(n:n)/='/') dir_out=dir_out//'/'
 
         call execute_command_line('mkdir -p '//dir_out, wait=.true.)
         

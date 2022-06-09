@@ -23,7 +23,7 @@ NT           500
 DT           0.006
 
 ## for WPI ##
-FILE_DATA_PREFIX    './results_fwd/dsyn_'
+FILE_DATA_PREFIX    './results_fwd/dsyn_Shot'
 #ISHOT               1
 NBATCH              4
 WEIGHTING           'none'
@@ -48,7 +48,7 @@ PRECO        'z^0'
 
 #DESCENT_DIR     'random'  #'-curr%pg'
 #DESCENT_DIR     'random_perturb'
-#ALPHAS           '1e-6 1e-5 1e-4 1e-3' #better for n=101
+#ALPHAS           '11e' #better for n=101
 ALPHAS           '1e-3 1e-2 1e-1 1 1e1' #better for n=201
 #ALPHAS          '0.'
 

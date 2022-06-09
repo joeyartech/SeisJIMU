@@ -49,8 +49,6 @@ use m_Modeling
         integer :: npars
         type(t_string),dimension(:),allocatable :: empirical
 
-        logical,dimension(:,:,:,:),allocatable :: is_freeze_zone
-
         integer :: n1,n2,n3,n
         real :: d1,d2,d3
         
@@ -286,7 +284,6 @@ use m_Modeling
                 o_g(:,:,:,i)=o_g(:,:,:,i)*param%pars(i)%range
             enddo
             
-            ! where (param%is_freeze_zone) g=0.
         endif
         
 !deprecated

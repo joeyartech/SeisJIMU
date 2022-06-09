@@ -14,7 +14,7 @@ all : $(src:.f90=.o)
 	@printf "\n"
 
 clean :
-	-rm $(src:.f90=.o)
+	-rm $(src:.f90=.o) m_linesearcher_enumerate.o
 	@printf "\n"
 	-rm $(src:%.f90=$(mod_dir)%.mod)  $(mod_dir)m_linesearcher.mod $(mod_dir)m_optimizer.mod $(mod_dir)m_optimization.mod
 	@printf "\n"

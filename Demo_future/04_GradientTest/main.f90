@@ -95,7 +95,7 @@ use m_linesearcher
 end
 
 !copy-paste from FWI/main.f90
-subroutine modeling_gradient(is_fitting_data)!(oif_gradient)
+subroutine modeling_gradient!(is_fitting_data)!(oif_gradient)
 use mpi
 use m_System
 use m_Modeling
@@ -105,13 +105,10 @@ use m_matchfilter
 use m_smoother_laplacian_sparse
 
     !logical,optional :: oif_gradient
-    logical :: is_fitting_data
 
     logical,save :: is_first_in=.true.
     type(t_field) :: fld_u, fld_a
     character(:),allocatable :: update_wavelet
-
-    is_fitting_data=.true.
 
     fobj%dnorms=0.
     fobj%xnorms=0.
@@ -154,10 +151,10 @@ use m_smoother_laplacian_sparse
         !Adjoint state method with Lagrangian formulation
         !to compute the gradient (L2 norm example)
         !C = ½║u║² = ½∫ (u-d)² δ(x-xr) dtdx³
-        !∇ᵤC = (u-d)δ(x-xr)
+        !KᵤC = (u-d)δ(x-xr)
         !L = C + <a|Au-s> ≐ C + <Aᴴa|u>
-        !0 = ∇ᵤL = ∇ᵤC + Aᴴa => Aᴴa = -∇ᵤC
-        !∇ₘL = a ∇ₘA u =: a★Du
+        !0 = KᵤL = KᵤC + Aᴴa => Aᴴa = -KᵤC
+        !KₘL = a KₘA u =: a★Du
 
         !objective function and adjoint source
         call fobj%stack_dnorms

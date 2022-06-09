@@ -66,7 +66,7 @@ use m_Optimization
 
     !initial (model) parameters as querypoint
     call qp0%init('qp0')
-
+    
     !objective function and gradient
     call fobj%init
     ! call chp_qp%init('FWI_querypoint_gradient')
@@ -76,7 +76,7 @@ use m_Optimization
     ! endif
 
     if(.not. qp0%is_fitting_data) then
-        call hud('Negate the sign of qp0 to ensure fitting the data')
+        ! call hud('Negate the sign of qp0 to ensure fitting the data')
         ! call qp0%set_sign(o_sign='-')
     endif
 
@@ -101,15 +101,15 @@ use m_Optimization
     call optimizer_loop
     
     call mpiworld%final
-    
+
 end
 
-subroutine modeling_gradient(is_fitting_data)
-    logical is_fitting_data
+subroutine modeling_gradient!(is_fitting_data)
+!     logical is_fitting_data
 
     !change here to choose which subroutine to run
-    call modeling_gradient_costRAM(is_fitting_data)
-    ! call modeling_gradient_slow(is_fitting_data)
+    call modeling_gradient_costRAM!(is_fitting_data)
+    ! call modeling_gradient_slow!(is_fitting_data)
     
 end subroutine
 

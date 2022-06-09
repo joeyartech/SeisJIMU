@@ -22,8 +22,8 @@ use m_math
     ! end function
 
     !║u║₁ = a*∫ |Wu| dt
-    !nabla = a*sgn(Wu)
-    !gradient = nabla*dt
+    !kernel = a*sgn(Wu)
+    !gradient = kernel*dt
     real function L1(scaler,size,W,u,sampling)
         integer size
         real,dimension(*) :: W,u
@@ -39,24 +39,24 @@ use m_math
 
     end function
 
-    subroutine nabla_L1(nabla,oif_stack)
-        real,dimension(*) :: nabla
+    subroutine kernel_L1(kernel,oif_stack)
+        real,dimension(*) :: kernel
         logical,optional :: oif_stack
 
         if(either(oif_stack,.false.,present(oif_stack))) then
             do i=1,n
                 if (Wpu(i)>0.) then
-                    nabla(i) = nabla(i) +a
+                    kernel(i) = kernel(i) +a
                 else
-                    nabla(i) = nabla(i) -a
+                    kernel(i) = kernel(i) -a
                 endif
             enddo
         else
             do i=1,n
                 if (Wpu(i)>0.) then
-                    nabla(i) =           a
+                    kernel(i) =           a
                 else
-                    nabla(i) =          -a
+                    kernel(i) =          -a
                 endif
             enddo
         endif
@@ -66,8 +66,8 @@ use m_math
     end subroutine
 
     !║u║₂² = a*∫ (Wu)² dt
-    !nabla = 2a*W²u
-    !gradient = nabla*dt
+    !kernel = 2a*W²u
+    !gradient = kernel*dt
     real function L2sq(scaler,size,W,u,sampling)
         integer size
         real,dimension(*) :: W,u
@@ -83,14 +83,14 @@ use m_math
         
     end function
 
-    subroutine nabla_L2sq(nabla,oif_stack)
-        real,dimension(*) :: nabla
+    subroutine kernel_L2sq(kernel,oif_stack)
+        real,dimension(*) :: kernel
         logical,optional :: oif_stack
         
         if(either(oif_stack,.false.,present(oif_stack))) then
-            nabla(1:n) = nabla(1:n) +2.*a*Wpu
+            kernel(1:n) = kernel(1:n) +2.*a*Wpu
         else
-            nabla(1:n) =             2.*a*Wpu
+            kernel(1:n) =             2.*a*Wpu
         endif
 
         deallocate(Wpu)

@@ -80,11 +80,16 @@ use m_smoother_laplacian_sparse
         !weighting on the adjoint source for the image
         call wei%update!('_4IMAGING')
         
-        tmp = L2sq(0.5,shot%nrcv*shot%nt,&
-            wei%weight, shot%dobs-shot%dsyn, shot%dt)
+        if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'residual')>0) then
+            tmp = L2sq(0.5,shot%nrcv*shot%nt,&
+                wei%weight, shot%dobs-shot%dsyn, shot%dt)
+        else
+            tmp = L2sq(0.5,shot%nrcv*shot%nt,&
+                wei%weight, shot%dobs          , shot%dt)
+        endif
         
         call alloc(shot%dadj,shot%nt,shot%nrcv)
-        call nabla_L2sq(shot%dadj)
+        call kernel_L2sq(shot%dadj)
         call shot%write('Imag_dadj_',shot%dadj)
         
         !adjoint modeling
@@ -112,7 +117,7 @@ use m_smoother_laplacian_sparse
 end subroutine
 
 
-subroutine modeling_gradient_slow(is_fitting_data)
+subroutine modeling_gradient_slow
 use mpi
 use m_System
 use m_Modeling
@@ -123,8 +128,6 @@ use m_fobjective
 use m_matchfilter
 use m_smoother_laplacian_sparse
 use m_resampler
-
-    logical :: is_fitting_data
 
     logical,save :: is_first_in=.true.
 
@@ -138,6 +141,7 @@ use m_resampler
 
     !info
     call hud('Entering modeling_gradient_slow')
+    call error('this subroutine is out-dated!')
 
     if(setup%get_file('FILE_IMAGE')/='') then
         call alloc(m%image,m%nz,m%nx,m%ny,1)
@@ -161,7 +165,7 @@ use m_resampler
 
     fobj%dnorms(2) = L2sq(0.5,m%n,iwei%weight,m%image,m%cell_volume)
     call alloc(W2Idt,m%nz,m%nx,m%ny)
-    call nabla_L2sq(W2Idt)
+    call kernel_L2sq(W2Idt)
 
     !times dt in the RHS for propagation
     W2Idt=W2Idt*shot%dt
@@ -213,7 +217,7 @@ use m_resampler
             + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
             
         call alloc(shot%dadj,shot%nt,shot%nrcv)
-        call nabla_L2sq(shot%dadj)
+        call kernel_L2sq(shot%dadj)
         call shot%write('FWI_dadj_',shot%dadj)
 
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
@@ -234,7 +238,7 @@ use m_resampler
             !adjoint eqn Aᴴa = Rᴴ(d-u), Aδa = Ia
             call wei%update
             tmp = L2sq(0.5,shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
-            call nabla_L2sq(shot%dadj)
+            call kernel_L2sq(shot%dadj)
             
             !adjoint modeling
             !grad = -δa★Du
@@ -260,7 +264,7 @@ use m_resampler
             !adjoint eqn Aᴴa = Rᴴ(d-u)
             call wei%update
             tmp = L2sq(0.5,shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
-            call nabla_L2sq(shot%dadj)
+            call kernel_L2sq(shot%dadj)
             
             !adjoint modeling
             !grad = δu★Da
@@ -283,7 +287,7 @@ use m_resampler
             !adjoint eqn Aᴴa = Rᴴ(d-u), Aδa = Ia
             call wei%update
             tmp = L2sq(0.5,shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
-            call nabla_L2sq(shot%dadj)
+            call kernel_L2sq(shot%dadj)
             
             !adjoint modeling
             !grad = δu★Dδa
@@ -369,9 +373,6 @@ use m_resampler
         m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,5)
     endif
 
-    !check if fitting the t-x domain data
-    is_fitting_data = sum(m%correlate(:,:,:,1)*m%gradient(:,:,:,2))>0.
-
     !deallocate(m%correlate)
     
     !required, otherwise cb%project_back will project_back cb%corr
@@ -388,7 +389,7 @@ use m_resampler
 end subroutine
 
 
-subroutine modeling_gradient_costRAM(is_fitting_data)
+subroutine modeling_gradient_costRAM
 use mpi
 use m_System
 use m_Modeling
@@ -399,8 +400,6 @@ use m_fobjective
 use m_matchfilter
 use m_smoother_laplacian_sparse
 use m_resampler
-
-    logical :: is_fitting_data
 
     logical,save :: is_first_in=.true.
 
@@ -438,7 +437,7 @@ use m_resampler
 
     fobj%dnorms(2) = L2sq(0.5,m%n,iwei%weight,m%image,m%cell_volume)
     call alloc(W2Idt,m%nz,m%nx,m%ny)
-    call nabla_L2sq(W2Idt)
+    call kernel_L2sq(W2Idt)
     
     !times dt in the RHS for propagation
     W2Idt=W2Idt*shot%dt
@@ -450,7 +449,8 @@ use m_resampler
 
     call alloc(m%correlate, m%nz,m%nx,m%ny,5)
 
-    corrs=setup%get_str('CORRELATIONS','CORRS','RE+DR')
+    corrs=setup%get_str('COMPUTE_CORRELATIONS','CORRS','RE+DR')
+    ! corrs='RE+DR'
     
     call hud('===== START LOOP OVER SHOTS =====')
     
@@ -491,14 +491,19 @@ use m_resampler
 
         !compute FWI data misfit C_data=║Δd║²
         call wei%update
-        fobj%FWI_misfit = fobj%FWI_misfit &
-            + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
+        if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'residual')>0) then
+            fobj%FWI_misfit = fobj%FWI_misfit &
+                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
+        else
+            fobj%FWI_misfit = fobj%FWI_misfit &
+                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs          , shot%dt)
+        endif
         
         !adjoint modeling
         !Aᴴ a = Rᴴ(d-u)
         !Aᴴδa = Ia
         call alloc(shot%dadj,shot%nt,shot%nrcv)
-        call nabla_L2sq(shot%dadj)
+        call kernel_L2sq(shot%dadj)
         call shot%write('FWI_dadj_',shot%dadj)
 
         call ppg%init_field(fld_a, name='fld_a' ,ois_adjoint=.true.); call fld_a%ignite
@@ -511,7 +516,8 @@ use m_resampler
         call fld_Adj_du%ignite
                 
         call ppg%adjoint_WPI(fld_da,fld_a,fld_Adj_du,fld_du,fld_u,W2Idt,corrs)
-        if(index(corrs,'RE')>0) cb%corr(:,:,:,2)=-cb%corr(:,:,:,2)
+        !if(index(corrs,'RE')>0) cb%corr(:,:,:,2)=-cb%corr(:,:,:,2)
+        cb%corr(:,:,:,2)=-cb%corr(:,:,:,2)
 
         call cb%project_back
 
@@ -548,22 +554,28 @@ use m_resampler
     endif
 
     call alloc(m%gradient,m%nz,m%nx,m%ny,2)
-    if(index(corrs,'FWI')>0) then
-        m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,1)
-    endif
-    if(index(corrs,'RE')>0) then
-        m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,2)+m%correlate(:,:,:,3)
-    endif
-    if(index(corrs,'DR')>0) then
+    ! if(index(corrs,'FWI')>0) then
+    !     m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,1)
+    ! endif
+    ! if(index(corrs,'RE')>0) then
+    !     m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,2)+m%correlate(:,:,:,3)
+    ! endif
+    ! if(index(corrs,'DR')>0) then
+    !     m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,5)
+    ! endif
+    
+    !RE
+    m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,2)+m%correlate(:,:,:,3)
+
+    !DR
+    if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'residual')>0) then
         m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,5)
     endif
 
-    !check if fitting the t-x domain data
-    is_fitting_data = sum(m%correlate(:,:,:,1)*m%gradient(:,:,:,2))>0.
 
     !deallocate(m%correlate)
     
-    !required, otherwise cb%project_back will project_back cb%corr
+    !required, otherwise cb%project_back will project back cb%corr
     !in the sequential calling of modeling_imaging
     deallocate(cb%corr)
         

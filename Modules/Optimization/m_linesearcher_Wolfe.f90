@@ -113,7 +113,6 @@ use m_Kernel
             !if(mpiworld%is_master) call sysio_write('pert%x',pert%x,size(pert%x),o_mode='append')
             call threshold(pert%x,size(pert%x))
             call hud('Modeling with perturbed models')
-
             call chp%init('FWI_querypoint_linesearcher','Gradient#','per_init')
             if(.not.pert%is_registered(chp)) then
                 call fobj%eval(pert)
@@ -124,7 +123,7 @@ use m_Kernel
             !     call hud('Negate the sign of pert due to curr')
             !     call pert%set_sign(o_sign='-')
             ! endif
-
+            
             call self%scale(pert)
 
             pert%g_dot_d = sum(pert%g*curr%d)
@@ -146,15 +145,21 @@ use m_Kernel
             !Wolfe conditions
             if_1st_cond = (pert%f <= curr%f+c1*self%alpha*curr%g_dot_d) !sufficient descent condition
             !if_1st_cond = (pert%f <= curr%f)
-            !if_2nd_cond = (abs(pert%g_dot_d) <= c2*abs(curr%g_dot_d)) !strong curvature condition
-            if_2nd_cond = (pert%g_dot_d >= c2*curr%g_dot_d) !weak curvature condition
+            if_2nd_cond = (abs(pert%g_dot_d) <= c2*abs(curr%g_dot_d)) !strong curvature condition
+            !if_2nd_cond = (pert%g_dot_d >= c2*curr%g_dot_d) !weak curvature condition (note the diff of inequal sign..)
+            if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'max')>0) then
+                if(setup%get_bool('IF_FLIP_CURVATURE_CONDITION',o_default='T')) then
+                    call hud('flip curvature condition due to maximization')
+                    if_2nd_cond = .not.if_2nd_cond
+                endif
+            endif
 
             !occasionally optimizers on processors don't have same behavior
             !try to avoid this by broadcast controlling logicals.
             call mpi_bcast(if_1st_cond, 1, mpi_logical, 0, mpiworld%communicator, mpiworld%ierr)
             call mpi_bcast(if_2nd_cond, 1, mpi_logical, 0, mpiworld%communicator, mpiworld%ierr)
 
-            call self%write(pert)
+            call self%write(iterate,pert)
 
             !1st condition OK, 2nd condition OK => use alpha
             if(if_1st_cond .and. if_2nd_cond) then
@@ -312,11 +317,12 @@ use m_Kernel
         
     end subroutine
 
-    subroutine write(self,pert)
+    subroutine write(self,iterate,pert)
         class(t_linesearcher) :: self
+        integer :: iterate
         type(t_querypoint) :: pert
 
-        character(*),parameter :: fmt='(x,5x,2x,i5,2x,i5,2x,es8.2,7x,es10.4,22x,es9.2,3x,l,x,l)'
+        character(*),parameter :: fmt='(x,5x,2x,i5,2x,i5,2x,es8.2,6x,es11.4,22x,es9.2,3x,l,x,l)'
 
         if(mpiworld%is_master) then
             
@@ -326,6 +332,13 @@ use m_Kernel
             !write(16,*) pert%f, (pert%f-curr%f)/self%alpha, pert%g_dot_d, curr%g_dot_d
             close(16)
 
+        endif
+
+        if(setup%get_bool('IF_LINESEARCH_WRITE','IF_LS_WRITE',o_default='F')) then
+            call sysio_write('model_Iter'//num2str(iterate)//'.LinS'//num2str(ls%isearch),m%vp,m%n)
+            call sysio_write('image_Iter'//num2str(iterate)//'.LinS'//num2str(ls%isearch),m%image,m%n)
+            call sysio_mv( 'Ru_Shot0001.su', 'Ru_Shot0001_Iter'//num2str(iterate)//'.LinS'//num2str(ls%isearch)//'.su')
+            call sysio_mv('Rdu_Shot0001.su','Rdu_Shot0001_Iter'//num2str(iterate)//'.LinS'//num2str(ls%isearch)//'.su')
         endif
 
     end subroutine

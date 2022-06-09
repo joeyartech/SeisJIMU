@@ -99,16 +99,13 @@ use m_preconditioner
         logical :: is_4adjsrc
         real :: numer, denom, time(shot%nt), v(shot%nt)
         
-        !In theory, (L2 norm sq for example)
-        !C(u) = ½║u║₂² = ½Σ_xr ∫ (u-d)² δ(x-xr) dx3 dt, and
-        !∇C = Σ_xr ∫ (u-d)² δ(x-xr)
-        !where δ(x-xr) is the Dirac delta function centered at receiver positions.
-        !In the discretized world, δ(x-xr)={0,1}/dx3,
-        !in the implementation we take
-        !C(u) = 0.5*Σ_xr ∫ (u-d)² dt, and
-        !the presence of δ(x-xr) in the adjoint source is accounted for
-        !by the RHS of adjoint weq
-        !(ie. when calling rfield%ignite, to be same as sfield%ignite)
+        !In theory (L2 norm sq for example),
+        !C(u) = ½║u║₂² = ½Σ_xr ∫ (u-d)² δ(x-xr) dx³ dt = ½Σ_xr ∫ (u-d)² dt, and
+        !KᵤC = Σ_xr ∫ (u-d)² δ(x-xr)
+        !where δ(x-xr)={0,1}/dx³ is the Dirac delta function centered on receiver positions.
+        !In the implementation, the presence of δ(x-xr) in the adjoint source
+        !is accounted for by the RHS of adjoint weq
+        !(ie. when calling rfield%ignite. To be same as sfield%ignite)
 
         !reinitialize adjoint source
         if(if_has_dnorm_normalizers) call alloc(shot%dadj,shot%nt,shot%nrcv)
@@ -127,13 +124,13 @@ use m_preconditioner
                         self%dnorms(i) = self%dnorms(i) + L1(self%dnorm_normalizers(i), shot%nt, &
                             wei%weight(:,ir)*m%ref_inv_vp, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
                             
-                        if(is_4adjsrc) call nabla_L1(shot%dadj(:,ir),oif_stack=.true.)
+                        if(is_4adjsrc) call kernel_L1(shot%dadj(:,ir),oif_stack=.true.)
                         
                     else !velocities data, use ref_rho to balance amplitudes versus pressure data
                         self%dnorms(i) = self%dnorms(i) + L1(self%dnorm_normalizers(i), shot%nt, &
                             wei%weight(:,ir)*m%ref_rho,    shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
 
-                        if(is_4adjsrc) call nabla_L1(shot%dadj(:,ir),oif_stack=.true.)
+                        if(is_4adjsrc) call kernel_L1(shot%dadj(:,ir),oif_stack=.true.)
 
                     endif
 
@@ -150,13 +147,13 @@ use m_preconditioner
                         self%dnorms(i) = self%dnorms(i) + L2sq(0.5*self%dnorm_normalizers(i), shot%nt, &
                             wei%weight(:,ir)*m%ref_inv_vp, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
                             
-                        if(is_4adjsrc) call nabla_L2sq(shot%dadj(:,ir),oif_stack=.true.)
+                        if(is_4adjsrc) call kernel_L2sq(shot%dadj(:,ir),oif_stack=.true.)
                         
                     else !velocity data
                         self%dnorms(i) = self%dnorms(i) + L2sq(0.5*self%dnorm_normalizers(i), shot%nt, &
                             wei%weight(:,ir)*m%ref_rho,    shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
 
-                        if(is_4adjsrc) call nabla_L2sq(shot%dadj(:,ir),oif_stack=.true.)
+                        if(is_4adjsrc) call kernel_L2sq(shot%dadj(:,ir),oif_stack=.true.)
 
                     endif
 
@@ -362,8 +359,16 @@ use m_preconditioner
         ! if(either(oif_approx,.false.,present(oif_approx))) then
         !     call modeling_gradient_approximate(fobj)
         ! else
-            call modeling_gradient(qp%is_fitting_data)
+            call modeling_gradient!(qp%is_fitting_data)
         ! endif
+
+        if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'max')>0) then
+            if(setup%get_bool('IF_FLIP_PROBLEM',o_default='T')) then
+                call hud('flip problem sign due to maximization')
+                self%dnorms=-self%dnorms
+                m%gradient =-m%gradient
+            endif
+        endif
         
         qp%f = sum(self%dnorm_weights*self%dnorms) ! + sum(self%xnorm_weights*self%xnorms)
 
