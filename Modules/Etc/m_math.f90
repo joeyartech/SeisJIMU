@@ -33,6 +33,7 @@ module m_math
     !m    - -
     !d    - ∂
     !nbla, nabla - ∇
+    !inv  - inverse
     !_    - subscript, inverse, division, duplicate etc.
 
     !Nomenclature for public entities:

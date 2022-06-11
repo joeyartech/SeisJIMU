@@ -8,6 +8,8 @@ use m_computebox
 use m_field
 use m_cpml
 
+use, intrinsic :: ieee_arithmetic
+
     private
 
     !FD coef
@@ -22,7 +24,7 @@ use m_cpml
             'Time-domain ISOtropic 2D P-SV (ELastic) propagation'//s_NL// &
             '1st-order Velocity-Stress formulation'//s_NL// &
             'Vireux-Levandar Staggered-Grid Finite-Difference (FDSG) method'//s_NL// &
-            'Cartesian O(x4,t2) stencil'//s_NL// &
+            'Cartesian O(x⁴,t²) stencil'//s_NL// &
             'CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal'//s_NL// &
             '   -> dt ≤ 0.606 *Vmax/dx'//s_NL// &
             'Required model attributes: vp, vs, rho'//s_NL// &
@@ -58,13 +60,11 @@ use m_cpml
         procedure :: init_abslayer
 
         procedure :: forward
-        procedure :: forward_scattering
         
         procedure :: adjoint
         
         procedure :: inject_velocities
         procedure :: inject_stresses
-        procedure :: inject_stresses_scattering
         procedure :: update_velocities
         procedure :: update_stresses
         procedure :: extract
@@ -163,25 +163,12 @@ use m_cpml
         call alloc(self%ldap2mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%lda,    [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%mu,     [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(self%two_ldapmu,    [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(self%inv_ldapmu_4mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(self%two_ldapmu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
 
         call alloc(temp_mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
 
-        !Staggered grid:
-        ! <---*---<  
-        ! |   |   |  * integer point   - lda+2mu,lda 
-        ! x---v---x  < half in x dir   - buox  
-        ! |   |   |  v half in z dir   - buoz
-        ! <---*---<  x half in x&z dir - mu
-        !     (grid index)      (real index)
-        ! lda+2mu,lda(iz,ix) := lda+2mu,lda[iz,ix]
-        !        buox(iz,ix) := buox[iz,ix-0.5]
-        !        buoz(iz,ix) := buoz[iz-0.5,ix]
-        !          mu(iz,ix) :=   mu[iz-0.5,ix-0.5]
-
         self%ldap2mu(:,:)=cb%rho(:,:,1)*cb%vp(:,:,1)**2
-           temp_mu(:,:)=cb%rho(:,:,1)*cb%vs(:,:,1)**2
+             temp_mu(:,:)=cb%rho(:,:,1)*cb%vs(:,:,1)**2
 
         self%lda=self%ldap2mu-2.*temp_mu
         ! if(mpiworld%is_master) then
@@ -190,11 +177,6 @@ use m_cpml
         ! endif
 
         self%two_ldapmu=2.*(self%lda+temp_mu)
-
-        where(temp_mu>100.)
-            self%inv_ldapmu_4mu=0.25/(self%lda+temp_mu)/temp_mu
-        endwhere
-
 
         !interpolat mu by harmonic average
         temp_mu=1./temp_mu
@@ -208,7 +190,7 @@ use m_cpml
         end do
         end do
 
-        where( ieee_is_nan(self%mu) .or. .not. ieee_is_finite(self%mu) )
+        where( ieee_is_nan(self%mu) .or. .not.ieee_is_finite(self%mu) )
             self%mu=0.
         endwhere
 
@@ -311,19 +293,18 @@ use m_cpml
     !Adjoint:  Aᵀa = M ∂ₜᵀa - Dᵀa = d
     !where
     !u=[vz vx szz sxx szx]ᵀ, [vz vx] are velocities, p=(szz+sxx)/2 is pressure
-    !f=[fz fx fzz fxx]ᵀδ(x-xs), d is recorded data
-    !  [ρ                ]    [0  0  ∂ₓ 0  ∂z]
-    !  |  ρ              |    |0  0  0  ∂z ∂ₓ|
-    !M=|    [λ+2μ  λ  ]⁻¹|, D=|∂ₓ 0  0  0  0 |
-    !  |    | λ   λ+2μ|  |    |0  ∂z 0  0  0 |
-    !  [    [      μ  ]  ]    [∂z ∂ₓ 0  0  0 ]
-    !N=M⁻¹=[diag(b) κ], b=ρ⁻¹ is buoyancy,
+    !f=[fz fx fzz fxx]ᵀδ(x-xs) with xs source position, d is recorded data
+    !  [ρ                  ]    [0  0  ∂z 0  ∂ₓ]
+    !  |  ρ                |    |0  0  0  ∂ₓ ∂z|
+    !M=|    [λ+2μ  λ    ]⁻¹|, D=|∂z 0  0  0  0 |
+    !  |    | λ   λ+2μ  |  |    |0  ∂ₓ 0  0  0 |
+    !  [    [          μ]  ]    [∂ₓ ∂z 0  0  0 ]
     !a=[vzᵃ vxᵃ szzᵃ, sxxᵃ, szxᵃ]ᵀ is the adjoint field
     !
     !Continuous case:
     !<a|Au> = ∫ a(x,t) (M∂ₜ-D)u(x,t) dx³dt
     !Integration by parts, eg.:
-    !∫aᵀM∂ₜu dt = aMu|t=0,T - ∫(∂ₜa)ᵀMu dt, and freely choosing a(t=T)=0 (final condition),
+    !∫aᵀM∂ₜu dt = aMu|ₜ₌₀ᵀ - ∫(∂ₜa)ᵀMu dt, and freely choosing a(t=T)=0 (final condition),
     !∫aᵀM∂ₜu dt = -∫(∂ₜa)ᵀMu dt
     !Similar procedure on spatial derivatives, we have
     !∫aᵀDu dx³ = -∫(Dᵀa)ᵀ u dx³, with same boundary conditions on a
@@ -333,85 +314,105 @@ use m_cpml
     !
     !Discrete case:
     !Meshing with staggered grids in time and space (2D example):
-    !                      |      |   -½ vz     |      |
-    !                      |      |     buoz    |      |
-    !                      |      |      |      |      |
-    !                      κ buox κ buox λ+2μ buox κ buox κ
-    !  -v--p-v-p-v-→ t    -p--vx--p--vx--szz--vx--p--vx--p-→ x
-    !  -1 -½ 0 ½ 1        -2 -1½ -1  -½  0   ½  1  1½  2    
-    !                      |      |      |      |      | 
-    !                      |      |    ½ vz     |      | 
-    !                      |      |     buoz    |      | 
-    !                      |      |      |      |      | 
-    !                     -|------|----1-p------|------|-
-    !                      |      |      κ      |      | 
-    !                      |      |      |      |      | 
-    !                      |      |   1½ vz     |      | 
-    !                      |      |     buoz    |      | 
-    !                      |      |      |      |      | 
-    !                                  z ↓
-    ! in space:
-    ! <---*---<  
-    ! |   |   |  * integer point   - sxx,szz - lda+2mu,lda 
-    ! x---v---x  < half in x dir   - vx      - buox  
-    ! |   |   |  v half in z dir   - vz      - buoz
-    ! <---*---<  x half in x&z dir - sxz     - mu
+    !                      |    ss    |   ss -½ vz  ss    |         |
+    !                      |    μ     |   μ     bz  μ     |         |
+    !                      |          |         |         |         |
+    !                     λ,μ   bx   λ,μ  bx   λ,μ  bx   λ,μ  bx   λ,μ
+    !  -v--s-v-s-v-→ t    -sn---vx---sn---vx---sn---vx---sn---vx---sn-→ x
+    !  -1 -½ 0 ½ 1        -2   -1½   -1   -½    0    ½    1   1½    2    
+    !                      |          |         |         |         | 
+    !                      |    ss    |   ss  ½ vz  ss    |         | 
+    !                      |    μ     |   μ     bz  μ     |         | 
+    !                      |          |         |         |         | 
+    !                     -|----------|-------1-sn--------|---------|-
+    !                      |          |         κ         |         | 
+    !                      |          |         |         |         | 
+    !                      |          |      1½ vz        |         | 
+    !                      |          |         bz        |         | 
+    !                      |          |         |         |         | 
+    !                                         z ↓
+    !
+    !  s: szz, sxx or szx
+    ! sn: szz or sxx (normal stresses)
+    ! ss: szx (shear stresses)
+    ! λ,μ: λ and λ+2μ
+    !
+    !Convention for half-integer index:
+    !(array index)  =>    (real index)     
+    !  vz(iz,ix)    =>   vz[i-½,j  ]^n  
+    !  vx(iz,ix)    =>   vx[i,  j-½]^n  
+    !  sn(iz,ix)    =>   sn[i,  j  ]^n+½
+    !  ss(iz,ix)    =>   ss[i-½,j-½]^n
     !
     !Forward:
     !FD eqn:
-    !      [vz^n  ]   [ 0     0    ∂zᵇ][vz^n+1]      [∂zᵇ p^n+½              ] 
-    !M ∂ₜᶠ |vx^n  | = | 0     0    ∂ₓᵇ||vx^n+1| +f = |∂ₓᵇ p^n+½              | +f
-    !      [ p^n+1]   [∂zᶠ   ∂ₓᶠ    0 ][ p^n+½]      [∂zᶠ vz^n+1 + ∂ₓᶠ vx^n+1]
+    !      [ vz^n  ]   [ 0     0    ∂zᵇ  0  ∂ₓᶠ][ vz^n+1]      [∂zᵇ szz^n+½ + ∂ₓᶠ szx^n+½] 
+    !      | vx^n  |   | 0     0     0  ∂ₓᵇ ∂zᶠ|| vx^n+1|      |∂ₓᵇ sxx^n+½ + ∂zᶠ szx^n+½|
+    !M ∂ₜᶠ |szz^n+1| = |∂zᶠ    0     0   0   0 ||szz^n+½| +f = |∂zᶠ  vz^n+1              | +f
+    !      |sxx^n+1|   | 0    ∂ₓᶠ    0   0   0 ||sxx^n+½|      |∂ₓᶠ  vx^n+1              |
+    !      [szx^n+1]   [∂ₓᵇ   ∂zᵇ    0   0   0 ][szx^n+½]      [∂ₓᵇ  vz^n+1 + ∂zᵇ  vx^n+1]
     !where
     !∂ₜᶠ*dt := v^n+1 - v^n                             ~O(t²)
-    !∂zᵇ*dz := c₁(p[i  ]-p[i-½]) +c₂(p[i+ ½]-p[i-1½])  ~O(x⁴)
+    !∂zᵇ*dz := c₁(s[i  ]-s[i-½]) +c₂(s[i+ ½]-s[i-1½])  ~O(x⁴)
     !∂zᶠ*dz := c₁(v[i+½]-v[i  ]) +c₂(v[i+1½]-v[i- ½])  ~O(x⁴)
     !
     !Time marching:
-    ![vz^n+1 ]   [vz^n  ]      [∂zᵇ p^n+½              ]
-    !|vx^n+1 | = |vx^n  | + M⁻¹|∂ₓᵇ p^n+½              |dt  +M⁻¹f*dt
-    ![ p^n+1½]   [ p^n+½]      [∂zᶠ vz^n+1 + ∂ₓᶠ vx^n+1]
+    ![ vz^n+1 ]   [ vz^n  ]      [∂zᵇ szz^n+½ + ∂ₓᶠ szx^n+½]
+    !| vx^n+1 |   | vx^n  |      |∂ₓᵇ sxx^n+½ + ∂zᶠ szx^n+½|
+    !|szz^n+1½| = |szz^n+½| + M⁻¹|∂zᶠ  vz^n+1              |dt  +M⁻¹f*dt
+    !|sxx^n+1½|   |sxx^n+½|      |∂ₓᶠ  vx^n+1              |
+    ![szx^n+1½]   [szx^n+½]      [∂ₓᵇ  vz^n+1 + ∂zᵇ  vx^n+1]
     !Step #1: v^n += src
     !Step #2: v^n+1 = v^n + spatial FD(p^n+½)
-    !Step #3: p^n+½ += src
-    !Step #4: p^n+1½ = p^n+½ + spatial FD(v^n+1)
-    !Step #5: sample v^n & p^n++½ at receivers
+    !Step #3: s^n+½ += src
+    !Step #4: s^n+1½ = s^n+½ + spatial FD(v^n+1)
+    !Step #5: sample v^n & s^n++½ at receivers
     !Step #6: save v^n+1 to boundary values
     !
     !Reverse time marching (for wavefield reconstruction)
-    ![ p^n+½]   [ p^n+1½]      [∂zᶠ vz^n+1 + ∂ₓᶠ vx^n+1]
-    !|vx^n  | = |vx^n+1 | - M⁻¹|∂ₓᵇ p^n+½              |dt  -M⁻¹f*dt
-    ![vz^n  ]   [vz^n+1 ]      [∂zᵇ p^n+½              ]
+    ![szx^n+½]   [szx^n+1½]      [∂ₓᵇ  vz^n+1 + ∂zᵇ  vx^n+1]
+    !|sxx^n+½|   |sxx^n+1½|      |∂ₓᶠ  vx^n+1              |
+    !|szz^n+½| = |szz^n+1½| - M⁻¹|∂zᶠ  vz^n+1              |dt  -M⁻¹f*dt
+    !| vx^n  |   | vx^n+1 |      |∂ₓᵇ sxx^n+½ + ∂zᶠ szx^n+½|
+    ![ vz^n  ]   [ vz^n+1 ]      [∂zᵇ szz^n+½ + ∂ₓᶠ szx^n+½]
     !Step #6: load boundary values for v^n+1
-    !Step #4: p^n+½ = p^n+1½ - spatial FD(v^n+1)
-    !Step #3: p^n+½ -= src
-    !Step #2: v^n+1 = v^n - spatial FD(p^n+½)
+    !Step #4: s^n+½ = s^n+1½ - spatial FD(v^n+1)
+    !Step #3: s^n+½ -= src
+    !Step #2: v^n+1 = v^n - spatial FD(s^n+½)
     !Step #1: v^n -= src
     !N.B. Same codes for spatial FDs as in forward time marching, with a negated dt.
     !
     !Adjoint:
     !FD eqn:
-    !      [vzᵃ^n  ]   [ 0      0     ∂zᶠᵀ][vzᵃ^n+1]
-    !M ∂ₜᶠᵀ|vxᵃ^n  | = | 0      0     ∂ₓᶠᵀ||vxᵃ^n+1|  +d
-    !      [ pᵃ^n+1]   [∂zᵇᵀ   ∂ₓᵇᵀ    0  ][ pᵃ^n+½]
+    !      [ vzᵃ^n  ]   [ 0     0    ∂zᶠᵀ  0   ∂ₓᵇᵀ][ vzᵃ^n+1]
+    !      | vxᵃ^n  |   | 0     0     0   ∂ₓᶠᵀ ∂zᵇᵀ|| vxᵃ^n+1|
+    !M ∂ₜᶠᵀ|szzᵃ^n+1| = |∂zᵇᵀ   0     0    0    0  ||szzᵃ^n+½| +d
+    !      |sxxᵃ^n+1|   | 0    ∂ₓᵇᵀ   0    0    0  ||sxxᵃ^n+½|
+    !      [szxᵃ^n+1]   [∂ₓᶠᵀ  ∂zᶠᵀ   0    0    0  ][szxᵃ^n+½]
     !∂ₜᶠᵀ = v^n-1 -v^n   = -∂ₜᵇ
-    !∂zᵇᵀ = c₁(v[i  ]-v[i+½]) +c₂(v[i- ½]-v[i+1½]) = -∂ₓᶠ
-    !∂zᶠᵀ = c₁(p[i-½]-p[i  ]) +c₂(p[i-1½]-p[i+ ½]) = -∂ₓᵇ
-    !      [vzᵃ^n  ]   [ 0      0     ∂zᵇ ][vzᵃ^n+1]
-    !M ∂ₜᵇ |vxᵃ^n  | = | 0      0     ∂ₓᵇ ||vxᵃ^n+1|  -d
-    !      [ pᵃ^n+1]   [∂zᶠ    ∂ₓᶠ    0   ][ pᵃ^n+½]
+    !∂zᵇᵀ = c₁(v[i  ]-v[i+½]) +c₂(v[i- ½]-v[i+1½]) = -∂zᶠ
+    !∂zᶠᵀ = c₁(s[i-½]-s[i  ]) +c₂(s[i-1½]-s[i+ ½]) = -∂zᵇ
+    !      [ vzᵃ^n  ]   [ 0    0   ∂zᵇ  0  ∂ₓᶠ][ vzᵃ^n+1]
+    !      | vxᵃ^n  |   | 0    0    0  ∂ₓᵇ ∂zᶠ|| vxᵃ^n+1|
+    !M ∂ₜᵇ |szzᵃ^n+1| = |∂zᶠ   0    0   0   0 ||szzᵃ^n+½| -d
+    !      |sxxᵃ^n+1|   | 0   ∂ₓᶠ   0   0   0 ||sxxᵃ^n+½|
+    !      [szxᵃ^n+1]   [∂ₓᵇ  ∂zᵇ   0   0   0 ][szxᵃ^n+½]
     !ie. Dᵀ=-D, antisymmetric
     !
     !Time marching:
-    ![vzᵃ^n+1 ]   [vzᵃ^n  ]      [∂zᵇ pᵃ^n+½               ]
-    !|vxᵃ^n+1 | = |vxᵃ^n  | + M⁻¹|∂ₓᵇ pᵃ^n+½               |dt  -M⁻¹d*dt
-    ![ pᵃ^n+1½]   [ pᵃ^n+½]      [∂zᶠ vzᵃ^n+1 + ∂ₓᶠ vxᵃ^n+1]
+    ![ vzᵃ^n+1 ]   [ vzᵃ^n  ]      [∂zᵇ szzᵃ^n+½ + ∂ₓᵇ szxᵃ^n+½]
+    !| vxᵃ^n+1 |   | vxᵃ^n  |      |∂ₓᵇ sxxᵃ^n+½ + ∂zᵇ szxᵃ^n+½|
+    !|szzᵃ^n+1½| = |szzᵃ^n+½| + M⁻¹|∂zᶠ  vzᵃ^n+1               |dt  -M⁻¹d*dt
+    !|sxxᵃ^n+1½|   |sxxᵃ^n+½|      |∂ₓᶠ  vxᵃ^n+1               |
+    ![szxᵃ^n+1½]   [szxᵃ^n+½]      [∂ₓᵇ  vzᵃ^n+1 + ∂zᵇ  vxᵃ^n+1]
     !but we have to do it in reverse time:
-    ![ pᵃ^n+½]   [ pᵃ^n+1½]      [∂zᶠ vzᵃ^n+1 + ∂ₓᶠ vxᵃ^n+1]
-    !|vxᵃ^n  | = |vxᵃ^n+1 | - M⁻¹|∂ₓᵇ pᵃ^n+½               |dt  +M⁻¹d*dt
-    ![vzᵃ^n  ]   [vzᵃ^n+1 ]      [∂zᵇ pᵃ^n+½               ]
-    !Step #5: pᵃ^n+1½ += adjsrc
-    !Step #4: pᵃ^n+½ = pᵃ^n+1½ - spatial FD(vᵃ^n+1)
+    ![szxᵃ^n+½] = [szxᵃ^n+1½]      [∂ₓᵇ  vzᵃ^n+1 + ∂zᵇ  vxᵃ^n+1]
+    !|sxxᵃ^n+½| = |sxxᵃ^n+1½|      |∂ₓᶠ  vxᵃ^n+1               |
+    !|szzᵃ^n+½| = |szzᵃ^n+1½| - M⁻¹|∂zᶠ  vzᵃ^n+1               |dt  +M⁻¹d*dt
+    !| vxᵃ^n  | = | vxᵃ^n+1 |      |∂ₓᵇ sxxᵃ^n+½ + ∂zᵇ szxᵃ^n+½|
+    ![ vzᵃ^n  ] = [ vzᵃ^n+1 ]      [∂zᵇ szzᵃ^n+½ + ∂ₓᵇ szxᵃ^n+½]
+    !Step #5: sᵃ^n+1½ += adjsrc
+    !Step #4: sᵃ^n+½ = sᵃ^n+1½ - spatial FD(vᵃ^n+1)
     !Step #3: vᵃ^n+1 += adjsrc
     !Step #2: vᵃ^n = vᵃ^n+1 - spatial FD(pᵃ^n+½)
     !N.B. Same codes for spatial FDs as in forward time marching, with a negated dt, but the RHS should use a "+" sign (regardless of the reverse time direction).
@@ -422,14 +423,6 @@ use m_cpml
     !A:inject source into field, G:propagator, R:extract field at receivers
     !while in each step of reverse-time adjoint marching: dadj=NAᵀGᵀRᵀdsyn=AᵀGᵀRᵀNdsyn
     !Rᵀ:inject adjoint sources, Gᵀ:adjoint propagator, Aᵀ:extract adjoint fields
-    !
-    !Convention for half-integer index:
-    !(array index)  =>    (real index)     
-    !  vz(iz,ix)    =>   vz[i-½,j  ]^n  
-    !  vx(iz,ix)    =>   vx[i,  j-½]^n  
-    !  vy(iz,ix)    =>   vy[i,  j  ]^n  
-    ! szz(iz,ix)    =>  szz[i,  j  ]^n+½
-    ! szx(iz,ix)    =>  szx[i-½,j-½]^n
     !
 
     subroutine forward(self,fld_u)
@@ -525,18 +518,20 @@ use m_cpml
         self%if_compute_engy=self%if_compute_engy.and.(if_compute_imag.or.if_compute_grad)
         
         if(if_record_adjseismo)  call alloc(fld_a%seismo,1,self%nt)
-        if(if_compute_imag)      call alloc(cb%imag,cb%mz,cb%mx,cb%my,self%nimag)
-        if(if_compute_grad)      call alloc(cb%grad,cb%mz,cb%mx,cb%my,self%ngrad)
-        if(self%if_compute_engy) call alloc(cb%engy,cb%mz,cb%mx,cb%my,self%nengy)
+        if(if_compute_imag)      call alloc(cb%imag,cb%mz,cb%mx,1,self%nimag)
+        if(if_compute_grad)      call alloc(cb%grad,cb%mz,cb%mx,1,self%ngrad)
+        if(self%if_compute_engy) call alloc(cb%engy,cb%mz,cb%mx,1,self%nengy)
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
         ! if(present(o_sf)) then
-                                         fld_u%dvz_dz=0.
-                                         fld_u%dvx_dx=0.
-            if(allocated(fld_u%dvy_dy))  fld_u%dvy_dy=0.
-                                         fld_u%dp_dz=0.
-                                         fld_u%dp_dx=0.
-            if(allocated(fld_u%dp_dy))   fld_u%dp_dy=0.
+            fld_u%dvz_dz=0.
+            fld_u%dvz_dx=0.
+            fld_u%dvx_dx=0.
+            fld_u%dvx_dz=0.
+            fld_u%dszz_dz=0.
+            fld_u%dsxx_dx=0.
+            fld_u%dszx_dz=0.
+            fld_u%dszx_dx=0.
         ! endif
                     
         !timing
@@ -599,7 +594,7 @@ use m_cpml
             !use sf%v^it+1 to compute sf%s_dt^it+0.5, as backward step 4
             if(if_compute_grad.and.mod(it,irdt)==0) then
                 call cpu_time(tic)
-                call gradient_moduli(fld_a,fld_u,it,cb%grad(:,:,:,2))
+                call gradient_moduli(fld_a,fld_u,it,cb%grad(:,:,1,2),cb%grad(:,:,1,3))
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             endif
@@ -611,13 +606,13 @@ use m_cpml
                 tt6=tt6+toc-tic
             endif
 
-            ! !energy term of sfield
-            ! if(self%if_compute_engy.and.mod(it,irdt)==0) then
-            !     call cpu_time(tic)
-            !     call energy(fld_u,it,cb%engy)
-            !     call cpu_time(toc)
-            !     tt6=tt6+toc-tic
-            ! endif
+            !energy term of sfield
+            if(self%if_compute_engy.and.mod(it,irdt)==0) then
+                call cpu_time(tic)
+                call energy(fld_u,it,cb%engy)
+                call cpu_time(toc)
+                tt6=tt6+toc-tic
+            endif
                 
             !========================================================!
 
@@ -657,14 +652,14 @@ use m_cpml
                 tt11=tt11+toc-tic
             endif
             
-            ! !grho: sfield%v_dt^it \dot rfield%v^it
-            ! !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
-            ! if(if_compute_grad.and.mod(it,irdt)==0) then
-            !     call cpu_time(tic)
-            !     call gradient_density(o_sf,rf,it,cb%grad(:,:,:,1))
-            !     call cpu_time(toc)
-            !     tt6=tt6+toc-tic
-            ! endif
+            !grho: sfield%v_dt^it \dot rfield%v^it
+            !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
+            if(if_compute_grad.and.mod(it,irdt)==0) then
+                call cpu_time(tic)
+                call gradient_density(fld_a,fld_u,it,cb%grad(:,:,1,1))
+                call cpu_time(toc)
+                tt6=tt6+toc-tic
+            endif
             
             !snapshot
             call fld_a%write(it,o_suffix='_rev')
@@ -728,20 +723,20 @@ use m_cpml
             if(if_hicks) then
                 select case (shot%src%comp)
                     case ('vz')
-                    f%vz(ifz:ilz,ifx:ilx,1) = f%vz(ifz:ilz,ifx:ilx,1) + wl*self%buoz(ifz:ilz,ifx:ilx,1) *shot%src%interp_coef
+                    f%vz(ifz:ilz,ifx:ilx,1) = f%vz(ifz:ilz,ifx:ilx,1) + wl*self%buoz(ifz:ilz,ifx:ilx) *shot%src%interp_coef(:,:,1)
                     
                     case ('vx')
-                    f%vx(ifz:ilz,ifx:ilx,1) = f%vx(ifz:ilz,ifx:ilx,1) + wl*self%buox(ifz:ilz,ifx:ilx,1) *shot%src%interp_coef
+                    f%vx(ifz:ilz,ifx:ilx,1) = f%vx(ifz:ilz,ifx:ilx,1) + wl*self%buox(ifz:ilz,ifx:ilx) *shot%src%interp_coef(:,:,1)
                     
                 end select
                 
             else
                 select case (shot%src%comp)
                     case ('vz') !vertical force     on vz[iz-0.5,ix]
-                    f%vz(iz,ix,1) = f%vz(iz,ix,1) + wl*self%buoz(iz,ix,1)
+                    f%vz(iz,ix,1) = f%vz(iz,ix,1) + wl*self%buoz(iz,ix)
                     
                     case ('vx') !horizontal x force on vx[iz,ix-0.5]
-                    f%vx(iz,ix,1) = f%vx(iz,ix,1) + wl*self%buox(iz,ix,1)
+                    f%vx(iz,ix,1) = f%vx(iz,ix,1) + wl*self%buox(iz,ix)
                     
                 end select
                 
@@ -761,10 +756,10 @@ use m_cpml
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
                         case ('vz') !vertical z adjsource
-                        f%vz(ifz:ilz,ifx:ilx,1) = f%vz(ifz:ilz,ifx:ilx,1) + wl*self%buoz(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef !no time_dir needed!
+                        f%vz(ifz:ilz,ifx:ilx,1) = f%vz(ifz:ilz,ifx:ilx,1) + wl*self%buoz(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
 
                         case ('vx') !horizontal x adjsource
-                        f%vx(ifz:ilz,ifx:ilx,1) = f%vx(ifz:ilz,ifx:ilx,1) + wl*self%buox(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef !no time_dir needed!
+                        f%vx(ifz:ilz,ifx:ilx,1) = f%vx(ifz:ilz,ifx:ilx,1) + wl*self%buox(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
                         
                     end select
                     
@@ -772,11 +767,11 @@ use m_cpml
                     select case (shot%rcv(i)%comp)
                         case ('vz') !vertical z adjsource
                         !vz[ix,1,iz-0.5]
-                        f%vz(iz,ix,1) = f%vz(iz,ix,1) + wl*self%buoz(iz,ix,1) !no time_dir needed!
+                        f%vz(iz,ix,1) = f%vz(iz,ix,1) + wl*self%buoz(iz,ix) !no time_dir needed!
 
                         case ('vx') !horizontal x adjsource
                         !vx[ix-0.5,1,iz]
-                        f%vx(iz,ix,1) = f%vx(iz,ix,1) + wl*self%buox(iz,ix,1) !no time_dir needed!
+                        f%vx(iz,ix,1) = f%vx(iz,ix,1) + wl*self%buox(iz,ix) !no time_dir needed!
                         
                     end select
                     
@@ -806,19 +801,19 @@ use m_cpml
 
         !apply free surface boundary condition if needed
         !free surface is located at [1,ix,1] level
-        !dszz=0 -> -(lda+2mu)dvz_dz = lda dvx_dx
-        !       -> -ldap2mu[1,ix]*(vz[1.5,ix]-vz[0.5,ix])/dz = lda[1,ix]*(vx[1,ix-0.5]-vx[1,ix+0.5])/dx
-        !       -> -ldap2mu(1,ix)*(vz(2  ,ix)-vz(1  ,ix))/dz = lda(1,ix)*(vx(1,ix    )-vx(1,ix+1  ))/dx
-        !       ->  ldap2mu(1,ix)*(vz(1  ,ix)-vz(2  ,ix))/dz = lda(1,ix)*(vx(1,ix    )-vx(1,ix+1  ))/dx
-        !dsxz=0 -> -dvx_dz = dvz_dx
-        !dsxz=0 -> -(vx[2,ix+0.5]-vx[0,ix+0.5])/2dz = ( (vz[0.5,ix]+vz[1.5,ix])/2 - (vz[0.5,ix+1]+vz[1.5,ix+1])/2 )/dx
-        !       -> -(vx(2,ix+1  )-vx(0,ix+1  ))/2dz = ( (vz(1  ,ix)+vz(2  ,ix))/2 - (vz(1  ,ix+1)+vz(2  ,ix+1))/2 )/dx
-        !       ->  (vx(0,ix+1  )-vx(2,ix+1  ))/ dz = ( (vz(1  ,ix)+vz(2  ,ix))   -  vz(1  ,ix+1)-vz(2  ,ix+1)    )/dx
+        !Δszz=0 : -(λ+2μ)∂_z vz = λ ∂ₓvx
+        !         -(λ+2μ)[1,ix]*(vz[1.5,ix]-vz[0.5,ix])/dz = λ[1,ix]*(vx[1,ix-0.5]-vx[1,ix+0.5])/dx
+        !         -(λ+2μ)(1,ix)*(vz(2  ,ix)-vz(1  ,ix))/dz = λ(1,ix)*(vx(1,ix    )-vx(1,ix+1  ))/dx
+        !          (λ+2μ)(1,ix)*(vz(1  ,ix)-vz(2  ,ix))/dz = λ(1,ix)*(vx(1,ix    )-vx(1,ix+1  ))/dx
+        !Δszx=0 : -∂_z vx = ∂ₓvz
+        !         -(vx[2,ix+0.5]-vx[0,ix+0.5])/2dz = ( (vz[0.5,ix]+vz[1.5,ix])/2 - (vz[0.5,ix+1]+vz[1.5,ix+1])/2 )/dx
+        !         -(vx(2,ix+1  )-vx(0,ix+1  ))/2dz = ( (vz(1  ,ix)+vz(2  ,ix))/2 - (vz(1  ,ix+1)+vz(2  ,ix+1))/2 )/dx
+        !          (vx(0,ix+1  )-vx(2,ix+1  ))/ dz = ( (vz(1  ,ix)+vz(2  ,ix))   -  vz(1  ,ix+1)-vz(2  ,ix+1)    )/dx
         if(m%is_freesurface) then
             dz_dx = m%dz/m%dx
 
             do ix=ifx,ilx
-                f%vz(1,ix,1)= f%vz(2,ix,1) + self%lda(1,ix,1)*(f%vx(1,ix,1)-f%vx(1,ix+1,1))*dz_dx/self%ldap2mu(1,ix,1)
+                f%vz(1,ix,1)= f%vz(2,ix,1) + self%lda(1,ix)*(f%vx(1,ix,1)-f%vx(1,ix+1,1))*dz_dx/self%ldap2mu(1,ix)
                 !f%vx(0,ix)= f%vx(2,ix) + (f%vz(1,ix)+f%vz(2,ix)-f%vz(1,ix+1)-f%vz(2,ix+1))*dz_dx/lm%ldap2mu(1,ix) !toy2del says this condition is not needed
             enddo
         endif
@@ -847,8 +842,8 @@ use m_cpml
             else
                 if(shot%src%comp=='p') then
                     !explosion on s[iz,ix,1]
-                    f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%ldap2mu(iz,ix,1)
-                    f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%ldap2mu(iz,ix,1)
+                    f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%ldap2mu(iz,ix)
+                    f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%ldap2mu(iz,ix)
                 endif
                 
             endif
@@ -869,13 +864,13 @@ use m_cpml
                     
                     if(if_hicks) then 
 
-                        f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) +wl*self%ldap2mu(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
-                        f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) +wl*self%ldap2mu(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
+                        f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) +wl*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
+                        f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) +wl*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
 
                     else           
                         !s[iz,ix,1]
-                        f%szz(iz,ix,1) = f%szz(iz,ix,1) +wl*self%ldap2mu(iz,ix,1) !no time_dir needed!
-                        f%sxx(iz,ix,1) = f%sxx(iz,ix,1) +wl*self%ldap2mu(iz,ix,1) !no time_dir needed!
+                        f%szz(iz,ix,1) = f%szz(iz,ix,1) +wl*self%ldap2mu(iz,ix) !no time_dir needed!
+                        f%sxx(iz,ix,1) = f%sxx(iz,ix,1) +wl*self%ldap2mu(iz,ix) !no time_dir needed!
 
                     endif
 
@@ -895,23 +890,21 @@ use m_cpml
         ilz=f%bloom(2,it)-2
         ifx=f%bloom(3,it)+1
         ilx=f%bloom(4,it)-2
-        1=f%bloom(5,it)+1
-        1=f%bloom(6,it)-2
         
         if(m%is_freesurface) ifz=max(ifz,1)
 
         call fd2d_stresses(f%vz,f%vx,f%szz,f%sxx,f%szx,    &
-                           f%dvz_dz,f%dvx_dx,              &
+                           f%dvz_dz,f%dvx_dx,f%dvz_dx,f%dvx_dz,&
                            self%ldap2mu,self%lda,self%mu,  &
                            ifz,ilz,ifx,ilx,time_dir*self%dt)
         
         !apply free surface boundary condition if needed
         !free surface is located at [1,ix] level
         !so explicit boundary condition: szz(1,ix)=0
-        !and antisymmetric mirroring: sxz[0.5,ix-0.5]=-sxz[1.5,ix-0.5] -> sxz(1,ix)=-sxz(2,ix)
+        !and antisymmetric mirroring: szx[0.5,ix-0.5]=-szx[1.5,ix-0.5] -> szx(1,ix)=-szx(2,ix)
         if(m%is_freesurface) then
             f%szz(1,:,1)=0.
-            f%sxz(1,:,1)=-f%sxz(2,:,1)
+            f%szx(1,:,1)=-f%szx(2,:,1)
         endif
 
     end subroutine
@@ -930,7 +923,8 @@ use m_cpml
                     select case (shot%rcv(i)%comp)
                         
                         case ('p')
-                        f%seismo(i,it)=sum( (factor_zz*f%szz(ifz:ilz,ifx:ilx,1) + factor_xx*f%sxx(ifz:ilz,ifx:ilx,1)) *shot%rcv(i)%interp_coef(:,:,1) )
+                        f%seismo(i,it)=sum( (factor_zz*f%szz(ifz:ilz,ifx:ilx,1) &
+                                           + factor_xx*f%sxx(ifz:ilz,ifx:ilx,1)) *shot%rcv(i)%interp_coef(:,:,1) )
                         case ('vz')
                         f%seismo(i,it)=sum(f%vz(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
                         case ('vx')
@@ -940,7 +934,8 @@ use m_cpml
                 else
                     select case (shot%rcv(i)%comp)
                         case ('p') !p[iz,ix]
-                        f%seismo(i,it)=factor_zz*f%szz(iz,ix,1) + factor_xx*f%sxx(iz,ix,1)
+                        f%seismo(i,it)=factor_zz*f%szz(iz,ix,1) &
+                                      +factor_xx*f%sxx(iz,ix,1)
                         case ('vz') !vz[iz-0.5,ix]
                         f%seismo(i,it)=f%vz(iz,ix,1)
                         case ('vx') !vx[iz,ix-0.5]
@@ -961,20 +956,22 @@ use m_cpml
             if(if_hicks) then
                 select case (shot%src%comp)
                     case ('p')
-                    f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,1) *shot%src%interp_coef)
+                    f%seismo(1,it)=sum((factor_zz*f%szz(ifz:ilz,ifx:ilx,1) &
+                                       +factor_xx*f%sxx(ifz:ilz,ifx:ilx,1)) *shot%src%interp_coef(:,:,1))
                     
                     case ('vz')
-                    f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef)
+                    f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1))
                     
                     case ('vx')
-                    f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef)
+                    f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1))
                     
                 end select
                 
             else
                 select case (shot%src%comp)
                     case ('p') !p[iz,ix,1]
-                    f%seismo(1,it)=f%p(iz,ix,1)
+                    f%seismo(1,it)=factor_zz*f%szz(iz,ix,1) &
+                                  +factor_xx*f%sxx(iz,ix,1)
                     
                     case ('vz') !vz[iz-0.5,ix,1]
                     f%seismo(1,it)=f%vz(iz,ix,1)
@@ -990,32 +987,71 @@ use m_cpml
     
     subroutine final(self)
         type(t_propagator) :: self
-        call dealloc(self%buox, self%buoy, self%buoz, self%kpa, self%inv_kpa)
+        call dealloc(self%buoz, self%buox)
+        call dealloc(self%ldap2mu, self%lda, self%mu)
+        call dealloc(self%two_ldapmu, self%inv_ladpmu_4mu)
     end subroutine
 
     !========= gradient, imaging or other correlations ===================
     !For gradient:
-    !∇ₘ<a|Au> = ∇ₘ<a|M∂ₜu-Du> = ∫ aᵀ ∇ₘM ∂ₜu dt
+    !Kₘ<a|Au> = Kₘ<a|M∂ₜu-Du> = ∫ aᵀ KₘM ∂ₜu dt
     !Since it's cumbersome to get ∂ₜu by time marching,
     !replace ∂ₜu by M⁻¹Du and neglect f
     !ie. M∂ₜu=Du+f -> ∂ₜu=M⁻¹Du+M⁻¹f ≐ M⁻¹Du
     !This simplification introduces singularities in the gradient only at source positions, which are probably removed by gradient masking.
     !
-    !Therefore, ∫ aᵀ ∇ₘM ∂ₜu dt ≐ ∫ aᵀ ∇ₘln(M) Du dt =: a★Du
-    !where
-    !                            [ 0   0   ∂ₓᵇ] [vx]
-    !a★Du = [vxᵃ vzᵃ pᵃ] ∇ₘln(M) | 0   0   ∂zᵇ| |vz|
-    !                            [∂ₓᶠ  ∂zᶠ  0 ] [p ]
-    !In particular, we compute
-    !  grho = vᵃ ∂ₜv = vᵃ b∇p
-    !  gkpa = pᵃ (-κ⁻²) ∂ₜp = = pᵃ (-κ⁻¹) ∇·v
+    !Therefore, ∫ aᵀ KₘM ∂ₜu dt ≐ ∫ aᵀ KₘM M⁻¹Du dt
     !
-    !For imaging:
-    !I = ∫ a u dt =: a★u
+    !Mᵥ = diag₂(ρ)
+    !K_ρMᵥ Mᵥ⁻¹ = diag₂(1) diag₂(b) = diag₂(b)
+    !
+    !     [λ+2μ  λ    ]⁻¹   [___1____[(λ+2μ)     -λ]    ]
+    !Mₛ = | λ   λ+2μ  |   = |4(λμ+μ²)[    -λ (λ+2μ)]    |
+    !     [          μ]     [                        1/μ]
+    !
+    !        __-1___[1 1 0]
+    !K_λMₛ = 4(λ+μ)²|1 1 0|
+    !               [0 0 0]
+    !
+    !             __-1___[1 1 0][λ+2μ  λ    ]   __-1__[1 1 0]
+    !K_λMₛ Mₛ⁻¹ = 4(λ+μ)²|1 1 0|| λ   λ+2μ  | = 2(λ+μ)|1 1 0|
+    !                    [0 0 0][          μ]         [0 0 0]
+    !
+    !        [___-1____[ λ²+2λμ+2μ² -λ²-2λμ    ]  0  ]
+    !K_µMₛ = |4(λμ+μ²)²[-λ²-2λμ      λ²+2λμ+2μ²]  0  |
+    !        [              0           0        -μ⁻²]
+    !
+    !             [___-1____[ λ²+2λμ+2μ² -λ²-2λμ    ][λ+2μ  λ    ]     ]   [__-1___[λ+2μ  -λ ]     ]
+    !K_μMₛ Mₛ⁻¹ = |4(λμ+μ²)²[-λ²-2λμ      λ²+2λμ+2μ²][ λ   λ+2μ  ]     | = |2(λ+μ)μ[ -λ  λ+2μ]     |
+    !             [                                                -μ⁻¹]   [                   -μ⁻¹]
+    !
+    !       [∂zᵇszz + ∂ₓᶠszx]
+    !       |∂ₓᵇsxx + ∂zᶠszx|
+    !and Du=|∂zᶠvz          |
+    !       |∂ₓᶠvx          |
+    !       [∂ₓᵇvz  + ∂zᵇvx ]
+    !
+    !Therefore,
+    !grho = [vzᵃ vxᵃ] diag₂(b) [∂zᵇszz + ∂ₓᶠszx]
+    !                          |∂ₓᵇsxx + ∂zᶠszx|
+    !     = b[ vzᵃ(∂zᵇszz +∂ₓᶠszx) + vxᵃ(∂ₓᵇsxx+ ∂zᶠszx) ]
+    !
+    !glda = [szzᵃ sxxᵃ szxᵃ] __-1__[1 1 0] [∂zᶠvz          ]
+    !                        2(λ+μ)|1 1 0| |∂ₓᶠvx          |
+    !                              [0 0 0] [∂ₓᵇvz + ∂zᵇvx  ]
+    !     = __-1__[ szzᵃ(∂zᶠvz +∂ₓᶠvx) + sxxᵃ(∂zᶠvz +∂ₓᶠvx) ]
+    !       2(λ+μ)  
+    !
+    !gmu = [szzᵃ sxxᵃ szxᵃ] __-1___[λ+2μ  -λ        ] [∂zᶠvz        ]
+    !                       2(λ+μ)μ[ -λ  λ+2μ       | |∂ₓᶠvx        |
+    !                              [          2(λ+μ)] [∂ₓᵇvz + ∂zᵇvx]
+    !    = __-1___[ szzᵃ((λ+2μ)∂zᶠvz -λ*∂ₓᶠvx) + sxxᵃ(-λ*∂zᶠvz +(λ+2μ)∂ₓᶠvx) + szxᵃ*2(λ+μ)(∂ₓᵇvz +∂zᵇvx) ]
+    !      2(λ+μ)μ 
 
+    
     subroutine gradient_density(rf,sf,it,grad)
         type(t_field), intent(in) :: rf, sf
-        real,dimension(cb%mz,cb%mx,cb%my) :: grad
+        real,dimension(cb%mz,cb%mx,1) :: grad
         
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
@@ -1029,9 +1065,9 @@ use m_cpml
         
     end subroutine
 
-    subroutine gradient_moduli(rf,sf,it,grad)
+    subroutine gradient_moduli(rf,sf,it,grad_lda,grad_mu)
         type(t_field), intent(in) :: rf, sf
-        real,dimension(cb%mz,cb%mx,cb%my) :: grad
+        real,dimension(cb%mz,cb%mx,1) :: grad_lda,grad_mu
 
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
@@ -1040,97 +1076,87 @@ use m_cpml
         ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
                     
         !inexact greadient
-        call grad2d_moduli(rf%szz,rf%sxx,rf%szx,sf%vz,sf%vx,&
-                           grad,                            &
+        call grad2d_moduli(rf%szz,rf%sxx,rf%szx,sf%vz,sf%vx,  &
+                           ppg%ldap2mu,ppg%lda,ppg%two_ldapmu,&
+                           grad_lda,grad_mu,                  &
                            ifz,ilz,ifx,ilx)
         
     end subroutine
     
     subroutine gradient_postprocess
 
+        real,dimension(:,:),allocatable :: mhalf_inv_ldapmu
+
         !scale the kernel tobe a gradient in the discretized world
         cb%grad = cb%grad*m%cell_volume*rdt
         
         !grho
-        cb%grad(:,:,:,1) = cb%grad(:,:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
-        !gkpa
-        cb%grad(:,:,:,2) = cb%grad(:,:,:,2) * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my))
-                
+        cb%grad(:,:,1,1) = cb%grad(:,:,1,1) / cb%rho(1:cb%mz,1:cb%mx,1)
+
+        mhalf_inv_ldapmu = -0.5/(ppg%ldap2mu(1:cb%mz,1:cb%mx)-ppg%mu(1:cb%mz,1:cb%mx))
+
+        !glda
+        cb%grad(:,:,1,2) = cb%grad(:,:,1,2) *mhalf_inv_ldapmu
+        !gmu
+        cb%grad(:,:,1,3) = cb%grad(:,:,1,3) *mhalf_inv_ldapmu/ppg%mu(1:cb%mz,1:cb%mx)
+
         !preparing for cb%project_back
         cb%grad(1,:,:,:) = cb%grad(2,:,:,:)
 
+        deallocate(mhalf_inv_ldapmu)
+
     end subroutine
 
-    ! subroutine imaging(rf,sf,it,imag)
-    !     type(t_field), intent(in) :: rf, sf
-    !     real,dimension(cb%mz,cb%mx,cb%my) :: imag
+    subroutine imaging(rf,sf,it,imag)
+        type(t_field), intent(in) :: rf, sf
+        real,dimension(cb%mz,cb%mx,1) :: imag
         
-    !     !nonzero only when sf touches rf
-    !     ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
-    !     ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
-    !     ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
-    !     ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
-    !     1=max(sf%bloom(5,it),rf%bloom(5,it),1)
-    !     1=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
+        !nonzero only when sf touches rf
+        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
+        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
+        ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
+        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
         
-    !     ! if(m%is_cubic) then
-    !     !     call imag3d_xcorr(rf%p,sf%p,&
-    !     !                       imag,                  &
-    !     !                       ifz,ilz,ifx,ilx,1,1)
-    !     ! else
-    !         call imag2d_xcorr(rf%p,sf%p,&
-    !                           imag,            &
-    !                           ifz,ilz,ifx,ilx)
-    !     ! endif
-
-    !     ! call imag2d_xcorr(rf%p,rf%vz,rf%vx,&
-    !     !                   sf%p,sf%vz,sf%vx,&
-    !     !                   imag,            &
-    !     !                   ifz,ilz,ifx,ilx)
-
-    ! end subroutine
-
-    ! subroutine imaging_postprocess
-
-    !     !scale by rdt tobe an image in the discretized world
-    !     cb%imag = cb%imag*rdt
-
-    !     !for cb%project_back
-    !     cb%imag(1,:,:,:) = cb%imag(2,:,:,:)
-
-    ! end subroutine
-
-    ! subroutine energy(sf,it,engy)
-    !     type(t_field),intent(in) :: sf
-    !     real,dimension(cb%mz,cb%mx,cb%my) :: engy
-
-    !     !nonzero only when sf touches rf
-    !     ifz=max(sf%bloom(1,it),2)
-    !     ilz=min(sf%bloom(2,it),cb%mz)
-    !     ifx=max(sf%bloom(3,it),1)
-    !     ilx=min(sf%bloom(4,it),cb%mx)
-    !     1=max(sf%bloom(5,it),1)
-    !     1=min(sf%bloom(6,it),cb%my)
+        call imag2d_xcorr(rf%szz,rf%sxx, &
+                          sf%szz,sf%sxx, &
+                          imag,          &
+                          ifz,ilz,ifx,ilx)
         
-    !     if(m%is_cubic) then
-    !         call engy3d_xcorr(sf%p,&
-    !                           engy,                  &
-    !                           ifz,ilz,ifx,ilx,1,1)
-    !     else
-    !         call engy2d_xcorr(sf%p,&
-    !                           engy,            &
-    !                           ifz,ilz,ifx,ilx)
-    !     endif
+    end subroutine
 
-    ! end subroutine
+    subroutine imaging_postprocess
+
+        !scale by rdt tobe an image in the discretized world
+        cb%imag = cb%imag*rdt
+
+        !for cb%project_back
+        cb%imag(1,:,:,:) = cb%imag(2,:,:,:)
+
+    end subroutine
+
+    subroutine energy(sf,it,engy)
+        type(t_field),intent(in) :: sf
+        real,dimension(cb%mz,cb%mx,1) :: engy
+
+        !nonzero only when sf touches rf
+        ifz=max(sf%bloom(1,it),2)
+        ilz=min(sf%bloom(2,it),cb%mz)
+        ifx=max(sf%bloom(3,it),1)
+        ilx=min(sf%bloom(4,it),cb%mx)
+        
+        call engy2d_xcorr(sf%szz,sf%sxx, &
+                          engy,          &
+                          ifz,ilz,ifx,ilx)
+        
+    end subroutine
 
     !========= Finite-Difference on flattened arrays ==================
     
-    subroutine fd2d_velocities(vz,vx,szz,sxx,sxz,&
+    subroutine fd2d_velocities(vz,vx,szz,sxx,szx,              &
                                dszz_dz,dsxx_dx,dszx_dz,dszx_dx,&
-                               buoz,buox,        &
+                               buoz,buox,                      &
                                ifz,ilz,ifx,ilx,dt)
-        real,dimension(*) :: vz,vx,p
+        real,dimension(*) :: vz,vx,szz,sxx,szx
         real,dimension(*) :: dszz_dz,dsxx_dx,dszx_dz,dszx_dx
         real,dimension(*) :: buoz,buox
         
@@ -1164,26 +1190,26 @@ use m_cpml
                 iz_ixp2=i  +2*nz  !iz,ix+2
                 
 
-                dszz_dz= c1z*(szz(iz_ix)-szz(izm1_ix)) +c2z*(szz(izp1_ix)-szz(izm2_ix))
-                dsxx_dx= c1x*(sxx(iz_ix)-sxx(iz_ixm1)) +c2x*(sxx(iz_ixp1)-sxx(iz_ixm2))
+                dszz_dz_= c1z*(szz(iz_ix)-szz(izm1_ix)) +c2z*(szz(izp1_ix)-szz(izm2_ix))
+                dsxx_dx_= c1x*(sxx(iz_ix)-sxx(iz_ixm1)) +c2x*(sxx(iz_ixp1)-sxx(iz_ixm2))
 
-                dszx_dz= c1z*(szx(izp1_ix)-szx(iz_ix)) +c2z*(szx(izp2_ix)-szx(izm1_ix))
-                dszx_dx= c1x*(szx(iz_ixp1)-szx(iz_ix)) +c2x*(szx(iz_ixp2)-szx(iz_ixm1))
+                dszx_dz_= c1z*(szx(izp1_ix)-szx(iz_ix)) +c2z*(szx(izp2_ix)-szx(izm1_ix))
+                dszx_dx_= c1x*(szx(iz_ixp1)-szx(iz_ix)) +c2x*(szx(iz_ixp2)-szx(iz_ixm1))
                                 
                 !cpml
-                cpml%dsxx_dx(i)= cpml%b_x_half(ix)*cpml%dsxx_dx(i) + cpml%a_x_half(ix)*dsxx_dx
-                cpml%dsxz_dz(i)= cpml%b_z(iz)     *cpml%dsxz_dz(i) + cpml%a_z(iz)     *dsxz_dz 
-                cpml%dsxz_dx(i)= cpml%b_x(ix)     *cpml%dsxz_dx(i) + cpml%a_x(ix)     *dsxz_dx
-                cpml%dszz_dz(i)= cpml%b_z_half(iz)*cpml%dszz_dz(i) + cpml%a_z_half(iz)*dszz_dz
+                dsxx_dx(i)= cpml%b_x_half(ix)*dsxx_dx(i) + cpml%a_x_half(ix)*dsxx_dx_
+                dszx_dz(i)= cpml%b_z(iz)     *dszx_dz(i) + cpml%a_z(iz)     *dszx_dz_
+                dszx_dx(i)= cpml%b_x(ix)     *dszx_dx(i) + cpml%a_x(ix)     *dszx_dx_
+                dszz_dz(i)= cpml%b_z_half(iz)*dszz_dz(i) + cpml%a_z_half(iz)*dszz_dz_
 
-                dszz_dz=dszz_dz*cb%kappa_z_half(iz) + cpml%dszz_dz(i)
-                dsxx_dx=dsxx_dx*cb%kappa_x_half(ix) + cpml%dsxx_dx(i)  !kappa's should have been inversed in m_computebox.f90
-                dszx_dz=dszx_dz*cb%kappa_z(iz)      + cpml%dszx_dz(i)
-                dszx_dx=dszx_dx*cb%kappa_x(ix)      + cpml%dszx_dx(i)
+                dszz_dz_=dszz_dz_*cpml%kpa_z_half(iz) + dszz_dz(i)
+                dsxx_dx_=dsxx_dx_*cpml%kpa_x_half(ix) + dsxx_dx(i)  !kappa's should have been inversed in m_computebox.f90
+                dszx_dz_=dszx_dz_*cpml%kpa_z(iz)      + dszx_dz(i)
+                dszx_dx_=dszx_dx_*cpml%kpa_x(ix)      + dszx_dx(i)
                 
                 !velocity
-                vz(i)=vz(i) + dt*buoz(i)*(dszz_dz+dszx_dx)
-                vx(i)=vx(i) + dt*buox(i)*(dszx_dz+dsxx_dx)
+                vz(i)=vz(i) + dt*buoz(i)*(dszz_dz_+dszx_dx_)
+                vx(i)=vx(i) + dt*buox(i)*(dszx_dz_+dsxx_dx_)
 
             enddo
             
@@ -1193,91 +1219,27 @@ use m_cpml
         
     end subroutine
     
-    subroutine fd3d_stresses(vz,vx,vy,p,               &
-                             dvz_dz,dvx_dx,dvy_dy,     &
-                             kpa,                      &
-                             ifz,ilz,ifx,ilx,1,1,dt)
-        real,dimension(*) :: vz,vx,vy,p
-        real,dimension(*) :: dvz_dz,dvx_dx,dvy_dy
-        real,dimension(*) :: kpa
-        
-        nz=cb%nz
-        nx=cb%nx
-        ny=cb%ny
-        
-        dvz_dz_=0.;dvx_dx_=0.;dvy_dy_=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,1,i,&
-        !$omp         izm1_ix_1,iz_ix_1,izp1_ix_1,izp2_ix_1,&
-        !$omp         iz_ixm1_1,iz_ixp1_1,iz_ixp2_1,&
-        !$omp         iz_ix_1m1,iz_ix_1p1,iz_ix_1p2,&
-        !$omp         dvz_dz_,dvx_dx_,dvy_dy_)
-        !$omp do schedule(dynamic) collapse(2)
-        do 1=1,1
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-            
-                i=(iz-cb%ifz)+(ix-cb%ifx)*nz+(1-cb%1)*nz*nx+1
-                
-                izm1_ix_1=i-1  !iz-1,ix,1
-                iz_ix_1  =i    !iz,ix,1
-                izp1_ix_1=i+1  !iz+1,ix,1
-                izp2_ix_1=i+2  !iz+2,ix,1
-                
-                iz_ixm1_1=i       -nz  !iz,ix-1,1
-                iz_ixp1_1=i       +nz  !iz,ix+1,1
-                iz_ixp2_1=i     +2*nz  !iz,ix+2,1
-                
-                iz_ix_1m1=i    -nz*nx  !iz,ix,1-1
-                iz_ix_1p1=i    +nz*nx  !iz,ix,1+1
-                iz_ix_1p2=i  +2*nz*nx  !iz,ix,1+2
-                
-                dvx_dx_= c1x*(vx(iz_ixp1_1)-vx(iz_ix_1))  +c2x*(vx(iz_ixp2_1)-vx(iz_ixm1_1))
-                dvy_dy_= c1y*(vy(iz_ix_1p1)-vy(iz_ix_1))  +c2y*(vy(iz_ix_1p2)-vy(iz_ix_1m1))
-                dvz_dz_= c1z*(vz(izp1_ix_1)-vz(iz_ix_1))  +c2z*(vz(izp2_ix_1)-vz(izm1_ix_1))
-                
-                !cpml
-                dvz_dz(iz_ix_1)=cpml%b_z(iz)*dvz_dz(iz_ix_1)+cpml%a_z(iz)*dvz_dz_
-                dvx_dx(iz_ix_1)=cpml%b_x(ix)*dvx_dx(iz_ix_1)+cpml%a_x(ix)*dvx_dx_
-                dvy_dy(iz_ix_1)=cpml%b_y(1)*dvy_dy(iz_ix_1)+cpml%a_y(1)*dvy_dy_
-
-                dvz_dz_=dvz_dz_*cpml%kpa_z(iz) + dvz_dz(iz_ix_1)
-                dvx_dx_=dvx_dx_*cpml%kpa_x(ix) + dvx_dx(iz_ix_1)
-                dvy_dy_=dvy_dy_*cpml%kpa_y(1) + dvy_dy(iz_ix_1)
-                
-                !pressure
-                p(iz_ix_1) = p(iz_ix_1) + dt * kpa(iz_ix_1)*(dvz_dz_+dvx_dx_+dvy_dy_)
-                
-            enddo
-            
-        enddo
-        enddo
-        !$omp enddo 
-        !$omp end parallel
-        
-    end subroutine
-    
-    subroutine fd2d_stresses(vz,vx,p,          &
-                             dvz_dz,dvx_dx,    &
-                             kpa,              &
+    subroutine fd2d_stresses(vz,vx,szz,sxx,szx,          &
+                             dvz_dz,dvx_dx,dvz_dx,dvx_dz,&
+                             ldap2mu,lda,mu,             &
                              ifz,ilz,ifx,ilx,dt)
-        real,dimension(*) :: vz,vx,p
-        real,dimension(*) :: dvz_dz,dvx_dx
-        real,dimension(*) :: kpa
+        real,dimension(*) :: vz,vx,szz,sxx,szx
+        real,dimension(*) :: dvz_dz,dvx_dx,dvz_dx,dvx_dz
+        real,dimension(*) :: ldap2mu,lda,mu
         
         nz=cb%nz
         nx=cb%nx
         
-        dvz_dz_=0.;dvx_dx_=0.
+        dvz_dz_=0.
+        dvx_dx_=0.
+        dvz_dx_=0.
+        dvx_dz_=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
-        !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-        !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dvz_dz_,dvx_dx_)
+        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
+        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
+        !$omp         dvz_dz_,dvx_dx_,dvz_dx_,dvx_dz_)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
         
@@ -1286,144 +1248,50 @@ use m_cpml
             
                 i=(iz-cb%ifz)+(ix-cb%ifx)*nz+1
                 
+                izm2_ix=i-2  !iz-2,ix
                 izm1_ix=i-1  !iz-1,ix
                 iz_ix  =i    !iz,ix
                 izp1_ix=i+1  !iz+1,ix
                 izp2_ix=i+2  !iz+2,ix
                 
-                iz_ixm1=i  -nz  !iz,ix-1
-                iz_ixp1=i  +nz  !iz,ix+1
+                iz_ixm2=i  -2*nz !iz,ix-2
+                iz_ixm1=i    -nz !iz,ix-1
+                iz_ixp1=i    +nz !iz,ix+1
                 iz_ixp2=i  +2*nz !iz,ix+2
                 
+
                 dvz_dz_= c1z*(vz(izp1_ix)-vz(iz_ix))  +c2z*(vz(izp2_ix)-vz(izm1_ix))
                 dvx_dx_= c1x*(vx(iz_ixp1)-vx(iz_ix))  +c2x*(vx(iz_ixp2)-vx(iz_ixm1))
                 
                 !cpml
-                dvz_dz(iz_ix)=cpml%b_z(iz)*dvz_dz(iz_ix)+cpml%a_z(iz)*dvz_dz_
-                dvx_dx(iz_ix)=cpml%b_x(ix)*dvx_dx(iz_ix)+cpml%a_x(ix)*dvx_dx_
+                dvz_dz(i)=cpml%b_z(iz)*dvz_dz(i)+cpml%a_z(iz)*dvz_dz_
+                dvx_dx(i)=cpml%b_x(ix)*dvx_dx(i)+cpml%a_x(ix)*dvx_dx_
 
                 dvz_dz_=dvz_dz_*cpml%kpa_z(iz) + dvz_dz(iz_ix)
                 dvx_dx_=dvx_dx_*cpml%kpa_x(ix) + dvx_dx(iz_ix)
                 
-                !pressure
-                p(iz_ix) = p(iz_ix) + dt * kpa(iz_ix)*(dvz_dz_+dvx_dx_)
+                !normal stresses
+                szz(i) = szz(i) + dt * (ldap2mu(i)*dvz_dz_ + lda(i)    *dvx_dx_)
+                sxx(i) = sxx(i) + dt * (lda(i)    *dvz_dz_ + ldap2mu(i)*dvx_dx_)
+
+
+                dvz_dx_= c1x*(vz(iz_ix)-vz(iz_ixm1))  +c2x*(vz(iz_ixp1)-vz(iz_ixm2))
+                dvx_dz_= c1z*(vx(iz_ix)-vx(izm1_ix))  +c2z*(vx(izp1_ix)-vx(izm2_ix))
+
+                !cpml
+                dvz_dx(i)=cpml%b_x_half(ix)*dvz_dx(i)+cpml%a_x_half(ix)*dvz_dx_
+                dvx_dz(i)=cpml%b_z_half(iz)*dvx_dz(i)+cpml%a_z_half(iz)*dvx_dz_
+
+                dvz_dx_=dvz_dx_*cpml%kpa_x_half(ix) + dvz_dx(i)
+                dvx_dz_=dvx_dz_*cpml%kpa_z_half(iz) + dvx_dz(i)
+
+                !shear stress
+                szx(i) = szx(i) + dt * mu(i)*(dvz_dx_+dvx_dz_)
                 
             enddo
             
         enddo
         !$omp enddo 
-        !$omp end parallel
-        
-    end subroutine
-
-
-    subroutine fd_freesurface_velocities(vz)
-        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%1:cb%1) :: vz
-
-        !free surface is located at [1,ix,1] level
-        !so symmetric mirroring: vz[0.5]=vz[1.5], ie. vz(1,ix,1)=vz(2,ix,1) -> dp(1,ix,1)=0.
-            vz(1,:,:)=vz(2,:,:)
-            ! !$omp parallel default (shared)&
-            ! !$omp private(ix,1,i)
-            ! !$omp do schedule(dynamic)
-            ! do 1=1,1
-            ! do ix=ifx,ilx
-            !     i=(1-cb%ifz) + (ix-cb%ifx)*nz + (1-cb%1)*nz*nx +1 !iz=1,ix,1
-                
-            !     f%vz(i)=f%vz(i+1)
-            ! enddo
-            ! enddo
-            ! !$omp enddo
-            ! !$omp end parallel
-
-    end subroutine
-
-    subroutine fd_freesurface_stresses(p)
-        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%1:cb%1) :: p
-
-        !free surface is located at [1,ix,1] level
-        !so explicit boundary condition: p(1,ix,1)=0
-        !and antisymmetric mirroring: p(0,ix,1)=-p(2,ix,1) -> vz(2,ix,1)=vz(1,ix,1)
-            p(1,:,:)=0.
-            p(0,:,:)=-p(2,:,:)
-            ! !$omp parallel default (shared)&
-            ! !$omp private(ix,1,i)
-            ! !$omp do schedule(dynamic)
-            ! do 1=1,1
-            ! do ix=ifx,ilx
-            !     i=(1-cb%ifz) + (ix-cb%ifx)*nz + (1-cb%1)*nz*nx +1 !iz=1,ix,1 
-                
-            !     f%p(i)=0.
-                
-            !     f%p(i-1)=-f%p(i+1)
-            ! enddo
-            ! enddo
-            ! !$omp enddo
-            ! !$omp end parallel
-
-    end subroutine
-
-    
-    subroutine grad3d_moduli(rf_p,sf_vz,sf_vx,sf_vy,&
-                             grad,                  &
-                             ifz,ilz,ifx,ilx,1,1)
-        real,dimension(*) :: rf_p,sf_vz,sf_vx,sf_vy
-        real,dimension(*) :: grad
-        
-        nz=cb%nz
-        nx=cb%nx
-        
-        dvz_dz=0.
-        dvx_dx=0.
-        dvy_dx=0.
-        
-         rp=0.
-        dsp=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,1,i,j,&
-        !$omp         izm1_ix_1,iz_ix_1,izp1_ix_1,izp2_ix_1,&
-        !$omp         iz_ixm1_1,iz_ixp1_1,iz_ixp2_1,&
-        !$omp         iz_ix_1m1,iz_ix_1p1,iz_ix_1p2,&
-        !$omp         dvz_dz,dvx_dx,dvy_dy,&
-        !$omp         rp,dsp)
-        !$omp do schedule(dynamic) collapse(2)
-        do 1=1,1
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-                
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(1-cb%1)*cb%nz*cb%nx+1 !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz+(1-1)     *cb%mz*cb%mx+1 !grad has no boundary layers
-                
-                izm1_ix_1=i-1  !iz-1,ix,1
-                iz_ix_1  =i    !iz,ix,1
-                izp1_ix_1=i+1  !iz+1,ix,1
-                izp2_ix_1=i+2  !iz+2,ix,1
-                
-                iz_ixm1_1=i    -nz  !iz,ix-1,1
-                iz_ixp1_1=i    +nz  !iz,ix+1,1
-                iz_ixp2_1=i  +2*nz  !iz,ix+2,1
-                
-                iz_ix_1m1=i    -nz*nx  !iz,ix,1-1
-                iz_ix_1p1=i    +nz*nx  !iz,ix,1+1
-                iz_ix_1p2=i  +2*nz*nx  !iz,ix,1+2
-                
-                dvz_dz = c1z*(sf_vz(izp1_ix_1)-sf_vz(iz_ix_1)) +c2z*(sf_vz(izp2_ix_1)-sf_vz(izm1_ix_1))
-                dvx_dx = c1x*(sf_vx(iz_ixp1_1)-sf_vx(iz_ix_1)) +c2x*(sf_vx(iz_ixp2_1)-sf_vx(iz_ixm1_1))
-                dvy_dy = c1y*(sf_vy(iz_ix_1p1)-sf_vy(iz_ix_1)) +c2y*(sf_vy(iz_ix_1p2)-sf_vy(iz_ix_1m1))
-                
-                 rp = rf_p(i)
-                dsp = dvz_dz +dvx_dx +dvy_dy
-                
-                grad(j)=grad(j) + rp*dsp
-                
-            end do
-            
-        end do
-        end do
-        !$omp end do
         !$omp end parallel
         
     end subroutine
@@ -1467,1294 +1335,21 @@ use m_cpml
 
     ! end subroutine
 
-    subroutine grad2d_moduli(rf_p,sf_vz,sf_vx,&
-                             grad,            &
+    subroutine grad2d_moduli(rf_szz,rf_sxx,rf_szx,&
+                             sf_vz,sf_vx,         &
+                             ldap2mu,lda,two_ldapmu,&
+                             grad_lda,grad_mu,    &
                              ifz,ilz,ifx,ilx)
-        real,dimension(*) :: rf_p,sf_vz,sf_vx
-        real,dimension(*) :: grad
-        
-        nz=cb%nz
-        
-        dvz_dz=0.
-        dvx_dx=0.
-        
-         rp=0.
-        dsp=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,j,&
-        !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-        !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dvz_dz,dvx_dx,&
-        !$omp         rp,dsp)
-        !$omp do schedule(dynamic)
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-                
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
-                
-                izm1_ix=i-1  !iz-1,ix
-                iz_ix  =i    !iz,ix
-                izp1_ix=i+1  !iz+1,ix
-                izp2_ix=i+2  !iz+2,ix
-                
-                iz_ixm1=i    -nz  !iz,ix-1
-                iz_ixp1=i    +nz  !iz,ix+1
-                iz_ixp2=i  +2*nz  !iz,ix+2
-                
-                dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
-                dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
-                
-                 rp = rf_p(i)
-                dsp = dvz_dz +dvx_dx
-                
-                grad(j)=grad(j) + rp*dsp
-                
-            end do
-            
-        end do
-        !$omp end do
-        !$omp end parallel
-
-    end subroutine
-    
-    subroutine grad3d_density(rf_vz,rf_vx,rf_vy,sf_p,&
-                              grad,                  &
-                              ifz,ilz,ifx,ilx,1,1)
-        real,dimension(*) :: rf_vz,rf_vx,rf_vy,sf_p
-        real,dimension(*) :: grad
-        
-        nz=cb%nz
-        nx=cb%nx
-        
-        dsvz=0.; dsvx=0.; dsvy=0.
-         rvz=0.;  rvx=0.;  rvy=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,1,i,j,&
-        !$omp         izm2_ix_1,izm1_ix_1,iz_ix_1,izp1_ix_1,izp2_ix_1,&
-        !$omp         iz_ixm2_1,iz_ixm1_1,iz_ixp1_1,iz_ixp2_1,&
-        !$omp         iz_ix_1m2,iz_ix_1m1,iz_ix_1p1,iz_ix_1p2,&
-        !$omp          rvz, rvx, rvy,&
-        !$omp         dsvz,dsvx,dsvy)
-        !$omp do schedule(dynamic) collapse(2)
-        do 1=1,1
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-            
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(1-cb%1)*cb%nz*cb%nx+1 !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz+(1-1)     *cb%mz*cb%mx+1 !grad has no boundary layers
-
-                izm2_ix_1=i-2  !iz-2,ix,1
-                izm1_ix_1=i-1  !iz-1,ix,1
-                iz_ix_1  =i    !iz,ix,1
-                izp1_ix_1=i+1  !iz+1,ix,1
-                izp2_ix_1=i+2  !iz+2,ix,1
-                
-                iz_ixm2_1=i  -2*nz  !iz,ix-2,1
-                iz_ixm1_1=i    -nz  !iz,ix-1,1
-                iz_ixp1_1=i    +nz  !iz,ix+1,1
-                iz_ixp2_1=i  +2*nz  !iz,ix+2,1
-                
-                iz_ix_1m2=i  -2*nz*nx  !iz,ix,1-2
-                iz_ix_1m1=i    -nz*nx  !iz,ix,1-1
-                iz_ix_1p1=i    +nz*nx  !iz,ix,1+1
-                iz_ix_1p2=i  +2*nz*nx  !iz,ix,1+2               
-                
-                rvz = rf_vz(izp1_ix_1) +rf_vz(iz_ix_1)
-                rvx = rf_vx(iz_ixp1_1) +rf_vx(iz_ix_1)
-                rvy = rf_vy(iz_ix_1p1) +rf_vy(iz_ix_1)
-
-                dsvz = (c1z*(sf_p(iz_ix_1  )-sf_p(izm1_ix_1)) +c2z*(sf_p(izp1_ix_1)-sf_p(izm2_ix_1))) &
-                      +(c1z*(sf_p(izp1_ix_1)-sf_p(iz_ix_1  )) +c2z*(sf_p(izp2_ix_1)-sf_p(izm1_ix_1)))
-                dsvx = (c1x*(sf_p(iz_ix_1  )-sf_p(iz_ixm1_1)) +c2x*(sf_p(iz_ixp1_1)-sf_p(iz_ixm2_1))) &
-                      +(c1x*(sf_p(iz_ixp1_1)-sf_p(iz_ix_1  )) +c2x*(sf_p(iz_ixp2_1)-sf_p(iz_ixm1_1)))
-                dsvy = (c1y*(sf_p(iz_ix_1  )-sf_p(iz_ix_1m1)) +c2y*(sf_p(iz_ix_1p1)-sf_p(iz_ix_1m2))) &
-                      +(c1y*(sf_p(iz_ix_1p1)-sf_p(iz_ix_1  )) +c2y*(sf_p(iz_ix_1p2)-sf_p(iz_ix_1m1)))
-                
-                !complete equation with unnecessary terms e.g. sf_p(iz_ix) for better understanding
-                !with flag -O, the compiler should automatically detect such possibilities of simplification
-                
-                grad(j)=grad(j) + 0.25*( rvz*dsvz + rvx*dsvx + rvy*dsvy )
-                
-            enddo
-            
-        enddo
-        enddo
-        !$omp end do
-        !$omp end parallel
-        
-    end subroutine
-    
-    subroutine grad2d_density(rf_vz,rf_vx,sf_p,&
-                              grad,            &
-                              ifz,ilz,ifx,ilx)
-        real,dimension(*) :: rf_vz,rf_vx,sf_p
-        real,dimension(*) :: grad
-        
-        nz=cb%nz
-        
-        dsvz=0.; dsvx=0.
-         rvz=0.; rvx=0.
-
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,j,&
-        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp          rvz, rvx,&
-        !$omp         dsvz,dsvx)
-        !$omp do schedule(dynamic)
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-            
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
-                
-                izm2_ix=i-2  !iz-2,ix
-                izm1_ix=i-1  !iz-1,ix
-                iz_ix  =i    !iz,ix
-                izp1_ix=i+1  !iz+1,ix
-                izp2_ix=i+2  !iz+2,ix
-                
-                iz_ixm2=i  -2*nz  !iz,ix-2
-                iz_ixm1=i    -nz  !iz,ix-1
-                iz_ixp1=i    +nz  !iz,ix+1
-                iz_ixp2=i  +2*nz  !iz,ix+2
-                
-                rvz = rf_vz(iz_ix) +rf_vz(izp1_ix)
-                rvx = rf_vx(iz_ix) +rf_vx(iz_ixp1)
-                
-                dsvz = (c1z*(sf_p(iz_ix  )-sf_p(izm1_ix)) +c2z*(sf_p(izp1_ix)-sf_p(izm2_ix))) &
-                      +(c1z*(sf_p(izp1_ix)-sf_p(iz_ix  )) +c2z*(sf_p(izp2_ix)-sf_p(izm1_ix)))
-                dsvx = (c1x*(sf_p(iz_ix  )-sf_p(iz_ixm1)) +c2x*(sf_p(iz_ixp1)-sf_p(iz_ixm2))) &
-                      +(c1x*(sf_p(iz_ixp1)-sf_p(iz_ix  )) +c2x*(sf_p(iz_ixp2)-sf_p(iz_ixm1)))
-                !complete equation with unnecessary terms e.g. sf_p(iz_ix) for better understanding
-                !with flag -Ox, the compiler should automatically detect such possible simplification
-                
-                grad(j)=grad(j) + 0.25*( rvz*dsvz + rvx*dsvx )
-                
-            enddo
-            
-        enddo
-        !$omp end do
-        !$omp end parallel
-        
-    end subroutine
-
-
-    subroutine imag3d_xcorr(rf_p,sf_p,             &
-                            imag,                  &
-                            ifz,ilz,ifx,ilx,1,1)
-        real,dimension(*) :: rf_p,sf_p
-        real,dimension(*) :: imag
-        
-        nz=cb%nz
-        nx=cb%nx
-        
-        rp=0.
-        sp=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,1,i,j,&
-        !$omp         rp,sp)
-        !$omp do schedule(dynamic) collapse(2)
-        do 1=1,1
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-                
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(1-cb%1)*cb%nz*cb%nx+1 !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz+(1-1)     *cb%mz*cb%mx+1 !grad has no boundary layers
-                
-                rp = rf_p(i)
-                sp = sf_p(i)
-                
-                imag(j)=imag(j) + rp*sp
-                
-            end do
-            
-        end do
-        end do
-        !$omp end do
-        !$omp end parallel
-        
-    end subroutine
-
-    ! subroutine imag2d_xcorr(rf_p,rf_vz,rf_vx,&
-    !                         sf_p,sf_vz,sf_vx,&
-    !                         imag,          &
-    !                         ifz,ilz,ifx,ilx)
-    !     real,dimension(*) :: rf_p,rf_vz,rf_vx
-    !     real,dimension(*) :: sf_p,sf_vz,sf_vx
-    !     real,dimension(*) :: imag
-        
-    !     nz=cb%nz
-        
-    !     !$omp parallel default (shared)&
-    !     !$omp private(iz,ix,i,j)
-    !     !$omp do schedule(dynamic)
-    !     do ix=ifx,ilx
-        
-    !         !dir$ simd
-    !         do iz=ifz,ilz
-                
-    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-    !             j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
-                
-    !             imag(j)=imag(j) + &
-    !                 rf_p(i)*sf_p(i) + rf_vz(i)*sf_vz(i) + rf_vx(i)*sf_vx(i)
-                
-    !         end do
-            
-    !     end do
-    !     !$omp end do
-    !     !$omp end parallel
-
-    ! end subroutine
-
-    subroutine imag2d_xcorr(rf_p,sf_p,     &
-                            imag,          &
-                            ifz,ilz,ifx,ilx)
-        real,dimension(*) :: rf_p,sf_p
-        real,dimension(*) :: imag
-        
-        nz=cb%nz
-        
-        rp=0.
-        sp=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,j,&
-        !$omp         rp,sp)
-        !$omp do schedule(dynamic)
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-                
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
-                
-                rp = rf_p(i)
-                sp = sf_p(i)
-                
-                imag(j)=imag(j) + rp*sp
-                
-            end do
-            
-        end do
-        !$omp end do
-        !$omp end parallel
-
-    end subroutine
-
-    subroutine engy3d_xcorr(sf_p,          &
-                            engy,          &
-                            ifz,ilz,ifx,ilx,1,1)
-        real,dimension(*) :: sf_p
-        real,dimension(*) :: engy
-        
-        nz=cb%nz
-        nx=cb%nx
-        
-        sp=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,1,i,j,&
-        !$omp         sp)
-        !$omp do schedule(dynamic) collapse(2)
-        do 1=1,1
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-                
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(1-cb%1)*cb%nz*cb%nx+1 !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz+(1-1)     *cb%mz*cb%mx+1 !grad has no boundary layers
-                
-                sp = sf_p(i)
-                
-                engy(j)=engy(j) + sp*sp
-                
-            end do
-            
-        end do
-        end do
-        !$omp end do
-        !$omp end parallel
-
-    end subroutine
-
-    subroutine engy2d_xcorr(sf_p,          &
-                            engy,          &
-                            ifz,ilz,ifx,ilx)
-        real,dimension(*) :: sf_p
-        real,dimension(*) :: engy
-        
-        nz=cb%nz
-        
-        sp=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,j,&
-        !$omp         sp)
-        !$omp do schedule(dynamic)
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-                
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
-                
-                sp = sf_p(i)
-                
-                engy(j)=engy(j) + sp*sp
-                
-            end do
-            
-        end do
-        !$omp end do
-        !$omp end parallel
-
-    end subroutine
-
-end
-
-
-
-
-
-
-
-
-module m_field
-use m_mpienv
-use m_arrayop
-use m_sysio
-use m_model, only:m
-use m_shot, only:shot
-use m_computebox, only: cb
-
-use, intrinsic :: ieee_arithmetic
-
-    private fdcoeff_o4,fdcoeff_o8,c1x,c1z,c2x,c2z,c3x,c3z,c4x,c4z
-    !private kappa,npower,rcoef
-    public
-    
-    !FD coeff
-    real,dimension(2),parameter :: fdcoeff_o4 = [1.125,      -1./24.]
-    real,dimension(4),parameter :: fdcoeff_o8 = [1225./1024, -245./3072., 49./5120., -5./7168]
-    
-    real :: c1x, c1z
-    real :: c2x, c2z
-    real :: c3x, c3z
-    real :: c4x, c4z
-    
-    !!CPML
-    !real,parameter :: kappa=1.
-    !real,parameter :: npower=2.
-    !real,parameter :: rcoef=0.001
-    
-    !local models in computebox
-    type t_localmodel
-        sequence
-        !shorthand for greek letters
-        !alp bta gma  del(dta) eps zta 
-        !eta tht iota kpa lda mu
-        !nu xi omi pi rho sgm
-        !tau ups phi chi psi oga
-        !etc:
-        !buo=buoyancy
-        real,dimension(:,:),allocatable :: buox, buoz, ldap2mu, lda, mu
-        real,dimension(:,:),allocatable :: two_ldapmu,inv_ldapmu_4mu
-    end type
-    
-    type(t_localmodel) :: lm
-    
-    !fields
-    type t_field
-        sequence
-        real,dimension(:,:),allocatable :: vx,vy,vz,sxx,szz,sxz  !vy is just for fun
-        real,dimension(:,:),allocatable :: cpml_dvx_dx,cpml_dvz_dz,cpml_dvx_dz,cpml_dvz_dx !for cpml
-        real,dimension(:,:),allocatable :: cpml_dsxx_dx,cpml_dszz_dz,cpml_dsxz_dx,cpml_dsxz_dz
-    end type
-
-    !sampling factor
-    !real,parameter :: factor_xx=0.6666667 , factor_zz=0.3333333
-    real,parameter :: factor_xx=0.5 , factor_zz=0.5
-    
-    !hicks interpolation
-    logical :: if_hicks
-    
-    !info
-    character(*),parameter :: waveeq_info='time-domain isotropic P-SV (2D elastic)'
-    character(*),parameter :: gradient_info='lda-mu-rho'
-    integer,parameter :: ncorr=3
-    
-    contains
-    
-    !========= use before propagation =================
-    subroutine field_print_info
-        !modeling method
-        call hud('WaveEq : Time-domain isotropic P-SV (2D elastic) system')
-        call hud('1st-order Velocity-Stress formulation')
-        call hud('Staggered-grid Finite-difference method')
-        call hud('Cartesian O(x4,t2) stencil')
-        
-        !stencil constant
-        if(mpiworld%is_master) then
-            write(*,*) 'Coeff:',fdcoeff_o4
-        endif
-        c1x=fdcoeff_o4(1)/m%dx; c1z=fdcoeff_o4(1)/m%dz
-        c2x=fdcoeff_o4(2)/m%dx; c2z=fdcoeff_o4(2)/m%dz
-        
-    end subroutine
-    
-    subroutine check_model  !not required
-        
-    end
-    
-    subroutine check_discretization
-        !grid dispersion condition
-        if (5.*m%cell_diagonal > cb%velmin/shot%src%fpeak/2.) then  !FDTDo4 rule
-            write(*,*) 'WARNING: Shot# '//shot%cindex//' can have grid dispersion!'
-            write(*,*) 'Shot# '//shot%cindex//' 5*dx, velmin, fpeak:',5.*m%cell_diagonal, cb%velmin,shot%src%fpeak
-        endif
-        
-        !CFL condition
-        cfl = cb%velmax*shot%src%dt*m%cell_inv_diagonal*sum(abs(fdcoeff_o4))! ~0.606
-        if(mpiworld%is_master) write(*,*) 'CFL value:',CFL
-        
-        if(cfl>1.) then
-            write(*,*) 'ERROR: CFL > 1 on shot# '//shot%cindex//'!'
-            write(*,*) 'Shot# '//shot%cindex//' velmax, dt, 1/dx:',cb%velmax,shot%src%dt,m%cell_inv_diagonal
-            stop
-        endif
-        
-    end subroutine
-    
-    !========= use inside propagation =================
-    
-    subroutine init_field_localmodel
-        real,dimension(:,:),allocatable :: temp_mu
-        
-        ! (Lamé par)  (Rock phy)  (Seismic wave)     (Voigt)
-        ! lda+2mu   = K+4/3G    = rho*Vp^2         = c11=c33
-        ! lda       = K-2/3G    = rho*(Vp^2-2Vs^2) = c13
-        ! mu        = G         = rho*Vs^2         = c44
-        !
-        ! Poisson ratio nv = (3K-2G)/(6k+2G) = 0.5-3/(6sqrt(Vp/Vs)+2)
-
-        call alloc(lm%buox,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
-        call alloc(lm%buoz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
-        call alloc(lm%ldap2mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
-        call alloc(lm%lda, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
-        call alloc(lm%mu,  [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
-        call alloc(lm%two_ldapmu,    [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],initialize=.false.)
-        call alloc(lm%inv_ldapmu_4mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-
-        call alloc(temp_mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        
-        !Staggered grid:
-        ! <---*---<  
-        ! |   |   |  * integer point   - lda+2mu,lda 
-        ! x---v---x  < half in x dir   - buox  
-        ! |   |   |  v half in z dir   - buoz
-        ! <---*---<  x half in x&z dir - mu
-        !     (grid index)      (real index)
-        ! lda+2mu,lda(iz,ix) := lda+2mu,lda[iz,ix]
-        !        buox(iz,ix) := buox[iz,ix-0.5]
-        !        buoz(iz,ix) := buoz[iz-0.5,ix]
-        !          mu(iz,ix) :=   mu[iz-0.5,ix-0.5]
-
-        lm%ldap2mu(:,:)=cb%rho(:,:,1)*cb%vp(:,:,1)**2
-           temp_mu(:,:)=cb%rho(:,:,1)*cb%vs(:,:,1)**2
-
-        lm%lda=lm%ldap2mu-2.*temp_mu
-        ! if(mpiworld%is_master) then
-        ! write(*,*) 'lm%ldap2mu sanity:', minval(lm%ldap2mu),maxval(lm%ldap2mu)
-        ! write(*,*) 'lm%lda     sanity:', minval(lm%lda),maxval(lm%lda)
-        ! endif
-
-        lm%two_ldapmu=2.*(lm%lda+temp_mu)
-
-        where(temp_mu>100.)
-            lm%inv_ldapmu_4mu=0.25/(lm%lda+temp_mu)/temp_mu
-        endwhere
-
-
-        !interpolat mu by harmonic average
-        temp_mu=1./temp_mu
-
-        do ix=cb%ifx+1,cb%ilx
-        do iz=cb%ifz+1,cb%ilz
-                lm%mu(iz,ix)=4./( temp_mu(iz-1,ix-1) &
-                                 +temp_mu(iz-1,ix  ) &
-                                 +temp_mu(iz  ,ix-1) &
-                                 +temp_mu(iz  ,ix  ))
-        end do
-        end do
-
-        where( ieee_is_nan(lm%mu) .or. .not. ieee_is_finite(lm%mu) )
-            lm%mu=0.
-        endwhere
-
-        ! open(8,file='lm%mu',access='stream')
-        ! write(8) lm%mu
-        ! close(8)
-
-        ! !interpolat mu by arithmic average
-        ! do ix=cb%ifx+1,cb%ilx
-        ! do iz=cb%ifz+1,cb%ilz
-        !         lm%mu(iz,ix)=( temp_mu(iz-1,ix-1) &
-        !                       +temp_mu(iz-1,ix  ) &
-        !                       +temp_mu(iz  ,ix-1) &
-        !                       +temp_mu(iz  ,ix  ))
-        ! end do
-        ! end do
-        ! lm%mu=lm%mu*0.25
-
-        lm%mu(cb%ifz,:)=lm%mu(cb%ifz+1,:)
-        lm%mu(:,cb%ifx)=lm%mu(:,cb%ifx+1)
-
-        !check mu values
-        if(mpiworld%is_master) then
-            write(*,*) 'lm%mu sanity:', minval(lm%mu),maxval(lm%mu), any(ieee_is_nan(lm%mu)), any(.not. ieee_is_finite(lm%mu))
-        endif
-        
-
-        do iz=cb%ifz+1,cb%ilz
-            lm%buoz(iz,:)=0.5/cb%rho(iz,:,1)+0.5/cb%rho(iz-1,:,1)
-        enddo
-        
-        do ix=cb%ifx+1,cb%ilx
-            lm%buox(:,ix)=0.5/cb%rho(:,ix,1)+0.5/cb%rho(:,ix-1,1)
-        enddo
-
-        lm%buoz(cb%ifz,:)=1./cb%rho(cb%ifz,:,1)
-        lm%buox(:,cb%ifx)=1./cb%rho(:,cb%ifx,1)
-
-        deallocate(temp_mu)
-
-    end subroutine
-    
-    subroutine init_field(f)
-        type(t_field) :: f
-        
-        call alloc(f%vx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(f%vz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(f%sxx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(f%szz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(f%sxz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        
-        call alloc(f%cpml_dvx_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(f%cpml_dvz_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(f%cpml_dvx_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(f%cpml_dvz_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(f%cpml_dsxx_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(f%cpml_dszz_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(f%cpml_dsxz_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(f%cpml_dsxz_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        
-        !hicks point interpolation
-        if_hicks=get_setup_logical('IF_HICKS',default=.true.)
-
-    end subroutine
-    
-    subroutine check_field(f,name)
-        type(t_field) :: f
-        character(*) :: name
-        
-        if(mpiworld%is_master) write(*,*) name//' sample values:',minval(f%vz),maxval(f%vz)
-        
-        if(any(.not. ieee_is_finite(f%vz))) then
-            write(*,*) 'ERROR: '//name//' values become Infinity on Shot# '//shot%cindex//' !!'
-            stop
-        endif
-        if(any(ieee_is_nan(f%vz))) then
-           write(*,*) 'ERROR: '//name//' values become NaN on Shot# '//shot%cindex//' !!'
-           stop
-        endif
-        
-    end subroutine
-    
-    subroutine field_cpml_reinitialize(f)
-        type(t_field) :: f
-        f%cpml_dvx_dx=0.
-        f%cpml_dvz_dz=0.
-        f%cpml_dvx_dz=0.
-        f%cpml_dvz_dx=0.
-        f%cpml_dsxx_dx=0.
-        f%cpml_dszz_dz=0.
-        f%cpml_dsxz_dx=0.
-        f%cpml_dsxz_dz=0.
-    end subroutine
-    
-    subroutine write_field(iunit,f)
-        type(t_field) :: f
-        write(iunit) f%vz
-    end subroutine
-    
-    !========= forward propagation =================
-    !WE: du_dt = MDu
-    !u=[vx vz sxx szz sxz]^T, p=(2sxx+szz)/3
-    !  [b                     ]    [      dx 0  dz]
-    !  |  b                   |    |      0  dz dx|
-    !M=|   lda+2mu   lda      |, D=|dx 0          |
-    !  |      lda   lda+2mu   |    |0  dz         |
-    !  [                    mu]    [dz dx         ]
-    !  (b=1/rho)
-    !
-    !Discretization (staggered grid in space and time):
-    !  (grid index)     (real index)
-    ! sxx,szz(iz,ix) := sxx,szz[iz,ix]^it+0.5,it+1.5,...
-    !      vx(iz,ix) := vx[iz,ix-0.5]^it,it+1,...
-    !      vz(iz,ix) := vy[iz-0.5,ix]^it,it+1,...
-    !     sxz(iz,ix) := sxz[iz-0.5,ix-0.5]^it,it+1,...
-    ! in space:
-    ! <---*---<  
-    ! |   |   |  * integer point   - sxx,szz - lda+2mu,lda 
-    ! x---v---x  < half in x dir   - vx      - buox  
-    ! |   |   |  v half in z dir   - vz      - buoz
-    ! <---*---<  x half in x&z dir - sxz     - mu
-    
-    !add RHS to v^it
-    subroutine put_velocities(time_dir,it,w,f)
-        integer :: time_dir,it
-        real :: w
-        type(t_field) :: f
-        
-        ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
-        ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
-        
-        source_term=time_dir*w
-        
-        if(if_hicks) then
-            select case (shot%src%icomp)
-                case (2)
-                f%vx(ifz:ilz,ifx:ilx) = f%vx(ifz:ilz,ifx:ilx) + source_term *lm%buox(ifz:ilz,ifx:ilx) *shot%src%interp_coeff(:,:,1)
-                
-                case (4)
-                f%vz(ifz:ilz,ifx:ilx) = f%vz(ifz:ilz,ifx:ilx) + source_term *lm%buoz(ifz:ilz,ifx:ilx) *shot%src%interp_coeff(:,:,1)
-                
-            end select
-            
-        else
-            select case (shot%src%icomp)
-                case (2) !horizontal x force on vx[iz,ix-0.5,1]
-                f%vx(iz,ix) = f%vx(iz,ix) + source_term*lm%buox(iz,ix)
-                
-                case (4) !vertical force     on vz[iz-0.5,ix,1]
-                f%vz(iz,ix) = f%vz(iz,ix) + source_term*lm%buoz(iz,ix)
-                
-            end select
-            
-        endif
-        
-    end subroutine
-    
-    !v^it -> v^it+1 by FD of s^it+0.5
-    subroutine update_velocities(time_dir,it,f,bl)
-        integer :: time_dir, it
-        type(t_field) :: f
-        integer,dimension(6) :: bl
-
-        ifz=bl(1)+2
-        ilz=bl(2)-2
-        ifx=bl(3)+2
-        ilx=bl(4)-2
-        !1=bl(5)+2
-        !1=bl(6)-2
-
-        if(m%if_freesurface) ifz=max(ifz,1)
-        
-        call fd2d_flat_velocities(f%vx,f%vz,f%sxx,f%szz,f%sxz,                                &
-                                  f%cpml_dsxx_dx,f%cpml_dszz_dz,f%cpml_dsxz_dx,f%cpml_dsxz_dz,&
-                                  lm%buox,lm%buoz,                                            &
-                                  ifz,ilz,ifx,ilx,time_dir*shot%src%dt)
-        
-
-        dz_dx = m%dz/m%dx
-
-        !apply free surface boundary condition if needed
-        !free surface is located at [1,ix,1] level
-        !dszz=0 -> -(lda+2mu)dvz_dz = lda dvx_dx
-        !       -> -ldap2mu[1,ix]*(vz[1.5,ix]-vz[0.5,ix])/dz = lda[1,ix]*(vx[1,ix-0.5]-vx[1,ix+0.5])/dx
-        !       -> -ldap2mu(1,ix)*(vz(2  ,ix)-vz(1  ,ix))/dz = lda(1,ix)*(vx(1,ix    )-vx(1,ix+1  ))/dx
-        !       ->  ldap2mu(1,ix)*(vz(1  ,ix)-vz(2  ,ix))/dz = lda(1,ix)*(vx(1,ix    )-vx(1,ix+1  ))/dx
-        !dsxz=0 -> -dvx_dz = dvz_dx
-        !dsxz=0 -> -(vx[2,ix+0.5]-vx[0,ix+0.5])/2dz = ( (vz[0.5,ix]+vz[1.5,ix])/2 - (vz[0.5,ix+1]+vz[1.5,ix+1])/2 )/dx
-        !       -> -(vx(2,ix+1  )-vx(0,ix+1  ))/2dz = ( (vz(1  ,ix)+vz(2  ,ix))/2 - (vz(1  ,ix+1)+vz(2  ,ix+1))/2 )/dx
-        !       ->  (vx(0,ix+1  )-vx(2,ix+1  ))/ dz = ( (vz(1  ,ix)+vz(2  ,ix))   -  vz(1  ,ix+1)-vz(2  ,ix+1)    )/dx
-        if(m%if_freesurface) then
-            do ix=ifx,ilx
-                f%vz(1,ix)= f%vz(2,ix) + lm%lda(1,ix)*(f%vx(1,ix)-f%vx(1,ix+1))*dz_dx/lm%ldap2mu(1,ix)
-                !f%vx(0,ix)= f%vx(2,ix) + (f%vz(1,ix)+f%vz(2,ix)-f%vz(1,ix+1)-f%vz(2,ix+1))*dz_dx/lm%ldap2mu(1,ix) !toy2del says this condition is not needed
-            enddo
-        endif
-        
-    end subroutine
-    
-    !add RHS to s^it+0.5
-    subroutine put_stresses(time_dir,it,w,f)
-        integer :: time_dir
-        real :: w
-        type(t_field) :: f
-        
-        ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
-        ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
-        
-        source_term=time_dir*w
-        
-        if(if_hicks) then
-            select case (shot%src%icomp)
-                case (1)
-                f%sxx(ifz:ilz,ifx:ilx) = f%sxx(ifz:ilz,ifx:ilx) + source_term *shot%src%interp_coeff(:,:,1)
-                f%szz(ifz:ilz,ifx:ilx) = f%szz(ifz:ilz,ifx:ilx) + source_term *shot%src%interp_coeff(:,:,1)
-            end select
-            
-        else
-            select case (shot%src%icomp)
-                case (1) !explosion on s[iz,ix,1]
-                f%sxx(iz,ix) = f%sxx(iz,ix) + source_term
-                f%szz(iz,ix) = f%szz(iz,ix) + source_term
-            end select
-            
-        endif
-        
-    end subroutine
-    
-    !s^it+0.5 -> s^it+1.5 by FD of v^it+1
-    subroutine update_stresses(time_dir,it,f,bl)
-        integer :: time_dir, it
-        type(t_field) :: f
-        integer,dimension(6) :: bl
-        
-        ifz=bl(1)+2
-        ilz=bl(2)-2
-        ifx=bl(3)+2
-        ilx=bl(4)-2
-        !1=bl(5)+2
-        !1=bl(6)-2
-
-        if(m%if_freesurface) ifz=max(ifz,1)
-        
-        call fd2d_flat_stresses(f%vx,f%vz,f%sxx,f%szz,f%sxz,                            &
-                                f%cpml_dvx_dx,f%cpml_dvz_dz,f%cpml_dvx_dz,f%cpml_dvz_dx,&
-                                lm%ldap2mu,lm%lda,lm%mu,                                &
-                                ifz,ilz,ifx,ilx,time_dir*shot%src%dt)
-
-        !apply free surface boundary condition if needed
-        !free surface is located at [1,ix] level
-        !so explicit boundary condition: szz(1,ix)=0
-        !and antisymmetric mirroring: sxz[0.5,ix-0.5]=-sxz[1.5,ix-0.5] -> sxz(1,ix)=-sxz(2,ix)
-        if(m%if_freesurface) then
-            f%szz(1,:)=0.
-            f%sxz(1,:)=-f%sxz(2,:)
-        endif
-        
-    end subroutine
-    
-    !get v^it+1 or s^it+1.5
-    subroutine get_field(f,seismo)
-        type(t_field) :: f
-        real,dimension(*) :: seismo
-        
-        do ircv=1,shot%nrcv
-            ifz=shot%rcv(ircv)%ifz; iz=shot%rcv(ircv)%iz; ilz=shot%rcv(ircv)%ilz
-            ifx=shot%rcv(ircv)%ifx; ix=shot%rcv(ircv)%ix; ilx=shot%rcv(ircv)%ilx
-            
-            if(if_hicks) then
-                select case (shot%rcv(ircv)%icomp)
-                    case (1)
-                    seismo(ircv)=sum( (factor_xx*f%sxx(ifz:ilz,ifx:ilx) + factor_zz*f%szz(ifz:ilz,ifx:ilx)) *shot%rcv(ircv)%interp_coeff(:,:,1) )
-                    case (2)
-                    seismo(ircv)=sum( f%vx(ifz:ilz,ifx:ilx) *shot%rcv(ircv)%interp_coeff(:,:,1) )
-                    case (4)
-                    seismo(ircv)=sum( f%vz(ifz:ilz,ifx:ilx) *shot%rcv(ircv)%interp_coeff(:,:,1) )
-                end select
-                
-            else
-                select case (shot%rcv(ircv)%icomp)
-                    case (1) !sxx,szz[iz,ix,1]
-                    seismo(ircv) = factor_xx * f%sxx(iz,ix) + factor_zz * f%szz(iz,ix)
-                    case (2) !vx[iz,ix-0.5,1]
-                    seismo(ircv)=f%vx(iz,ix)
-                    case (4) !vz[iz-0.5,ix,1]
-                    seismo(ircv)=f%vz(iz,ix)
-                end select
-                
-            endif
-            
-        enddo
-        
-    end subroutine
-    
-    
-    !========= adjoint propagation =================
-    !WE:        du_dt   = MDu   + src
-    !->        Ndu_dt   = Du    + Nsrc, N=M^-1
-    !Adjoint:  Ndv_dt^T = D^Tv  + adjsrc
-    !->        -dv_dt   =-MDv   + Mr
-    !     (reverse time) (negative derivatives)
-    !
-    !Discrete form (staggered grid in space and time, 2D as example):
-    !    [ vx^it+1  ] [ vx^it    ]   [            dx(-)      dz(-)][ vx^it+1  ]
-    ! N  | vz^it+1  | | vz^it    |   |                 dz(-) dx(-)|| vz^it+1  |
-    !----|sxx^it+1.5|-|sxx^it+0.5| = |dx(+)                       ||sxx^it+0.5|  +Nsrc
-    ! dt |szz^it+1.5| |szz^it+0.5|   |      dz(+)                 ||szz^it+0.5|
-    !    [sxz^it+1.5] [sxz^it+0.5]   [dz(+) dx(+)                 ][sxz^it+0.5]
-    !dx(-):=a1(s(ix)-s(ixm1))+a2(s(ixp1)-s(ixm2))  (O(x4))
-    !dx(+):=a1(v(ixp1)-v(ix))+a2(v(ixp2)-v(ixm1))  (O(x4))
-    !Adjoint:
-    !    [ vx^it    ] [ vx^it+1  ]   [              dx(+)^T        dz(+)^T][ vx^it+1  ]
-    ! N  | vz^it    |-| vz^it+1  |   |                     dz(+)^T dx(+)^T|| vz^it+1  |
-    !----|sxx^it+0.5| [sxx^it+1.5] = |dx(-)^T                             ||sxx^it+0.5]  +Nsrc
-    ! dt |szz^it+0.5| [szz^it+1.5]   |        dz(-)^T                     ||szz^it+0.5]
-    !    [sxz^it+0.5] [sxz^it+1.5]   [dz(-)^T dx(-)^T                     ][sxz^it+0.5]
-    !dx(+)^T=a1(s(ixm1)-s(ix))+a2(s(ixm2)-s(ixp1))=-dx(-)
-    !dx(-)^T=a1(v(ix)-v(ixp1))+a2(v(ixm1)-v(ixp2))=-dx(+)
-    !-dx,-dz can be regarded as -dt, thus allowing to use same code with flip of dt sign.
-    !transposes of time derivatives centered on v^it+0.5 and s^it+1
-    !so v^it+1   - v^it     => v^it - v^it+1
-    !   s^it+1.5 - s^it+0.5 => s^it+0.5 - s^it+1.5
-    !
-    !In each time step:
-    !d=RGAsrc, src:source term, A:put source, G:propagator, R:sampling at receivers
-    !d=[vx vz p]^T, R=[I  0   0 ], A=[diag2(b) 0], src=[fx fz p]^T
-    !                 |0 2/3 1/3|    [   0     1]
-    !                 [   0    1]
-    !Adjoint: src=A^T N G^T M R^T d
-    !M R^T:put adjoint sources, 
-    !G^T:  adjoint propagator,
-    !A^T N:get adjoint fields
-    
-    
-    !add RHS to s^it+1.5
-    subroutine put_stresses_adjoint(time_dir,it,adjsource,f)
-        integer :: time_dir
-        real,dimension(*) :: adjsource
-        type(t_field) :: f
-        
-        do ircv=1,shot%nrcv
-            ifz=shot%rcv(ircv)%ifz; iz=shot%rcv(ircv)%iz; ilz=shot%rcv(ircv)%ilz
-            ifx=shot%rcv(ircv)%ifx; ix=shot%rcv(ircv)%ix; ilx=shot%rcv(ircv)%ilx
-            
-            tmp=adjsource(ircv)
-            
-            if(if_hicks) then
-                select case (shot%rcv(ircv)%icomp)
-                    case (1) !pressure adjsource
-                    f%sxx(ifz:ilz,ifx:ilx) = f%sxx(ifz:ilz,ifx:ilx)  &
-                        +tmp*( factor_xx*lm%ldap2mu(ifz:ilz,ifx:ilx) &
-                              +factor_zz*lm%lda(ifz:ilz,ifx:ilx) )   &
-                        *shot%rcv(ircv)%interp_coeff(:,:,1)
-        
-                    f%szz(ifz:ilz,ifx:ilx) = f%szz(ifz:ilz,ifx:ilx)    &
-                        +tmp*( factor_xx*lm%lda(ifz:ilz,ifx:ilx)       &
-                              +factor_zz*lm%ldap2mu(ifz:ilz,ifx:ilx) ) &
-                        *shot%rcv(ircv)%interp_coeff(:,:,1)
-                end select
-                
-            else
-                select case (shot%rcv(ircv)%icomp)
-                    case (1) !pressure adjsource
-                    !sxx[iz,ix]
-                    f%sxx(iz,ix) = f%sxx(iz,ix)            &
-                        +tmp*( factor_xx*lm%ldap2mu(iz,ix) &
-                              +factor_zz*lm%lda(iz,ix) )
-                    
-                    !szz[iz,ix]
-                    f%szz(iz,ix) = f%szz(iz,ix)            &
-                        +tmp*( factor_xx*lm%lda(iz,ix)     &
-                              +factor_zz*lm%ldap2mu(iz,ix) )
-                end select
-                
-            endif
-            
-        enddo
-        
-    end subroutine
-    
-    !s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
-    subroutine update_stresses_adjoint(time_dir,it,f,bl)
-        integer :: time_dir, it
-        type(t_field) :: f
-        integer,dimension(6) :: bl
-        
-        !same code with -dt
-        call update_stresses(time_dir,it,f,bl)
-        
-    end subroutine
-    
-    !add RHS to v^it+1
-    subroutine put_velocities_adjoint(time_dir,it,adjsource,f)
-        integer :: time_dir
-        real,dimension(*) :: adjsource
-        type(t_field) :: f
-        
-        do ircv=1,shot%nrcv
-            ifz=shot%rcv(ircv)%ifz; iz=shot%rcv(ircv)%iz; ilz=shot%rcv(ircv)%ilz
-            ifx=shot%rcv(ircv)%ifx; ix=shot%rcv(ircv)%ix; ilx=shot%rcv(ircv)%ilx
-            
-            tmp=adjsource(ircv)
-            
-            if(if_hicks) then
-                select case (shot%rcv(ircv)%icomp)
-                    case (2) !horizontal x adjsource
-                    f%vx(ifz:ilz,ifx:ilx) = f%vx(ifz:ilz,ifx:ilx) + tmp*lm%buox(ifz:ilz,ifx:ilx) *shot%rcv(ircv)%interp_coeff(:,:,1)
-                    
-                    case (4) !horizontal z adjsource
-                    f%vz(ifz:ilz,ifx:ilx) = f%vz(ifz:ilz,ifx:ilx) + tmp*lm%buoz(ifz:ilz,ifx:ilx) *shot%rcv(ircv)%interp_coeff(:,:,1)
-                end select
-                
-            else
-                select case (shot%rcv(ircv)%icomp)
-                    case (2) !horizontal x adjsource
-                    !vx[ix-0.5,1,iz]
-                    f%vx(iz,ix) = f%vx(iz,ix) + tmp*lm%buox(iz,ix)
-                    
-                    case (4) !horizontal z adjsource
-                    !vz[ix,1,iz-0.5]
-                    f%vz(iz,ix) = f%vz(iz,ix) + tmp*lm%buoz(iz,ix)
-                end select
-                
-            endif
-            
-        enddo
-        
-    end subroutine
-    
-    !v^it+1 -> v^it by FD^T of s^it+0.5
-    subroutine update_velocities_adjoint(time_dir,it,f,bl)
-        integer :: time_dir, it
-        type(t_field) :: f
-        integer,dimension(6) :: bl
-        
-        !same code with -dt
-        call update_velocities(time_dir,it,f,bl)
-        
-    end subroutine
-    
-    !get v^it or s^it+0.5
-    subroutine get_field_adjoint(f,w)
-        type(t_field) :: f
-        real w
-        
-        ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
-        ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
-        
-        if(if_hicks) then
-            select case (shot%src%icomp)
-                case (1)
-                w = sum( &
-        ( lm%ldap2mu(ifz:ilz,ifx:ilx)*f%sxx(ifz:ilz,ifx:ilx) -lm%lda    (ifz:ilz,ifx:ilx)*f%szz(ifz:ilz,ifx:ilx)   &
-         -lm%lda    (ifz:ilz,ifx:ilx)*f%sxx(ifz:ilz,ifx:ilx) +lm%ldap2mu(ifz:ilz,ifx:ilx)*f%szz(ifz:ilz,ifx:ilx) ) &
-        *lm%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)  *shot%src%interp_coeff(:,:,1) )
-                
-                case (2)
-                w = sum( f%vx(ifz:ilz,ifx:ilx) *shot%src%interp_coeff(:,:,1) )
-                
-                case (4)
-                w = sum( f%vz(ifz:ilz,ifx:ilx) *shot%src%interp_coeff(:,:,1) )
-                
-            end select
-            
-        else
-            select case (shot%src%icomp)
-                case (1) !s[iz,ix,1]
-                w = ( lm%ldap2mu(iz,ix)*f%sxx(iz,ix) -lm%lda    (iz,ix)*f%szz(iz,ix)   &
-                     -lm%lda    (iz,ix)*f%sxx(iz,ix) +lm%ldap2mu(iz,ix)*f%szz(iz,ix) ) &
-                    *lm%inv_ldapmu_4mu(iz,ix)
-                
-                case (2) !vx[iz,ix-0.5,1]
-                w=f%vx(iz,ix)
-                
-                case (4) !vz[iz-0.5,ix,1]
-                w=f%vz(iz,ix)
-            end select
-            
-        endif
-        
-    end subroutine
-    
-    !========= for wavefield correlation ===================
-    !dC/dm = \int a  dN/dm du/dt
-    !      = \int a  dN/dm M Du
-    !      = \int a -N dM/dm Du
-    !                            [0                    ]
-    !                            |  0                  |
-    !-NdM/dlda = -1/(lda+mu)/4mu |    lda+2mu  -lda    |
-    !                            |     -lda   lda+2mu  |
-    !                            [                    0]
-    ! => corr_lda := [adjsxx adjszz][lda+2mu  -lda  ][dvx_dx]
-    !                               [ -lda   lda+2mu][dvz_dz]
-    !                           [0                          ]
-    !                           |  0                        |
-    !-NdM/dmu = -2/(lda+mu)/4mu |    lda+2mu                |
-    !                           |           lda+2mu         |
-    !                           [                  2(lda+mu)]
-    !                                     [lda+2mu                ][   dvx_dx    ]
-    ! => corr_mu := [adjsxx adjszz adjsxz][       lda+2mu         ][   dvz_dz    ]
-    !                                     [              2(lda+mu)][dvx_dz+dvz_dx]
-    !            [b    ]
-    !dN/drho M = |  b  |
-    !            [    0]
-    ! => corr_rho := [adjvx adjvz][sxx_dx+sxz_dz]
-    !                             [szz_dz+sxz_dx]
-    !
-    !For gmu, we need to spatially interpolate adjsxz and dvx_dz+dvz_dx.
-    !For grho, we need to spatially interpolate adjvx, adjvz and sxx_dx+sxz_dz, szz_dz+sxz_dx
-    !
-    !For time, we just use v^it+1, s^it+0.5, adjs^it+0.5
-    
-    subroutine field_correlation_moduli(it,sf,rf,sb,rb,corr)
-        type(t_field) :: sf,rf
-        integer,dimension(6) :: sb,rb
-        real,dimension(cb%mz,cb%mx,ncorr) :: corr
-        
-        !nonzero only when sf touches rf
-        ifz=max(sb(1),rb(1),2)
-        ilz=min(sb(2),rb(2),cb%mz-2)
-        ifx=max(sb(3),rb(3),2)
-        ilx=min(sb(4),rb(4),cb%mx-2)
-        1=max(sb(5),rb(5),2)
-        1=min(sb(6),rb(6),cb%my-2)
-        
-        call corr2d_flat_moduli(sf%vx,sf%vz,             &
-                                rf%sxx,rf%szz,rf%sxz,    &
-                                lm%ldap2mu,lm%two_ldapmu,&
-                                corr(:,:,1),corr(:,:,2), &
-                                ifz,ilz,ifx,ilx)
-        
-    end subroutine
-    
-    subroutine field_correlation_density(it,sf,rf,sb,rb,corr)
-        type(t_field) :: sf,rf
-        integer,dimension(6) :: sb,rb
-        real,dimension(cb%mz,cb%mx,ncorr) :: corr
-        
-        !nonzero only when sf touches rf
-        ifz=max(sb(1),rb(1),2)
-        ilz=min(sb(2),rb(2),cb%mz-2)
-        ifx=max(sb(3),rb(3),2)
-        ilx=min(sb(4),rb(4),cb%mx-2)
-        1=max(sb(5),rb(5),2)
-        1=min(sb(6),rb(6),cb%my-2)
-        
-        call corr2d_flat_density(sf%sxx,sf%szz,sf%sxz,&
-                                 rf%vx,rf%vz,         &
-                                 corr(:,:,3),         &
-                                 ifz,ilz,ifx,ilx)
-
-    end subroutine
-    
-    subroutine field_correlation_scaling(corr)
-        real,dimension(cb%mz,cb%mx,ncorr) :: corr
-        
-        !corr_lda
-        corr(:,:,1)=corr(:,:,1) / (-lm%two_ldapmu(1:cb%mz,1:cb%mx))
-
-        !corr_mu
-        corr(:,:,2)=corr(:,:,2) * (-2.*lm%inv_ldapmu_4mu(1:cb%mz,1:cb%mx))
-        
-        !corr_rho
-        corr(:,:,3)=corr(:,:,3) / cb%rho(1:cb%mz,1:cb%mx,1)
-
-        corr(1,:,:) = corr(3,:,:)
-        corr(2,:,:) = corr(3,:,:)
-        corr(cb%mz-1,:,:) = corr(cb%mz-2,:,:)
-        corr(cb%mz,  :,:) = corr(cb%mz-2,:,:)
-
-        corr(:,1,:) = corr(:,3,:)
-        corr(:,2,:) = corr(:,3,:)
-        corr(:,cb%mx-1,:) = corr(:,cb%mx-2,:)
-        corr(:,cb%mx  ,:) = corr(:,cb%mx-2,:)
-        
-        !the unit of glda,gmu should be [m3], grho should be [m5/s2]
-        !after multiplied by (lda_max-lda_min) or (rho_max-rho_min) (to be done in m_parameterization.f90)
-        !the unit of parameter update is [Nm], same as Lagrangian
-        !and since the unit of gradient scaling factor is [1/N/m] (in m_scaling.f90)
-        !then the parameter update becomes unitless
-        corr=corr*m%cell_volume*shot%src%dt
-        
-    end subroutine
-    
-    !========= Finite-Difference on flattened arrays ==================
-    
-    subroutine fd2d_flat_velocities(vx,vz,sxx,szz,sxz,                                  &
-                                    cpml_dsxx_dx,cpml_dszz_dz,cpml_dsxz_dx,cpml_dsxz_dz,&
-                                    buox,buoz,                                          &
-                                    ifz,ilz,ifx,ilx,dt)
-        real,dimension(*) :: vx,vz,sxx,szz,sxz
-        real,dimension(*) :: cpml_dsxx_dx,cpml_dszz_dz,cpml_dsxz_dx,cpml_dsxz_dz
-        real,dimension(*) :: buox,buoz
-        
-        nz=cb%nz
-        nx=cb%nx
-        
-        dsxx_dx=0.
-        dsxz_dz=0.
-        dsxz_dx=0.
-        dszz_dz=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,&
-        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dsxx_dx,dsxz_dz,dsxz_dx,dszz_dz)
-        !$omp do schedule(dynamic)
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-                
-                i=(iz-cb%ifz)+(ix-cb%ifx)*nz+1
-                
-                izm2_ix=i-2  !iz-2,ix
-                izm1_ix=i-1  !iz-1,ix
-                iz_ix  =i    !iz,ix
-                izp1_ix=i+1  !iz+1,ix
-                izp2_ix=i+2  !iz+2,ix
-                
-                iz_ixm2=i  -2*nz  !iz,ix-2
-                iz_ixm1=i    -nz  !iz,ix-1
-                iz_ixp1=i    +nz  !iz,ix+1
-                iz_ixp2=i  +2*nz  !iz,ix+2
-                
-
-                dsxx_dx= c1x*(sxx(iz_ix)-sxx(iz_ixm1)) +c2x*(sxx(iz_ixp1)-sxx(iz_ixm2))
-                dsxz_dz= c1z*(sxz(izp1_ix)-sxz(iz_ix)) +c2z*(sxz(izp2_ix)-sxz(izm1_ix))
-
-                dsxz_dx= c1x*(sxz(iz_ixp1)-sxz(iz_ix)) +c2x*(sxz(iz_ixp2)-sxz(iz_ixm1))
-                dszz_dz= c1z*(szz(iz_ix)-szz(izm1_ix)) +c2z*(szz(izp1_ix)-szz(izm2_ix))
-                                
-                !cpml
-                cpml_dsxx_dx(i)= cb%b_x_half(ix)*cpml_dsxx_dx(i) + cb%a_x_half(ix)*dsxx_dx
-                cpml_dsxz_dz(i)= cb%b_z(iz)     *cpml_dsxz_dz(i) + cb%a_z(iz)     *dsxz_dz 
-                cpml_dsxz_dx(i)= cb%b_x(ix)     *cpml_dsxz_dx(i) + cb%a_x(ix)     *dsxz_dx
-                cpml_dszz_dz(i)= cb%b_z_half(iz)*cpml_dszz_dz(i) + cb%a_z_half(iz)*dszz_dz
-
-                dsxx_dx=dsxx_dx*cb%kappa_x_half(ix) + cpml_dsxx_dx(i)  !kappa's should have been inversed in m_computebox.f90
-                dsxz_dz=dsxz_dz*cb%kappa_z(iz)      + cpml_dsxz_dz(i)
-                dsxz_dx=dsxz_dx*cb%kappa_x(ix)      + cpml_dsxz_dx(i)
-                dszz_dz=dszz_dz*cb%kappa_z_half(iz) + cpml_dszz_dz(i)
-                
-                !velocity
-                vx(i)=vx(i) + dt*buox(i)*(dsxx_dx+dsxz_dz)
-                vz(i)=vz(i) + dt*buoz(i)*(dsxz_dx+dszz_dz)
-                
-            enddo
-            
-        enddo
-        !$omp end do
-        !$omp end parallel
-        
-    end subroutine
-    
-    subroutine fd2d_flat_stresses(vx,vz,sxx,szz,sxz,                              &
-                                  cpml_dvx_dx,cpml_dvz_dz,cpml_dvx_dz,cpml_dvz_dx,&
-                                  ldap2mu,lda,mu,                                 &
-                                  ifz,ilz,ifx,ilx,dt)
-        real,dimension(*) :: vx,vz,sxx,szz,sxz
-        real,dimension(*) :: cpml_dvx_dx,cpml_dvz_dz,cpml_dvx_dz,cpml_dvz_dx
-        real,dimension(*) :: ldap2mu,lda,mu
-        
-        nz=cb%nz
-        nx=cb%nx
-        
-        dvx_dx=0.
-        dvz_dz=0.
-        dvx_dz=0.
-        dvz_dx=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,&
-        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dvx_dx,dvz_dz,&
-        !$omp         dvx_dz,dvz_dx)
-        !$omp do schedule(dynamic)
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-            
-                i=(iz-cb%ifz)+(ix-cb%ifx)*nz+1
-                
-                izm2_ix=i-2  !iz-2,ix
-                izm1_ix=i-1  !iz-1,ix
-                iz_ix  =i    !iz,ix
-                izp1_ix=i+1  !iz+1,ix
-                izp2_ix=i+2  !iz+2,ix
-                
-                iz_ixm2=i  -2*nz !iz,ix-2
-                iz_ixm1=i    -nz !iz,ix-1
-                iz_ixp1=i    +nz !iz,ix+1
-                iz_ixp2=i  +2*nz !iz,ix+2
-                
-
-                dvx_dx= c1x*(vx(iz_ixp1)-vx(iz_ix))  +c2x*(vx(iz_ixp2)-vx(iz_ixm1))
-                dvz_dz= c1z*(vz(izp1_ix)-vz(iz_ix))  +c2z*(vz(izp2_ix)-vz(izm1_ix))
-                
-                !cpml
-                cpml_dvx_dx(i)=cb%b_x(ix)*cpml_dvx_dx(i)+cb%a_x(ix)*dvx_dx
-                cpml_dvz_dz(i)=cb%b_z(iz)*cpml_dvz_dz(i)+cb%a_z(iz)*dvz_dz
-
-                dvx_dx=dvx_dx*cb%kappa_x(ix) + cpml_dvx_dx(iz_ix)
-                dvz_dz=dvz_dz*cb%kappa_z(iz) + cpml_dvz_dz(iz_ix)
-                
-                !normal stresses
-                sxx(i) = sxx(i) + dt * (ldap2mu(i)*dvx_dx+lda(i)    *dvz_dz)
-                szz(i) = szz(i) + dt * (lda(i)    *dvx_dx+ldap2mu(i)*dvz_dz)
-
-
-                dvx_dz= c1z*(vx(iz_ix)-vx(izm1_ix))  +c2z*(vx(izp1_ix)-vx(izm2_ix))
-                dvz_dx= c1x*(vz(iz_ix)-vz(iz_ixm1))  +c2x*(vz(iz_ixp1)-vz(iz_ixm2))
-
-                !cpml
-                cpml_dvx_dz(i)=cb%b_z_half(iz)*cpml_dvx_dz(i)+cb%a_z_half(iz)*dvx_dz
-                cpml_dvz_dx(i)=cb%b_x_half(ix)*cpml_dvz_dx(i)+cb%a_x_half(ix)*dvz_dx
-
-                dvx_dz=dvx_dz*cb%kappa_z_half(iz) + cpml_dvx_dz(i)
-                dvz_dx=dvz_dx*cb%kappa_x_half(ix) + cpml_dvz_dx(i)
-
-                !shear stress
-                sxz(i) = sxz(i) + dt * mu(i)*(dvx_dz+dvz_dx)
-                
-            enddo
-            
-        enddo
-        !$omp enddo 
-        !$omp end parallel
-        
-    end subroutine
-    
-    subroutine corr2d_flat_moduli(sf_vx,sf_vz,         &
-                                  rf_sxx,rf_szz,rf_sxz,&
-                                  ldap2mu,two_ldapmu,  &
-                                  corr_lda,corr_mu,    &
-                                  ifz,ilz,ifx,ilx)
-        real,dimension(*) :: sf_vx,sf_vz
-        real,dimension(*) :: rf_sxx,rf_szz,rf_sxz
-        real,dimension(*) :: ldap2mu,two_ldapmu
-        real,dimension(*) :: corr_lda,corr_mu
+        real,dimension(*) :: rf_szz,rf_sxx,rf_szx,sf_vz,sf_vx
+        real,dimension(*) :: ldap2mu,lda,two_ldapmu
+        real,dimension(*) :: grad_lda,grad_mu
         
         nz=cb%nz
         
         sf_dvx_dx=0.
         sf_dvz_dz=0.
         sf_4_dvzdx_p_dvxdz=0.
-        rf_4_sxz=0.
+        rf_4_szx=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
@@ -2763,7 +1358,7 @@ use, intrinsic :: ieee_arithmetic
         !$omp         izm2_ixp1,izm1_ixp1,iz_ixp1,izp1_ixp1,izp2_ixp1,&
         !$omp         iz_ixp2,izp1_ixp2,&
         !$omp         sf_dvx_dx,sf_dvz_dz,&
-        !$omp         sf_4_dvzdx_p_dvxdz,rf_4_sxz)
+        !$omp         sf_4_dvzdx_p_dvxdz,rf_4_szx)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
         
@@ -2771,7 +1366,7 @@ use, intrinsic :: ieee_arithmetic
             do iz=ifz,ilz
                 
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !corr has no boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
 
                 izm2_ix= i-2  !iz-2,ix
                 izm1_ix= i-1  !iz-1,ix
@@ -2797,8 +1392,8 @@ use, intrinsic :: ieee_arithmetic
                 sf_dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
                 sf_dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
 
-                corr_lda(j)=corr_lda(j) + rf_sxx(i)*sf_dvx_dx + rf_sxx(i)*sf_dvz_dz &
-                                        + rf_szz(i)*sf_dvx_dx + rf_szz(i)*sf_dvz_dz
+                grad_lda(j)=grad_lda(j) + rf_szz(i)*(sf_dvz_dz + sf_dvx_dx) &
+                                        + rf_sxx(i)*(sf_dvz_dz + sf_dvx_dx)
 
 
                 sf_4_dvzdx_p_dvxdz = &  !(dvz_dx+dvx_dz)(iz,ix)     [iz-0.5,ix-0.5]
@@ -2818,12 +1413,12 @@ use, intrinsic :: ieee_arithmetic
                                        + c1z*(sf_vx(izp1_ixp1)-sf_vx(iz_ixp1)) +c2z*(sf_vx(izp2_ixp1)-sf_vx(izm1_ixp1))
 
                         ![iz-0.5,ix-0.5]   [iz+0.5,ix-0.5]   [iz-0.5,ix+0.5]     [iz+0.5,ix+0.5]
-                rf_4_sxz = rf_sxz(iz_ix) + rf_sxz(izp1_ix) + rf_sxz(iz_ixp1) + rf_sxz(izp1_ixp1)
+                rf_4_szx = rf_szx(iz_ix) + rf_szx(izp1_ix) + rf_szx(iz_ixp1) + rf_szx(izp1_ixp1)
 
-                corr_mu(j)=corr_mu(j) + ldap2mu(i)*rf_sxx(i)*sf_dvx_dx &
-                                      + ldap2mu(i)*rf_szz(i)*sf_dvz_dz &
-                                      + two_ldapmu(i)*0.0625*rf_4_sxz*sf_4_dvzdx_p_dvxdz   !0.0625=1/16
-                
+                grad_mu(j)=grad_mu(j) + rf_szz(i)*( ldap2mu(i)*sf_dvz_dz -    lda(i)*sf_dvx_dx) &
+                                      + rf_sxx(i)*(-lda(i)    *sf_dvz_dz +ldap2mu(i)*sf_dvx_dx) &
+                                      + two_ldapmu(i)*0.0625*rf_4_szx*sf_4_dvzdx_p_dvxdz   !0.0625=1/16
+
             end do
             
         end do
@@ -2831,21 +1426,21 @@ use, intrinsic :: ieee_arithmetic
         !$omp end parallel
 
     end subroutine
-
-    subroutine corr2d_flat_density(sf_sxx,sf_szz,sf_sxz,&
-                                   rf_vx,rf_vz,         &
-                                   corr,                &
-                                   ifz,ilz,ifx,ilx)
-        real,dimension(*) :: sf_sxx,sf_szz,sf_sxz
-        real,dimension(*) :: rf_vx,rf_vz
-        real,dimension(*) :: corr
+    
+    subroutine grad2d_density(sf_szz,sf_sxx,sf_szx,&
+                              rf_vz,rf_vx,         &
+                              grad,                &
+                              ifz,ilz,ifx,ilx)
+        real,dimension(*) :: sf_szz,sf_sxx,sf_szx
+        real,dimension(*) :: rf_vz,rf_vx
+        real,dimension(*) :: grad
         
         nz=cb%nz
         
-        sf_2_dsxxdx_p_dsxzdz=0.
-        sf_2_dsxzdx_p_dszzdz=0.
-        rf_2vx=0.
+        sf_2_dszzdz_p_dszxdx=0.
+        sf_2_dsxxdx_p_dszxdz=0.
         rf_2vz=0.
+        rf_2vx=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
@@ -2853,8 +1448,8 @@ use, intrinsic :: ieee_arithmetic
         !$omp         iz_ixm2,iz_ixm1,izp1_ixm1,&
         !$omp         izm1_ixp1,iz_ixp1,izp1_ixp1,izp2_ixp1,&
         !$omp         iz_ixp2,izp1_ixp2,&
-        !$omp         sf_2_dsxxdx_p_dsxzdz,sf_2_dsxzdx_p_dszzdz,&
-        !$omp         rf_2vx,rf_2vz)
+        !$omp         sf_2_dszzdz_p_dszxdx,sf_2_dsxxdx_p_dszxdz,&
+        !$omp         rf_2vz,rf_2vx)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
         
@@ -2881,29 +1476,29 @@ use, intrinsic :: ieee_arithmetic
 
                 iz_ixp2  = i    +2*nz  !iz ,ix+2
                 izp1_ixp2= i+1  +2*nz  !iz+1,ix+2
-                
-                sf_2_dsxxdx_p_dsxzdz = &   !(dsxx_dx+dsxz_dz)(iz,ix)   [iz,ix-0.5]
-                                           c1x*(sf_sxx(iz_ix  )-sf_sxx(iz_ixm1)) +c2x*(sf_sxx(iz_ixp1)-sf_sxx(iz_ixm2)) &
-                                         + c1z*(sf_sxz(izp1_ix)-sf_sxz(iz_ix  )) +c2z*(sf_sxz(izp2_ix)-sf_sxz(izm1_ix)) &
-                                       & &
-                                       & & !(dsxx_dx+dsxz_dz)(iz,ix+1) [iz,ix+0.5]
-                                         + c1x*(sf_sxx(iz_ixp1  )-sf_sxx(iz_ix  )) +c2x*(sf_sxx(iz_ixp2  )-sf_sxx(iz_ixm1  )) &
-                                         + c1z*(sf_sxz(izp1_ixp1)-sf_sxz(iz_ixp1)) +c2z*(sf_sxz(izp2_ixp1)-sf_sxz(izm1_ixp1))
 
-                sf_2_dsxzdx_p_dszzdz = &  !(dsxz_dx+dszz_dz)(iz,ix)   [iz-0.5,ix]
-                                           c1x*(sf_sxz(iz_ixp1)-sf_sxz(iz_ix  )) +c2x*(sf_sxz(iz_ixp2)-sf_sxz(iz_ixm1)) &
+                sf_2_dszzdz_p_dszxdx = &  !(dszx_dx+dszz_dz)(iz,ix)   [iz-0.5,ix]
+                                           c1x*(sf_szx(iz_ixp1)-sf_szx(iz_ix  )) +c2x*(sf_szx(iz_ixp2)-sf_szx(iz_ixm1)) &
                                          + c1z*(sf_szz(iz_ix  )-sf_szz(izm1_ix)) +c2z*(sf_szz(izp1_ix)-sf_szz(izm1_ix)) &
                                        & &
-                                       & & !(dsxz_dx+dszz_dz)(iz+1,ix) [iz+0.5,ix]
-                                         + c1x*(sf_sxz(izp1_ixp1)-sf_sxz(izp1_ix)) +c2x*(sf_sxz(izp1_ixp2)-sf_sxz(izp1_ixm1)) &
+                                       & & !(dszx_dx+dszz_dz)(iz+1,ix) [iz+0.5,ix]
+                                         + c1x*(sf_szx(izp1_ixp1)-sf_szx(izp1_ix)) +c2x*(sf_szx(izp1_ixp2)-sf_szx(izp1_ixm1)) &
                                          + c1z*(sf_szz(izp1_ix  )-sf_szz(iz_ix  )) +c2z*(sf_szz(izp2_ix  )-sf_szz(iz_ix    ))
-                                         
-                         ![iz,ix-0.5]      [iz,ix+0.5]
-                rf_2vx = rf_vx(iz_ix) + rf_vx(iz_ixp1)
-                         ![iz-0.5,ix]      [iz+0.5,ix]
-                rf_2vz = rf_vz(iz_ix) + rf_vz(izp1_ix)
                 
-                corr(j)=corr(j) + 0.25*( rf_2vx*sf_2_dsxxdx_p_dsxzdz + rf_2vz*sf_2_dsxzdx_p_dszzdz )
+                sf_2_dsxxdx_p_dszxdz = &   !(dsxx_dx+dszx_dz)(iz,ix)   [iz,ix-0.5]
+                                           c1x*(sf_sxx(iz_ix  )-sf_sxx(iz_ixm1)) +c2x*(sf_sxx(iz_ixp1)-sf_sxx(iz_ixm2)) &
+                                         + c1z*(sf_szx(izp1_ix)-sf_szx(iz_ix  )) +c2z*(sf_szx(izp2_ix)-sf_szx(izm1_ix)) &
+                                       & &
+                                       & & !(dsxx_dx+dszx_dz)(iz,ix+1) [iz,ix+0.5]
+                                         + c1x*(sf_sxx(iz_ixp1  )-sf_sxx(iz_ix  )) +c2x*(sf_sxx(iz_ixp2  )-sf_sxx(iz_ixm1  )) &
+                                         + c1z*(sf_szx(izp1_ixp1)-sf_szx(iz_ixp1)) +c2z*(sf_szx(izp2_ixp1)-sf_szx(izm1_ixp1))
+                                         
+                rf_2vz = rf_vz(iz_ix) + rf_vz(izp1_ix)
+                         ![iz-0.5,ix]      [iz+0.5,ix]
+                rf_2vx = rf_vx(iz_ix) + rf_vx(iz_ixp1)
+                         ![iz,ix-0.5]      [iz,ix+0.5]
+                
+                grad(j)=grad(j) + 0.25*( rf_2vz*sf_2_dszzdz_p_dszxdx + rf_2vx*sf_2_dsxxdx_p_dszxdz)
                 
             enddo
             
@@ -2912,6 +1507,77 @@ use, intrinsic :: ieee_arithmetic
         !$omp end parallel
         
     end subroutine
-    
+
+    subroutine imag2d_xcorr(rf_szz,rf_sxx, &
+                            sf_szz,sf_sxx, &
+                            imag,          &
+                            ifz,ilz,ifx,ilx)
+        real,dimension(*) :: rf_szz,rf_sxx
+        real,dimension(*) :: sf_szz,sf_sxx
+        real,dimension(*) :: imag
+        
+        nz=cb%nz
+        
+        rp=0.
+        sp=0.
+        
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,j,&
+        !$omp         rp,sp)
+        !$omp do schedule(dynamic)
+        do ix=ifx,ilx
+        
+            !dir$ simd
+            do iz=ifz,ilz
+                
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                
+                rp = factor_zz*rf_szz(i) + factor_xx*rf_sxx(i)
+                sp = factor_zz*sf_szz(i) + factor_xx*sf_sxx(i)
+                
+                imag(j)=imag(j) + rp*sp !+rf_vz(i)*sf_vz(i) + rf_vx(i)*sf_vx(i)
+                
+            end do
+            
+        end do
+        !$omp end do
+        !$omp end parallel
+
+    end subroutine
+
+    subroutine engy2d_xcorr(sf_szz,sf_sxx, &
+                            engy,          &
+                            ifz,ilz,ifx,ilx)
+        real,dimension(*) :: sf_szz,sf_sxx
+        real,dimension(*) :: engy
+        
+        nz=cb%nz
+        
+        sp=0.
+        
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,j,&
+        !$omp         sp)
+        !$omp do schedule(dynamic)
+        do ix=ifx,ilx
+        
+            !dir$ simd
+            do iz=ifz,ilz
+                
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                
+                sp = factor_zz*sf_szz(i) + factor_xx*sf_sxx(i)
+                
+                engy(j)=engy(j) + sp*sp
+                
+            end do
+            
+        end do
+        !$omp end do
+        !$omp end parallel
+
+    end subroutine
 
 end

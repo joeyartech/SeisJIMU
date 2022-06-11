@@ -250,7 +250,7 @@ use m_cpml
     !Continuous case:
     !<a|Au> = ∫ a(x,t) (M∂ₜ-D)u(x,t) dx³dt
     !Integration by parts, eg.:
-    !∫aᵀM∂ₜu dt = aMu|t=0,T - ∫(∂ₜa)ᵀMu dt, and freely choosing a(t=T)=0 (final condition),
+    !∫aᵀM∂ₜu dt = aMu|ₜ₌₀ᵀ - ∫(∂ₜa)ᵀMu dt, and freely choosing a(t=T)=0 (final condition),
     !∫aᵀM∂ₜu dt = -∫(∂ₜa)ᵀMu dt
     !Similar procedure on spatial derivatives, we have
     !∫aᵀDu dx³ = -∫(Dᵀa)ᵀ u dx³, with same boundary conditions on a
@@ -261,22 +261,29 @@ use m_cpml
     !Discrete case:
     !Meshing with staggered grids in time and space (2D example):
     !                      |      |   -½ vz     |      |
-    !                      |      |     buoz    |      |
+    !                      |      |      bz     |      |
     !                      |      |      |      |      |
-    !                      κ buox κ buox κ buox κ buox κ
+    !                      κ  bx  κ  bx  κ  bx  κ  bx  κ
     !  -v--p-v-p-v-→ t    -p--vx--p--vx--p--vx--p--vx--p-→ x
     !  -1 -½ 0 ½ 1        -2 -1½ -1  -½  0   ½  1  1½  2    
     !                      |      |      |      |      | 
     !                      |      |    ½ vz     |      | 
-    !                      |      |     buoz    |      | 
+    !                      |      |      bz     |      | 
     !                      |      |      |      |      | 
     !                     -|------|----1-p------|------|-
     !                      |      |      κ      |      | 
     !                      |      |      |      |      | 
     !                      |      |   1½ vz     |      | 
-    !                      |      |     buoz    |      | 
+    !                      |      |      bz     |      | 
     !                      |      |      |      |      | 
     !                                  z ↓
+    !
+    !Convention for half-integer index:
+    !(array index)  =>    (real index)     
+    ! vz(iz,ix,iy)  =>  vz[i-½,j,  k  ]^n  
+    ! vx(iz,ix,iy)  =>  vx[i,  j-½,k  ]^n  
+    ! vy(iz,ix,iy)  =>  vy[i,  j,  k-½]^n  
+    !  p(iz,ix,iy)  =>   p[i,  j,  k  ]^n+½
     !
     !Forward:
     !FD eqn:
@@ -316,8 +323,8 @@ use m_cpml
     !M ∂ₜᶠᵀ|vxᵃ^n  | = | 0      0     ∂ₓᶠᵀ||vxᵃ^n+1|  +d
     !      [ pᵃ^n+1]   [∂zᵇᵀ   ∂ₓᵇᵀ    0  ][ pᵃ^n+½]
     !∂ₜᶠᵀ = v^n-1 -v^n   = -∂ₜᵇ
-    !∂zᵇᵀ = c₁(v[i  ]-v[i+½]) +c₂(v[i- ½]-v[i+1½]) = -∂ₓᶠ
-    !∂zᶠᵀ = c₁(p[i-½]-p[i  ]) +c₂(p[i-1½]-p[i+ ½]) = -∂ₓᵇ
+    !∂zᵇᵀ = c₁(v[i  ]-v[i+½]) +c₂(v[i- ½]-v[i+1½]) = -∂zᶠ
+    !∂zᶠᵀ = c₁(p[i-½]-p[i  ]) +c₂(p[i-1½]-p[i+ ½]) = -∂zᵇ
     !      [vzᵃ^n  ]   [ 0      0     ∂zᵇ ][vzᵃ^n+1]
     !M ∂ₜᵇ |vxᵃ^n  | = | 0      0     ∂ₓᵇ ||vxᵃ^n+1|  -d
     !      [ pᵃ^n+1]   [∂zᶠ    ∂ₓᶠ    0   ][ pᵃ^n+½]
@@ -343,13 +350,6 @@ use m_cpml
     !A:inject source into field, G:propagator, R:extract field at receivers
     !while in each step of reverse-time adjoint marching: dadj=NAᵀGᵀRᵀdsyn=AᵀGᵀRᵀNdsyn
     !Rᵀ:inject adjoint sources, Gᵀ:adjoint propagator, Aᵀ:extract adjoint fields
-    !
-    !Convention for half-integer index:
-    !(array index)  =>    (real index)     
-    ! vz(iz,ix,iy)  =>  vz[i-½,j,  k  ]^n  
-    ! vx(iz,ix,iy)  =>  vx[i,  j-½,k  ]^n  
-    ! vy(iz,ix,iy)  =>  vy[i,  j,  k-½]^n  
-    !  p(iz,ix,iy)  =>   p[i,  j,  k  ]^n+½
     !
 
     subroutine forward(self,fld_u)
@@ -1911,21 +1911,21 @@ use m_cpml
     
     subroutine final(self)
         type(t_propagator) :: self
-        call dealloc(self%buox, self%buoy, self%buoz, self%kpa, self%inv_kpa)
+        call dealloc(self%buoz, self%buox, self%buoy, self%kpa, self%inv_kpa)
     end subroutine
 
     !========= gradient, imaging or other correlations ===================
     !For gradient:
-    !∇ₘ<a|Au> = ∇ₘ<a|M∂ₜu-Du> = ∫ aᵀ ∇ₘM ∂ₜu dt
+    !Kₘ<a|Au> = Kₘ<a|M∂ₜu-Du> = ∫ aᵀ KₘM ∂ₜu dt
     !Since it's cumbersome to get ∂ₜu by time marching,
     !replace ∂ₜu by M⁻¹Du and neglect f
     !ie. M∂ₜu=Du+f -> ∂ₜu=M⁻¹Du+M⁻¹f ≐ M⁻¹Du
     !This simplification introduces singularities in the gradient only at source positions, which are probably removed by gradient masking.
     !
-    !Therefore, ∫ aᵀ ∇ₘM ∂ₜu dt ≐ ∫ aᵀ ∇ₘln(M) Du dt =: a★Du
+    !Therefore, ∫ aᵀ KₘM ∂ₜu dt ≐ ∫ aᵀ Kₘln(M) Du dt =: a★Du
     !where
     !                            [ 0   0   ∂ₓᵇ] [vx]
-    !a★Du = [vxᵃ vzᵃ pᵃ] ∇ₘln(M) | 0   0   ∂zᵇ| |vz|
+    !a★Du = [vxᵃ vzᵃ pᵃ] Kₘln(M) | 0   0   ∂zᵇ| |vz|
     !                            [∂ₓᶠ  ∂zᶠ  0 ] [p ]
     !In particular, we compute
     !  grho = vᵃ ∂ₜv = vᵃ b∇p
