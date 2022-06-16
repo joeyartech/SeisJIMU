@@ -491,12 +491,13 @@ use m_resampler
 
         !compute FWI data misfit C_data=║Δd║²
         call wei%update
-        if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'residual')>0) then
-            fobj%FWI_misfit = fobj%FWI_misfit &
+        fobj%FWI_misfit = fobj%FWI_misfit &
                 + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
+
+        if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'residual')>0) then
+            tmp = fobj%FWI_misfit 
         else
-            fobj%FWI_misfit = fobj%FWI_misfit &
-                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs          , shot%dt)
+            tmp = L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs          , shot%dt)
         endif
         
         !adjoint modeling
@@ -504,7 +505,6 @@ use m_resampler
         !Aᴴδa = Ia
         call alloc(shot%dadj,shot%nt,shot%nrcv)
         call kernel_L2sq(shot%dadj)
-        call shot%write('FWI_dadj_',shot%dadj)
 
         call ppg%init_field(fld_a, name='fld_a' ,ois_adjoint=.true.); call fld_a%ignite
         call ppg%init_field(fld_da,name='fld_da',ois_adjoint=.true.)

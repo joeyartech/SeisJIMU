@@ -11,14 +11,11 @@ use m_computebox
     !CPML parameter
     real,parameter :: npower = 2.
     real,parameter :: logR = log(0.001)
-    real :: kpa_max
-    !empirically kpa_max=1 for acoustic modeling,
-    !and kpa_max=7 for elastic (P-SV) modeling
+    real,parameter :: kpa_max=1., kpa_max_m1=kpa_max-1.
     !Comments by Komatitsch:
-    !increase kpa_max if absorbing is not satisfactory at grazing incident angle
+    !increase kpa_max (eg. =7) if absorbing is not satisfactory at grazing incident angle
     !(making in/outside PML reflection more separate..)
     !decrease this number if grid dispersion is not satisfactory
-    real :: kpa_max_m1
 
     type,public :: t_cpml
         real,dimension(:),allocatable :: b_z,b_z_half, a_z,a_z_half
@@ -43,9 +40,8 @@ use m_computebox
     !CPML implementation from Komatitsch & Martin, 2007, Geophysics
     !code from Geodynamics or Komatitsch's GitHub site:
     !https://github.com/geodynamics/seismic_cpml
-    subroutine init(self,o_kpa_max)
+    subroutine init(self)
         class(t_cpml) :: self
-        real,optional :: o_kpa_max
         
         real,dimension(:),allocatable :: alfa_z,alfa_z_half
         real,dimension(:),allocatable :: alfa_x,alfa_x_half
@@ -53,9 +49,6 @@ use m_computebox
         real,dimension(:),allocatable :: d_z,d_z_half
         real,dimension(:),allocatable :: d_x,d_x_half
         real,dimension(:),allocatable :: d_y,d_y_half       
-
-        kpa_max=either(o_kpa_max,7.,present(o_kpa_max))
-        kpa_max_m1=kpa_max-1
 
         !self%nlayer=setup%get_int('CPML_SIZE','NCPML',o_default='20')+add_thickness
         self%nlayer=cb%nabslayer

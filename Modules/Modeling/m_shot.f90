@@ -163,14 +163,10 @@ use m_model
             self%rcv(i)%is_badtrace = sudata%hdrs(i)%trid==2 .or. sudata%hdrs(i)%trid==3  !dead or dummy trace
             
             select case (sudata%hdrs(i)%trid)
-            case (11)
-                self%rcv(i)%comp='p'  !pressure
-            case (12)
-                self%rcv(i)%comp='vz' !vertical velocity
-            case (13)
-                self%rcv(i)%comp='vy' !horizontal velocity
-            case (14)
-                self%rcv(i)%comp='vx'
+            case (11); self%rcv(i)%comp='p'  !pressure
+            case (12); self%rcv(i)%comp='vz' !vertical velocity
+            case (14); self%rcv(i)%comp='vx' !horizontal velocity in in-line
+            case (13); self%rcv(i)%comp='vy' !horizontal velocity in cross-line
             case default
                 self%rcv(i)%comp='p'
             end select
@@ -899,14 +895,10 @@ use m_model
                 sudata%hdrs(i)%gy=(self%rcv(i)%y+m%oy)      *scalco
 
                 select case (self%rcv(i)%comp)
-                case ('p') !pressure
-                    sudata%hdrs(i)%trid=11
-                case ('vz') !vertical velocity
-                    sudata%hdrs(i)%trid=12
-                case ('vx') !horizontal velocity
-                    sudata%hdrs(i)%trid=13
-                case ('vy')
-                    sudata%hdrs(i)%trid=14
+                case ('p');  sudata%hdrs(i)%trid=11 !pressure
+                case ('vz'); sudata%hdrs(i)%trid=12 !vertical velocity
+                case ('vx'); sudata%hdrs(i)%trid=14 !horizontal velocity in in-line
+                case ('vy'); sudata%hdrs(i)%trid=13 !horizontal velocity in cross-line
                 end select
 
                 if(self%rcv(i)%is_badtrace) sudata%hdrs(i)%trid=3 !dummy trace

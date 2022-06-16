@@ -16,7 +16,7 @@ obj = \
 ../../Modules/Modeling/m_field.o \
 ../../Modules/Modeling/m_cpml_$(Solver).o \
 ../../Modules/Modeling/m_propagator_$(WaveEq)_$(Solver)_$(Order).o \
-../../Modules/Modeling/m_Modeling.f90 \
+../../Modules/Modeling/m_Modeling.o \
 ../../Modules/Kernel/m_parametrizer_$(Param).o \
 ../../Modules/Kernel/m_querypoint.o \
 ../../Modules/Kernel/m_weighter.o \
@@ -43,7 +43,7 @@ mod :
 	(cd ../../Modules/Optimization; make m_linesearcher_$(LineS).o)
 
 
-exe : main.o sub_optimizer_init_loop.o
+exe : ../../FWI/sub_modeling_gradient.o main.o sub_optimizer_init_loop.o
 	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../../exe/gradienttest_$(WaveEq)_$(Solver)_$(Order)_$(Param)
 	(cd ../../exe; ln -sf gradienttest_$(WaveEq)_$(Solver)_$(Order)_$(Param) GradientTest )
 

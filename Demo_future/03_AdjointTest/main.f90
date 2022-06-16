@@ -126,22 +126,21 @@ use m_Modeling
     
     call hud('        END LOOP OVER SHOTS        ')
 
-    call sysio_write('grho',m%gradient(:,:,:,1),size(m%gradient(:,:,:,1)))
-    call sysio_write('gkpa',m%gradient(:,:,:,2),size(m%gradient(:,:,:,2)))
+    call sysio_write('gradient',m%gradient,size(m%gradient))
 
-    print*,'shape(u)=',     shape(u),    '║u║=',      norm2(u)*sqrt(ppg%dt)
+    print*,'shape(u)=',     shape(u),    '║u║₂',      norm2(u)*sqrt(ppg%dt)
     !||u||=sqrt(int u^2*dt) = sqrt(sum(u^2)*dt) = norm2(u)*sqrt(dt)
-    print*,'shape(v)=',     shape(v),    '║v║=',      norm2(v)*sqrt(ppg%dt)
-    print*,'shape(Lu)=',    shape(Lu),   '║Lu║=',     norm2(Lu)*sqrt(ppg%dt)
-    print*,'shape(Ladj_v)=',shape(Ladj_v),'║Ladj_v║=',norm2(Ladj_v)*sqrt(ppg%dt)
+    print*,'shape(v)=',     shape(v),    '║v║₂=',      norm2(v)*sqrt(ppg%dt)
+    print*,'shape(Lu)=',    shape(Lu),   '║Lu║₂=',     norm2(Lu)*sqrt(ppg%dt)
+    print*,'shape(Lᴴv)=',   shape(Ladj_v),'║Lᴴv_v║₂=', norm2(Ladj_v)*sqrt(ppg%dt)
 
     !<v|Lu> =?= <L^Tv|u>
     !<v|Lu>=int v*Lu*dt = sum(v*Lu)*dt
     LHS=sum(dprod(v    ,Lu))*ppg%dt
     RHS=sum(dprod(Ladj_v,u))*ppg%dt
 
-    print*,'LHS = <   v|Lu> = ', LHS
-    print*,'RHS = <L^Tv| u> = ', RHS
+    print*,'LHS = <  v|Lu> = ', LHS
+    print*,'RHS = <Lᴴv| u> = ', RHS
     print*,'relative difference = ', (LHS-RHS)/LHS
 
     call mpiworld%barrier

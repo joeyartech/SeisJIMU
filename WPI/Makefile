@@ -14,7 +14,7 @@ obj = \
 ../Modules/Modeling/m_field.o \
 ../Modules/Modeling/m_cpml_$(Solver).o \
 ../Modules/Modeling/m_propagator_$(WaveEq)_$(Solver)_$(Order).o \
-../Modules/Modeling/m_Modeling.f90 \
+../Modules/Modeling/m_Modeling.o \
 ../Modules/Kernel/m_parametrizer_$(Param).o \
 ../Modules/Kernel/m_querypoint.o \
 ../Modules/Kernel/m_weighter.o \

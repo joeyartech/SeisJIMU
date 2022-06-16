@@ -144,50 +144,50 @@ use, intrinsic :: ieee_arithmetic
         !blooming
         call alloc(self%bloom,6,nt)
 
-        ! if_bloom=setup%get_bool('IF_BLOOM',o_default='T')      
+        if_bloom=setup%get_bool('IF_BLOOM',o_default='T')      
 
-        ! if(if_bloom) then
-        !     !directional maximum propagation distance per time step
-        !     distz = cb%velmax * dt / m%dz
-        !     distx = cb%velmax * dt / m%dx
-        !     disty = cb%velmax * dt / m%dy
+        if(if_bloom) then
+            !directional maximum propagation distance per time step
+            distz = cb%velmax * dt / m%dz
+            distx = cb%velmax * dt / m%dx
+            disty = cb%velmax * dt / m%dy
 
-        !     if(self%is_adjoint==.false.) then
-        !         self%bloom(1,1)=max(shot%src%iz -initial_half_bloomwidth, cb%ifz)
-        !         self%bloom(2,1)=min(shot%src%iz +initial_half_bloomwidth, cb%ilz)
-        !         self%bloom(3,1)=max(shot%src%ix -initial_half_bloomwidth, cb%ifx)
-        !         self%bloom(4,1)=min(shot%src%ix +initial_half_bloomwidth, cb%ilx)
-        !         self%bloom(5,1)=max(shot%src%iy -initial_half_bloomwidth, cb%ify)
-        !         self%bloom(6,1)=min(shot%src%iy +initial_half_bloomwidth, cb%ily)
-        !         do it=2,nt
-        !             self%bloom(1,it)=max(nint(self%bloom(1,1)-it*distz),cb%ifz) !bloombox ifz
-        !             self%bloom(2,it)=min(nint(self%bloom(2,1)+it*distz),cb%ilz) !bloombox ilz
-        !             self%bloom(3,it)=max(nint(self%bloom(3,1)-it*distx),cb%ifx) !bloombox ifx
-        !             self%bloom(4,it)=min(nint(self%bloom(4,1)+it*distx),cb%ilx) !bloombox ilx
-        !             self%bloom(5,it)=max(nint(self%bloom(5,1)-it*disty),cb%ify) !bloombox ify
-        !             self%bloom(6,it)=min(nint(self%bloom(6,1)+it*disty),cb%ily) !bloombox ily
-        !         enddo
+            if(.not.self%is_adjoint) then
+                self%bloom(1,1)=max(shot%src%iz -initial_half_bloomwidth, cb%ifz)
+                self%bloom(2,1)=min(shot%src%iz +initial_half_bloomwidth, cb%ilz)
+                self%bloom(3,1)=max(shot%src%ix -initial_half_bloomwidth, cb%ifx)
+                self%bloom(4,1)=min(shot%src%ix +initial_half_bloomwidth, cb%ilx)
+                self%bloom(5,1)=max(shot%src%iy -initial_half_bloomwidth, cb%ify)
+                self%bloom(6,1)=min(shot%src%iy +initial_half_bloomwidth, cb%ily)
+                do it=2,nt
+                    self%bloom(1,it)=max(nint(self%bloom(1,1)-it*distz),cb%ifz) !bloombox ifz
+                    self%bloom(2,it)=min(nint(self%bloom(2,1)+it*distz),cb%ilz) !bloombox ilz
+                    self%bloom(3,it)=max(nint(self%bloom(3,1)-it*distx),cb%ifx) !bloombox ifx
+                    self%bloom(4,it)=min(nint(self%bloom(4,1)+it*distx),cb%ilx) !bloombox ilx
+                    self%bloom(5,it)=max(nint(self%bloom(5,1)-it*disty),cb%ify) !bloombox ify
+                    self%bloom(6,it)=min(nint(self%bloom(6,1)+it*disty),cb%ily) !bloombox ily
+                enddo
             
-        !     else
-        !         self%bloom(1,nt)=max(minval(shot%rcv(:)%iz) -initial_half_bloomwidth, cb%ifz)
-        !         self%bloom(2,nt)=min(maxval(shot%rcv(:)%iz) +initial_half_bloomwidth, cb%ilz)
-        !         self%bloom(3,nt)=max(minval(shot%rcv(:)%ix) -initial_half_bloomwidth, cb%ifx)
-        !         self%bloom(4,nt)=min(maxval(shot%rcv(:)%ix) +initial_half_bloomwidth, cb%ilx)
-        !         self%bloom(5,nt)=max(minval(shot%rcv(:)%iy) -initial_half_bloomwidth, cb%ify)
-        !         self%bloom(6,nt)=min(maxval(shot%rcv(:)%iy) +initial_half_bloomwidth, cb%ily)
-        !         do it=nt-1,1,-1
-        !             it_fwd=nt-it+1
-        !             self%bloom(1,it)=max(nint(self%bloom(1,nt)-it_fwd*distz),cb%ifz) !bloombox ifz
-        !             self%bloom(2,it)=min(nint(self%bloom(2,nt)+it_fwd*distz),cb%ilz) !bloombox ilz
-        !             self%bloom(3,it)=max(nint(self%bloom(3,nt)-it_fwd*distx),cb%ifx) !bloombox ifx
-        !             self%bloom(4,it)=min(nint(self%bloom(4,nt)+it_fwd*distx),cb%ilx) !bloombox ilx
-        !             self%bloom(5,it)=max(nint(self%bloom(5,nt)-it_fwd*disty),cb%ify) !bloombox ify
-        !             self%bloom(6,it)=min(nint(self%bloom(6,nt)+it_fwd*disty),cb%ily) !bloombox ily
-        !         enddo
+            else
+                self%bloom(1,nt)=max(minval(shot%rcv(:)%iz) -initial_half_bloomwidth, cb%ifz)
+                self%bloom(2,nt)=min(maxval(shot%rcv(:)%iz) +initial_half_bloomwidth, cb%ilz)
+                self%bloom(3,nt)=max(minval(shot%rcv(:)%ix) -initial_half_bloomwidth, cb%ifx)
+                self%bloom(4,nt)=min(maxval(shot%rcv(:)%ix) +initial_half_bloomwidth, cb%ilx)
+                self%bloom(5,nt)=max(minval(shot%rcv(:)%iy) -initial_half_bloomwidth, cb%ify)
+                self%bloom(6,nt)=min(maxval(shot%rcv(:)%iy) +initial_half_bloomwidth, cb%ily)
+                do it=nt-1,1,-1
+                    it_fwd=nt-it+1
+                    self%bloom(1,it)=max(nint(self%bloom(1,nt)-it_fwd*distz),cb%ifz) !bloombox ifz
+                    self%bloom(2,it)=min(nint(self%bloom(2,nt)+it_fwd*distz),cb%ilz) !bloombox ilz
+                    self%bloom(3,it)=max(nint(self%bloom(3,nt)-it_fwd*distx),cb%ifx) !bloombox ifx
+                    self%bloom(4,it)=min(nint(self%bloom(4,nt)+it_fwd*distx),cb%ilx) !bloombox ilx
+                    self%bloom(5,it)=max(nint(self%bloom(5,nt)-it_fwd*disty),cb%ify) !bloombox ify
+                    self%bloom(6,it)=min(nint(self%bloom(6,nt)+it_fwd*disty),cb%ily) !bloombox ily
+                enddo
 
-        !     endif
+            endif
 
-        ! else
+        else
             self%bloom(1,:)=cb%ifz
             self%bloom(2,:)=cb%ilz
             self%bloom(3,:)=cb%ifx
@@ -195,9 +195,9 @@ use, intrinsic :: ieee_arithmetic
             self%bloom(5,:)=cb%ify
             self%bloom(6,:)=cb%ily
 
-        ! endif
+        endif
 
-        ! if(.not.m%is_cubic) self%bloom(5:6,:)=1
+        if(.not.m%is_cubic) self%bloom(5:6,:)=1
 
     end subroutine
 
