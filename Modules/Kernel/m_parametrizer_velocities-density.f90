@@ -96,7 +96,7 @@ use m_Modeling
                     !https://en.wikipedia.org/wiki/Gardner%27s_relation
                     is_gardner=.true.
 !                     if(len(list(i)%s)<=7) then
-                        a=either(0.31,310,m%rho(1,1,1)<1000.) !g/cm3 or kg/m3
+                        a=either(0.31,310.,m%rho(1,1,1)<1000.) !g/cm³ or kg/m³
                         b=0.25
                         
 !                     else
@@ -110,7 +110,7 @@ use m_Modeling
                         'Parameter rho will passive in the inversion.')
 
                 elseif(list(i)%s(1:8)=='Castagna') then
-                    !Castagna mudrock line vp=a*vp+b
+                    !Castagna mudrock line vs=a*vs+b
                     !passive vs will be updated according to vp
                     !https://en.wikipedia.org/wiki/Mudrock_line
                     is_castagna=.true.

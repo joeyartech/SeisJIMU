@@ -11,11 +11,12 @@ use m_computebox
     !CPML parameter
     real,parameter :: npower = 2.
     real,parameter :: logR = log(0.001)
-    real,parameter :: kpa_max=1., kpa_max_m1=kpa_max-1.
+    real,parameter :: kpa_max=1.
     !Comments by Komatitsch:
     !increase kpa_max (eg. =7) if absorbing is not satisfactory at grazing incident angle
     !(making in/outside PML reflection more separate..)
     !decrease this number if grid dispersion is not satisfactory
+    real,parameter :: kpa_max_m1=kpa_max-1.
 
     type,public :: t_cpml
         real,dimension(:),allocatable :: b_z,b_z_half, a_z,a_z_half

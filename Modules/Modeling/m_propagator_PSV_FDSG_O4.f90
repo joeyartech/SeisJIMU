@@ -110,7 +110,7 @@ use, intrinsic :: ieee_arithmetic
         if(index(self%info,'vs')>0  .and. .not. allocated(m%vs)) then
             call alloc(m%vs,m%nz,m%nx,1)
             m%vs=m%vp/sqrt(3.)
-            call warn('Constant vs model (=vp/√3, Poisson solid) is allocated by propagator.')
+            call warn('Poisson solid (vs=vp/√3) is assumed by propagator.')
         endif
 
         if(index(self%info,'rho')>0 .and. .not. allocated(m%rho)) then
@@ -1103,6 +1103,9 @@ use, intrinsic :: ieee_arithmetic
         cb%grad(:,:,1,2) = cb%grad(:,:,1,2) *mhalf_inv_ldapmu
         !gmu
         cb%grad(:,:,1,3) = cb%grad(:,:,1,3) *mhalf_inv_ldapmu/ppg%mu(1:cb%mz,1:cb%mx)
+        where( ieee_is_nan(cb%grad(:,:,1,3)) .or. .not.ieee_is_finite(cb%grad(:,:,1,3)) )
+            cb%grad(:,:,1,3)=0.
+        endwhere
 
         !preparing for cb%project_back
         cb%grad(1,:,:,:) = cb%grad(2,:,:,:)
