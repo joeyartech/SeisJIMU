@@ -43,7 +43,7 @@
 \author{joeyartech\\
 \scriptsize{joeywzhou1986@gmail.com}}
 \institute{The University of Texas at Dallas}
-\date{10/18/2019}
+\date{\today}
 %--------------------------------------------------------------------------------------
 
 
@@ -167,7 +167,7 @@
 
 \end{frame}
 
-\begin{frame}\frametitle{PARAMETERIZATION velocities-density + PASSIVE gardner}
+\begin{frame}\frametitle{PARAMETERIZATION velocities-density + PASSIVE Gardner}
 \framesubtitle{isotropic ACoustic}
 
   \begin{center}
@@ -183,7 +183,7 @@
     \begin{eqnarray}
       \nabla_{V_P} &=& \nabla_{\kappa} \partderi{\kappa}{V_P} + \nabla_{\rho_0} \partderi{\rho_0}{V_P} \nonumber\\
                    &=& \nabla_{\kappa} a(b+2) V_P^{b+1} + \nabla_{\rho_0} ab V_P^{b-1} \nonumber\\
-                   &=& \left( \nabla_{\kappa} \frac{b+2}{b} V_P^2 + \nabla_{\rho_0} \right) ab V_P^{b-1} \nonumber
+                   &=& \left( \nabla_{\kappa} \frac{b+2}{b} V_P^2 + \nabla_{\rho_0} \right) \frac{b\rho}{V_P} \nonumber
     \end{eqnarray}
 
   \end{minipage} \vline
@@ -239,7 +239,7 @@
 
 \end{frame}
 
-\begin{frame}\frametitle{PARAMETERIZATION velocities-density  + PASSIVE gardner}
+\begin{frame}\frametitle{PARAMETERIZATION velocities-density  + PASSIVE Gardner}
 \framesubtitle{isotropic P-SV}
 
   \begin{center}
@@ -257,10 +257,38 @@
       \nabla_{V_P} &=& \nabla_\lambda \partderi{\lambda}{V_P} + \nabla_\mu \partderi{\mu}{V_P} + \nabla_{\rho_0} \partderi{\rho_0}{V_P} \nonumber\\
                    &=& \nabla_\lambda \left( a(b+2)V_P^{b+1} - 2abV_P^{b-1}V_S^2\right) + \nabla_\mu     abV_P^{b-1}V_S^2 + \nabla_{\rho_0} abV_P^{b-1} \nonumber\\
                    &=& \left( \nabla_\lambda \left( \frac{b+2}{b}V_P^2 - 2V_S^2 \right) + \nabla_\mu V_S^2 + \nabla_{\rho_0} \right)abV_P^{b-1} \nonumber\\
-                   &=& \left( \nabla_\lambda \frac{b+2}{b}V_P^2 + (-2\nabla_\lambda + \nabla_\mu) V_S^2 + \nabla_{\rho_0} \right)abV_P^{b-1} \nonumber\\
+                   &=& \left( \nabla_\lambda \frac{b+2}{b}V_P^2 + (-2\nabla_\lambda + \nabla_\mu) V_S^2 + \nabla_{\rho_0} \right)\frac{b\rho}{V_P} \nonumber\\
       \nabla_{V_S} &=& \nabla_\lambda \partderi{\lambda}{V_S} + \nabla_\mu \partderi{\mu}{V_S} + \nabla_{\rho_0} \partderi{\rho_0}{V_S} \nonumber\\
                    &=& \nabla_\lambda (-4a V_P^{b}V_S) + \nabla_\mu 2aV_P^{b}V_S \nonumber\\
-                   &=& \left(-2\nabla_\lambda + \nabla_\mu \right)2aV_P^{b}V_S \nonumber
+                   &=& \left(-2\nabla_\lambda + \nabla_\mu \right)2\rho V_S \nonumber
+    \end{eqnarray}
+
+  \end{minipage}
+  
+\end{frame}
+
+
+\begin{frame}\frametitle{PARAMETERIZATION velocities-density + PASSIVE Castagna}
+\framesubtitle{isotropic P-SV}
+
+  \begin{center}
+    \framebox{$V_S = a V_P +b$}
+  \end{center}
+  
+  \begin{minipage}{\linewidth}
+    \[\left\{ \begin{array}{l}
+      \lambda = \rho (V_P^2-2V_S^2) = \rho\left( (1-2a^2)V_P^2 -4abV_P -2b^2\right) \\
+      \mu    = \rho V_S^2 = \rho( a^2V_P^2 +2abV_P +b^2 ) \\
+      \rho_0 = \rho
+    \end{array} \right.\]
+    
+    \begin{eqnarray}
+      \nabla_{V_P} &=& \nabla_\lambda \partderi{\lambda}{V_P} + \nabla_\mu \partderi{\mu}{V_P} + \nabla_{\rho_0} \partderi{\rho_0}{V_P} \nonumber\\
+                   &=& \nabla_\lambda \;\rho \left( 2(1-2a^2)V_P - 4ab\right) + \nabla_\mu \;\rho (2a^2V_P+2ab) \nonumber\\
+                   &=& 2\rho\left( \nabla_\lambda  \left( V_P-2a^2V_P - 2ab\right) + \nabla_\mu  (a^2V_P+ab) \right) \nonumber\\
+                   &=& 2\rho\left( \nabla_\lambda  (V_P-2aV_S) + \nabla_\mu aV_S \right) \nonumber\\
+      \nabla_\rho  &=& \nabla_\lambda \partderi{\lambda}{\rho} + \nabla_\mu \partderi{\mu}{\rho} + \nabla_{\rho_0} \partderi{\rho_0}{\rho} \nonumber\\
+                   &=& \nabla_\lambda (V_P^2-2V_S^2) + \nabla_\mu V_S^2 + \nabla_{\rho_0} \nonumber
     \end{eqnarray}
 
   \end{minipage}
@@ -418,7 +446,7 @@
 
 \end{frame}
 
-\begin{frame}\frametitle{PARAMETERIZATION slowness-density + PASSIVE gardner}
+\begin{frame}\frametitle{PARAMETERIZATION slowness-density + PASSIVE Gardner}
 \framesubtitle{isotropic ACoustic}
 
   \begin{center}
@@ -499,7 +527,7 @@
 
 \end{frame}
 
-\begin{frame}\frametitle{PARAMETERIZATION slowness-density  + PASSIVE gardner}
+\begin{frame}\frametitle{PARAMETERIZATION slowness-density  + PASSIVE Gardner}
 \framesubtitle{isotropic P-SV}
 
   \begin{center}

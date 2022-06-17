@@ -14,7 +14,7 @@ use m_Modeling
     !acoustic + gardner:
     !kpa = a*vp^(b+2)
     !rho0= a*vp^b
-    !gvp = (gkpa*(b+2)/b*vp^2 + grho0)*ab*vp^(b-1)
+    !gvp = (gkpa*(b+2)/b*vp^2 + grho0)*b*rho/vp
 
     !P-SV:
     !lda = rho(vp^2-2vs^2)
@@ -28,8 +28,15 @@ use m_Modeling
     !lda = a*vp^(b+2) - 2a*vp^b*vs^2
     !mu  = a*vp^b*vs^2
     !rho0= a*vp^b
-    !gvp = (glda*(b+2)/b*vp + (-2glda + gmu)vs^2 + grho0)*ab*vp^(b-1)
-    !gvs = (glda*-2 + gmu)*2a*vp^b*vs
+    !gvp = (glda*(b+2)/b*vp^2 + (-2glda + gmu)vs^2 + grho0)*b*rho/vp
+    !gvs = (glda*-2 + gmu)*2rho*vs
+
+    !P-SV + castagna:
+    !lda = rho( (1-2a^2)vp^2 -4ab*vp -2b^2)
+    !mu  = rho( a^2*vp^2 +2ab*vp +b^2)
+    !rho0= rho
+    !gvp = 2rho( glda*(vp-2a*vs) + gmu*a*vs
+    !grho= glda*(vp^2-2vs^2) +gmu*vs^2 + grho0
 
     private
 
@@ -43,7 +50,7 @@ use m_Modeling
         character(i_str_xxlen) :: info = &
             'Parameterization: velocities-density'//s_NL// &
             'Allowed pars: vp, vs, rho'//s_NL// &
-            'Available empirical laws: Gardner'
+            'Available empirical law: Gardner, Castagna'
 
         type(t_parameter),dimension(:),allocatable :: pars
         integer :: npars
@@ -60,7 +67,7 @@ use m_Modeling
 
     type(t_parametrizer),public :: param
 
-    logical :: is_empirical=.false., is_gardner=.false. !, is_castagna
+    logical :: is_empirical=.false., is_gardner=.false., is_castagna=.false.
     logical :: is_AC=.false., is_EL=.false.
 
     real :: a,b
@@ -89,7 +96,7 @@ use m_Modeling
                     !https://en.wikipedia.org/wiki/Gardner%27s_relation
                     is_gardner=.true.
 !                     if(len(list(i)%s)<=7) then
-                        a=either(310.,0.31,m%rho(1,1,1)<1000.)
+                        a=either(0.31,310,m%rho(1,1,1)<1000.) !g/cm3 or kg/m3
                         b=0.25
                         
 !                     else
@@ -100,15 +107,22 @@ use m_Modeling
 !                     endif
 ! 
                     call hud('Gardner law is enabled: a='//num2str(a)//', b='//num2str(b)//s_NL// &
-                        'Parameter rho will not be active in the inversion.')
+                        'Parameter rho will passive in the inversion.')
 
                 elseif(list(i)%s(1:8)=='Castagna') then
-                    ! !Castagna mudrock line vp=a*vp+b
-                    ! !passive vs will be updated according to vp
-                    ! !https://en.wikipedia.org/wiki/Mudrock_line
-                    ! if(ia_castagna) then
-                    !     c=1/1.16; d=-1.36/1.16
-                    ! endif
+                    !Castagna mudrock line vp=a*vp+b
+                    !passive vs will be updated according to vp
+                    !https://en.wikipedia.org/wiki/Mudrock_line
+                    is_castagna=.true.
+                        a=1/1.16
+                        b=-1360./1.16 !m/s
+
+                    call hud('Castagna law is enabled: a='//num2str(a)//', b='//num2str(b)//s_NL// &
+                        'Parameter vs will be passive in the inversion.')
+
+                    if(is_gardner) then
+                        call error("Sorry. Hasn't implemented both Gardner & Castagna's laws")
+                    endif
 
                 endif
 
@@ -145,12 +159,16 @@ use m_Modeling
                     call hud('vs in PARAMETER is neglected as the PDE is ACoustic.')
                     cycle loop
                 endif
+                if(is_castagna) then
+                    call hud('vs in PARAMETER is neglected and becomes passive as Castagna law is used.')
+                    cycle loop
+                endif
                 self%pars(i)%name='vs'
                 self%npars=self%npars+1
 
             case ('rho')
-                if(is_empirical) then
-                    call hud('rho in PARAMETER is neglected as EMPIRICAL_LAW is read (rho becomes a passive parameter).')
+                if(is_gardner) then
+                    call hud('rho in PARAMETER is neglected and becomes passive as Gardner law is used')
                     cycle loop
                 endif
                 self%pars(i)%name='rho'
@@ -219,6 +237,8 @@ use m_Modeling
                 enddo
                 ! + gardner
                 if(is_gardner) m%rho = a*m%vp**b
+                ! + castagna
+                if(is_castagna) m%vs = a*m%vp + b
                 call m%apply_freeze_zone
 
             endif
@@ -255,7 +275,7 @@ use m_Modeling
 
             !acoustic + gardner
             if(is_AC .and. is_gardner) then
-                o_g(:,:,:,1) =(m%gradient(:,:,:,2)*(b+2)/b*m%vp**2 + m%gradient(:,:,:,1))*a*b*m%vp**(b-1)
+                o_g(:,:,:,1) =(m%gradient(:,:,:,2)*(b+2)/b*m%vp**2 + m%gradient(:,:,:,1))*b*m%rho/m%vp  !m%rho has tobe updated in prior
             endif
 
             !elastic
@@ -273,8 +293,20 @@ use m_Modeling
             if(is_EL .and. is_gardner) then
                 do i=1,param%npars
                     select case (param%pars(i)%name)
-                    case ('vp' ); o_g(:,:,:,i) =(m%gradient(:,:,:,2)*(b+2)/b*m%vp + (-2*m%gradient(:,:,:,2)+m%gradient(:,:,:,3))*m%vs**2 + m%gradient(:,:,:,1))*a*b*m%vp**(b-1)
-                    case ('vs' ); o_g(:,:,:,i) =(m%gradient(:,:,:,2)*(-2) + m%gradient(:,:,:,3))*2*a*m%vp**b*m%vs
+                    case ('vp' ); o_g(:,:,:,i) =(m%gradient(:,:,:,2)*(b+2)/b*m%vp**2 + (-2*m%gradient(:,:,:,2)+m%gradient(:,:,:,3))*m%vs**2 + m%gradient(:,:,:,1))*b*m%rho/m%vp !m%rho has tobe updated in prior
+                    case ('vs' ); o_g(:,:,:,i) =(m%gradient(:,:,:,2)*(-2) + m%gradient(:,:,:,3))*2*m%rho*m%vs !m%rho has tobe updated in prior
+                    end select
+                enddo
+            endif
+
+            !elastic + castagna
+            if(is_EL .and. is_castagna) then
+                do i=1,param%npars
+                    select case (param%pars(i)%name)
+                    case ('vp' )
+                        o_g(:,:,:,i) =2*m%rho*( m%gradient(:,:,:,2)*(m%vp-2*a*m%vs) + m%gradient(:,:,:,3)*a*m%vs )
+                    case ('rho')
+                        o_g(:,:,:,i) =m%gradient(:,:,:,2)*(m%vp**2-2*m%vs**2) + m%gradient(:,:,:,3)*m%vs**2 + m%gradient(:,:,:,1)
                     end select
                 enddo
             endif
