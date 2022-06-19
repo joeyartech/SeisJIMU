@@ -1,368 +1,1430 @@
-module m_field
-use m_mpienv
-use m_arrayop
-use m_sysio
-use m_model, only:m
-use m_shot, only:shot
-use m_computebox, only: cb
+module m_propagator
+use m_System
+use m_hicks, only : hicks_r
+use m_resampler
+use m_model
+use m_shot
+use m_computebox
+use m_field
+use m_cpml
 
-use, intrinsic :: ieee_arithmetic
+    private
 
-    private fdcoeff_o4,fdcoeff_o8,c1x,c1y,c1z,c2x,c2y,c2z,c3x,c3y,c3z,c4x,c4y,c4z
-    private k_x,k_y,k_z,npower,rcoef,factor_hh,factor_zz, threshold
-    public
-    
-    !FD coeff
-    real,dimension(2),parameter :: fdcoeff_o4 = [1.125,      -1./24.]
-    real,dimension(4),parameter :: fdcoeff_o8 = [1225./1024, -245./3072., 49./5120., -5./7168]
+    !FD coef
+    real,dimension(2),parameter :: coef = [9./8.,-1./24.] !Fornberg, 1988, Generation of Finite-Difference Formulas on Arbitrary Spaced Grids.
     
     real :: c1x, c1y, c1z
     real :: c2x, c2y, c2z
-    real :: c3x, c3y, c3z
-    real :: c4x, c4y, c4z
+
+    type,public :: t_propagator
+        !info
+        character(i_str_xxlen) :: info = &
+            'Time-domain VTI 2D/3D (pseudo) ACoustic propagation'//s_NL// &
+            '1st-order Velocity-Stress formulation'//s_NL// &
+            'Vireux-Levandar Staggered-Grid Finite-Difference (FDSG) method'//s_NL// &
+            'Cartesian O(x⁴,t²) stencil'//s_NL// &
+            'CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal'//s_NL// &
+            '   -> dt ≤ 0.606(for 2D) or 0.494(3D) *Vmax/dx'//s_NL// &
+            'Required model attributes: vp, rho'//s_NL// &
+            'Required field components: vz, vx, vy(3D), szz, shh'//s_NL// &
+            'Required boundary layer thickness: 2'//s_NL// &
+            'Imaging conditions: P-Pxcorr'//s_NL// &
+            'Energy terms: Σ_shot ∫ sfield%p² dt'//s_NL// &
+            'Basic gradients: grho gkpa'
+
+        integer :: nbndlayer=max(2,hicks_r) !minimum absorbing layer thickness
+        integer :: ngrad=2 !number of basic gradients
+        integer :: nimag=1 !number of basic images
+        integer :: nengy=1 !number of energy terms
+
+        logical :: if_compute_engy=.false.
+
+        !local models shared between fields
+        real,dimension(:,:,:),allocatable :: buoz, buox, buoy
+        real,dimension(:,:,:),allocatable :: kpa, kpa_1p2eps, kpa_sqrt1p2del
+        real,dimension(:,:,:),allocatable :: inv_kpa, inv_2epsmdel
+
+        !time frames
+        integer :: nt
+        real :: dt
+
+        contains
+        procedure :: print_info
+        procedure :: estim_RAM
+        procedure :: check_model
+        procedure :: check_discretization
+        procedure :: init
+        procedure :: init_field
+        procedure :: init_abslayer
+
+        procedure :: forward
+        procedure :: adjoint
         
-    !local models in computebox
-    type t_localmodel
-        sequence
-        real,dimension(:,:,:),allocatable ::  buox, buoy, buoz
-        real,dimension(:,:,:),allocatable ::  kpa, kpa_1p2eps, kpa_sqrt1p2del, inv2epsmdel, invkpa
+        procedure :: inject_velocities
+        procedure :: inject_stresses
+        procedure :: update_velocities
+        procedure :: update_stresses
+        procedure :: extract
+
+
+        final :: final
+
     end type
-    
-    type(t_localmodel) :: lm
-        
-    real,parameter :: threshold=1000.  !upper bound for inv2epsmdel
-    
-    !fields
-    type t_field
-        sequence
-        !flat arrays
-        real,dimension(:,:,:),allocatable :: vx,vy,vz,shh,szz
-        real,dimension(:,:,:),allocatable :: cpml_dvx_dx,cpml_dvy_dy,cpml_dvz_dz  !for cpml
-        real,dimension(:,:,:),allocatable :: cpml_dshh_dx,cpml_dshh_dy,cpml_dszz_dz
-    end type
-    
-    !sampling factor
-    real,parameter :: factor_hh=0.6666667 , factor_zz=0.3333333
-    
-    !hicks interpolation
+
+    type(t_propagator),public :: ppg
+
+
+    real,parameter :: threshold=1000.  !upper bound for inv_2epsmdel
+
+    !conversion from normal stresses to pressure
+    real,parameter :: shh_p=2./3., szz_p=1./3.
+
     logical :: if_hicks
-    
-    !info
-    character(*),parameter :: waveeq_info='time-domain VTI 2D/3D (pseudo) acoustic'
-    character(*),parameter :: gradient_info='kpa-rho'
-    integer,parameter :: ncorr=2
-    
+    integer :: irdt
+    real :: rdt
+
     contains
     
-    !========= use before propagation =================
-    subroutine field_print_info
-        !modeling method
-        call hud('WaveEq : Time-domain VTI 2D/3D (pseudo) ACoustic system')
-        call hud('1st-order Velocity-Stress formulation')
-        call hud('Staggered-grid Finite-difference method')
-        call hud('Cartesian O(x4,t2) stencil')
-        
-        !stencil constant
-        if(mpiworld%is_master) then
-            write(*,*) 'Coeff:',fdcoeff_o4
-        endif
-        c1x=fdcoeff_o4(1)/m%dx; c1y=fdcoeff_o4(1)/m%dy; c1z=fdcoeff_o4(1)/m%dz
-        c2x=fdcoeff_o4(2)/m%dx; c2y=fdcoeff_o4(2)/m%dy; c2z=fdcoeff_o4(2)/m%dz
+    !========= for FDSG O(dx4,dt2) ===================  
+
+    subroutine print_info(self)
+        class(t_propagator) :: self
+
+        call hud('Invoked field & propagator modules info : '//s_NL//self%info)
+        call hud('FDGS Coef : '//num2str(coef(1))//', '//num2str(coef(2)))
         
     end subroutine
     
-    subroutine check_model
-        !Reduce delta when:
-        !  delta > epsilon, which will cause numerical instability
-        where (cb%del > cb%eps-0.5/threshold)
-            cb%del=cb%eps-0.5/threshold
-        endwhere
-    end
+    subroutine estim_RAM(self)
+        class(t_propagator) :: self
+    end subroutine
     
-    subroutine check_discretization
+    subroutine check_model(self)
+        class(t_propagator) :: self
+        
+        if(index(self%info,'vp')>0  .and. .not. allocated(m%vp)) then
+            !call error('vp model is NOT given.')
+            call alloc(m%vp,m%nz,m%nx,m%ny,o_init=1500.)
+            call warn('Constant vp model (1500 m/s) is allocated by propagator.')
+        endif
+
+        if(index(self%info,'rho')>0 .and. .not. allocated(m%rho)) then
+            call alloc(m%rho,m%nz,m%nx,m%ny,o_init=1000.)
+            call warn('Constant rho model (1000 kg/m³) is allocated by propagator.')
+        endif
+
+        if(any (cb%del > cb%eps-0.5/threshold )) then
+            call warn('del > eps -0.5/threshold will cause numerical instability. Reduce del.')
+            where (cb%del > cb%eps-0.5/threshold) cb%del=cb%eps-0.5/threshold
+        endif
+                
+    end subroutine
+    
+    subroutine check_discretization(self)
+        class(t_propagator) :: self
+
         !grid dispersion condition
-        if (5.*m%cell_diagonal > cb%velmin/shot%src%fpeak/2.) then  !FDTDo4 rule
-            write(*,*) 'WARNING: Shot# '//shot%cindex//' can have grid dispersion!'
-            write(*,*) 'Shot# '//shot%cindex//' 5*dx, velmin, fpeak:',5.*m%cell_diagonal, cb%velmin,shot%src%fpeak
+        if (5.*m%dmin > cb%velmin/shot%fmax) then  !O(x4) rule: 5 points per wavelength
+            call warn(shot%sindex//' can have grid dispersion!'//s_NL// &
+                ' 5*dz, velmin, fmax = '//num2str(5.*m%dmin)//', '//num2str(cb%velmin)//', '//num2str(shot%fmax))
         endif
         
-        !CFL condition
-        cfl = cb%velmax*shot%src%dt*m%cell_inv_diagonal*sum(abs(fdcoeff_o4))! ~0.494 (3D); ~0.606 (2D)
-        if(mpiworld%is_master) write(*,*) 'CFL value:',CFL
+        !time frames
+        self%nt=shot%nt
+        self%dt=shot%dt
+        time_window=(shot%nt-1)*shot%dt
+
+        sumcoef=sum(abs(coef))
+
+        CFL = sumcoef*cb%velmax*self%dt*m%rev_cell_diagonal
+
+        call hud('CFL value: '//num2str(CFL))
         
-        if(cfl>1.) then
-            write(*,*) 'ERROR: CFL > 1 on shot# '//shot%cindex//'!'
-            write(*,*) 'Shot# '//shot%cindex//' velmax, dt, 1/dx:',cb%velmax,shot%src%dt,m%cell_inv_diagonal
-            stop
-        endif
+        if(CFL>1.) then
+            self%dt = setup%get_real('CFL',o_default='0.9')/(sumcoef*cb%velmax*m%rev_cell_diagonal)
+            self%nt=nint(time_window/self%dt)+1
+
+            call warn('CFL > 1 on '//shot%sindex//'!'//s_NL//&
+                'vmax, dt, 1/dx = '//num2str(cb%velmax)//', '//num2str(self%dt)//', '//num2str(m%rev_cell_diagonal) //s_NL//&
+                'Adjusted dt, nt = '//num2str(self%dt)//', '//num2str(self%nt))
+
+        endif       
         
     end subroutine
-    
-    !========= use inside propagation =================
-    
-    subroutine init_field_localmodel
-    
-        call alloc(lm%buox,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily],initialize=.false.)
-        call alloc(lm%buoy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily],initialize=.false.)
-        call alloc(lm%buoz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily],initialize=.false.)
-        call alloc(lm%kpa,        [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily],initialize=.false.)
-        call alloc(lm%kpa_1p2eps, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily],initialize=.false.)
-        call alloc(lm%kpa_sqrt1p2del,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily],initialize=.false.)
-        call alloc(lm%invkpa,     [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily],initialize=.false.)
-        call alloc(lm%inv2epsmdel,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily],initialize=.false.)
+
+    subroutine init(self)
+        class(t_propagator) :: self
+
+        c1x=coef(1)/m%dx; c1y=coef(1)/m%dy; c1z=coef(1)/m%dz
+        c2x=coef(2)/m%dx; c2y=coef(2)/m%dy; c2z=coef(2)/m%dz
         
-        lm%kpa=cb%vp*cb%vp*cb%rho
-        lm%kpa_1p2eps=lm%kpa*(1.+2.*cb%eps)
-        lm%kpa_sqrt1p2del=lm%kpa*sqrt(1.+2.*cb%del)
-        lm%invkpa=1./lm%kpa
-        lm%inv2epsmdel=0.5/(cb%eps-cb%del)
+        if_hicks=shot%if_hicks
+
+        call alloc(self%buoz,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(self%buox,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(self%buoy,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
+        call alloc(self%kpa,           [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(self%kpa_1p2eps,    [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(self%kpa_sqrt1p2del,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(self%inv_kpa,       [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(self%inv_2epsmdel,  [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+
+        self%kpa=cb%rho*cb%vp**2
+        self%kpa_1p2eps=self%kpa*(1.+2.*cb%eps)
+        self%kpa_sqrt1p2del=self%kpa*sqrt(1.+2.*cb%del)
+
+        self%inv_kpa=1./self%kpa
+        self%inv_2epsmdel=0.5/(cb%eps-cb%del)
+
         !for elliptical VTI (eps==del) modeling is ok 
-        !but gradient computation can be unstable due to division by (eps-del)
-        !so set upper bound for inv2epsmdel
-        where (lm%inv2epsmdel >threshold)
-            lm%inv2epsmdel=threshold
+        !but gradient computation is unstable due to division by (eps-del)
+        !so set upper bound for inv_2epsmdel
+        where (self%inv_2epsmdel >threshold)
+            self%inv_2epsmdel=threshold
         endwhere
 
-        lm%buoz(cb%ifz,:,:)=1./cb%rho(cb%ifz,:,:)
-        lm%buox(:,cb%ifx,:)=1./cb%rho(:,cb%ifx,:)
-        lm%buoy(:,:,cb%ify)=1./cb%rho(:,:,cb%ify)
-        
+
+        self%buoz(cb%ifz,:,:)=1./cb%rho(cb%ifz,:,:)
+        self%buox(:,cb%ifx,:)=1./cb%rho(:,cb%ifx,:)
+        self%buoy(:,:,cb%ify)=1./cb%rho(:,:,cb%ify)
+
         do iz=cb%ifz+1,cb%ilz
-            lm%buoz(iz,:,:)=0.5/cb%rho(iz,:,:)+0.5/cb%rho(iz-1,:,:)
+            self%buoz(iz,:,:)=0.5/cb%rho(iz,:,:)+0.5/cb%rho(iz-1,:,:)
         enddo
         
         do ix=cb%ifx+1,cb%ilx
-            lm%buox(:,ix,:)=0.5/cb%rho(:,ix,:)+0.5/cb%rho(:,ix-1,:)
+            self%buox(:,ix,:)=0.5/cb%rho(:,ix,:)+0.5/cb%rho(:,ix-1,:)
         enddo
 
         do iy=cb%ify+1,cb%ily
-            lm%buoy(:,:,iy)=0.5/cb%rho(:,:,iy)+0.5/cb%rho(:,:,iy-1)
+            self%buoy(:,:,iy)=0.5/cb%rho(:,:,iy)+0.5/cb%rho(:,:,iy-1)
         enddo
-        
-    end subroutine
-    
-    subroutine init_field(f)
-        type(t_field) :: f
 
-        call alloc(f%vx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%vy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%vz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%shh,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%szz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        
-        call alloc(f%cpml_dvx_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%cpml_dvy_dy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%cpml_dvz_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%cpml_dshh_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%cpml_dshh_dy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%cpml_dszz_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        
-        !hicks point interpolation
-        if_hicks=get_setup_logical('IF_HICKS',default=.true.)
+        !initialize m_field
+        call field_init(.false.,self%nt,self%dt)
+
+        !rectified interval for time integration
+        !default to Nyquist, and must be a multiple of dt
+        rdt=setup%get_real('REF_RECT_TIME_INTEVAL','RDT',o_default=num2str(0.5/shot%fmax))
+        irdt=floor(rdt/self%dt)
+        if(irdt==0) irdt=1
+        rdt=irdt*self%dt
+        call hud('rdt, irdt = '//num2str(rdt)//', '//num2str(irdt))
 
     end subroutine
-    
-    subroutine check_field(f,name)
+
+    subroutine init_field(self,f,name,ois_adjoint,oif_will_reconstruct)
+        class(t_propagator) :: self
         type(t_field) :: f
         character(*) :: name
-        
-        if(any(.not. ieee_is_finite(f%vz))) then
-            write(*,*) 'ERROR: '//name//' values become Infinity on Shot# '//shot%cindex//' !!'
-            stop
-        endif
-        if(any(ieee_is_nan(f%vz))) then
-           write(*,*) 'ERROR: '//name//' values become NaN on Shot# '//shot%cindex//' !!'
-           stop
-        endif
+        logical,optional :: oif_will_reconstruct
+        logical,optional :: ois_adjoint
+
+        !field
+        ! call f%init(name)
+        f%name=name
+
+        f%is_adjoint=either(ois_adjoint,.false.,present(ois_adjoint))
+
+        call f%init_bloom
+
+        !f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
+        !if(f%if_will_reconstruct) call f%init_boundary
+        call f%init_boundary
+
+        call alloc(f%vz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%vx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%vy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%szz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%shh,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+
+        call alloc(f%dvz_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dvx_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dvy_dy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dszz_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dshh_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dshh_dy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+                
+    end subroutine
+
+    subroutine init_abslayer(self)
+        class(t_propagator) :: self
+
+        call cpml%init
 
     end subroutine
     
-    subroutine field_cpml_reinitialize(f)
-        type(t_field) :: f
-        f%cpml_dvx_dx=0.
-        f%cpml_dvy_dy=0.
-        f%cpml_dvz_dz=0.
-        f%cpml_dshh_dx=0.
-        f%cpml_dshh_dy=0.
-        f%cpml_dszz_dz=0.
-    end subroutine
-    
-    subroutine write_field(iunit,f)
-        type(t_field) :: f
-        write(iunit) f%vz
-    end subroutine
-    
-    !========= forward propagation =================
-    !WE: du_dt = MDu
-    !u=[vx vy vz shh szz]^T, shh=sxx=syy, p=(2shh+szz)/3
-    !  [diag3(b)      0           0        ]    [0   0   0   dx  0 ]
-    !M=|   0     kpa_1p2eps kpa_sqrt1p2del |, D=|0   0   0   dy  0 |
-    !  [   0     kpa_1p2eps kpa            ]    |0   0   0   0   dz|
-    !  (b=1/rho)                                |dx  dy  0   0   0 |
-    !                                           [0   0   dz  0   0 ]
+    !========= Derivations =================
+    !PDE:      A u = M ∂ₜ u - D u = f
+    !Adjoint:  Aᵀa = M ∂ₜᵀa - Dᵀa = d
+    !where
+    !u=[vz vx szz shh]ᵀ, [vz vx] are velocities, [szz shh] are normal stresses
+    !f=[fz fx fzz fhh]ᵀδ(x-xs) with xs source position, d is recorded data
+    !p=tr(s)=(szz+2shh)/3 is (hydrostatic) pressure, fzz=⅓fp, fhh=⅔fp is pressure source (explosion)
+    !  [ρ                        ]   [0   0   ∂z  0 ]
+    !  |  ρ                      |   |0   0   0   ∂ₓ|
+    !M=|    [κ        κ√(1+2δ)]⁻¹|,D=|∂z  0   0   0 |
+    !  [    [κ√(1+2δ) κ(1+2ε) ]  ]   [0   ∂ₓ  0   0 ]
+    !a=[vzᵃ vxᵃ szzᵃ, shhᵃ]ᵀ is the adjoint field
     !
-    !Discretization (staggered grid in space and time):
-    !  (grid index)     (real index)
-    !  s(iz,ix,iy):=   s[iz,ix,iy]^it+0.5,it+1.5,...
-    ! vx(iz,ix,iy):=  vx[iz,ix-0.5,iy]^it,it+1,...
-    ! vy(iz,ix,iy):=  vy[iz,ix,iy-0.5]^it,it+1,...
-    ! vz(iz,ix,iy):=  vy[iz-0.5,ix,iy]^it,it+1,...
-    
-    !add RHS to v^it
-    subroutine put_velocities(time_dir,it,w,f)
-        integer :: time_dir,it
-        real :: w
+    !Continuous case:
+    !<a|Au> = ∫ a(x,t) (M∂ₜ-D)u(x,t) dx³dt
+    !Integration by parts, eg.:
+    !∫aᵀM∂ₜu dt = aMu|ₜ₌₀ᵀ - ∫(∂ₜa)ᵀMu dt, and freely choosing a(t=T)=0 (final condition),
+    !∫aᵀM∂ₜu dt = -∫(∂ₜa)ᵀMu dt
+    !Similar procedure on spatial derivatives, we have
+    !∫aᵀDu dx³ = -∫(Dᵀa)ᵀ u dx³, with same boundary conditions on a
+    !Therefore, Aᵀa = ∂ₜa - Dᵀa
+    !However, this method (finding the adjoint FD eqn by integration by parts)
+    !is NOT accurate enough in the discrete world to pass the adjoint test.
+    !
+    !Discrete case:
+    !Meshing with staggered grids in time and space (2D example):
+    !                      |      |   -½ vz     |      |
+    !                      |      |      bz     |      |
+    !                      |      |      |      |      |
+    !                      μ  bx  μ  bx  μ  bx  μ  bx  μ
+    !  -v--s-v-s-v-→ t    -s--vx--s--vx--s--vx--s--vx--s-→ x
+    !  -1 -½ 0 ½ 1        -2 -1½ -1  -½  0   ½  1  1½  2    
+    !                      |      |      |      |      | 
+    !                      |      |    ½ vz     |      | 
+    !                      |      |      bz     |      | 
+    !                      |      |      |      |      | 
+    !                     -|------|----1-s------|------|-
+    !                      |      |      μ      |      | 
+    !                      |      |      |      |      | 
+    !                      |      |   1½ vz     |      | 
+    !                      |      |      bz     |      | 
+    !                      |      |      |      |      | 
+    !                                  z ↓
+    !
+    ! s: szz and shh
+    ! μ: κ, ε and δ
+    !
+    !Convention for half-integer index:
+    !(array index)  =>    (real index)     
+    ! vz(iz,ix,iy)  =>  vz[iz-½,ix,  iy  ]^n   :=vz((iz-½)*dz,ix*dx,iy*dy,n*dt)
+    ! vx(iz,ix,iy)  =>  vx[iz,  ix-½,iy  ]^n  
+    ! vy(iz,ix,iy)  =>  vy[iz,  ix,  iy-½]^n  
+    !  s(iz,ix,iy)  =>   s[iz,  ix,  iy  ]^n+½ :=s(iz*dz,ix*dx,iy*dy,(n+½)*dt)
+    !
+    !Forward:
+    !FD eqn:
+    !      [vz^n   ]   [ 0     0    ∂zᵇ  0 ][vz^n+1 ]      [∂zᵇ szz^n+½] 
+    !      |vx^n   |   | 0     0     0  ∂ₓᵇ||vx^n+1 |      |∂ₓᵇ shh^n+½|
+    !M ∂ₜᶠ |szz^n+1| = |∂zᶠ    0     0   0 ||szz^n+½| +f = |∂zᶠ vz^n+1 | +f
+    !      [shh^n+1]   [ 0    ∂ₓᶠ    0   0 ][shh^n+½]      [∂ₓᶠ vx^n+1 ]
+    !where
+    !∂ₜᶠ*dt := v^n+1 - v^n                               ~O(t²)
+    !∂zᵇ*dz := c₁(s(iz  )-s(iz-1)) +c₂(s(iz+1)-s(iz-2))  ~O(x⁴)
+    !∂zᶠ*dz := c₁(v(iz+1)-v(iz  )) +c₂(v(iz+2)-v(iz-1))  ~O(x⁴)
+    !
+    !Time marching:
+    ![ vz^n+1 ]   [ vz^n  ]      [∂zᵇ szz^n+½]
+    !| vx^n+1 |   | vx^n  |      |∂ₓᵇ shh^n+½|
+    !|szz^n+1½] = |szz^n+½| + M⁻¹|∂zᶠ vz^n+1 |dt  +M⁻¹f*dt
+    ![shh^n+1½]   [shh^n+½]      [∂ₓᶠ vx^n+1 ]
+    !Step #1: v^n += src
+    !Step #2: v^n+1 = v^n + spatial FD(s^n+½)
+    !Step #3: s^n+½ += src
+    !Step #4: s^n+1½ = s^n+½ + spatial FD(v^n+1)
+    !Step #5: sample v^n & s^n++½ at receivers
+    !Step #6: save v^n+1 to boundary values
+    !
+    !Reverse time marching (for wavefield reconstruction)
+    ![shh^n+½]   [shh^n+1½]      [∂ₓᶠ vx^n+1 ]
+    !|szz^n+½|   |szz^n+1½|      |∂zᶠ vz^n+1 |
+    !| vx^n  | = | vx^n+1 | - M⁻¹|∂ₓᵇ shh^n+½|dt  -M⁻¹f*dt
+    ![ vz^n  ]   [ vz^n+1 ]      [∂zᵇ szz^n+½]
+    !Step #6: load boundary values for v^n+1
+    !Step #4: s^n+½ = s^n+1½ - spatial FD(v^n+1)
+    !Step #3: s^n+½ -= src
+    !Step #2: v^n+1 = v^n - spatial FD(s^n+½)
+    !Step #1: v^n -= src
+    !N.B. Same codes for spatial FDs as in forward time marching, with a negated dt.
+    !
+    !Adjoint:
+    !FD eqn:
+    !      [ vzᵃ^n  ]   [ 0      0     ∂zᶠᵀ    0  ][ vzᵃ^n+1]
+    !      | vxᵃ^n  |   | 0      0      0     ∂ₓᶠᵀ|| vxᵃ^n+1|
+    !M ∂ₜᶠᵀ|szzᵃ^n+1| = |∂zᵇᵀ    0      0      0  ||szzᵃ^n+½|  +d
+    !      [shhᵃ^n+1]   [ 0     ∂ₓᵇᵀ    0      0  ][shhᵃ^n+½]
+    !∂ₜᶠᵀ = v^n-1 -v^n   = -∂ₜᵇ
+    !∂zᵇᵀ = c₁(v[i  ]-v[i+½]) +c₂(v[i- ½]-v[i+1½]) = -∂zᶠ
+    !∂zᶠᵀ = c₁(s[i-½]-s[i  ]) +c₂(s[i-1½]-s[i+ ½]) = -∂zᵇ
+    !      [ vzᵃ^n  ]   [ 0      0    ∂zᵇ    0 ][ vzᵃ^n+1]
+    !      | vxᵃ^n  |   | 0      0     0    ∂ₓᵇ|| vxᵃ^n+1|
+    !M ∂ₜᵇ |szzᵃ^n+1| = |∂zᶠ     0     0     0 ||szzᵃ^n+½|  -d
+    !      [shhᵃ^n+1]   [ 0     ∂ₓᶠ    0     0 ][shhᵃ^n+½]
+    !ie. Dᵀ=-D, antisymmetric
+    !
+    !Time marching:
+    ![ vzᵃ^n+1 ]   [ vzᵃ^n  ]      [∂zᵇ szzᵃ^n+½]
+    !| vxᵃ^n+1 |   | vxᵃ^n  |      |∂ₓᵇ shhᵃ^n+½|
+    !|szzᵃ^n+1½| = |szzᵃ^n+½| + M⁻¹|∂zᶠ vzᵃ^n+1 |dt  -M⁻¹d*dt
+    ![shhᵃ^n+1½]   [shhᵃ^n+½]      [∂ₓᶠ vxᵃ^n+1 ]
+    !but we have to do it in reverse time:
+    ![shhᵃ^n+½]   [shhᵃ^n+1½]      [∂ₓᶠ vxᵃ^n+1 ]
+    !|szzᵃ^n+½| = |szzᵃ^n+1½| - M⁻¹|∂zᶠ vzᵃ^n+1 |dt  +M⁻¹d*dt
+    !| vxᵃ^n  |   | vxᵃ^n+1 |      |∂ₓᵇ shhᵃ^n+½|
+    ![ vzᵃ^n  ]   [ vzᵃ^n+1 ]      [∂zᵇ szzᵃ^n+½]
+    !Step #5: sᵃ^n+1½ += adjsrc
+    !Step #4: sᵃ^n+½ = sᵃ^n+1½ - spatial FD(vᵃ^n+1)
+    !Step #3: vᵃ^n+1 += adjsrc
+    !Step #2: vᵃ^n = vᵃ^n+1 - spatial FD(sᵃ^n+½)
+    !N.B. Same codes for spatial FDs as in forward time marching, with a negated dt, but the RHS should use a "+" sign (regardless of the reverse time direction).
+    !
+    !For adjoint test:
+    !In each step of forward time marching: dsyn=RGANf
+    !f:source wavelet, N=M⁻¹dt: diagonal
+    !A:inject source into field, G:propagator, R:extract field at receivers
+    !while in each step of reverse-time adjoint marching: dadj=NAᵀGᵀRᵀdsyn=AᵀGᵀRᵀNdsyn
+    !Rᵀ:inject adjoint sources, Gᵀ:adjoint propagator, Aᵀ:extract adjoint fields
+    !
+
+    subroutine forward(self,fld_u)
+        class(t_propagator) :: self
+        type(t_field) :: fld_u
+
+        real,parameter :: time_dir=1. !time direction
+
+        !seismo
+        call alloc(fld_u%seismo,shot%nrcv,self%nt)
+            
+        tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.
+        
+        ift=1; ilt=self%nt
+
+        do it=ift,ilt
+            if(mod(it,500)==0 .and. mpiworld%is_master) then
+                write(*,*) 'it----',it
+                call fld_u%check_value
+            endif
+
+            !do forward time stepping (step# conforms with backward & adjoint time stepping)
+            !step 1: add forces to v^it
+            call cpu_time(tic)
+            call self%inject_velocities(fld_u,time_dir,it)
+            call cpu_time(toc)
+            tt1=tt1+toc-tic
+
+            !step 2: from v^it to v^it+1 by differences of s^it+0.5
+            call cpu_time(tic)
+            call self%update_velocities(fld_u,time_dir,it)
+            call cpu_time(toc)
+            tt2=tt2+toc-tic
+
+            !step 3: add pressure to s^it+0.5
+            call cpu_time(tic)
+            call self%inject_stresses(fld_u,time_dir,it)
+            call cpu_time(toc)
+            tt3=tt3+toc-tic
+
+            !step 4: from s^it+0.5 to s^it+1.5 by differences of v^it+1
+            call cpu_time(tic)
+            call self%update_stresses(fld_u,time_dir,it)
+            call cpu_time(toc)
+            tt4=tt4+toc-tic
+
+            !step 5: sample v^it+1 or s^it+1.5 at receivers
+            call cpu_time(tic)
+            call self%extract(fld_u,it)
+            call cpu_time(toc)
+            tt5=tt5+toc-tic
+
+            !snapshot
+            call fld_u%write(it)
+
+            !step 6: save v^it+1 in boundary layers
+            ! if(fld_u%if_will_reconstruct) then
+                call cpu_time(tic)
+                call fld_u%boundary_transport('save',it)
+                call cpu_time(toc)
+                tt6=tt6+toc-tic
+            ! endif
+
+        enddo
+
+        if(mpiworld%is_master) then
+            write(*,*) 'Elapsed time to add source velocities',tt1/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update velocities    ',tt2/mpiworld%max_threads
+            write(*,*) 'Elapsed time to add source stresses  ',tt3/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update stresses      ',tt4/mpiworld%max_threads
+            write(*,*) 'Elapsed time to extract field        ',tt5/mpiworld%max_threads
+            write(*,*) 'Elapsed time to save boundary        ',tt6/mpiworld%max_threads
+        endif
+
+        call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
+        call hud('ximage < snap_sfield%*  n1='//num2str(cb%nz)//' perc=99')
+        call hud('xmovie < snap_sfield%*  n1='//num2str(cb%nz)//' n2='//num2str(cb%nx)//' clip=?e-?? loop=2 title=%g')
+
+    end subroutine
+
+    subroutine adjoint(self,fld_a,fld_u,oif_record_adjseismo,oif_compute_imag,oif_compute_grad)
+    !adjoint_a_star_Du
+        class(t_propagator) :: self
+        type(t_field) :: fld_a,fld_u
+        logical,optional :: oif_record_adjseismo, oif_compute_imag, oif_compute_grad
+        
+        real,parameter :: time_dir=-1. !time direction
+        logical :: if_record_adjseismo, if_compute_imag, if_compute_grad
+
+        if_record_adjseismo =either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
+        if_compute_imag     =either(oif_compute_imag,    .false.,present(oif_compute_imag))
+        if_compute_grad     =either(oif_compute_grad,    .false.,present(oif_compute_grad))
+        self%if_compute_engy=self%if_compute_engy.and.(if_compute_imag.or.if_compute_grad)
+        
+        if(if_record_adjseismo)  call alloc(fld_a%seismo,1,self%nt)
+        if(if_compute_imag)      call alloc(cb%imag,cb%mz,cb%mx,cb%my,self%nimag)
+        if(if_compute_grad)      call alloc(cb%grad,cb%mz,cb%mx,cb%my,self%ngrad)
+        if(self%if_compute_engy) call alloc(cb%engy,cb%mz,cb%mx,cb%my,self%nengy)
+
+        !reinitialize absorbing boundary for incident wavefield reconstruction
+        ! if(present(o_sf)) then
+                                         fld_u%dvz_dz=0.
+                                         fld_u%dvx_dx=0.
+            if(allocated(fld_u%dvy_dy))  fld_u%dvy_dy=0.
+                                         fld_u%dszz_dz=0.
+                                         fld_u%dshh_dx=0.
+            if(allocated(fld_u%dshh_dy)) fld_u%dshh_dy=0.
+        ! endif
+                    
+        !timing
+        tt1=0.; tt2=0.; tt3=0.
+        tt4=0.; tt5=0.; tt6=0.
+        tt7=0.; tt8=0.; tt9=0.
+        tt10=0.;tt11=0.; tt12=0.; tt13=0.
+        
+        ift=1; ilt=self%nt
+
+        ! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        
+        do it=ilt,ift,int(time_dir)
+            if(mod(it,500)==0 .and. mpiworld%is_master) then
+                write(*,*) 'it----',it
+                call fld_a%check_value
+                call fld_u%check_value
+            endif            
+
+            !do backward time stepping to reconstruct the source (incident) wavefield
+            !and adjoint time stepping to compute the receiver (adjoint) field
+            !step# conforms with forward time stepping
+
+            ! if(present(o_sf)) then
+
+                !backward step 6: retrieve v^it+1 at boundary layers (BC)
+                call cpu_time(tic)
+                call fld_u%boundary_transport('load',it)
+                call cpu_time(toc)
+                tt1=tt1+toc-tic
+                
+                !backward step 4: s^it+1.5 -> s^it+0.5 by FD of v^it+1
+                call cpu_time(tic)
+                call self%update_stresses(fld_u,time_dir,it)
+                call cpu_time(toc)
+                tt2=tt2+toc-tic
+
+                !backward step 3: rm pressure from s^it+0.5
+                call cpu_time(tic)
+                call self%inject_stresses(fld_u,time_dir,it)
+                call cpu_time(toc)
+                tt3=tt3+toc-tic
+            ! endif
+
+            !--------------------------------------------------------!
+
+            !adjoint step 5: inject to s^it+1.5 at receivers
+            call cpu_time(tic)
+            call self%inject_stresses(fld_a,time_dir,it)
+            call cpu_time(toc)
+            tt4=tt4+toc-tic
+
+            !adjoint step 4: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
+            call cpu_time(tic)
+            call self%update_stresses(fld_a,time_dir,it)
+            call cpu_time(toc)
+            tt5=tt5+toc-tic
+
+            !gkpa: rf%s^it+0.5 star D sf%s_dt^it+0.5
+            !use sf%v^it+1 to compute sf%s_dt^it+0.5, as backward step 4
+            if(if_compute_grad.and.mod(it,irdt)==0) then
+                call cpu_time(tic)
+                call gradient_moduli(fld_a,fld_u,it,cb%grad(:,:,:,2))
+                call cpu_time(toc)
+                tt6=tt6+toc-tic
+            endif
+
+            ! if(if_compute_imag.and.mod(it,irdt)==0) then
+            !     call cpu_time(tic)
+            !     call imaging(fld_a,fld_u,it,cb%imag)
+            !     call cpu_time(toc)
+            !     tt6=tt6+toc-tic
+            ! endif
+
+            ! !energy term of sfield
+            ! if(self%if_compute_engy.and.mod(it,irdt)==0) then
+            !     call cpu_time(tic)
+            !     call energy(fld_u,it,cb%engy)
+            !     call cpu_time(toc)
+            !     tt6=tt6+toc-tic
+            ! endif
+                
+            !========================================================!
+
+            ! if(present(o_sf)) then
+                !backward step 2: v^it+1 -> v^it by FD of s^it+0.5
+                call cpu_time(tic)
+                call self%update_velocities(fld_u,time_dir,it)
+                call cpu_time(toc)
+                tt7=tt7+toc-tic
+
+                !backward step 1: rm forces from v^it
+                call cpu_time(tic)
+                call self%inject_velocities(fld_u,time_dir,it)
+                call cpu_time(toc)
+                tt8=tt8+toc-tic
+            ! endif
+
+            !--------------------------------------------------------!
+
+            !adjoint step 3: inject to v^it+1 at receivers
+            call cpu_time(tic)
+            call self%inject_velocities(fld_a,time_dir,it)
+            call cpu_time(toc)
+            tt9=tt9+toc-tic
+
+            !adjoint step 2: v^it+1 -> v^it by FD^T of s^it+0.5
+            call cpu_time(tic)
+            call self%update_velocities(fld_a,time_dir,it)
+            call cpu_time(toc)
+            tt10=tt10+toc-tic
+            
+            !adjoint step 1: sample v^it or s^it+0.5 at source position
+            if(if_record_adjseismo) then
+                call cpu_time(tic)
+                call self%extract(fld_a,it)
+                call cpu_time(toc)
+                tt11=tt11+toc-tic
+            endif
+            
+            !grho: sfield%v_dt^it \dot rfield%v^it
+            !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
+            if(if_compute_grad.and.mod(it,irdt)==0) then
+                call cpu_time(tic)
+                call gradient_density(fld_a,fld_u,it,cb%grad(:,:,:,1))
+                call cpu_time(toc)
+                tt6=tt6+toc-tic
+            endif
+            
+            !snapshot
+            call fld_a%write(it,o_suffix='_rev')
+            call fld_u%write(it,o_suffix='_rev')
+            if(if_compute_imag) then
+                call fld_a%write_ext(it,'imag' ,cb%imag,size(cb%imag))
+            endif
+            if(if_compute_grad) then
+                ! call fld_a%write_ext(it,'grad_density',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
+                ! call fld_a%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+                call fld_a%write_ext(it,'grad_a_star_Du' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+            endif
+            if(self%if_compute_engy) then
+                call fld_a%write_ext(it,'engy',cb%engy(:,:,:,1),size(cb%engy(:,:,:,1)))
+            endif
+
+        enddo
+        
+        !postprocess
+        if(if_compute_imag) call imaging_postprocess
+        if(if_compute_grad) call gradient_postprocess
+        
+        if(mpiworld%is_master) then
+            write(*,*) 'Elapsed time to load boundary            ',tt1/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update stresses          ',tt2/mpiworld%max_threads
+            write(*,*) 'Elapsed time to rm source stresses       ',tt3/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update velocities        ',tt7/mpiworld%max_threads
+            write(*,*) 'Elapsed time to rm source velocities     ',tt8/mpiworld%max_threads
+            write(*,*) 'Elapsed time ----------------------------'
+            write(*,*) 'Elapsed time to add adjsource stresses   ',tt4/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update adj stresses      ',tt5/mpiworld%max_threads
+            write(*,*) 'Elapsed time to add adjsource velocities ',tt9/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update adj velocities    ',tt10/mpiworld%max_threads
+            write(*,*) 'Elapsed time to extract&write fields     ',tt11/mpiworld%max_threads
+            write(*,*) 'Elapsed time to correlate                ',tt6/mpiworld%max_threads
+
+        endif
+
+        call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
+        call hud('ximage < snap_rfield%*  n1='//num2str(cb%nz)//' perc=99')
+        call hud('xmovie < snap_rfield%*  n1='//num2str(cb%nz)//' n2='//num2str(cb%nx)//' clip=?e-?? loop=2 title=%g')
+        call hud('ximage < snap_*  n1='//num2str(cb%mz)//' perc=99')
+        call hud('xmovie < snap_*  n1='//num2str(cb%mz)//' n2='//num2str(cb%mx)//' clip=?e-?? loop=2 title=%g')
+        
+    end subroutine
+
+
+    !forward: add RHS to v^it
+    !adjoint: add RHS to v^it+1
+    subroutine inject_velocities(self,f,time_dir,it)
+        class(t_propagator) :: self
         type(t_field) :: f
         
-        ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
-        ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
-        ify=shot%src%ify; iy=shot%src%iy; ily=shot%src%ily
-        
-        source_term=time_dir*w
-        
-        if(if_hicks) then
-            select case (shot%src%icomp)
-                case (2)
-                f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + source_term *lm%buox(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff
-                
-                case (3)
-                f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + source_term *lm%buoy(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff
-                
-                case (4)
-                f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + source_term *lm%buoz(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff
-                
-            end select
+        if(.not. f%is_adjoint) then
+
+            ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
+            ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
+            ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
             
-        else
-            select case (shot%src%icomp)
-                case (2) !horizontal x force on vx[iz,ix-0.5,iy]
-                f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + source_term*lm%buox(iz,ix,iy)
-                
-                case (3) !horizontal y force on vy[iz,ix,iy-0.5]
-                f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + source_term*lm%buoy(iz,ix,iy)
-                
-                case (4) !vertical force     on vz[iz-0.5,ix,iy]
-                f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + source_term*lm%buoz(iz,ix,iy)
-                
-            end select
+            wl=time_dir*f%wavelet(1,it)
             
+            if(if_hicks) then
+                select case (shot%src%comp)
+                    case ('vz')
+                    f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoz(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
+                    
+                    case ('vx')
+                    f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buox(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
+                    
+                    case ('vy')
+                    f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoy(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
+                    
+                end select
+                
+            else
+                select case (shot%src%comp)
+                    case ('vz') !vertical force     on vz[iz-0.5,ix,iy]
+                    f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + wl*self%buoz(iz,ix,iy)
+                    
+                    case ('vx') !horizontal x force on vx[iz,ix-0.5,iy]
+                    f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + wl*self%buox(iz,ix,iy)
+                    
+                    case ('vy') !horizontal y force on vy[iz,ix,iy-0.5]
+                    f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + wl*self%buoy(iz,ix,iy)
+                    
+                end select
+                
+            endif
+
+            return
+
         endif
+
+
+            do i=1,shot%nrcv
+                ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
+                ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
+                ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
+                
+                wl=f%wavelet(i,it)
+                
+                if(if_hicks) then
+                    select case (shot%rcv(i)%comp)
+                        case ('vz') !vertical z adjsource
+                        f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
+
+                        case ('vx') !horizontal x adjsource
+                        f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buox(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
+                        
+                        case ('vy') !horizontal y adjsource
+                        f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
+                        
+                    end select
+                    
+                else
+                    select case (shot%rcv(i)%comp)
+                        case ('vz') !vertical z adjsource
+                        !vz[ix,iy,iz-0.5]
+                        f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + wl*self%buoz(iz,ix,iy) !no time_dir needed!
+
+                        case ('vx') !horizontal x adjsource
+                        !vx[ix-0.5,iy,iz]
+                        f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + wl*self%buox(iz,ix,iy) !no time_dir needed!
+                        
+                        case ('vy') !horizontal y adjsource
+                        !vy[ix,iy-0.5,iz]
+                        f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + wl*self%buoy(iz,ix,iy) !no time_dir needed!
+                        
+                    end select
+                    
+                endif
+                
+            enddo
         
     end subroutine
     
-    !v^it -> v^it+1 by FD of s^it+0.5
-    subroutine update_velocities(time_dir,it,f,bl)
-        integer :: time_dir, it
+    !forward: v^it -> v^it+1 by FD of s^it+0.5
+    !adjoint: v^it+1 -> v^it by FD^T of s^it+0.5
+    subroutine update_velocities(self,f,time_dir,it)
+        class(t_propagator) :: self
         type(t_field) :: f
-        integer,dimension(6) :: bl
-        
-        ifz=bl(1)+2
-        ilz=bl(2)-1
-        ifx=bl(3)+2
-        ilx=bl(4)-1
-        ify=bl(5)+2
-        ily=bl(6)-1
-        
-        if(m%if_freesurface) ifz=max(ifz,1)
-        
+
+        ifz=f%bloom(1,it)+2
+        ilz=f%bloom(2,it)-1
+        ifx=f%bloom(3,it)+2
+        ilx=f%bloom(4,it)-1
+        ify=f%bloom(5,it)+2
+        ily=f%bloom(6,it)-1
+
+        if(m%is_freesurface) ifz=max(ifz,1)
+
         if(m%is_cubic) then
-            call fd3d_flat_velocities(f%vx,f%vy,f%vz,f%shh,f%szz,                  &
-                                      f%cpml_dshh_dx,f%cpml_dshh_dy,f%cpml_dszz_dz,&
-                                      lm%buox,lm%buoy,lm%buoz,                     &
-                                      ifz,ilz,ifx,ilx,ify,ily,time_dir*shot%src%dt)
+            call fd3d_velocities(f%vz,f%vx,f%vy,f%szz,f%shh,             &
+                                 f%dszz_dz,f%dshh_dx,f%dshh_dy,          &
+                                 self%buoz,self%buox,self%buoy,          &
+                                 ifz,ilz,ifx,ilx,ify,ily,time_dir*self%dt)
         else
-            call fd2d_flat_velocities(f%vx,f%vz,f%shh,f%szz,              &
-                                      f%cpml_dshh_dx,f%cpml_dszz_dz,      &
-                                      lm%buox,lm%buoz,                    &
-                                      ifz,ilz,ifx,ilx,time_dir*shot%src%dt)
+
+            call fd2d_velocities(f%vz,f%vx,f%szz,f%shh,          &
+                                 f%dszz_dz,f%dshh_dx,            &
+                                 self%buoz,self%buox,            &
+                                 ifz,ilz,ifx,ilx,time_dir*self%dt)
+
+        endif
+
+        !apply free surface boundary condition if needed
+        if(m%is_freesurface) call fd_freesurface_velocities(f%vz)
+
+    end subroutine
+    
+    !forward: add RHS to s^it+0.5
+    !adjoint: add RHS to s^it+1.5
+    subroutine inject_stresses(self,f,time_dir,it)
+        class(t_propagator) :: self
+        type(t_field) :: f
+
+        if(.not. f%is_adjoint) then
+
+            ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
+            ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
+            ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
+            
+            wl=time_dir*f%wavelet(1,it)
+            
+            if(if_hicks) then
+                if(shot%src%comp=='p') then
+                    f%szz(ifz:ilz,ifx:ilx,ify:ily) = f%szz(ifz:ilz,ifx:ilx,ify:ily) &
+                        + wl*(szz_p*self%kpa           (ifz:ilz,ifx:ilx,ify:ily) +shh_p*self%kpa_sqrt1p2del(ifz:ilz,ifx:ilx,ify:ily))*shot%src%interp_coef
+                    f%shh(ifz:ilz,ifx:ilx,ify:ily) = f%shh(ifz:ilz,ifx:ilx,ify:ily) &
+                        + wl*(szz_p*self%kpa_sqrt1p2del(ifz:ilz,ifx:ilx,ify:ily) +shh_p*self%kpa_1p2eps    (ifz:ilz,ifx:ilx,ify:ily))*shot%src%interp_coef
+                endif
+                
+            else
+                if(shot%src%comp=='p') then
+                    !explosion on s[iz,ix,iy]
+                    f%szz(iz,ix,iy) = f%szz(iz,ix,iy) &
+                        + wl*(szz_p*self%kpa           (iz,ix,iy) +shh_p*self%kpa_sqrt1p2del(iz,ix,iy))
+                    f%shh(iz,ix,iy) = f%shh(iz,ix,iy) &
+                        + wl*(szz_p*self%kpa_sqrt1p2del(iz,ix,iy) +shh_p*self%kpa_1p2eps    (iz,ix,iy))
+
+                endif
+                
+            endif
+
+            return
+
+        endif
+
+            do i=1,shot%nrcv
+
+                if(shot%rcv(i)%comp=='p') then
+
+                    ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
+                    ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
+                    ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
+                    
+                    !adjsource for pressure
+                    wl=f%wavelet(i,it)
+                    
+                    if(if_hicks) then 
+
+                        f%szz(ifz:ilz,ifx:ilx,ify:ily) = f%szz(ifz:ilz,ifx:ilx,ify:ily) &
+                            +wl*(szz_p*self%kpa           (ifz:ilz,ifx:ilx,ify:ily) +shh_p*self%kpa_sqrt1p2del(ifz:ilz,ifx:ilx,ify:ily))*shot%rcv(i)%interp_coef !no time_dir needed!
+                        f%shh(ifz:ilz,ifx:ilx,ify:ily) = f%shh(ifz:ilz,ifx:ilx,ify:ily) &
+                            +wl*(szz_p*self%kpa_sqrt1p2del(ifz:ilz,ifx:ilx,ify:ily) +shh_p*self%kpa_1p2eps    (ifz:ilz,ifx:ilx,ify:ily))*shot%rcv(i)%interp_coef !no time_dir needed!
+
+                    else
+
+                        f%szz(iz,ix,iy) = f%szz(iz,ix,iy) + wl*(szz_p*self%kpa           (iz,ix,iy) +shh_p*self%kpa_sqrt1p2del(iz,ix,iy))
+                        f%shh(iz,ix,iy) = f%shh(iz,ix,iy) + wl*(szz_p*self%kpa_sqrt1p2del(iz,ix,iy) +shh_p*self%kpa_1p2eps    (iz,ix,iy))
+
+                    endif
+
+                endif
+
+            enddo
+        
+    end subroutine
+
+    !forward: s^it+0.5 -> s^it+1.5 by FD of v^it+1
+    !adjoint: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
+    subroutine update_stresses(self,f,time_dir,it)
+        class(t_propagator) :: self
+        type(t_field) :: f
+
+        ifz=f%bloom(1,it)+1
+        ilz=f%bloom(2,it)-2
+        ifx=f%bloom(3,it)+1
+        ilx=f%bloom(4,it)-2
+        ify=f%bloom(5,it)+1
+        ily=f%bloom(6,it)-2
+        
+        if(m%is_freesurface) ifz=max(ifz,1)
+
+        if(m%is_cubic) then
+            call fd3d_stresses(f%vz,f%vx,f%vy,f%szz,f%shh,                  &
+                               f%dvz_dz,f%dvx_dx,f%dvy_dy,                  &
+                               self%kpa,self%kpa_1p2eps,self%kpa_sqrt1p2del,&
+                               ifz,ilz,ifx,ilx,ify,ily,time_dir*self%dt)
+        else
+            call fd2d_stresses(f%vz,f%vx,f%szz,f%shh,                       &
+                               f%dvz_dz,f%dvx_dx,                           &
+                               self%kpa,self%kpa_1p2eps,self%kpa_sqrt1p2del,&
+                               ifz,ilz,ifx,ilx,time_dir*self%dt)
         endif
         
         !apply free surface boundary condition if needed
-        !free surface is located at [1,ix,iy] level
-        !so symmetric mirroring: vz[0.5]=vz[1.5], ie. vz(1,ix,iy)=vz(2,ix,iy) -> dszz(1,ix,iy)=0.
-        if(m%if_freesurface) then
-            f%vz(1,:,:)=f%vz(2,:,:)
-!             !$omp parallel default (shared)&
-!             !$omp private(ix,iy,i)
-!             !$omp do schedule(dynamic)
-!             do iy=ify,ily
-!             do ix=ifx,ilx
-!                 i=(1-cb%ifz) + (ix-cb%ifx)*nz + (iy-cb%ify)*nz*nx +1 !iz=1,ix,iy
-!                 
-!                 f%vz(i)=f%vz(i+1)
-!             enddo
-!             enddo
-!             !$omp enddo
-!             !$omp end parallel
-        endif
-        
+        if(m%is_freesurface) call fd_freesurface_stresses(f%szz)
+
     end subroutine
-    
-    !add RHS to s^it+0.5
-    subroutine put_stresses(time_dir,it,w,f)
-        integer :: time_dir
-        real :: w
+
+    subroutine extract(self,f,it)
+        class(t_propagator) :: self
         type(t_field) :: f
         
-        ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
-        ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
-        ify=shot%src%ify; iy=shot%src%iy; ily=shot%src%ily
-        
-        source_term=time_dir*w
-        
-        if(if_hicks) then
-            select case (shot%src%icomp)
-                case (1)
-                f%shh(ifz:ilz,ifx:ilx,ify:ily) = f%shh(ifz:ilz,ifx:ilx,ify:ily) + source_term *shot%src%interp_coeff
-                f%szz(ifz:ilz,ifx:ilx,ify:ily) = f%szz(ifz:ilz,ifx:ilx,ify:ily) + source_term *shot%src%interp_coeff
-            end select
-        
-        else
-            select case (shot%src%icomp)
-                case (1) !explosion on s[iz,ix,iy]
-                f%shh(iz,ix,iy) = f%shh(iz,ix,iy) + source_term
-                f%szz(iz,ix,iy) = f%szz(iz,ix,iy) + source_term
-            end select
+        if(.not.f%is_adjoint) then
+
+            do i=1,shot%nrcv
+                ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
+                ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
+                ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
+
+                if(if_hicks) then
+                    select case (shot%rcv(i)%comp)
+                        
+                        case ('p')
+                        f%seismo(i,it)=sum( (szz_p*f%szz(ifz:ilz,ifx:ilx,ify:ily) +shh_p*f%shh(ifz:ilz,ifx:ilx,ify:ily)) *shot%rcv(i)%interp_coef )
+                        case ('vz')
+                        f%seismo(i,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                        case ('vx')
+                        f%seismo(i,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                        case ('vy')
+                        f%seismo(i,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                    end select
+                    
+                else
+                    select case (shot%rcv(i)%comp)
+                        case ('p') !p[iz,ix,iy]
+                        f%seismo(i,it)=szz_p*f%szz(iz,ix,iy) +shh_p*f%shh(iz,ix,iy)
+                        case ('vz') !vz[iz-0.5,ix,iy]
+                        f%seismo(i,it)=f%vz(iz,ix,iy)
+                        case ('vx') !vx[iz,ix-0.5,iy]
+                        f%seismo(i,it)=f%vx(iz,ix,iy)
+                        case ('vy') !vy[iz,ix,iy-0.5]
+                        f%seismo(i,it)=f%vy(iz,ix,iy)
+                    end select
+                    
+                endif
+
+            enddo
+
+            return
+
+        endif
+
+            ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
+            ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
+            ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
             
-        endif
+            if(if_hicks) then
+                select case (shot%src%comp)
+                    case ('p')
+                    f%seismo(1,it)=sum((szz_p*f%szz(ifz:ilz,ifx:ilx,ify:ily) +shh_p*f%shh(ifz:ilz,ifx:ilx,ify:ily)) *shot%src%interp_coef)
+                    
+                    case ('vz')
+                    f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    
+                    case ('vx')
+                    f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    
+                    case ('vy')
+                    f%seismo(1,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    
+                end select
+                
+            else
+                select case (shot%src%comp)
+                    case ('p') !p[iz,ix,iy]
+                    f%seismo(1,it)=szz_p*f%szz(iz,ix,iy) +shh_p*f%shh(iz,ix,iy)
+                    
+                    case ('vz') !vz[iz-0.5,ix,iy]
+                    f%seismo(1,it)=f%vz(iz,ix,iy)
+                    
+                    case ('vx') !vx[iz,ix-0.5,iy]
+                    f%seismo(1,it)=f%vx(iz,ix,iy)
+                    
+                    case ('vy') !vy[iz,ix,iy-0.5]
+                    f%seismo(1,it)=f%vy(iz,ix,iy)
+                    
+                end select
+                
+            endif
         
     end subroutine
     
-    !s^it+0.5 -> s^it+1.5 by FD of v^it+1
-    subroutine update_stresses(time_dir,it,f,bl)
-        integer :: time_dir, it
-        type(t_field) :: f
-        integer,dimension(6) :: bl
+    subroutine final(self)
+        type(t_propagator) :: self
+        call dealloc(self%buoz, self%buox, self%buoy, self%kpa, self%inv_kpa)
+    end subroutine
+
+    !========= gradient, imaging or other correlations ===================
+    !For gradient:
+    !Kₘ<a|Au> = Kₘ<a|M∂ₜu-Du> = ∫ aᵀ KₘM ∂ₜu dt
+    !Since it's cumbersome to get ∂ₜu by time marching,
+    !replace ∂ₜu by M⁻¹Du and neglect f
+    !ie. M∂ₜu=Du+f -> ∂ₜu=M⁻¹Du+M⁻¹f ≐ M⁻¹Du
+    !This simplification introduces singularities in the gradient only at source positions,
+    !which are probably removed by gradient masking.
+    !
+    !Therefore, ∫ aᵀ KₘM ∂ₜu dt ≐ ∫ aᵀ KₘM M⁻¹Du dt =: a★Du
+    !    
+    !  [ρ                        ]
+    !  |  ρ                      |
+    !M=|    [κ        κ√(1+2δ)]⁻¹|
+    !  [    [κ√(1+2δ) κ(1+2ε) ]  ]
+    !
+    !M = diag₂(ρ)
+    !K_ρM M⁻¹ = diag₂(1) diag₂(b) = diag₂(b)
+    !
+    !M = _1_[  1     √(1+2δ)]⁻¹ = ___1___[   1+2ε  -√(1+2δ)]
+    !     κ [√(1+2δ) (1+2ε) ]     2κ(ε-δ)[-√(1+2δ)    1    ]
+    !        
+    !K_κM M⁻¹ = ___-1___[   1+2ε -√(1+2δ)] κ[  1     √(1+2δ)] = _-1_[1 0]
+    !           2κ²(ε-δ)[-√(1+2δ)   1    ]  [√(1+2δ) (1+2ε) ]     κ [0 1]
+    !       
+    !       [∂zᵇ szz^n+½]
+    !and Du=|∂ₓᵇ shh^n+½|
+    !       |∂zᶠ vz^n+1 |
+    !       [∂ₓᶠ vx^n+1 ]
+    !
+    !Therefore,
+    !grho = [vzᵃ vxᵃ] diag₂(b) [∂zᵇszz] = b[ vzᵃ*∂zᵇszz + vxᵃ*∂ₓᵇshh ]
+    !                          [∂ₓᵇshh]
+    !
+    !gkpa = -κ⁻¹ (szzᵃ*∂zᶠvz + shhᵃ*∂xᶠvx)
+    !
+
+    subroutine gradient_density(rf,sf,it,grad)
+        type(t_field), intent(in) :: rf, sf
+        real,dimension(cb%mz,cb%mx,cb%my) :: grad
         
-        ifz=bl(1)+1
-        ilz=bl(2)-2
-        ifx=bl(3)+1
-        ilx=bl(4)-2
-        ify=bl(5)+1
-        ily=bl(6)-2
-        
-        if(m%if_freesurface) ifz=max(ifz,1)
+        !nonzero only when sf touches rf
+        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
+        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
+        ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
+        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
+        ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
+        ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
         
         if(m%is_cubic) then
-            call fd3d_flat_stresses(f%vx,f%vy,f%vz,f%shh,f%szz,                 &
-                                    f%cpml_dvx_dx,f%cpml_dvy_dy,f%cpml_dvz_dz,  &
-                                    lm%kpa,lm%kpa_1p2eps,lm%kpa_sqrt1p2del,     &
-                                    ifz,ilz,ifx,ilx,ify,ily,time_dir*shot%src%dt)
+            call grad3d_density(rf%vz,rf%vx,rf%vy,sf%szz,sf%shh,&
+                                grad,                           &
+                                ifz,ilz,ifx,ilx,ify,ily)
         else
-            call fd2d_flat_stresses(f%vx,f%vz,f%shh,f%szz,                 &
-                                    f%cpml_dvx_dx,f%cpml_dvz_dz,           &
-                                    lm%kpa,lm%kpa_1p2eps,lm%kpa_sqrt1p2del,&
-                                    ifz,ilz,ifx,ilx,time_dir*shot%src%dt)
+            call grad2d_density(rf%vz,rf%vx,sf%szz,sf%shh,&
+                                grad,                     &
+                                ifz,ilz,ifx,ilx)
         endif
         
+    end subroutine
+
+    subroutine gradient_moduli(rf,sf,it,grad)
+        type(t_field), intent(in) :: rf, sf
+        real,dimension(cb%mz,cb%mx,cb%my) :: grad
+
+        !nonzero only when sf touches rf
+        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
+        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
+        ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
+        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
+        ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
+        ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
+        
+        if(m%is_cubic) then
+            call grad3d_moduli(rf%szz,rf%shh,sf%vz,sf%vx,sf%vy,&
+                               grad,                           &
+                               ifz,ilz,ifx,ilx,ify,ily)
+        else
+            !inexact greadient
+            call grad2d_moduli(rf%szz,rf%shh,sf%vz,sf%vx,&
+                               grad,                     &
+                               ifz,ilz,ifx,ilx)
+        endif
+        
+    end subroutine
+    
+    subroutine gradient_postprocess
+
+        !scale the kernel tobe a gradient in the discretized world
+        cb%grad = cb%grad*m%cell_volume*rdt
+        
+        !grho
+        cb%grad(:,:,:,1) = cb%grad(:,:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
+        !gkpa
+        cb%grad(:,:,:,2) = cb%grad(:,:,:,2) * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my))
+                
+        !preparing for cb%project_back
+        cb%grad(1,:,:,:) = cb%grad(2,:,:,:)
+
+    end subroutine
+
+    subroutine imaging(rf,sf,it,imag)
+        type(t_field), intent(in) :: rf, sf
+        real,dimension(cb%mz,cb%mx,cb%my) :: imag
+        
+        !nonzero only when sf touches rf
+        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
+        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
+        ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
+        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
+        ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
+        ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
+        
+        ! if(m%is_cubic) then
+        !     call imag3d_xcorr(rf%p,sf%p,&
+        !                       imag,                  &
+        !                       ifz,ilz,ifx,ilx,ify,ily)
+        ! ! else
+        !     call imag2d_xcorr(rf%p,sf%p,&
+        !                       imag,            &
+        !                       ifz,ilz,ifx,ilx)
+        ! endif
+
+        ! call imag2d_xcorr(rf%p,rf%vz,rf%vx,&
+        !                   sf%p,sf%vz,sf%vx,&
+        !                   imag,            &
+        !                   ifz,ilz,ifx,ilx)
+
+    end subroutine
+
+    subroutine imaging_postprocess
+
+        !scale by rdt tobe an image in the discretized world
+        cb%imag = cb%imag*rdt
+
+        !for cb%project_back
+        cb%imag(1,:,:,:) = cb%imag(2,:,:,:)
+
+    end subroutine
+
+    subroutine energy(sf,it,engy)
+        type(t_field),intent(in) :: sf
+        real,dimension(cb%mz,cb%mx,cb%my) :: engy
+
+        !nonzero only when sf touches rf
+        ifz=max(sf%bloom(1,it),2)
+        ilz=min(sf%bloom(2,it),cb%mz)
+        ifx=max(sf%bloom(3,it),1)
+        ilx=min(sf%bloom(4,it),cb%mx)
+        ify=max(sf%bloom(5,it),1)
+        ily=min(sf%bloom(6,it),cb%my)
+        
+        if(m%is_cubic) then
+            call engy3d_xcorr(sf%p,&
+                              engy,                  &
+                              ifz,ilz,ifx,ilx,ify,ily)
+        else
+            call engy2d_xcorr(sf%p,&
+                              engy,            &
+                              ifz,ilz,ifx,ilx)
+        endif
+
+    end subroutine
+
+    !========= Finite-Difference on flattened arrays ==================
+    
+    subroutine fd3d_velocities(vz,vx,vy,szz,shh,         &
+                               dszz_dz,dshh_dx,dshh_dy,  &
+                               buoz,buox,buoy,           &
+                               ifz,ilz,ifx,ilx,ify,ily,dt)
+        real,dimension(*) :: vz,vx,vy,szz,shh
+        real,dimension(*) :: dszz_dz,dshh_dx,dshh_dy
+        real,dimension(*) :: buoz,buox,buoy
+        
+        nz=cb%nz
+        nx=cb%nx
+        ny=cb%ny
+        
+        dszz_dz_=0.;dshh_dx_=0.;dshh_dy_=0.
+        
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,iy,i,&
+        !$omp         izm2_ix_iy,izm1_ix_iy,iz_ix_iy,izp1_ix_iy,&
+        !$omp         iz_ixm2_iy,iz_ixm1_iy,iz_ixp1_iy,&
+        !$omp         iz_ix_iym2,iz_ix_iym1,iz_ix_iyp1,&
+        !$omp         dszz_dz_,dshh_dx_,dshh_dy_)
+        !$omp do schedule(dynamic) collapse(2)
+        do iy=ify,ily
+        do ix=ifx,ilx
+        
+            !dir$ simd
+            do iz=ifz,ilz
+                
+                i=(iz-cb%ifz)+(ix-cb%ifx)*nz+(iy-cb%ify)*nz*nx+1
+                
+                izm2_ix_iy=i-2  !iz-2,ix,iy
+                izm1_ix_iy=i-1  !iz-1,ix,iy
+                iz_ix_iy  =i    !iz,ix,iy
+                izp1_ix_iy=i+1  !iz+1,ix,iy
+                
+                iz_ixm2_iy=i  -2*nz  !iz,ix-2,iy
+                iz_ixm1_iy=i    -nz  !iz,ix-1,iy
+                iz_ixp1_iy=i    +nz  !iz,ix+1,iy
+                
+                iz_ix_iym2=i  -2*nz*nx  !iz,ix,iy-2
+                iz_ix_iym1=i    -nz*nx  !iz,ix,iy-1
+                iz_ix_iyp1=i    +nz*nx  !iz,ix,iy+1
+                
+                dszz_dz_= c1z*(szz(iz_ix_iy)-szz(izm1_ix_iy)) +c2z*(szz(izp1_ix_iy)-szz(izm2_ix_iy))
+                dshh_dx_= c1x*(shh(iz_ix_iy)-shh(iz_ixm1_iy)) +c2x*(shh(iz_ixp1_iy)-shh(iz_ixm2_iy))
+                dshh_dy_= c1y*(shh(iz_ix_iy)-shh(iz_ix_iym1)) +c2y*(shh(iz_ix_iyp1)-shh(iz_ix_iym2))
+                
+                !cpml
+                dszz_dz(iz_ix_iy)= cpml%b_z_half(iz)*dszz_dz(iz_ix_iy) + cpml%a_z_half(iz)*dszz_dz_
+                dshh_dx(iz_ix_iy)= cpml%b_x_half(ix)*dshh_dx(iz_ix_iy) + cpml%a_x_half(ix)*dshh_dx_
+                dshh_dy(iz_ix_iy)= cpml%b_y_half(iy)*dshh_dy(iz_ix_iy) + cpml%a_y_half(iy)*dshh_dy_
+                
+                dszz_dz_ = dszz_dz_*cpml%kpa_z_half(iz) + dszz_dz(iz_ix_iy)
+                dshh_dx_ = dshh_dx_*cpml%kpa_x_half(ix) + dshh_dx(iz_ix_iy)
+                dshh_dy_ = dshh_dy_*cpml%kpa_y_half(iy) + dshh_dy(iz_ix_iy)
+                
+                !velocity
+                vz(iz_ix_iy)=vz(iz_ix_iy) + dt*buoz(iz_ix_iy)*dszz_dz_
+                vx(iz_ix_iy)=vx(iz_ix_iy) + dt*buox(iz_ix_iy)*dshh_dx_
+                vy(iz_ix_iy)=vy(iz_ix_iy) + dt*buoy(iz_ix_iy)*dshh_dy_
+                
+            enddo
+            
+        enddo
+        enddo
+        !$omp end do
+        !$omp end parallel
+        
+    end subroutine
+    
+    subroutine fd2d_velocities(vz,vx,szz,shh,    &
+                               dszz_dz,dshh_dx,  &
+                               buoz,buox,        &
+                               ifz,ilz,ifx,ilx,dt)
+        real,dimension(*) :: vz,vx,szz,shh
+        real,dimension(*) :: dszz_dz,dshh_dx
+        real,dimension(*) :: buoz,buox
+        
+        nz=cb%nz
+        nx=cb%nx
+        
+        dszz_dz_=0.; dshh_dx_=0.
+
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,&
+        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,&
+        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,&
+        !$omp         dszz_dz_,dshh_dx_)
+        !$omp do schedule(dynamic)
+        do ix=ifx,ilx
+
+            !dir$ simd
+            do iz=ifz,ilz
+
+                i=(iz-cb%ifz)+(ix-cb%ifx)*nz+1
+                
+                izm2_ix=i-2  !iz-2,ix
+                izm1_ix=i-1  !iz-1,ix
+                iz_ix  =i    !iz,ix
+                izp1_ix=i+1  !iz+1,ix
+                
+                iz_ixm2=i  -2*nz  !iz,ix-2
+                iz_ixm1=i    -nz  !iz,ix-1
+                iz_ixp1=i    +nz  !iz,ix+1
+
+                dszz_dz_= c1z*(szz(iz_ix)-szz(izm1_ix)) +c2z*(szz(izp1_ix)-szz(izm2_ix))
+                dshh_dx_= c1x*(shh(iz_ix)-shh(iz_ixm1)) +c2x*(shh(iz_ixp1)-shh(iz_ixm2))
+                
+                !cpml
+                dszz_dz(iz_ix)= cpml%b_z_half(iz)*dszz_dz(iz_ix) + cpml%a_z_half(iz)*dszz_dz_
+                dshh_dx(iz_ix)= cpml%b_x_half(ix)*dshh_dx(iz_ix) + cpml%a_x_half(ix)*dshh_dx_
+
+                dszz_dz_=dszz_dz_*cpml%kpa_z_half(iz) + dszz_dz(iz_ix)
+                dshh_dx_=dshh_dx_*cpml%kpa_x_half(ix) + dshh_dx(iz_ix)
+                
+                !velocity
+                vz(iz_ix)=vz(iz_ix) + dt*buoz(iz_ix)*dszz_dz_
+                vx(iz_ix)=vx(iz_ix) + dt*buox(iz_ix)*dshh_dx_
+
+            enddo
+            
+        enddo
+        !$omp end do
+        !$omp end parallel
+        
+    end subroutine
+    
+    subroutine fd3d_stresses(vz,vx,vy,szz,shh,             &
+                             dvz_dz,dvx_dx,dvy_dy,         &
+                             kpa,kpa_1p2eps,kpa_sqrt1p2del,&
+                             ifz,ilz,ifx,ilx,ify,ily,dt)
+        real,dimension(*) :: vz,vx,vy,szz,shh
+        real,dimension(*) :: dvz_dz,dvx_dx,dvy_dy
+        real,dimension(*) :: kpa,kpa_1p2eps,kpa_sqrt1p2del
+        
+        nz=cb%nz
+        nx=cb%nx
+        ny=cb%ny
+        
+        dvz_dz_=0.;dvx_dx_=0.;dvy_dy_=0.
+        
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,iy,i,&
+        !$omp         izm1_ix_iy,iz_ix_iy,izp1_ix_iy,izp2_ix_iy,&
+        !$omp         iz_ixm1_iy,iz_ixp1_iy,iz_ixp2_iy,&
+        !$omp         iz_ix_iym1,iz_ix_iyp1,iz_ix_iyp2,&
+        !$omp         dvz_dz_,dvx_dx_,dvy_dy_)
+        !$omp do schedule(dynamic) collapse(2)
+        do iy=ify,ily
+        do ix=ifx,ilx
+        
+            !dir$ simd
+            do iz=ifz,ilz
+            
+                i=(iz-cb%ifz)+(ix-cb%ifx)*nz+(iy-cb%ify)*nz*nx+1
+                
+                izm1_ix_iy=i-1  !iz-1,ix,iy
+                iz_ix_iy  =i    !iz,ix,iy
+                izp1_ix_iy=i+1  !iz+1,ix,iy
+                izp2_ix_iy=i+2  !iz+2,ix,iy
+                
+                iz_ixm1_iy=i       -nz  !iz,ix-1,iy
+                iz_ixp1_iy=i       +nz  !iz,ix+1,iy
+                iz_ixp2_iy=i     +2*nz  !iz,ix+2,iy
+                
+                iz_ix_iym1=i    -nz*nx  !iz,ix,iy-1
+                iz_ix_iyp1=i    +nz*nx  !iz,ix,iy+1
+                iz_ix_iyp2=i  +2*nz*nx  !iz,ix,iy+2
+                
+                dvz_dz_= c1z*(vz(izp1_ix_iy)-vz(iz_ix_iy))  +c2z*(vz(izp2_ix_iy)-vz(izm1_ix_iy))
+                dvx_dx_= c1x*(vx(iz_ixp1_iy)-vx(iz_ix_iy))  +c2x*(vx(iz_ixp2_iy)-vx(iz_ixm1_iy))
+                dvy_dy_= c1y*(vy(iz_ix_iyp1)-vy(iz_ix_iy))  +c2y*(vy(iz_ix_iyp2)-vy(iz_ix_iym1))
+                
+                !cpml
+                dvz_dz(iz_ix_iy)=cpml%b_z(iz)*dvz_dz(iz_ix_iy)+cpml%a_z(iz)*dvz_dz_
+                dvx_dx(iz_ix_iy)=cpml%b_x(ix)*dvx_dx(iz_ix_iy)+cpml%a_x(ix)*dvx_dx_
+                dvy_dy(iz_ix_iy)=cpml%b_y(iy)*dvy_dy(iz_ix_iy)+cpml%a_y(iy)*dvy_dy_
+
+                dvz_dz_=dvz_dz_*cpml%kpa_z(iz) + dvz_dz(iz_ix_iy)
+                dvx_dx_=dvx_dx_*cpml%kpa_x(ix) + dvx_dx(iz_ix_iy)
+                dvy_dy_=dvy_dy_*cpml%kpa_y(iy) + dvy_dy(iz_ix_iy)
+            
+                !stresses
+                szz(iz_ix_iy) = szz(iz_ix_iy) + dt * (kpa           (iz_ix_iy) *dvz_dz_ + kpa_sqrt1p2del(iz_ix_iy) *(dvx_dx_+dvy_dy_))
+                shh(iz_ix_iy) = shh(iz_ix_iy) + dt * (kpa_sqrt1p2del(iz_ix_iy) *dvz_dz_ + kpa_1p2eps    (iz_ix_iy) *(dvx_dx_+dvy_dy_))
+
+            enddo
+            
+        enddo
+        enddo
+        !$omp enddo 
+        !$omp end parallel
+        
+    end subroutine
+    
+    subroutine fd2d_stresses(vz,vx,szz,shh,                &
+                             dvz_dz,dvx_dx,                &
+                             kpa,kpa_1p2eps,kpa_sqrt1p2del,&
+                             ifz,ilz,ifx,ilx,dt)
+        real,dimension(*) :: vz,vx,szz,shh
+        real,dimension(*) :: dvz_dz,dvx_dx
+        real,dimension(*) :: kpa,kpa_1p2eps,kpa_sqrt1p2del
+        
+        nz=cb%nz
+        nx=cb%nx
+        
+        dvz_dz_=0.;dvx_dx_=0.
+        
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,&
+        !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
+        !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
+        !$omp         dvz_dz_,dvx_dx_)
+        !$omp do schedule(dynamic)
+        do ix=ifx,ilx
+        
+            !dir$ simd
+            do iz=ifz,ilz
+            
+                i=(iz-cb%ifz)+(ix-cb%ifx)*nz+1
+                
+                izm1_ix=i-1  !iz-1,ix
+                iz_ix  =i    !iz,ix
+                izp1_ix=i+1  !iz+1,ix
+                izp2_ix=i+2  !iz+2,ix
+                
+                iz_ixm1=i  -nz  !iz,ix-1
+                iz_ixp1=i  +nz  !iz,ix+1
+                iz_ixp2=i  +2*nz !iz,ix+2
+                
+                dvz_dz_= c1z*(vz(izp1_ix)-vz(iz_ix))  +c2z*(vz(izp2_ix)-vz(izm1_ix))
+                dvx_dx_= c1x*(vx(iz_ixp1)-vx(iz_ix))  +c2x*(vx(iz_ixp2)-vx(iz_ixm1))
+                
+                !cpml
+                dvz_dz(iz_ix)=cpml%b_z(iz)*dvz_dz(iz_ix)+cpml%a_z(iz)*dvz_dz_
+                dvx_dx(iz_ix)=cpml%b_x(ix)*dvx_dx(iz_ix)+cpml%a_x(ix)*dvx_dx_
+
+                dvz_dz_=dvz_dz_*cpml%kpa_z(iz) + dvz_dz(iz_ix)
+                dvx_dx_=dvx_dx_*cpml%kpa_x(ix) + dvx_dx(iz_ix)
+                
+                !stresses
+                szz(iz_ix) = szz(iz_ix) + dt * (kpa           (iz_ix) *dvz_dz_ + kpa_sqrt1p2del(iz_ix) *dvx_dx_)
+                shh(iz_ix) = shh(iz_ix) + dt * (kpa_sqrt1p2del(iz_ix) *dvz_dz_ + kpa_1p2eps    (iz_ix) *dvx_dx_)
+                
+            enddo
+            
+        enddo
+        !$omp enddo 
+        !$omp end parallel
+        
+    end subroutine
+
+
+    subroutine fd_freesurface_velocities(vz)
+        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: vz
+
+        !free surface is located at [1,ix,iy] level
+        !so symmetric mirroring: vz[0.5]=vz[1.5], ie. vz(1,ix,iy)=vz(2,ix,iy) -> dp(1,ix,iy)=0.
+            vz(1,:,:)=vz(2,:,:)
+            ! !$omp parallel default (shared)&
+            ! !$omp private(ix,iy,i)
+            ! !$omp do schedule(dynamic)
+            ! do iy=ify,ily
+            ! do ix=ifx,ilx
+            !     i=(1-cb%ifz) + (ix-cb%ifx)*nz + (iy-cb%ify)*nz*nx +1 !iz=1,ix,iy
+                
+            !     f%vz(i)=f%vz(i+1)
+            ! enddo
+            ! enddo
+            ! !$omp enddo
+            ! !$omp end parallel
+
+    end subroutine
+
+    subroutine fd_freesurface_stresses(szz)
+        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: szz
+
         !apply free surface boundary condition if needed
         !free surface is located at [1,ix,iy] level
         !so explicit boundary condition: szz(1,ix,iy)=0
         !and antisymmetric mirroring: szz(0,ix,iy)=-szz(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
-        if(m%if_freesurface) then
-            f%szz(1,:,:)=0.
-            f%szz(0,:,:)=-f%szz(2,:,:)
+
+        szz(1,:,:)=0.
+        szz(0,:,:)=-szz(2,:,:)
 !             !$omp parallel default (shared)&
 !             !$omp private(ix,iy,i)
 !             !$omp do schedule(dynamic)
@@ -379,605 +1441,32 @@ use, intrinsic :: ieee_arithmetic
 !             enddo
 !             !$omp enddo
 !             !$omp end parallel
-        endif
-        
-    end subroutine
-    
-    !get v^it+1 or s^it+1.5
-    subroutine get_field(f,seismo)
-        type(t_field) :: f
-        real,dimension(*) :: seismo
-        
-        do ircv=1,shot%nrcv
-            ifz=shot%rcv(ircv)%ifz; iz=shot%rcv(ircv)%iz; ilz=shot%rcv(ircv)%ilz
-            ifx=shot%rcv(ircv)%ifx; ix=shot%rcv(ircv)%ix; ilx=shot%rcv(ircv)%ilx
-            ify=shot%rcv(ircv)%ify; iy=shot%rcv(ircv)%iy; ily=shot%rcv(ircv)%ily
-            
-            if(if_hicks) then
-                select case (shot%rcv(ircv)%icomp)
-                    case (1)
-                    seismo(ircv)=sum( (factor_hh*f%shh(ifz:ilz,ifx:ilx,ify:ily) + factor_zz*f%szz(ifz:ilz,ifx:ilx,ify:ily)) *shot%rcv(ircv)%interp_coeff )
-                    case (2)
-                    seismo(ircv)=sum( f%vx(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff )
-                    case (3)
-                    seismo(ircv)=sum( f%vy(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff )
-                    case (4)
-                    seismo(ircv)=sum( f%vz(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff )
-                end select
-                
-            else
-                select case (shot%rcv(ircv)%icomp)
-                    case (1) !shh,szz[iz,ix,iy]
-                    seismo(ircv)=factor_hh * f%shh(iz,ix,iy) + factor_zz * f%szz(iz,ix,iy)
-                    case (2) !vx[iz,ix-0.5,iy]
-                    seismo(ircv)=f%vx(iz,ix,iy)
-                    case (3) !vy[iz,ix,iy-0.5]
-                    seismo(ircv)=f%vy(iz,ix,iy)
-                    case (4) !vz[iz-0.5,ix,iy]
-                    seismo(ircv)=f%vz(iz,ix,iy)
-                end select
-                
-            endif
-            
-        enddo
-        
-    end subroutine
-    
-    
-    !========= adjoint propagation =================
-    !WE:        du_dt   = MDu   + src
-    !->        Ndu_dt   = Du    + Nsrc, N=M^-1
-    !Adjoint:  Ndv_dt^T = D^Tv  + adjsrc
-    !->        -dv_dt   =-MDv   + Mr
-    !     (reverse time) (negative derivatives)
-    !
-    !Discrete form (staggered grid in space and time, 2D as example):
-    ! N  [vx^it+1  ] [vx^it    ]   [ 0     0    dx(-)][vx^it+1  ]
-    !----|vz^it+1  |-|vz^it    | = | 0     0    dz(-)||vz^it+1  |  +Nsrc
-    ! dt [ s^it+1.5] [ s^it+0.5]   [dx(+) dz(+)  0   ][ s^it+0.5]
-    !dx(-):=a1(s(ix)-s(ixm1))+a2(s(ixp1)-s(ixm2))  (O(x4))
-    !dx(+):=a1(v(ixp1)-v(ix))+a2(v(ixp2)-v(ixm1))  (O(x4))
-    !Adjoint:
-    ! N  [vx^it    ] [vx^it+1  ]   [ 0       0      dx(+)^T][vx^it+1  ]
-    !----|vz^it    |-|vz^it+1  | = | 0       0      dz(+)^T||vz^it+1  |  +Nsrc
-    ! dt [ s^it+0.5] [ s^it+1.5]   [dx(-)^T dz(-)^T  0     ][ s^it+0.5]
-    !dx(+)^T=a1(s(ixm1)-s(ix))+a2(s(ixm2)-s(ixp1))=-dx(-)
-    !dx(-)^T=a1(v(ix)-v(ixp1))+a2(v(ixm1)-v(ixp2))=-dx(+)
-    !-dx,-dz can be regarded as -dt, thus allowing to use same code with flip of dt sign.
-    !transposes of time derivatives centered on v^it+0.5 and s^it+1
-    !so v^it+1   - v^it     => v^it - v^it+1
-    !   s^it+1.5 - s^it+0.5 => s^it+0.5 - s^it+1.5
-    !
-    !In each time step:
-    !d=RGAsrc, src:source term, A:put source, G:propagator, R:sampling at receivers
-    !d=[vx vy vz p]^T, R=[I  0   0 ], A=[diag3(b) 0], src=[fx fy fz p]^T
-    !                    |0 2/3 1/3|    [   0     1]
-    !                    [   0    1]
-    !Adjoint: src=A^T N G^T M R^T d
-    !M R^T:put adjoint sources, 
-    !G^T:  adjoint propagator,
-    !A^T N:get adjoint fields
-    
-    
-    !add RHS to s^it+1.5
-    subroutine put_stresses_adjoint(time_dir,it,adjsource,f)
-        integer :: time_dir
-        real,dimension(*) :: adjsource
-        type(t_field) :: f
-        
-        do ircv=1,shot%nrcv
-            ifz=shot%rcv(ircv)%ifz; iz=shot%rcv(ircv)%iz; ilz=shot%rcv(ircv)%ilz
-            ifx=shot%rcv(ircv)%ifx; ix=shot%rcv(ircv)%ix; ilx=shot%rcv(ircv)%ilx
-            ify=shot%rcv(ircv)%ify; iy=shot%rcv(ircv)%iy; ily=shot%rcv(ircv)%ily
-            
-            tmp=adjsource(ircv)
-        
-            if(if_hicks) then
-                select case (shot%rcv(ircv)%icomp)
-                    case (1) !pressure adjsource
-                    f%shh(ifz:ilz,ifx:ilx,ify:ily) = f%shh(ifz:ilz,ifx:ilx,ify:ily)   &
-                        +tmp*( factor_hh*lm%kpa_1p2eps(ifz:ilz,ifx:ilx,ify:ily)       &
-                              +factor_zz*lm%kpa_sqrt1p2del(ifz:ilz,ifx:ilx,ify:ily) ) &
-                        *shot%rcv(ircv)%interp_coeff
-        
-                    f%szz(ifz:ilz,ifx:ilx,ify:ily) = f%szz(ifz:ilz,ifx:ilx,ify:ily)   &
-                        +tmp*( factor_hh*lm%kpa_sqrt1p2del(ifz:ilz,ifx:ilx,ify:ily)   &
-                              +factor_zz*lm%kpa(ifz:ilz,ifx:ilx,ify:ily)            ) &
-                        *shot%rcv(ircv)%interp_coeff
-                end select
-                
-            else
-                select case (shot%rcv(ircv)%icomp)
-                    case (1) !pressure adjsource
-                    !shh[iz,ix,iy]
-                    f%shh(iz,ix,iy) = f%shh(iz,ix,iy)  &
-                        +tmp*( factor_hh*lm%kpa_1p2eps(iz,ix,iy)       &
-                              +factor_zz*lm%kpa_sqrt1p2del(iz,ix,iy) )
-                    
-                    !szz[iz,ix,iy]
-                    f%szz(iz,ix,iy) = f%szz(iz,ix,iy) &
-                        +tmp*( factor_hh*lm%kpa_sqrt1p2del(iz,ix,iy)   &
-                              +factor_zz*lm%kpa(iz,ix,iy)            )
-                end select
-                
-            endif
-            
-        enddo
-        
-    end subroutine
-    
-    !s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
-    subroutine update_stresses_adjoint(time_dir,it,f,bl)
-        integer :: time_dir, it
-        type(t_field) :: f
-        integer,dimension(6) :: bl
-        
-        !same code with -dt
-        call update_stresses(time_dir,it,f,bl)
-        
-    end subroutine
-    
-    !add RHS to v^it+1
-    subroutine put_velocities_adjoint(time_dir,it,adjsource,f)
-        integer :: time_dir
-        real,dimension(*) :: adjsource
-        type(t_field) :: f
-        
-        do ircv=1,shot%nrcv
-            ifz=shot%rcv(ircv)%ifz; iz=shot%rcv(ircv)%iz; ilz=shot%rcv(ircv)%ilz
-            ifx=shot%rcv(ircv)%ifx; ix=shot%rcv(ircv)%ix; ilx=shot%rcv(ircv)%ilx
-            ify=shot%rcv(ircv)%ify; iy=shot%rcv(ircv)%iy; ily=shot%rcv(ircv)%ily
-            
-            tmp=adjsource(ircv)
-            
-            if(if_hicks) then
-                select case (shot%rcv(ircv)%icomp)
-                    case (2) !horizontal x adjsource
-                    f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + tmp*lm%buox(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff
-                    
-                    case (3) !horizontal y adjsource
-                    f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + tmp*lm%buoy(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff
-                    
-                    case (4) !horizontal z adjsource
-                    f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + tmp*lm%buoz(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(ircv)%interp_coeff
-                end select
-                
-            else
-                select case (shot%rcv(ircv)%icomp)
-                    case (2) !horizontal x adjsource
-                    !vx[ix-0.5,iy,iz]
-                    f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + tmp*lm%buox(iz,ix,iy)
-                    
-                    case (3) !horizontal y adjsource
-                    !vy[ix,iy-0.5,iz]
-                    f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + tmp*lm%buoy(iz,ix,iy)
-                    
-                    case (4) !horizontal z adjsource
-                    !vz[ix,iy,iz-0.5]
-                    f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + tmp*lm%buoz(iz,ix,iy)
-                end select
-                
-            endif
-        
-        enddo
-        
-    end subroutine
-    
-    !v^it+1 -> v^it by FD^T of s^it+0.5
-    subroutine update_velocities_adjoint(time_dir,it,f,bl)
-        integer :: time_dir, it
-        type(t_field) :: f
-        integer,dimension(6) :: bl
-        
-        !same code with -dt
-        call update_velocities(time_dir,it,f,bl)
-        
-    end subroutine
-    
-    !get v^it or s^it+0.5
-    subroutine get_field_adjoint(f,w)
-        type(t_field) :: f
-        real w
-        
-        ifz=shot%src%ifz; iz=shot%src%iz; ilz=shot%src%ilz
-        ifx=shot%src%ifx; ix=shot%src%ix; ilx=shot%src%ilx
-        ify=shot%src%ify; iy=shot%src%iy; ily=shot%src%ily
-            
-        if(if_hicks) then
-            select case (shot%src%icomp)
-                case (1)
-                w = sum( &
-        ( lm%kpa           (ifz:ilz,ifx:ilx,ify:ily)*f%shh(ifz:ilz,ifx:ilx,ify:ily) -lm%kpa_sqrt1p2del(ifz:ilz,ifx:ilx,ify:ily)*f%szz(ifz:ilz,ifx:ilx,ify:ily)   &
-         -lm%kpa_sqrt1p2del(ifz:ilz,ifx:ilx,ify:ily)*f%shh(ifz:ilz,ifx:ilx,ify:ily) +lm%kpa_1p2eps    (ifz:ilz,ifx:ilx,ify:ily)*f%szz(ifz:ilz,ifx:ilx,ify:ily) ) &
-         *lm%invkpa(ifz:ilz,ifx:ilx,ify:ily)*lm%invkpa(ifz:ilz,ifx:ilx,ify:ily)*lm%inv2epsmdel(ifz:ilz,ifx:ilx,ify:ily)  *shot%src%interp_coeff )
-                
-                case (2)
-                w = sum( f%vx(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff )
-                
-                case (3)
-                w = sum( f%vy(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff )
-                
-                case (4)
-                w = sum( f%vz(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coeff )
-                
-            end select
-            
-        else
-            select case (shot%src%icomp)
-                case (1) !s[iz,ix,iy]
-                w = ( lm%kpa(iz,ix,iy)           *f%shh(iz,ix,iy) -lm%kpa_sqrt1p2del(iz,ix,iy)*f%szz(iz,ix,iy)   &
-                     -lm%kpa_sqrt1p2del(iz,ix,iy)*f%shh(iz,ix,iy) +lm%kpa_1p2eps(iz,ix,iy)    *f%szz(iz,ix,iy) ) &
-                     *lm%invkpa(iz,ix,iy)*lm%invkpa(iz,ix,iy)*lm%inv2epsmdel(iz,ix,iy)
-                
-                case (2) !vx[iz,ix-0.5,iy]
-                w=f%vx(iz,ix,iy)
-                
-                case (3) !vy[iz,ix,iy-0.5]
-                w=f%vy(iz,ix,iy)
-                
-                case (4) !vz[iz-0.5,ix,iy]
-                w=f%vz(iz,ix,iy)
-            end select
-            
-        endif
-        
-    end subroutine
-    
-    !========= for wavefield correlation ===================
-    !gkpa = -1/2epsmdel/kpa2 [dshh_dt dszz_dt] [    1      sqrt1p2del] [adjshh]
-    !                                          [sqrt1p2del   1p2eps  ] [adjsqq]
-    !     =           -1/kpa (dsvx_dx+dsvy_dy)*adjshh + dsvz_dz*adjszz)
-    !v^it+1, s^it+0.5, adjs^it+0.5
-    !
-    !grho = dv_dt                       \dot adjv
-    !     = b (dshh_dx+dshh_dy+dszz_dz) \dot adjv
-    !s^it+0.5, v^it, adjv^it
-    !use (v[i+1]+v[i])/2 to approximate v[i+0.5], so is adjv
-    
-    subroutine field_correlation_moduli(it,sf,rf,sb,rb,corr)
-        type(t_field) :: sf,rf
-        integer,dimension(6) :: sb,rb
-        real,dimension(*) :: corr
-        
-        !nonzero only when sf touches rf
-        ifz=max(sb(1),rb(1),2)
-        ilz=min(sb(2),rb(2),cb%mz-2)
-        ifx=max(sb(3),rb(3),2)
-        ilx=min(sb(4),rb(4),cb%mx-2)
-        ify=max(sb(5),rb(5),2)
-        ily=min(sb(6),rb(6),cb%my-2)
-        
-        if(m%is_cubic) then
-            call corr3d_flat_moduli(sf%vx, sf%vy, sf%vz,   &
-                                    rf%shh,rf%szz,         &
-                                    corr,                  &
-                                    ifz,ilz,ifx,ilx,ify,ily)
-        else
-            call corr2d_flat_moduli(sf%vx, sf%vz,  &
-                                    rf%shh,rf%szz, &
-                                    corr,          &
-                                    ifz,ilz,ifx,ilx)
-        endif
 
     end subroutine
-    
-    subroutine field_correlation_density(it,sf,rf,sb,rb,corr)
-        type(t_field) :: sf,rf
-        integer,dimension(6) :: sb,rb
-        real,dimension(*) :: corr
-        
-        !nonzero only when sf touches rf
-        ifz=max(sb(1),rb(1),2)
-        ilz=min(sb(2),rb(2),cb%mz-2)
-        ifx=max(sb(3),rb(3),2)
-        ilx=min(sb(4),rb(4),cb%mx-2)
-        ify=max(sb(5),rb(5),2)
-        ily=min(sb(6),rb(6),cb%my-2)
-        
-        if(m%is_cubic) then
-            call corr3d_flat_density(sf%shh,sf%szz,         &
-                                     rf%vx, rf%vy, rf%vz,   &
-                                     corr,                  &
-                                     ifz,ilz,ifx,ilx,ify,ily)
-        else
-            call corr2d_flat_density(sf%shh,sf%szz, &
-                                     rf%vx, rf%vz,  &
-                                     corr,          &
-                                     ifz,ilz,ifx,ilx)
-        endif
-        
-    end subroutine
-    
-    subroutine field_correlation_scaling(grad)
-        real,dimension(cb%mz,cb%mx,cb%my,2) :: grad
-        
-        grad(:,:,:,1)=grad(:,:,:,1) * (-lm%invkpa(1:cb%mz,1:cb%mx,1:cb%my))
-        
-        grad(:,:,:,2)=grad(:,:,:,2) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
 
-        !set unit of gkpa to be [m3], grho to be [m5/s2]
-        !such that after multiplied by (kpa_max-kpa_min) or (rho_max-rho_min) (will be done in m_parameterization.f90)
-        !the unit of parameter update is [Nm], same as Lagrangian
-        !and the unit of gradient scaling factor is [1/N/m] (in m_scaling.f90)
-        !therefore parameters become unitless
-        grad=grad*m%cell_volume*shot%src%dt
-        
-    end subroutine
     
-    !========= Finite-Difference on flattened arrays ==================
-    
-    subroutine fd3d_flat_velocities(vx,vy,vz,shh,szz,                      &
-                                    cpml_dshh_dx,cpml_dshh_dy,cpml_dszz_dz,&
-                                    buox,buoy,buoz,                        &
-                                    ifz,ilz,ifx,ilx,ify,ily,dt)
-        real,dimension(*) :: vx,vy,vz,shh,szz
-        real,dimension(*) :: cpml_dshh_dx,cpml_dshh_dy,cpml_dszz_dz
-        real,dimension(*) :: buox,buoy,buoz
+    subroutine grad3d_moduli(rf_szz,rf_shh,         &
+                             sf_vz,sf_vx,sf_vy,     &
+                             grad,                  &
+                             ifz,ilz,ifx,ilx,ify,ily)
+        real,dimension(*) :: rf_szz,rf_shh
+        real,dimension(*) :: sf_vz,sf_vx,sf_vy
+        real,dimension(*) :: grad
         
         nz=cb%nz
         nx=cb%nx
-        ny=cb%ny
-        
-        dshh_dx=0.;dshh_dy=0.;dszz_dz=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,iy,i,&
-        !$omp         izm2_ix_iy,izm1_ix_iy,iz_ix_iy,izp1_ix_iy,&
-        !$omp         iz_ixm2_iy,iz_ixm1_iy,iz_ixp1_iy,&
-        !$omp         iz_ix_iym2,iz_ix_iym1,iz_ix_iyp1,&
-        !$omp         dshh_dx,dshh_dy,dszz_dz)
-        !$omp do schedule(dynamic) collapse(2)
-        do iy=ify,ily
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
                 
-                i=(iz-cb%ifz)+(ix-cb%ifx)*nz+(iy-cb%ify)*nz*nx+1
-                
-                izm2_ix_iy=i-2  !iz-2,ix,iy
-                izm1_ix_iy=i-1  !iz-1,ix,iy
-                iz_ix_iy  =i    !iz,ix,iy
-                izp1_ix_iy=i+1  !iz+1,ix,iy
-                
-                iz_ixm2_iy=i-2*nz  !iz,ix-2,iy
-                iz_ixm1_iy=i  -nz  !iz,ix-1,iy
-                iz_ixp1_iy=i  +nz  !iz,ix+1,iy
-                
-                iz_ix_iym2=i-2*nz*nx  !iz,ix,iy-2
-                iz_ix_iym1=i  -nz*nx  !iz,ix,iy-1
-                iz_ix_iyp1=i  +nz*nx  !iz,ix,iy+1
-                
-                dshh_dx= c1x*(shh(iz_ix_iy)-shh(iz_ixm1_iy)) +c2x*(shh(iz_ixp1_iy)-shh(iz_ixm2_iy))
-                dshh_dy= c1y*(shh(iz_ix_iy)-shh(iz_ix_iym1)) +c2y*(shh(iz_ix_iyp1)-shh(iz_ix_iym2))
-                dszz_dz= c1z*(szz(iz_ix_iy)-szz(izm1_ix_iy)) +c2z*(szz(izp1_ix_iy)-szz(izm2_ix_iy))
-                
-                !cpml
-                cpml_dshh_dx(iz_ix_iy)= cb%b_x_half(ix)*cpml_dshh_dx(iz_ix_iy) + cb%a_x_half(ix)*dshh_dx
-                cpml_dshh_dy(iz_ix_iy)= cb%b_y_half(iy)*cpml_dshh_dy(iz_ix_iy) + cb%a_y_half(iy)*dshh_dy
-                cpml_dszz_dz(iz_ix_iy)= cb%b_z_half(iz)*cpml_dszz_dz(iz_ix_iy) + cb%a_z_half(iz)*dszz_dz
-                
-                dshh_dx=dshh_dx*cb%kappa_x_half(ix) + cpml_dshh_dx(iz_ix_iy)
-                dshh_dy=dshh_dy*cb%kappa_y_half(iy) + cpml_dshh_dy(iz_ix_iy)
-                dszz_dz=dszz_dz*cb%kappa_z_half(iz) + cpml_dszz_dz(iz_ix_iy)
-                
-                !velocity
-                vx(iz_ix_iy)=vx(iz_ix_iy) + dt*buox(iz_ix_iy)*dshh_dx
-                vy(iz_ix_iy)=vy(iz_ix_iy) + dt*buoy(iz_ix_iy)*dshh_dy
-                vz(iz_ix_iy)=vz(iz_ix_iy) + dt*buoz(iz_ix_iy)*dszz_dz
-                
-            enddo
-            
-        enddo
-        enddo
-        !$omp end do
-        !$omp end parallel
-        
-    end subroutine
-    
-    subroutine fd2d_flat_velocities(vx,vz,shh,szz,            &
-                                    cpml_dshh_dx,cpml_dszz_dz,&
-                                    buox,buoz,                &
-                                    ifz,ilz,ifx,ilx,dt)
-        real,dimension(*) :: vx,vz,shh,szz
-        real,dimension(*) :: cpml_dshh_dx,cpml_dszz_dz
-        real,dimension(*) :: buox,buoz
-        
-        nz=cb%nz
-        nx=cb%nx
-        
-        dshh_dx=0.;dszz_dz=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,&
-        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,&
-        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,&
-        !$omp         dshh_dx,dszz_dz)
-        !$omp do schedule(dynamic)
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-                
-                i=(iz-cb%ifz)+(ix-cb%ifx)*nz+1
-                
-                izm2_ix=i-2  !iz-2,ix
-                izm1_ix=i-1  !iz-1,ix
-                iz_ix  =i    !iz,ix
-                izp1_ix=i+1  !iz+1,ix
-                
-                iz_ixm2=i-2*nz  !iz,ix-2
-                iz_ixm1=i  -nz  !iz,ix-1
-                iz_ixp1=i  +nz  !iz,ix+1
-                
-                dshh_dx= c1x*(shh(iz_ix)-shh(iz_ixm1)) +c2x*(shh(iz_ixp1)-shh(iz_ixm2))
-                dszz_dz= c1z*(szz(iz_ix)-szz(izm1_ix)) +c2z*(szz(izp1_ix)-szz(izm2_ix))
-                
-                !cpml
-                cpml_dshh_dx(iz_ix)= cb%b_x_half(ix)*cpml_dshh_dx(iz_ix) + cb%a_x_half(ix)*dshh_dx
-                cpml_dszz_dz(iz_ix)= cb%b_z_half(iz)*cpml_dszz_dz(iz_ix) + cb%a_z_half(iz)*dszz_dz
-
-                dshh_dx=dshh_dx*cb%kappa_x_half(ix) + cpml_dshh_dx(iz_ix)
-                dszz_dz=dszz_dz*cb%kappa_z_half(iz) + cpml_dszz_dz(iz_ix)
-                
-                !velocity
-                vx(iz_ix)=vx(iz_ix) + dt*buox(iz_ix)*dshh_dx
-                vz(iz_ix)=vz(iz_ix) + dt*buoz(iz_ix)*dszz_dz
-                
-            enddo
-            
-        enddo
-        !$omp end do
-        !$omp end parallel
-        
-    end subroutine
-    
-    subroutine fd3d_flat_stresses(vx,vy,vz,shh,szz,                   &
-                                  cpml_dvx_dx,cpml_dvy_dy,cpml_dvz_dz,&
-                                  kpa,kpa_1p2eps,kpa_sqrt1p2del,      &
-                                  ifz,ilz,ifx,ilx,ify,ily,dt)
-        real,dimension(*) :: vx,vy,vz,shh,szz
-        real,dimension(*) :: cpml_dvx_dx,cpml_dvy_dy,cpml_dvz_dz
-        real,dimension(*) :: kpa,kpa_1p2eps,kpa_sqrt1p2del
-        
-        nz=cb%nz
-        nx=cb%nx
-        ny=cb%ny
-        
-        dvx_dx=0.;dvy_dy=0.;dvz_dz=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,iy,i,&
-        !$omp         izm1_ix_iy,iz_ix_iy,izp1_ix_iy,izp2_ix_iy,&
-        !$omp         iz_ixm1_iy,iz_ixp1_iy,iz_ixp2_iy,&
-        !$omp         iz_ix_iym1,iz_ix_iyp1,iz_ix_iyp2,&
-        !$omp         dvx_dx,dvy_dy,dvz_dz)
-        !$omp do schedule(dynamic) collapse(2)
-        do iy=ify,ily
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-            
-                i=(iz-cb%ifz)+(ix-cb%ifx)*nz+(iy-cb%ify)*nz*nx+1
-                
-                izm1_ix_iy=i-1  !iz-1,ix,iy
-                iz_ix_iy  =i    !iz,ix,iy
-                izp1_ix_iy=i+1  !iz+1,ix,iy
-                izp2_ix_iy=i+2  !iz+2,ix,iy
-                
-                iz_ixm1_iy=i  -nz  !iz,ix-1,iy
-                iz_ixp1_iy=i  +nz  !iz,ix+1,iy
-                iz_ixp2_iy=i +2*nz !iz,ix+2,iy
-                
-                iz_ix_iym1=i  -nz*nx  !iz,ix,iy-1
-                iz_ix_iyp1=i  +nz*nx  !iz,ix,iy+1
-                iz_ix_iyp2=i+2*nz*nx  !iz,ix,iy+2
-                
-                dvx_dx= c1x*(vx(iz_ixp1_iy)-vx(iz_ix_iy))  +c2x*(vx(iz_ixp2_iy)-vx(iz_ixm1_iy))
-                dvy_dy= c1y*(vy(iz_ix_iyp1)-vy(iz_ix_iy))  +c2y*(vy(iz_ix_iyp2)-vy(iz_ix_iym1))
-                dvz_dz= c1z*(vz(izp1_ix_iy)-vz(iz_ix_iy))  +c2z*(vz(izp2_ix_iy)-vz(izm1_ix_iy))
-                
-                !cpml
-                cpml_dvx_dx(iz_ix_iy)=cb%b_x(ix)*cpml_dvx_dx(iz_ix_iy)+cb%a_x(ix)*dvx_dx
-                cpml_dvy_dy(iz_ix_iy)=cb%b_y(iy)*cpml_dvy_dy(iz_ix_iy)+cb%a_y(iy)*dvy_dy
-                cpml_dvz_dz(iz_ix_iy)=cb%b_z(iz)*cpml_dvz_dz(iz_ix_iy)+cb%a_z(iz)*dvz_dz
-                
-                dvx_dx=dvx_dx*cb%kappa_x(ix) + cpml_dvx_dx(iz_ix_iy)
-                dvy_dy=dvy_dy*cb%kappa_y(iy) + cpml_dvy_dy(iz_ix_iy)
-                dvz_dz=dvz_dz*cb%kappa_z(iz) + cpml_dvz_dz(iz_ix_iy)
-                
-                !pressure
-                shh(iz_ix_iy) = shh(iz_ix_iy) + dt * (kpa_1p2eps(iz_ix_iy)     *(dvx_dx+dvy_dy) + kpa_sqrt1p2del(iz_ix_iy) *dvz_dz)
-                szz(iz_ix_iy) = szz(iz_ix_iy) + dt * (kpa_sqrt1p2del(iz_ix_iy) *(dvx_dx+dvy_dy) + kpa(iz_ix_iy)            *dvz_dz)
-                
-            enddo
-            
-        enddo
-        enddo
-        !$omp enddo 
-        !$omp end parallel
-        
-    end subroutine
-    
-    subroutine fd2d_flat_stresses(vx,vz,shh,szz,                &
-                                  cpml_dvx_dx,cpml_dvz_dz,      &
-                                  kpa,kpa_1p2eps,kpa_sqrt1p2del,&
-                                  ifz,ilz,ifx,ilx,dt)
-        real,dimension(*) :: vx,vz,shh,szz
-        real,dimension(*) :: cpml_dvx_dx,cpml_dvz_dz
-        real,dimension(*) :: kpa,kpa_1p2eps,kpa_sqrt1p2del
-        
-        nz=cb%nz
-        nx=cb%nx
-        
-        dvx_dx=0.;dvz_dz=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,&
-        !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-        !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dvx_dx,dvz_dz)
-        !$omp do schedule(dynamic)
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-            
-                i=(iz-cb%ifz)+(ix-cb%ifx)*nz+1
-                
-                izm1_ix=i-1  !iz-1,ix
-                iz_ix  =i    !iz,ix
-                izp1_ix=i+1  !iz+1,ix
-                izp2_ix=i+2  !iz+2,ix
-                
-                iz_ixm1=i  -nz  !iz,ix-1
-                iz_ixp1=i  +nz  !iz,ix+1
-                iz_ixp2=i +2*nz !iz,ix+2
-                
-                dvx_dx= c1x*(vx(iz_ixp1)-vx(iz_ix))  +c2x*(vx(iz_ixp2)-vx(iz_ixm1))
-                dvz_dz= c1z*(vz(izp1_ix)-vz(iz_ix))  +c2z*(vz(izp2_ix)-vz(izm1_ix))
-                
-                !cpml
-                cpml_dvx_dx(iz_ix)=cb%b_x(ix)*cpml_dvx_dx(iz_ix)+cb%a_x(ix)*dvx_dx
-                cpml_dvz_dz(iz_ix)=cb%b_z(iz)*cpml_dvz_dz(iz_ix)+cb%a_z(iz)*dvz_dz
-
-                dvx_dx=dvx_dx*cb%kappa_x(ix) + cpml_dvx_dx(iz_ix)
-                dvz_dz=dvz_dz*cb%kappa_z(iz) + cpml_dvz_dz(iz_ix)
-                
-                !pressure
-                shh(iz_ix) = shh(iz_ix) + dt * (kpa_1p2eps(iz_ix)     *dvx_dx + kpa_sqrt1p2del(iz_ix) *dvz_dz)
-                szz(iz_ix) = szz(iz_ix) + dt * (kpa_sqrt1p2del(iz_ix) *dvx_dx + kpa(iz_ix)            *dvz_dz)
-                
-            enddo
-            
-        enddo
-        !$omp enddo 
-        !$omp end parallel
-        
-    end subroutine
-    
-    subroutine corr3d_flat_moduli(sf_vx, sf_vy, sf_vz,   &
-                             	  rf_shh,rf_szz,         &
-                             	  corr,                  &
-                            	  ifz,ilz,ifx,ilx,ify,ily)
-        real,dimension(*) :: sf_vx, sf_vy, sf_vz
-        real,dimension(*) :: rf_shh,rf_szz
-        real,dimension(*) :: corr
-        
-        nz=cb%nz
-        nx=cb%nx
-        
-        dsshh=0.; dsszz=0.
-         rshh=0.;  rszz=0.
+         rszz=0.; rshh=0.
+        dsszz=0.; sshh=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,iy,i,j,&
         !$omp         izm1_ix_iy,iz_ix_iy,izp1_ix_iy,izp2_ix_iy,&
         !$omp         iz_ixm1_iy,iz_ixp1_iy,iz_ixp2_iy,&
         !$omp         iz_ix_iym1,iz_ix_iyp1,iz_ix_iyp2,&
-        !$omp         dsshh,dsszz,&
-        !$omp          rshh, rszz)
+        !$omp         dvz_dz,dvx_dx,dvy_dy,&
+        !$omp         rszz,rshh,&
+        !$omp         dsszz,sshh)
         !$omp do schedule(dynamic) collapse(2)
         do iy=ify,ily
         do ix=ifx,ilx
@@ -986,7 +1475,7 @@ use, intrinsic :: ieee_arithmetic
             do iz=ifz,ilz
                 
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !corr has no boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !grad has no boundary layers
                 
                 izm1_ix_iy=i-1  !iz-1,ix,iy
                 iz_ix_iy  =i    !iz,ix,iy
@@ -1001,14 +1490,14 @@ use, intrinsic :: ieee_arithmetic
                 iz_ix_iyp1=i    +nz*nx  !iz,ix,iy+1
                 iz_ix_iyp2=i  +2*nz*nx  !iz,ix,iy+2
                 
+                dsszz = c1z*(sf_vz(izp1_ix_iy)-sf_vz(iz_ix_iy)) +c2z*(sf_vz(izp2_ix_iy)-sf_vz(izm1_ix_iy))
                 dsshh = c1x*(sf_vx(iz_ixp1_iy)-sf_vx(iz_ix_iy)) +c2x*(sf_vx(iz_ixp2_iy)-sf_vx(iz_ixm1_iy)) &
                        +c1y*(sf_vy(iz_ix_iyp1)-sf_vy(iz_ix_iy)) +c2y*(sf_vy(iz_ix_iyp2)-sf_vy(iz_ix_iym1))
-                dsszz = c1z*(sf_vz(izp1_ix_iy)-sf_vz(iz_ix_iy)) +c2z*(sf_vz(izp2_ix_iy)-sf_vz(izm1_ix_iy))
                 
-                 rshh = rf_shh(i)*2. !rhh=rf%prev_shh(i)+rf%shh(i)
-                 rszz = rf_szz(i)*2.
-
-                corr(j)=corr(j) + 0.5*(dsshh*rshh + dsszz*rszz)
+                 rszz = rf_szz(i)
+                 rshh = rf_shh(i) !rshh=rf%prev_shh(i)+rf%shh(i)
+                
+                grad(j)=grad(j) + (dsshh*rshh + dsszz*rszz)
                 
             end do
             
@@ -1018,34 +1507,33 @@ use, intrinsic :: ieee_arithmetic
         !$omp end parallel
         
     end subroutine
-    
-    subroutine corr2d_flat_moduli(sf_vx, sf_vz,  &
-                             	  rf_shh,rf_szz, &
-                             	  corr,          &
-                              	  ifz,ilz,ifx,ilx)
-        real,dimension(*) :: sf_vx, sf_vz
-        real,dimension(*) :: rf_shh,rf_szz
-        real,dimension(*) :: corr
+
+    subroutine grad2d_moduli(rf_szz,rf_shh,sf_vz,sf_vx,&
+                             grad,                     &
+                             ifz,ilz,ifx,ilx)
+        real,dimension(*) :: rf_szz,rf_shh,sf_vz,sf_vx
+        real,dimension(*) :: grad
         
         nz=cb%nz
-
-        dsshh=0.; dsszz=0.
-         rshh=0.;  rszz=0.
+        
+        dsszz=0.; dsshh=0.
+         rszz=0.;  rshh=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
         !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
         !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dsshh,dsszz,&
-        !$omp          rshh, rszz)
+        !$omp         dvz_dz,dvx_dx,&
+        !$omp         rszz,rshh,&
+        !$omp         dsszz,dsshh)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
         
             !dir$ simd
             do iz=ifz,ilz
-            
+                
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !corr has no boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
                 
                 izm1_ix=i-1  !iz-1,ix
                 iz_ix  =i    !iz,ix
@@ -1056,43 +1544,41 @@ use, intrinsic :: ieee_arithmetic
                 iz_ixp1=i    +nz  !iz,ix+1
                 iz_ixp2=i  +2*nz  !iz,ix+2
                 
-                dsshh = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
                 dsszz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
+                dsshh = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
                 
-                 rshh = rf_shh(iz_ix)*2. !rhh=rf%prev_shh(i)+rf%shh(i)
-                 rszz = rf_szz(iz_ix)*2.
+                 rszz = rf_szz(iz_ix)
+                 rshh = rf_shh(iz_ix) !rshh=rf%prev_shh(i)+rf%shh(i)
                 
-                corr(j)=corr(j) + 0.5*(dsshh*rshh + dsszz*rszz)
+                grad(j)=grad(j) + (dsszz*rszz + dsshh*rshh)
                 
-            enddo
+            end do
             
-        enddo
-        !$omp end do 
+        end do
+        !$omp end do
         !$omp end parallel
-        
+
     end subroutine
     
-    subroutine corr3d_flat_density(sf_shh,sf_szz,         &
-                              	   rf_vx, rf_vy, rf_vz,   &
-                              	   corr,                  &
-                              	   ifz,ilz,ifx,ilx,ify,ily)
-        real,dimension(*) :: sf_shh,sf_szz
-        real,dimension(*) :: rf_vx, rf_vy, rf_vz
-        real,dimension(*) :: corr
+    subroutine grad3d_density(rf_vz,rf_vx,rf_vy,sf_szz,sf_shh,&
+                              grad,                           &
+                              ifz,ilz,ifx,ilx,ify,ily)
+        real,dimension(*) :: rf_vz,rf_vx,rf_vy,sf_szz,sf_shh
+        real,dimension(*) :: grad
         
         nz=cb%nz
         nx=cb%nx
         
-        dsvx=0.; dsvy=0.; dsvz=0.
-         rvx=0.;  rvy=0.;  rvz=0.
+        dsvz=0.; dsvx=0.; dsvy=0.
+         rvz=0.;  rvx=0.;  rvy=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,iy,i,j,&
         !$omp         izm2_ix_iy,izm1_ix_iy,iz_ix_iy,izp1_ix_iy,izp2_ix_iy,&
         !$omp         iz_ixm2_iy,iz_ixm1_iy,iz_ixp1_iy,iz_ixp2_iy,&
         !$omp         iz_ix_iym2,iz_ix_iym1,iz_ix_iyp1,iz_ix_iyp2,&
-        !$omp         dsvx,dsvy,dsvz,&
-        !$omp          rvx, rvy, rvz)
+        !$omp         rvz, rvx, rvy,&
+        !$omp         dsvz,dsvx,dsvy)
         !$omp do schedule(dynamic) collapse(2)
         do iy=ify,ily
         do ix=ifx,ilx
@@ -1101,7 +1587,7 @@ use, intrinsic :: ieee_arithmetic
             do iz=ifz,ilz
             
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !corr has no boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !grad has no boundary layers
 
                 izm2_ix_iy=i-2  !iz-2,ix,iy
                 izm1_ix_iy=i-1  !iz-1,ix,iy
@@ -1118,21 +1604,22 @@ use, intrinsic :: ieee_arithmetic
                 iz_ix_iym1=i    -nz*nx  !iz,ix,iy-1
                 iz_ix_iyp1=i    +nz*nx  !iz,ix,iy+1
                 iz_ix_iyp2=i  +2*nz*nx  !iz,ix,iy+2               
-
+                
+                rvz = rf_vz(izp1_ix_iy) +rf_vz(iz_ix_iy)
+                rvx = rf_vx(iz_ixp1_iy) +rf_vx(iz_ix_iy)
+                rvy = rf_vy(iz_ix_iyp1) +rf_vy(iz_ix_iy)
+                
+                dsvz = (c1z*(sf_szz(iz_ix_iy  )-sf_szz(izm1_ix_iy)) +c2z*(sf_szz(izp1_ix_iy)-sf_szz(izm2_ix_iy))) &
+                      +(c1z*(sf_szz(izp1_ix_iy)-sf_szz(iz_ix_iy  )) +c2z*(sf_szz(izp2_ix_iy)-sf_szz(izm1_ix_iy)))
                 dsvx = (c1x*(sf_shh(iz_ix_iy  )-sf_shh(iz_ixm1_iy)) +c2x*(sf_shh(iz_ixp1_iy)-sf_shh(iz_ixm2_iy))) &
                       +(c1x*(sf_shh(iz_ixp1_iy)-sf_shh(iz_ix_iy  )) +c2x*(sf_shh(iz_ixp2_iy)-sf_shh(iz_ixm1_iy)))
                 dsvy = (c1y*(sf_shh(iz_ix_iy  )-sf_shh(iz_ix_iym1)) +c2y*(sf_shh(iz_ix_iyp1)-sf_shh(iz_ix_iym2))) &
                       +(c1y*(sf_shh(iz_ix_iyp1)-sf_shh(iz_ix_iy  )) +c2y*(sf_shh(iz_ix_iyp2)-sf_shh(iz_ix_iym1)))
-                dsvz = (c1z*(sf_szz(iz_ix_iy  )-sf_szz(izm1_ix_iy)) +c2z*(sf_szz(izp1_ix_iy)-sf_szz(izm2_ix_iy))) &
-                      +(c1z*(sf_szz(izp1_ix_iy)-sf_szz(iz_ix_iy  )) +c2z*(sf_szz(izp2_ix_iy)-sf_szz(izm1_ix_iy)))
+                
                 !complete equation with unnecessary terms e.g. sf_p(iz_ix) for better understanding
                 !with flag -O, the compiler should automatically detect such possibilities of simplification
-                
-                rvx = rf_vx(iz_ixp1_iy) +rf_vx(iz_ix_iy)
-                rvy = rf_vy(iz_ix_iyp1) +rf_vy(iz_ix_iy)
-                rvz = rf_vz(izp1_ix_iy) +rf_vz(iz_ix_iy)
-                
-                corr(j)=corr(j) + 0.25*( dsvx*rvx + dsvy*rvy + dsvz*rvz )
+
+                grad(j)=grad(j) + 0.25*( rvz*dsvz + rvx*dsvx + rvy*dsvy )
                 
             enddo
             
@@ -1143,25 +1630,23 @@ use, intrinsic :: ieee_arithmetic
         
     end subroutine
     
-    subroutine corr2d_flat_density(sf_shh,sf_szz, &
-                              	   rf_vx, rf_vz,  &
-                              	   corr,          &
-                              	   ifz,ilz,ifx,ilx)
-        real,dimension(*) :: sf_shh,sf_szz
-        real,dimension(*) :: rf_vx, rf_vz
-        real,dimension(*) :: corr
+    subroutine grad2d_density(rf_vz,rf_vx,sf_szz,sf_shh,&
+                              grad,                     &
+                              ifz,ilz,ifx,ilx)
+        real,dimension(*) :: rf_vz,rf_vx,sf_szz,sf_shh
+        real,dimension(*) :: grad
         
         nz=cb%nz
         
-        dsvx=0.; dsvz=0.
-         rvx=0.; rvz=0.
-        
+        dsvz=0.; dsvx=0.
+         rvz=0.; rvx=0.
+
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
         !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dsvx,dsvz,&
-        !$omp          rvx, rvz)
+        !$omp         rvz, rvx,&
+        !$omp         dsvz,dsvx)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
         
@@ -1169,7 +1654,7 @@ use, intrinsic :: ieee_arithmetic
             do iz=ifz,ilz
             
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz+1 !corr has no boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
                 izm2_ix=i-2  !iz-2,ix
                 izm1_ix=i-1  !iz-1,ix
@@ -1182,17 +1667,18 @@ use, intrinsic :: ieee_arithmetic
                 iz_ixp1=i    +nz  !iz,ix+1
                 iz_ixp2=i  +2*nz  !iz,ix+2
                 
-                dsvx = (c1x*(sf_shh(iz_ix  )-sf_shh(iz_ixm1)) +c2x*(sf_shh(iz_ixp1)-sf_shh(iz_ixm2))) &
-                      +(c1x*(sf_shh(iz_ixp1)-sf_shh(iz_ix  )) +c2x*(sf_shh(iz_ixp2)-sf_shh(iz_ixm1)))
+                rvz = rf_vz(iz_ix) +rf_vz(izp1_ix)
+                rvx = rf_vx(iz_ix) +rf_vx(iz_ixp1)
+
                 dsvz = (c1z*(sf_szz(iz_ix  )-sf_szz(izm1_ix)) +c2z*(sf_szz(izp1_ix)-sf_szz(izm2_ix))) &
                       +(c1z*(sf_szz(izp1_ix)-sf_szz(iz_ix  )) +c2z*(sf_szz(izp2_ix)-sf_szz(izm1_ix)))
+                dsvx = (c1x*(sf_shh(iz_ix  )-sf_shh(iz_ixm1)) +c2x*(sf_shh(iz_ixp1)-sf_shh(iz_ixm2))) &
+                      +(c1x*(sf_shh(iz_ixp1)-sf_shh(iz_ix  )) +c2x*(sf_shh(iz_ixp2)-sf_shh(iz_ixm1)))
+
                 !complete equation with unnecessary terms e.g. sf_shh(iz_ix) for better understanding
-                !with flag -O, the compiler should automatically detect such possibilities of simplification
-                
-                rvx = rf_vx(iz_ix) +rf_vx(iz_ixp1)
-                rvz = rf_vz(iz_ix) +rf_vz(izp1_ix)
-                
-                corr(j)=corr(j) + 0.25*( dsvx*rvx + dsvz*rvz )
+                !with flag -O, the compiler should automatically detect such possibilities of simplification                
+
+                grad(j)=grad(j) + 0.25*( rvz*dsvz + rvx*dsvx )
                 
             enddo
             
@@ -1201,6 +1687,152 @@ use, intrinsic :: ieee_arithmetic
         !$omp end parallel
         
     end subroutine
-    
-    
+
+
+    ! subroutine imag3d_xcorr(rf_p,sf_p,             &
+    !                         imag,                  &
+    !                         ifz,ilz,ifx,ilx,ify,ily)
+    !     real,dimension(*) :: rf_p,sf_p
+    !     real,dimension(*) :: imag
+        
+    !     nz=cb%nz
+    !     nx=cb%nx
+        
+    !     rp=0.
+    !     sp=0.
+        
+    !     !$omp parallel default (shared)&
+    !     !$omp private(iz,ix,iy,i,j,&
+    !     !$omp         rp,sp)
+    !     !$omp do schedule(dynamic) collapse(2)
+    !     do iy=ify,ily
+    !     do ix=ifx,ilx
+        
+    !         !dir$ simd
+    !         do iz=ifz,ilz
+                
+    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
+    !             j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !grad has no boundary layers
+                
+    !             rp = rf_p(i)
+    !             sp = sf_p(i)
+                
+    !             imag(j)=imag(j) + rp*sp
+                
+    !         end do
+            
+    !     end do
+    !     end do
+    !     !$omp end do
+    !     !$omp end parallel
+        
+    ! end subroutine
+
+    ! subroutine imag2d_xcorr(rf_p,sf_p,     &
+    !                         imag,          &
+    !                         ifz,ilz,ifx,ilx)
+    !     real,dimension(*) :: rf_p,sf_p
+    !     real,dimension(*) :: imag
+        
+    !     nz=cb%nz
+        
+    !     rp=0.
+    !     sp=0.
+        
+    !     !$omp parallel default (shared)&
+    !     !$omp private(iz,ix,i,j,&
+    !     !$omp         rp,sp)
+    !     !$omp do schedule(dynamic)
+    !     do ix=ifx,ilx
+        
+    !         !dir$ simd
+    !         do iz=ifz,ilz
+                
+    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
+    !             j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                
+    !             rp = rf_p(i)
+    !             sp = sf_p(i)
+                
+    !             imag(j)=imag(j) + rp*sp
+                
+    !         end do
+            
+    !     end do
+    !     !$omp end do
+    !     !$omp end parallel
+
+    ! end subroutine
+
+    ! subroutine engy3d_xcorr(sf_p,          &
+    !                         engy,          &
+    !                         ifz,ilz,ifx,ilx,ify,ily)
+    !     real,dimension(*) :: sf_p
+    !     real,dimension(*) :: engy
+        
+    !     nz=cb%nz
+    !     nx=cb%nx
+        
+    !     sp=0.
+        
+    !     !$omp parallel default (shared)&
+    !     !$omp private(iz,ix,iy,i,j,&
+    !     !$omp         sp)
+    !     !$omp do schedule(dynamic) collapse(2)
+    !     do iy=ify,ily
+    !     do ix=ifx,ilx
+        
+    !         !dir$ simd
+    !         do iz=ifz,ilz
+                
+    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
+    !             j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !grad has no boundary layers
+                
+    !             sp = sf_p(i)
+                
+    !             engy(j)=engy(j) + sp*sp
+                
+    !         end do
+            
+    !     end do
+    !     end do
+    !     !$omp end do
+    !     !$omp end parallel
+
+    ! end subroutine
+
+    ! subroutine engy2d_xcorr(sf_p,          &
+    !                         engy,          &
+    !                         ifz,ilz,ifx,ilx)
+    !     real,dimension(*) :: sf_p
+    !     real,dimension(*) :: engy
+        
+    !     nz=cb%nz
+        
+    !     sp=0.
+        
+    !     !$omp parallel default (shared)&
+    !     !$omp private(iz,ix,i,j,&
+    !     !$omp         sp)
+    !     !$omp do schedule(dynamic)
+    !     do ix=ifx,ilx
+        
+    !         !dir$ simd
+    !         do iz=ifz,ilz
+                
+    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
+    !             j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                
+    !             sp = sf_p(i)
+                
+    !             engy(j)=engy(j) + sp*sp
+                
+    !         end do
+            
+    !     end do
+    !     !$omp end do
+    !     !$omp end parallel
+
+    ! end subroutine
+
 end

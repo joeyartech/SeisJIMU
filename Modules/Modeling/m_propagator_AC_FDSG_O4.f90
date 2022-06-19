@@ -238,7 +238,7 @@ use m_cpml
     !D=|0   0   0   ∂ₓ|
     !  |0   0   0   ∂y|
     !  [∂z  ∂ₓ  ∂y  0 ]
-    !and a=[vxᵃ vyᵃ vzᵃ pᵃ]ᵀ is the adjoint field
+    !and a=[vzᵃ vxᵃ vyᵃ pᵃ]ᵀ is the adjoint field
     !
     !Continuous case:
     !<a|Au> = ∫ a(x,t) (M∂ₜ-D)u(x,t) dx³dt
