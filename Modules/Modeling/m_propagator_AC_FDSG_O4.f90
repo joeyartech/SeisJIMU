@@ -75,6 +75,9 @@ use m_cpml
     integer :: irdt
     real :: rdt
 
+    !these procedures will be contained in an m_correlate module in future release
+    public :: gradient_density, gradient_moduli, imaging, energy, gradient_postprocess, imaging_postprocess
+
     ! real,dimension(:,:,:),allocatable :: sf_p_save
 
     contains
@@ -443,14 +446,7 @@ use m_cpml
         if(self%if_compute_engy) call alloc(cb%engy,cb%mz,cb%mx,cb%my,self%nengy)
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
-        ! if(present(o_sf)) then
-                                         fld_u%dvz_dz=0.
-                                         fld_u%dvx_dx=0.
-            if(allocated(fld_u%dvy_dy))  fld_u%dvy_dy=0.
-                                         fld_u%dp_dz=0.
-                                         fld_u%dp_dx=0.
-            if(allocated(fld_u%dp_dy))   fld_u%dp_dy=0.
-        ! endif
+        call fld_u%reinit
                     
         !timing
         tt1=0.; tt2=0.; tt3=0.

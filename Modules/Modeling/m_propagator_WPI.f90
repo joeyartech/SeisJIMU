@@ -1,20 +1,12 @@
 module m_propagator_WPI
 use m_System
-use m_hicks, only : hicks_r
-use m_resampler
 use m_model
 use m_shot
 use m_computebox
 use m_field
-use m_cpml
+use m_propagator
 
     private
-
-    !FD coef
-    real,dimension(2),parameter :: coef = [9./8.,-1./24.] !Fornberg, 1988, Generation of Finite-Difference Formulas on Arbitrary Spaced Grids.
-    
-    real :: c1x, c1y, c1z
-    real :: c2x, c2y, c2z
 
     type,extends(t_propagator),public :: t_propagator_WPI
 
@@ -30,13 +22,7 @@ use m_cpml
         
     end type
 
-    type(t_propagator),public :: ppg
-
-    logical :: if_hicks
-    integer :: irdt
-    real :: rdt
-
-    ! real,dimension(:,:,:),allocatable :: sf_p_save
+    type(t_propagator_WPI),public :: ppg_WPI
 
     contains
     
@@ -91,7 +77,7 @@ use m_cpml
     ! [  pμ^n+½]   [  pμ^n+1½]      [∂zᶠ vzμ^n+1 + ∂ₓᶠ vxμ^n+1]
 
     subroutine forward_scattering(self,fld_du,fld_u,W2Idt)
-        class(t_propagator) :: self
+        class(t_propagator_WPI) :: self
         type(t_field) :: fld_du,fld_u
         real,dimension(cb%mz,cb%mx,cb%my) :: W2Idt
 
@@ -175,7 +161,7 @@ use m_cpml
     end subroutine
 
     subroutine adjoint_du_star_Da(self,fld_a,fld_du,fld_u,W2Idt,oif_compute_imag,oif_compute_grad)
-        class(t_propagator) :: self
+        class(t_propagator_WPI) :: self
         type(t_field) :: fld_du,fld_a,fld_u
         real,dimension(cb%mz,cb%mx,cb%my) :: W2Idt
         logical,optional :: oif_compute_imag,oif_compute_grad
@@ -194,21 +180,9 @@ use m_cpml
         ! if(self%if_compute_engy) call alloc(cb%engy,cb%mz,cb%mx,cb%my,self%nengy)
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
-        ! if(present(o_sf)) then
-                                          fld_du%dvz_dz=0.
-                                           fld_u%dvz_dz=0.
-                                          fld_du%dvx_dx=0.
-                                           fld_u%dvx_dx=0.
-            ! if(allocated(fld_du%dvy_dy))  fld_du%dvy_dy=0.
-            ! if(allocated( fld_u%dvy_dy))   fld_u%dvy_dy=0.
-                                          fld_du%dp_dz=0.
-                                           fld_u%dp_dz=0.
-                                          fld_du%dp_dx=0.
-                                           fld_u%dp_dx=0.
-            ! if(allocated(fld_du%dp_dy))   fld_du%dp_dy=0.
-            ! if(allocated( fld_u%dp_dy))    fld_u%dp_dy=0.
-        ! endif
-                    
+        call fld_u%reinit
+        call fld_du%reinit
+
         !timing
         tt1=0.; tt2=0.; tt3=0.
         tt4=0.; tt5=0.; tt6=0.
@@ -386,7 +360,7 @@ use m_cpml
     end subroutine
 
     subroutine adjoint_da_star_Du(self,fld_da,fld_u,fld_a,W2Idt,oif_record_adjseismo,oif_compute_grad)
-        class(t_propagator) :: self
+        class(t_propagator_WPI) :: self
         type(t_field) :: fld_da,fld_u,fld_a
         real,dimension(cb%mz,cb%mx,cb%my) :: W2Idt
         logical,optional :: oif_record_adjseismo, oif_compute_grad
@@ -405,14 +379,7 @@ use m_cpml
         ! if(self%if_compute_engy) call alloc(cb%engy,cb%mz,cb%mx,cb%my,self%nengy)
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
-        ! if(present(o_sf)) then
-                                         fld_u%dvz_dz=0.
-                                         fld_u%dvx_dx=0.
-            if(allocated(fld_u%dvy_dy))  fld_u%dvy_dy=0.
-                                         fld_u%dp_dz=0.
-                                         fld_u%dp_dx=0.
-            if(allocated(fld_u%dp_dy))   fld_u%dp_dy=0.
-        ! endif
+        call fld_u%reinit
 
         !timing
         tt1=0.; tt2=0.; tt3=0.
@@ -582,7 +549,7 @@ use m_cpml
     end subroutine
 
     subroutine adjoint_da_star_Ddu(self,fld_da,fld_du,fld_a,fld_u,W2Idt,oif_record_adjseismo,oif_compute_grad)
-        class(t_propagator) :: self
+        class(t_propagator_WPI) :: self
         type(t_field) :: fld_da,fld_a
         type(t_field) :: fld_du,fld_u
         real,dimension(cb%mz,cb%mx,cb%my) :: W2Idt
@@ -602,18 +569,8 @@ use m_cpml
         ! if(self%if_compute_engy) call alloc(cb%engy,cb%mz,cb%mx,cb%my,self%nengy)
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
-        ! if(present(o_sf)) then
-                                          fld_du%dvz_dz=0.
-                                           fld_u%dvz_dz=0.
-                                          fld_du%dvx_dx=0.
-                                           fld_u%dvx_dx=0.
-            ! if(allocated(fld_du%dvy_dy))  fld_du%dvy_dy=0.
-            ! if(allocated( fld_u%dvy_dy))   fld_u%dvy_dy=0.
-                                          fld_du%dp_dz=0.
-                                           fld_u%dp_dz=0.
-                                          fld_du%dp_dx=0.
-                                           fld_u%dp_dx=0.
-        ! endif
+        call fld_u%reinit
+        call fld_du%reinit
 
         !timing
         tt1=0.; tt2=0.; tt3=0.
@@ -789,7 +746,7 @@ use m_cpml
     end subroutine
 
     subroutine adjoint_WPI(self,fld_da,fld_a,fld_Adj_du,fld_du,fld_u,W2Idt,corrs)
-        class(t_propagator) :: self
+        class(t_propagator_WPI) :: self
         type(t_field) :: fld_da,fld_a, fld_Adj_du
         type(t_field) :: fld_du,fld_u
         real,dimension(cb%mz,cb%mx,cb%my) :: W2Idt
@@ -798,18 +755,8 @@ use m_cpml
         real,parameter :: time_dir=-1. !time direction
         
         !reinitialize absorbing boundary for incident wavefield reconstruction
-        ! if(present(o_sf)) then
-                                          fld_du%dvz_dz=0.
-                                           fld_u%dvz_dz=0.
-                                          fld_du%dvx_dx=0.
-                                           fld_u%dvx_dx=0.
-            ! if(allocated(fld_du%dvy_dy))  fld_du%dvy_dy=0.
-            ! if(allocated( fld_u%dvy_dy))   fld_u%dvy_dy=0.
-                                          fld_du%dp_dz=0.
-                                           fld_u%dp_dz=0.
-                                          fld_du%dp_dx=0.
-                                           fld_u%dp_dx=0.
-        ! endif
+        call fld_u%reinit
+        call fld_du%reinit
 
         !timing
         tt1=0.; tt2=0.; tt3=0.
@@ -1007,17 +954,23 @@ use m_cpml
 
     
     subroutine inject_stresses_scattering(self,fld_d,fld,W2Idt,time_dir)
-        class(t_propagator) :: self
+        class(t_propagator_WPI) :: self
         type(t_field) :: fld_d, fld
         real,dimension(cb%mz,cb%mx,cb%my) :: W2Idt
         real :: time_dir
 
-        if(.not.fld%is_adjoint) then
-            fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) = fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) + time_dir*W2Idt*fld%p(1:cb%mz,1:cb%mx,1:cb%my)*self%kpa(1:cb%mz,1:cb%mx,1:cb%my)
-            return
-        endif
+        if(index(self%info,'vz, vx, vy(3D), p')>0) then
 
-            fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) = fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) +          W2Idt*fld%p(1:cb%mz,1:cb%mx,1:cb%my)*self%kpa(1:cb%mz,1:cb%mx,1:cb%my)
+            if(.not.fld%is_adjoint) then
+                fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) = fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) + time_dir*W2Idt*fld%p(1:cb%mz,1:cb%mx,1:cb%my)*self%kpa(1:cb%mz,1:cb%mx,1:cb%my)
+                return
+            endif
+
+                fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) = fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) +          W2Idt*fld%p(1:cb%mz,1:cb%mx,1:cb%my)*self%kpa(1:cb%mz,1:cb%mx,1:cb%my)
+
+        else
+            call error("Hasn't implemented WPI based on other modeling engines.")
+        endif
 
     end subroutine
 

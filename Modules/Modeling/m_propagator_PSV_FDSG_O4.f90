@@ -82,6 +82,10 @@ use, intrinsic :: ieee_arithmetic
     integer :: irdt
     real :: rdt
 
+    !these procedures will be contained in an m_correlate module in future release
+    public :: gradient_density, gradient_moduli, imaging, energy, gradient_postprocess, imaging_postprocess
+
+
     contains
     
     !========= for FDSG O(dx4,dt2) ===================  
@@ -531,16 +535,7 @@ use, intrinsic :: ieee_arithmetic
         if(self%if_compute_engy) call alloc(cb%engy,cb%mz,cb%mx,1,self%nengy)
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
-        ! if(present(o_sf)) then
-            fld_u%dvz_dz=0.
-            fld_u%dvz_dx=0.
-            fld_u%dvx_dx=0.
-            fld_u%dvx_dz=0.
-            fld_u%dszz_dz=0.
-            fld_u%dsxx_dx=0.
-            fld_u%dszx_dz=0.
-            fld_u%dszx_dx=0.
-        ! endif
+        call fld_u%reinit
                     
         !timing
         tt1=0.; tt2=0.; tt3=0.

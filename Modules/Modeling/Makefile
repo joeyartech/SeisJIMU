@@ -14,11 +14,16 @@ m_propagator_$(WaveEq)_$(Solver)_$(Order).f90 \
 m_Modeling.f90
 
 
+ifeq '$(App)' 'WPI'
+	src += m_propagator_WPI.f90
+endif
+
+
 all : $(src:.f90=.o)
 	@printf "\n"
 
 clean :
 	-rm *.o
 	@printf "\n"
-	-rm $(src:%.f90=$(mod_dir)%.mod) $(mod_dir)m_shotlist.mod $(mod_dir)m_cpml.mod $(mod_dir)m_propagator.mod $(mod_dir)m_modeling.mod
+	-rm $(src:%.f90=$(mod_dir)%.mod) $(mod_dir)m_shotlist.mod $(mod_dir)m_cpml.mod $(mod_dir)m_propagator.mod $(mod_dir)m_modeling.mod $(mod_dir)m_propagator_WPI.mod
 	@printf "\n"

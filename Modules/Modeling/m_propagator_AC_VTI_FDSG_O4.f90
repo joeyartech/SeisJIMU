@@ -25,7 +25,8 @@ use m_cpml
             'Cartesian O(x⁴,t²) stencil'//s_NL// &
             'CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal'//s_NL// &
             '   -> dt ≤ 0.606(for 2D) or 0.494(3D) *Vmax/dx'//s_NL// &
-            'Required model attributes: vp, rho'//s_NL// &
+            'Required model attributes: vp, rho, eps, del'//s_NL// &
+            '   condition: del ≤ eps-0.5/threshold (otherwise unstable to compute gradients)'//s_NL// &
             'Required field components: vz, vx, vy(3D), szz, shh'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
             'Imaging conditions: P-Pxcorr'//s_NL// &
@@ -83,6 +84,9 @@ use m_cpml
     integer :: irdt
     real :: rdt
 
+    !these procedures will be contained in an m_correlate module in future release
+    public :: gradient_density, gradient_moduli, imaging, energy, gradient_postprocess, imaging_postprocess
+
     contains
     
     !========= for FDSG O(dx4,dt2) ===================  
@@ -113,11 +117,18 @@ use m_cpml
             call warn('Constant rho model (1000 kg/m³) is allocated by propagator.')
         endif
 
-        if(any (cb%del > cb%eps-0.5/threshold )) then
-            call warn('del > eps -0.5/threshold will cause numerical instability. Reduce del.')
-            where (cb%del > cb%eps-0.5/threshold) cb%del=cb%eps-0.5/threshold
+        if(index(self%info,'eps')>0 .and. .not. allocated(m%eps)) then
+            call alloc(m%eps,m%nz,m%nx,m%ny,o_init=0.2)
+            call warn('Constant eps model (0.2) is allocated by propagator.')
         endif
-                
+
+        if(index(self%info,'del')>0 .and. .not. allocated(m%del)) then
+            call alloc(m%del,m%nz,m%nx,m%ny,o_init=0.)
+            call warn('Constant del model (0) is allocated by propagator.')
+        endif
+
+        where (m%del > m%eps-0.5/threshold) m%del=m%eps-0.5/threshold
+        
     end subroutine
     
     subroutine check_discretization(self)
@@ -481,14 +492,7 @@ use m_cpml
         if(self%if_compute_engy) call alloc(cb%engy,cb%mz,cb%mx,cb%my,self%nengy)
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
-        ! if(present(o_sf)) then
-                                         fld_u%dvz_dz=0.
-                                         fld_u%dvx_dx=0.
-            if(allocated(fld_u%dvy_dy))  fld_u%dvy_dy=0.
-                                         fld_u%dszz_dz=0.
-                                         fld_u%dshh_dx=0.
-            if(allocated(fld_u%dshh_dy)) fld_u%dshh_dy=0.
-        ! endif
+        call fld_u%reinit
                     
         !timing
         tt1=0.; tt2=0.; tt3=0.
@@ -555,20 +559,20 @@ use m_cpml
                 tt6=tt6+toc-tic
             endif
 
-            ! if(if_compute_imag.and.mod(it,irdt)==0) then
-            !     call cpu_time(tic)
-            !     call imaging(fld_a,fld_u,it,cb%imag)
-            !     call cpu_time(toc)
-            !     tt6=tt6+toc-tic
-            ! endif
+            if(if_compute_imag.and.mod(it,irdt)==0) then
+                call cpu_time(tic)
+                call imaging(fld_a,fld_u,it,cb%imag)
+                call cpu_time(toc)
+                tt6=tt6+toc-tic
+            endif
 
-            ! !energy term of sfield
-            ! if(self%if_compute_engy.and.mod(it,irdt)==0) then
-            !     call cpu_time(tic)
-            !     call energy(fld_u,it,cb%engy)
-            !     call cpu_time(toc)
-            !     tt6=tt6+toc-tic
-            ! endif
+            !energy term of sfield
+            if(self%if_compute_engy.and.mod(it,irdt)==0) then
+                call cpu_time(tic)
+                call energy(fld_u,it,cb%engy)
+                call cpu_time(toc)
+                tt6=tt6+toc-tic
+            endif
                 
             !========================================================!
 
@@ -986,7 +990,7 @@ use m_cpml
     !which are probably removed by gradient masking.
     !
     !Therefore, ∫ aᵀ KₘM ∂ₜu dt ≐ ∫ aᵀ KₘM M⁻¹Du dt =: a★Du
-    !    
+    !
     !  [ρ                        ]
     !  |  ρ                      |
     !M=|    [κ        κ√(1+2δ)]⁻¹|
@@ -1089,20 +1093,17 @@ use m_cpml
         ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
         ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
         
-        ! if(m%is_cubic) then
-        !     call imag3d_xcorr(rf%p,sf%p,&
-        !                       imag,                  &
-        !                       ifz,ilz,ifx,ilx,ify,ily)
-        ! ! else
-        !     call imag2d_xcorr(rf%p,sf%p,&
-        !                       imag,            &
-        !                       ifz,ilz,ifx,ilx)
-        ! endif
-
-        ! call imag2d_xcorr(rf%p,rf%vz,rf%vx,&
-        !                   sf%p,sf%vz,sf%vx,&
-        !                   imag,            &
-        !                   ifz,ilz,ifx,ilx)
+        if(m%is_cubic) then
+            call imag3d_xcorr(rf%szz,rf%shh,&
+                              sf%szz,sf%shh,&
+                              imag,&
+                              ifz,ilz,ifx,ilx,ify,ily)
+        else
+            call imag2d_xcorr(rf%szz,rf%shh,&
+                              sf%szz,sf%shh,&
+                              imag,&
+                              ifz,ilz,ifx,ilx)
+        endif
 
     end subroutine
 
@@ -1129,12 +1130,12 @@ use m_cpml
         ily=min(sf%bloom(6,it),cb%my)
         
         if(m%is_cubic) then
-            call engy3d_xcorr(sf%p,&
+            call engy3d_xcorr(sf%szz,sf%shh,&
                               engy,                  &
                               ifz,ilz,ifx,ilx,ify,ily)
         else
-            call engy2d_xcorr(sf%p,&
-                              engy,            &
+            call engy2d_xcorr(sf%szz,sf%shh,&
+                              engy,          &
                               ifz,ilz,ifx,ilx)
         endif
 
@@ -1689,150 +1690,152 @@ use m_cpml
     end subroutine
 
 
-    ! subroutine imag3d_xcorr(rf_p,sf_p,             &
-    !                         imag,                  &
-    !                         ifz,ilz,ifx,ilx,ify,ily)
-    !     real,dimension(*) :: rf_p,sf_p
-    !     real,dimension(*) :: imag
+    subroutine imag3d_xcorr(rf_szz,rf_shh,         &
+                            sf_szz,sf_shh,         &
+                            imag,                  &
+                            ifz,ilz,ifx,ilx,ify,ily)
+        real,dimension(*) :: rf_szz,rf_shh,sf_szz,sf_shh
+        real,dimension(*) :: imag
         
-    !     nz=cb%nz
-    !     nx=cb%nx
+        nz=cb%nz
+        nx=cb%nx
         
-    !     rp=0.
-    !     sp=0.
+        rp=0.
+        sp=0.
         
-    !     !$omp parallel default (shared)&
-    !     !$omp private(iz,ix,iy,i,j,&
-    !     !$omp         rp,sp)
-    !     !$omp do schedule(dynamic) collapse(2)
-    !     do iy=ify,ily
-    !     do ix=ifx,ilx
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,iy,i,j,&
+        !$omp         rp,sp)
+        !$omp do schedule(dynamic) collapse(2)
+        do iy=ify,ily
+        do ix=ifx,ilx
         
-    !         !dir$ simd
-    !         do iz=ifz,ilz
+            !dir$ simd
+            do iz=ifz,ilz
                 
-    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
-    !             j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !grad has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !grad has no boundary layers
                 
-    !             rp = rf_p(i)
-    !             sp = sf_p(i)
+                rp = szz_p*rf_szz(i) +shh_p*rf_shh(i)
+                sp = szz_p*sf_szz(i) +shh_p*sf_shh(i)
+
+                imag(j)=imag(j) + rp*sp
                 
-    !             imag(j)=imag(j) + rp*sp
-                
-    !         end do
+            end do
             
-    !     end do
-    !     end do
-    !     !$omp end do
-    !     !$omp end parallel
+        end do
+        end do
+        !$omp end do
+        !$omp end parallel
         
-    ! end subroutine
+    end subroutine
 
-    ! subroutine imag2d_xcorr(rf_p,sf_p,     &
-    !                         imag,          &
-    !                         ifz,ilz,ifx,ilx)
-    !     real,dimension(*) :: rf_p,sf_p
-    !     real,dimension(*) :: imag
+    subroutine imag2d_xcorr(rf_szz,rf_shh, &
+                            sf_szz,sf_shh, &
+                            imag,          &
+                            ifz,ilz,ifx,ilx)
+        real,dimension(*) :: rf_szz,rf_shh,sf_szz,sf_shh
+        real,dimension(*) :: imag
         
-    !     nz=cb%nz
+        nz=cb%nz
         
-    !     rp=0.
-    !     sp=0.
+        rp=0.
+        sp=0.
         
-    !     !$omp parallel default (shared)&
-    !     !$omp private(iz,ix,i,j,&
-    !     !$omp         rp,sp)
-    !     !$omp do schedule(dynamic)
-    !     do ix=ifx,ilx
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,j,&
+        !$omp         rp,sp)
+        !$omp do schedule(dynamic)
+        do ix=ifx,ilx
         
-    !         !dir$ simd
-    !         do iz=ifz,ilz
+            !dir$ simd
+            do iz=ifz,ilz
                 
-    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-    !             j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
                 
-    !             rp = rf_p(i)
-    !             sp = sf_p(i)
+                rp = szz_p*rf_szz(i) +shh_p*rf_shh(i)
+                sp = szz_p*sf_szz(i) +shh_p*sf_shh(i)
                 
-    !             imag(j)=imag(j) + rp*sp
+                imag(j)=imag(j) + rp*sp
                 
-    !         end do
+            end do
             
-    !     end do
-    !     !$omp end do
-    !     !$omp end parallel
+        end do
+        !$omp end do
+        !$omp end parallel
 
-    ! end subroutine
+    end subroutine
 
-    ! subroutine engy3d_xcorr(sf_p,          &
-    !                         engy,          &
-    !                         ifz,ilz,ifx,ilx,ify,ily)
-    !     real,dimension(*) :: sf_p
-    !     real,dimension(*) :: engy
+    subroutine engy3d_xcorr(sf_szz,sf_shh,         &
+                            engy,                  &
+                            ifz,ilz,ifx,ilx,ify,ily)
+        real,dimension(*) :: sf_szz,sf_shh
+        real,dimension(*) :: engy
         
-    !     nz=cb%nz
-    !     nx=cb%nx
+        nz=cb%nz
+        nx=cb%nx
         
-    !     sp=0.
+        sp=0.
         
-    !     !$omp parallel default (shared)&
-    !     !$omp private(iz,ix,iy,i,j,&
-    !     !$omp         sp)
-    !     !$omp do schedule(dynamic) collapse(2)
-    !     do iy=ify,ily
-    !     do ix=ifx,ilx
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,iy,i,j,&
+        !$omp         sp)
+        !$omp do schedule(dynamic) collapse(2)
+        do iy=ify,ily
+        do ix=ifx,ilx
         
-    !         !dir$ simd
-    !         do iz=ifz,ilz
+            !dir$ simd
+            do iz=ifz,ilz
                 
-    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
-    !             j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !grad has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !grad has no boundary layers
                 
-    !             sp = sf_p(i)
+                sp = szz_p*sf_szz(i) +shh_p*sf_shh(i)
                 
-    !             engy(j)=engy(j) + sp*sp
+                engy(j)=engy(j) + sp*sp
                 
-    !         end do
+            end do
             
-    !     end do
-    !     end do
-    !     !$omp end do
-    !     !$omp end parallel
+        end do
+        end do
+        !$omp end do
+        !$omp end parallel
 
-    ! end subroutine
+    end subroutine
 
-    ! subroutine engy2d_xcorr(sf_p,          &
-    !                         engy,          &
-    !                         ifz,ilz,ifx,ilx)
-    !     real,dimension(*) :: sf_p
-    !     real,dimension(*) :: engy
+    subroutine engy2d_xcorr(sf_szz,sf_shh, &
+                            engy,          &
+                            ifz,ilz,ifx,ilx)
+        real,dimension(*) :: sf_szz,sf_shh
+        real,dimension(*) :: engy
         
-    !     nz=cb%nz
+        nz=cb%nz
         
-    !     sp=0.
+        sp=0.
         
-    !     !$omp parallel default (shared)&
-    !     !$omp private(iz,ix,i,j,&
-    !     !$omp         sp)
-    !     !$omp do schedule(dynamic)
-    !     do ix=ifx,ilx
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,j,&
+        !$omp         sp)
+        !$omp do schedule(dynamic)
+        do ix=ifx,ilx
         
-    !         !dir$ simd
-    !         do iz=ifz,ilz
+            !dir$ simd
+            do iz=ifz,ilz
                 
-    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-    !             j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
                 
-    !             sp = sf_p(i)
+                sp = szz_p*sf_szz(i) +shh_p*sf_shh(i)
                 
-    !             engy(j)=engy(j) + sp*sp
+                engy(j)=engy(j) + sp*sp
                 
-    !         end do
+            end do
             
-    !     end do
-    !     !$omp end do
-    !     !$omp end parallel
+        end do
+        !$omp end do
+        !$omp end parallel
 
-    ! end subroutine
+    end subroutine
 
 end

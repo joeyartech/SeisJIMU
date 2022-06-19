@@ -39,6 +39,7 @@ subroutine modeling_imaging
 use mpi
 use m_System
 use m_Modeling
+use m_propagator_WPI
 use m_weighter
 use m_Lpnorm
 use m_fobjective
@@ -59,22 +60,22 @@ use m_smoother_laplacian_sparse
         call shot%init(shls%yield(i))
         call shot%read_from_data
         call shot%set_var_time
-        call shot%set_var_space(index(ppg%info,'FDSG')>0)
+        call shot%set_var_space(index(ppg_WPI%info,'FDSG')>0)
         call hud('Modeling Shot# '//shot%sindex)
         
-        call cb%init(ppg%nbndlayer)
+        call cb%init(ppg_WPI%nbndlayer)
         call cb%project
         
-        call ppg%check_discretization
-        call ppg%init
-        call ppg%init_abslayer
+        call ppg_WPI%check_discretization
+        call ppg_WPI%init
+        call ppg_WPI%init_abslayer
         
         call hud('---------------------------------')
         call hud('     Imaging (aka Wavepath)      ')
         call hud('---------------------------------')
         !forward modeling on u
-        call ppg%init_field(fld_u,name='Imag_fld_u');    call fld_u%ignite
-        call ppg%forward(fld_u);                         call fld_u%acquire
+        call ppg_WPI%init_field(fld_u,name='Imag_fld_u');    call fld_u%ignite
+        call ppg_WPI%forward(fld_u);                         call fld_u%acquire
         call shot%write('Imag_Ru_',shot%dsyn)
 
         !weighting on the adjoint source for the image
@@ -93,8 +94,8 @@ use m_smoother_laplacian_sparse
         call shot%write('Imag_dadj_',shot%dadj)
         
         !adjoint modeling
-        call ppg%init_field(fld_a,name='Imag_fld_a',ois_adjoint=.true.); call fld_a%ignite
-        call ppg%adjoint(fld_a,fld_u,oif_compute_imag=.true.)
+        call ppg_WPI%init_field(fld_a,name='Imag_fld_a',ois_adjoint=.true.); call fld_a%ignite
+        call ppg_WPI%adjoint(fld_a,fld_u,oif_compute_imag=.true.)
         call hud('---------------------------------')
 
         call cb%project_back
@@ -121,6 +122,7 @@ subroutine modeling_gradient_slow
 use mpi
 use m_System
 use m_Modeling
+use m_propagator_WPI
 use m_weighter
 use m_image_weighter
 use m_Lpnorm
@@ -186,24 +188,24 @@ use m_resampler
         call shot%init(shls%yield(i))
         call shot%read_from_data
         call shot%set_var_time
-        call shot%set_var_space(index(ppg%info,'FDSG')>0)
+        call shot%set_var_space(index(ppg_WPI%info,'FDSG')>0)
 
         call hud('Modeling Shot# '//shot%sindex)
         
-        call cb%init(ppg%nbndlayer)
+        call cb%init(ppg_WPI%nbndlayer)
         call cb%project
         
-        call ppg%check_discretization
-        call ppg%init
-        call ppg%init_abslayer
+        call ppg_WPI%check_discretization
+        call ppg_WPI%init
+        call ppg_WPI%init_abslayer
 
         call alloc(cb%corr,     cb%mz,cb%mx,cb%my,5)
 
     ! if(.false.) then
         call hud('-------- FWI SK (a_star_Du) --------')
         !forward modeling on u
-        call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite       
-        call ppg%forward(fld_u);                    call fld_u%acquire
+        call ppg_WPI%init_field(fld_u,name='fld_u');    call fld_u%ignite       
+        call ppg_WPI%forward(fld_u);                    call fld_u%acquire
 
         call shot%write('Ru_',shot%dsyn)
         shot%dsyn_aux=shot%dsyn
@@ -220,9 +222,9 @@ use m_resampler
         call kernel_L2sq(shot%dadj)
         call shot%write('FWI_dadj_',shot%dadj)
 
-        call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
+        call ppg_WPI%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
         call fld_a%ignite
-        call ppg%adjoint(fld_a,fld_u,oif_compute_grad=.true.)
+        call ppg_WPI%adjoint(fld_a,fld_u,oif_compute_grad=.true.)
 
         cb%corr(:,:,:,1)=cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
         call hud('---------------------------------')
@@ -232,8 +234,8 @@ use m_resampler
 
             call hud('--- extd Rabbit Ear (-da_star_Du) ---')
             !re-model u
-            call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
-            call ppg%forward(fld_u); call fld_u%acquire
+            call ppg_WPI%init_field(fld_u,name='fld_u');    call fld_u%ignite
+            call ppg_WPI%forward(fld_u); call fld_u%acquire
             
             !adjoint eqn Aᴴa = Rᴴ(d-u), Aδa = Ia
             call wei%update
@@ -242,9 +244,9 @@ use m_resampler
             
             !adjoint modeling
             !grad = -δa★Du
-            call ppg%init_field(fld_a, name='fld_a', ois_adjoint=.true.); call fld_a%ignite
-            call ppg%init_field(fld_da,name='fld_da',ois_adjoint=.true.)
-            call ppg%adjoint_da_star_Du(fld_da,fld_u,fld_a,W2Idt,oif_compute_grad=.true.)
+            call ppg_WPI%init_field(fld_a, name='fld_a', ois_adjoint=.true.); call fld_a%ignite
+            call ppg_WPI%init_field(fld_da,name='fld_da',ois_adjoint=.true.)
+            call ppg_WPI%adjoint_da_star_Du(fld_da,fld_u,fld_a,W2Idt,oif_compute_grad=.true.)
 
             cb%corr(:,:,:,2)=-cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
             call hud('---------------------------------')
@@ -252,12 +254,12 @@ use m_resampler
             !pause
 
             call hud('--- extd Rabbit Ear (du_star_Da) ---')
-            call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
-            call ppg%init_field(fld_du,name='fld_du')
+            call ppg_WPI%init_field(fld_u,name='fld_u');    call fld_u%ignite
+            call ppg_WPI%init_field(fld_du,name='fld_du')
             
             !forward scattering
             !Aδu = Iu
-            call ppg%forward_scattering(fld_du,fld_u,W2Idt)
+            call ppg_WPI%forward_scattering(fld_du,fld_u,W2Idt)
             call fld_du%acquire; call shot%write('Rdu_',shot%dsyn)
             call fld_u%acquire !shot%dsyn = Ru
             
@@ -268,8 +270,8 @@ use m_resampler
             
             !adjoint modeling
             !grad = δu★Da
-            call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite
-            call ppg%adjoint_du_star_Da(fld_a,fld_du,fld_u,W2Idt,oif_compute_grad=.true.) !,oif_compute_imag=.true.)
+            call ppg_WPI%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite
+            call ppg_WPI%adjoint_du_star_Da(fld_a,fld_du,fld_u,W2Idt,oif_compute_grad=.true.) !,oif_compute_imag=.true.)
 
             cb%corr(:,:,:,3)=cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
             call hud('---------------------------------')
@@ -279,9 +281,9 @@ use m_resampler
         if(index(corrs,'2ndMI')>0) then
 
             call hud('-------- 2ndMI da_star_Ddu --- (just for curiosity)')
-            call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
-            call ppg%init_field(fld_du,name='fld_du')
-            call ppg%forward_scattering(fld_du,fld_u,W2Idt)
+            call ppg_WPI%init_field(fld_u,name='fld_u');    call fld_u%ignite
+            call ppg_WPI%init_field(fld_du,name='fld_du')
+            call ppg_WPI%forward_scattering(fld_du,fld_u,W2Idt)
             call fld_u%acquire !shot%dsyn = Ru
 
             !adjoint eqn Aᴴa = Rᴴ(d-u), Aδa = Ia
@@ -291,9 +293,9 @@ use m_resampler
             
             !adjoint modeling
             !grad = δu★Dδa
-            call ppg%init_field(fld_a, name='fld_a', ois_adjoint=.true.); call fld_a%ignite
-            call ppg%init_field(fld_da,name='fld_da',ois_adjoint=.true.)
-            call ppg%adjoint_da_star_Ddu(fld_da,fld_du,fld_a,fld_u,W2Idt,oif_compute_grad=.true.)
+            call ppg_WPI%init_field(fld_a, name='fld_a', ois_adjoint=.true.); call fld_a%ignite
+            call ppg_WPI%init_field(fld_da,name='fld_da',ois_adjoint=.true.)
+            call ppg_WPI%adjoint_da_star_Ddu(fld_da,fld_du,fld_a,fld_u,W2Idt,oif_compute_grad=.true.)
 
             cb%corr(:,:,:,4)=cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
             call hud('---------------------------------')
@@ -304,21 +306,21 @@ use m_resampler
         if(index(corrs,'DR')>0) then
 
             call hud('--- demig-remig (Adj(du)_star_Du) ---')
-            call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
-            call ppg%init_field(fld_du,name='fld_du')
-            call ppg%forward_scattering(fld_du,fld_u,W2Idt); call fld_du%acquire !shot%dsyn = Rδu
+            call ppg_WPI%init_field(fld_u,name='fld_u');    call fld_u%ignite
+            call ppg_WPI%init_field(fld_du,name='fld_du')
+            call ppg_WPI%forward_scattering(fld_du,fld_u,W2Idt); call fld_du%acquire !shot%dsyn = Rδu
             
             !adjoint eqn Aᴴa = RᴴRδu
             call wei%update
             shot%dadj=shot%dsyn*wei%weight*wei%weight
             if(mpiworld%is_master) call shot%write('Wei_Rdu_',shot%dadj)
                         
-            call ppg%init_field(fld_Adj_du,name='fld_Adj_du',ois_adjoint=.true.)
+            call ppg_WPI%init_field(fld_Adj_du,name='fld_Adj_du',ois_adjoint=.true.)
             call fld_Adj_du%ignite
             
             !adjoint modeling
             !grad = Adj(δu)★Du
-            call ppg%adjoint(fld_Adj_du,fld_u,oif_compute_grad=.true.)
+            call ppg_WPI%adjoint(fld_Adj_du,fld_u,oif_compute_grad=.true.)
             
             cb%corr(:,:,:,5)=cb%grad(:,:,:,2) !=gkpa, propto gvp under Vp-Rho
             call hud('---------------------------------')
@@ -379,8 +381,8 @@ use m_resampler
     !in the sequential calling of modeling_imaging
     deallocate(cb%corr)
     
-    if(ppg%if_compute_engy) then
-        call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    if(ppg_WPI%if_compute_engy) then
+        call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg_WPI%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     endif
     
     
@@ -393,6 +395,7 @@ subroutine modeling_gradient_costRAM
 use mpi
 use m_System
 use m_Modeling
+use m_propagator_WPI
 use m_weighter
 use m_image_weighter
 use m_Lpnorm
@@ -459,16 +462,16 @@ use m_resampler
         call shot%init(shls%yield(i))
         call shot%read_from_data
         call shot%set_var_time
-        call shot%set_var_space(index(ppg%info,'FDSG')>0)
+        call shot%set_var_space(index(ppg_WPI%info,'FDSG')>0)
 
         call hud('Modeling Shot# '//shot%sindex)
         
-        call cb%init(ppg%nbndlayer)
+        call cb%init(ppg_WPI%nbndlayer)
         call cb%project
         
-        call ppg%check_discretization
-        call ppg%init
-        call ppg%init_abslayer
+        call ppg_WPI%check_discretization
+        call ppg_WPI%init
+        call ppg_WPI%init_abslayer
 
         call alloc(cb%corr,     cb%mz,cb%mx,cb%my,5)
         !corr(:,:,:,1) = FWI gradient a★Du
@@ -478,13 +481,13 @@ use m_resampler
         !corr(:,:,:,5) = demig-remig (DR) Adj(Rᴴδu)★Du
 
 
-        call ppg%init_field(fld_u, name='fld_u');    call fld_u%ignite
-        call ppg%init_field(fld_du,name='fld_du')
+        call ppg_WPI%init_field(fld_u, name='fld_u');    call fld_u%ignite
+        call ppg_WPI%init_field(fld_du,name='fld_du')
 
         !forward modeling
         !A u = f
         !Aδu = Iu
-        call ppg%forward_scattering(fld_du,fld_u,W2Idt)
+        call ppg_WPI%forward_scattering(fld_du,fld_u,W2Idt)
         call fld_du%acquire; call shot%write('Rdu_',shot%dsyn)
         call fld_u%acquire;  call shot%write('Ru_', shot%dsyn)
         shot%dsyn_aux=shot%dsyn
@@ -506,16 +509,16 @@ use m_resampler
         call alloc(shot%dadj,shot%nt,shot%nrcv)
         call kernel_L2sq(shot%dadj)
 
-        call ppg%init_field(fld_a, name='fld_a' ,ois_adjoint=.true.); call fld_a%ignite
-        call ppg%init_field(fld_da,name='fld_da',ois_adjoint=.true.)
+        call ppg_WPI%init_field(fld_a, name='fld_a' ,ois_adjoint=.true.); call fld_a%ignite
+        call ppg_WPI%init_field(fld_da,name='fld_da',ois_adjoint=.true.)
         
-        call ppg%init_field(fld_Adj_du,name='fld_Adj_du',ois_adjoint=.true.)
+        call ppg_WPI%init_field(fld_Adj_du,name='fld_Adj_du',ois_adjoint=.true.)
         call fld_du%acquire
         shot%dadj=shot%dsyn*wei%weight*wei%weight
         if(mpiworld%is_master) call shot%write('Wei_Rdu_',shot%dadj)
         call fld_Adj_du%ignite
                 
-        call ppg%adjoint_WPI(fld_da,fld_a,fld_Adj_du,fld_du,fld_u,W2Idt,corrs)
+        call ppg_WPI%adjoint_WPI(fld_da,fld_a,fld_Adj_du,fld_du,fld_u,W2Idt,corrs)
         !if(index(corrs,'RE')>0) cb%corr(:,:,:,2)=-cb%corr(:,:,:,2)
         cb%corr(:,:,:,2)=-cb%corr(:,:,:,2)
 
@@ -579,8 +582,8 @@ use m_resampler
     !in the sequential calling of modeling_imaging
     deallocate(cb%corr)
         
-    ! if(ppg%if_compute_engy) then
-    !     call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    ! if(ppg_WPI%if_compute_engy) then
+    !     call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg_WPI%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     ! endif
     
     

@@ -14,6 +14,7 @@ obj = \
 ../Modules/Modeling/m_field.o \
 ../Modules/Modeling/m_cpml_$(Solver).o \
 ../Modules/Modeling/m_propagator_$(WaveEq)_$(Solver)_$(Order).o \
+../Modules/Modeling/m_propagator_WPI.o \
 ../Modules/Modeling/m_Modeling.o \
 ../Modules/Kernel/m_parametrizer_$(Param).o \
 ../Modules/Kernel/m_querypoint.o \
@@ -38,7 +39,7 @@ mod :
 	#Signal
 	(cd ../Modules/Signal; make)
 	#Modeling
-	(cd ../Modules/Modeling; make)
+	(cd ../Modules/Modeling; make App=WPI)
 	#Kernel
 	(cd ../Modules/Kernel; make App=WPI)
 	#Optimization

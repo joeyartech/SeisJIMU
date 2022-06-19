@@ -72,6 +72,7 @@ use, intrinsic :: ieee_arithmetic
         ! procedure :: init
         procedure :: init_bloom
         procedure :: init_boundary
+        procedure :: reinit
         procedure :: check_value
         procedure :: ignite
         procedure :: acquire
@@ -226,6 +227,29 @@ use, intrinsic :: ieee_arithmetic
             call alloc(self%bnd%vy_front,n,nt)
             call alloc(self%bnd%vy_rear, n,nt)
         endif
+
+    end subroutine
+
+    subroutine reinit(self)
+        class(t_field) :: self
+                                        self%dvz_dz=0.
+                                        self%dvx_dx=0.
+            if(allocated(self%dvy_dy))  self%dvy_dy=0.
+                        
+            if(allocated(self%dvz_dx))  self%dvz_dx=0.
+            if(allocated(self%dvx_dz))  self%dvx_dz=0.
+
+            if(allocated(self%dp_dz))   self%dp_dz=0.
+            if(allocated(self%dp_dx))   self%dp_dx=0.
+            if(allocated(self%dp_dy))   self%dp_dy=0.
+
+            if(allocated(self%dszz_dz)) self%dszz_dz=0.
+            if(allocated(self%dshh_dx)) self%dshh_dx=0.
+            if(allocated(self%dshh_dy)) self%dshh_dy=0.
+
+            if(allocated(self%dsxx_dx)) self%dsxx_dx=0.
+            if(allocated(self%dszx_dz)) self%dszx_dz=0.
+            if(allocated(self%dszx_dx)) self%dszx_dx=0.
 
     end subroutine
     
