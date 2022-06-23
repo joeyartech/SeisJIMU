@@ -92,7 +92,7 @@ use m_propagator
         ift=1; ilt=self%nt
 
         do it=ift,ilt
-            if(mod(it,100)==0 .and. mpiworld%is_master) then
+            if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
                 call fld_du%check_value
                  call fld_u%check_value
@@ -194,7 +194,7 @@ use m_propagator
         ! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
         do it=ilt,ift,int(time_dir)
-            if(mod(it,100)==0 .and. mpiworld%is_master) then
+            if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
                 call fld_a%check_value
                 call fld_du%check_value
@@ -392,7 +392,7 @@ use m_propagator
         ! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
         do it=ilt,ift,int(time_dir)
-            if(mod(it,100)==0 .and. mpiworld%is_master) then
+            if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
                 call fld_da%check_value
                 call fld_a%check_value
@@ -583,7 +583,7 @@ use m_propagator
         ! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
         do it=ilt,ift,int(time_dir)
-            if(mod(it,100)==0 .and. mpiworld%is_master) then
+            if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
                 call fld_da%check_value
                 call fld_a%check_value
@@ -769,7 +769,7 @@ use m_propagator
         ! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
         do it=ilt,ift,int(time_dir)
-            if(mod(it,100)==0 .and. mpiworld%is_master) then
+            if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
                 call fld_da%check_value
                 call fld_a%check_value
@@ -921,7 +921,7 @@ use m_propagator
 
         !gkpa
         do i=1,5
-        cb%corr(:,:,:,i) = cb%corr(:,:,:,i) * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my))
+            cb%corr(:,:,:,i) = cb%corr(:,:,:,i) * (-self%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my))
         enddo
 
         !preparing for cb%project_back

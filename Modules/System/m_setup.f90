@@ -26,14 +26,14 @@ use m_message
         procedure :: get_bool
         !procedure :: get_bools
 
-        procedure :: previous_int
-        procedure :: previous_ints
-        procedure :: previous_real
-        procedure :: previous_reals
-        procedure :: previous_str
-        procedure :: previous_strs
-        procedure :: previous_file
-        procedure :: previous_bool
+        procedure :: prev_int
+        procedure :: prev_ints
+        procedure :: prev_real
+        procedure :: prev_reals
+        procedure :: prev_str
+        procedure :: prev_strs
+        procedure :: prev_file
+        procedure :: prev_bool
 
     end type
     
@@ -366,7 +366,7 @@ use m_message
 
 
 
-    function previous_int(self) result(res)
+    function prev_int(self) result(res)
         class(t_setup) :: self
         integer :: res
         
@@ -374,7 +374,7 @@ use m_message
 
     end function
 
-    function previous_ints(self,o_sep) result(res)
+    function prev_ints(self,o_sep) result(res)
         class(t_setup) :: self
         character(1),optional :: o_sep
         integer,dimension(:),allocatable :: res
@@ -383,7 +383,7 @@ use m_message
 
     end function
 
-    function previous_real(self) result(res)
+    function prev_real(self) result(res)
         class(t_setup) :: self
         real :: res
 
@@ -391,7 +391,7 @@ use m_message
 
     end function
 
-    function previous_reals(self,o_sep) result(res)
+    function prev_reals(self,o_sep) result(res)
         class(t_setup) :: self
         character(1),optional :: o_sep
         real,dimension(:),allocatable :: res
@@ -400,7 +400,7 @@ use m_message
 
     end function
 
-    function previous_str(self) result(res)
+    function prev_str(self) result(res)
         class(t_setup) :: self
         character(:),allocatable :: res
 
@@ -408,7 +408,7 @@ use m_message
 
     end function
 
-    function previous_strs(self,o_sep) result(res)
+    function prev_strs(self,o_sep) result(res)
         class(t_setup) :: self
         character(1),optional :: o_sep
         type(t_string),dimension(:),allocatable :: res
@@ -417,7 +417,7 @@ use m_message
 
     end function
 
-    function previous_file(self) result(res)
+    function prev_file(self) result(res)
         class(t_setup) :: self
         character(:),allocatable :: res
 
@@ -425,7 +425,7 @@ use m_message
 
     end function
 
-    function previous_bool(self) result(res)
+    function prev_bool(self) result(res)
         class(t_setup) :: self
         logical :: res
 

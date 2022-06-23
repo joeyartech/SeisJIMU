@@ -31,6 +31,7 @@ use m_Kernel
         procedure :: init
         procedure :: search
         procedure :: scale
+        procedure :: write
     end type
 
     type(t_linesearcher),public :: ls
@@ -91,16 +92,16 @@ use m_Kernel
             !save gradients to disk
             if(mpiworld%is_master) call sysio_write('pert%g',pert%g,size(pert%g),o_mode='append')
 
-            call hud('Linesearch.Gradient# = '//num2str(self%isearch)//'.'//num2str(self%igradient))
+            call hud('LineSearch.Gradient# = '//num2str(self%isearch)//'.'//num2str(self%igradient))
             
-            call hud('alpha = '//num2str(self%alpha))
+            call hud('alpha (α) = '//num2str(self%alpha))
             call hud('Perturb qp%f, ║g║₁ = '//num2str(pert%f)//', '//num2str(sum(abs(pert%g))))
             
             !Wolfe conditions
             if_1st_cond = (pert%f <= curr%f+c1*self%alpha*curr%g_dot_d) !sufficient descent condition
             !if_1st_cond = (pert%f <= curr%f)
-            !if_2nd_cond = (abs(pert%g_dot_d) >= c2*abs(curr%g_dot_d)) !strong curvature condition
-            if_2nd_cond = (pert%g_dot_d >= c2*curr%g_dot_d) !weak curvature condition
+            !if_2nd_cond = (abs(pert%g_dot_d) <= c2*abs(curr%g_dot_d)) !strong curvature condition
+            if_2nd_cond = (pert%g_dot_d >= c2*curr%g_dot_d) !weak curvature condition (note the diff of inequal sign..)
 
             if(mpiworld%is_master) then
                 print*,'1st cond',self%alpha,pert%f,curr%f,(pert%f-curr%f)/self%alpha, curr%g_dot_d,  curr%g_dot_d/((pert%f-curr%f)/self%alpha), if_1st_cond
@@ -111,6 +112,8 @@ use m_Kernel
             !try to avoid this by broadcast controlling logicals.
             call mpi_bcast(if_1st_cond, 1, mpi_logical, 0, mpiworld%communicator, mpiworld%ierr)
             call mpi_bcast(if_2nd_cond, 1, mpi_logical, 0, mpiworld%communicator, mpiworld%ierr)
+
+            call self%write(pert)
 
             !1st condition OK, 2nd condition OK => use alpha
             if(if_1st_cond .and. if_2nd_cond) then
@@ -207,6 +210,31 @@ use m_Kernel
         qp%g=qp%g*self%scaler
         qp%pg=qp%pg*self%scaler
         
+    end subroutine
+
+    subroutine write(self,pert)
+        class(t_linesearcher) :: self
+        type(t_querypoint) :: pert
+
+        character(*),parameter :: fmt='(x,5x,2x,i5,2x,i5,2x,es8.2,6x,es11.4,22x,es9.2,3x,l,x,l)'
+
+        if(mpiworld%is_master) then
+            
+            open(16,file=dir_out//'optimization.log',position='append',action='write')
+            write(16,fmt)  ls%isearch, ls%igradient, ls%alpha, pert%f, pert%g_dot_d, if_1st_cond, if_2nd_cond
+            !write(16,'(a)') 'pert%f (pert%f-curr%f)/α pert%g·d curr%g·d'
+            !write(16,*) pert%f, (pert%f-curr%f)/self%alpha, pert%g_dot_d, curr%g_dot_d
+            close(16)
+
+        endif
+
+        if(setup%get_bool('IF_LINESEARCH_WRITE','IF_LS_WRITE',o_default='F')) then
+            call sysio_write('model_LinS'//num2str(ls%isearch),m%vp,m%n)
+            call sysio_write('image_LinS'//num2str(ls%isearch),m%image,m%n)
+            call sysio_mv( 'Ru_Shot0001.su', 'Ru_Shot0001_LinS'//num2str(ls%isearch)//'.su')
+            call sysio_mv('Rdu_Shot0001.su','Rdu_Shot0001_LinS'//num2str(ls%isearch)//'.su')
+        endif
+
     end subroutine
     
 

@@ -111,20 +111,24 @@ use m_Kernel
             !perturb current point
             pert%x = curr%x + self%alpha*curr%d
             !if(mpiworld%is_master) call sysio_write('pert%x',pert%x,size(pert%x),o_mode='append')
-            call threshold(pert%x,size(pert%x))
-            call hud('Modeling with perturbed models')
-            call chp%init('FWI_querypoint_linesearcher','Gradient#','per_init')
-            if(.not.pert%is_registered(chp)) then
-                call fobj%eval(pert)
-                call pert%register(chp)
-            endif
 
-            ! if(.not. curr%is_fitting_data) then
-            !     call hud('Negate the sign of pert due to curr')
-            !     call pert%set_sign(o_sign='-')
-            ! endif
-            
-            call self%scale(pert)
+            if(if_need_modeling(pert,size(pert%x))) then
+
+                call hud('Modeling with perturbed models')
+                call chp%init('FWI_querypoint_linesearcher','Gradient#','per_init')
+                if(.not.pert%is_registered(chp)) then
+                    call fobj%eval(pert)
+                    call pert%register(chp)
+                endif
+
+                ! if(.not. curr%is_fitting_data) then
+                !     call hud('Negate the sign of pert due to curr')
+                !     call pert%set_sign(o_sign='-')
+                ! endif
+                
+                call self%scale(pert)
+
+            endif
 
             pert%g_dot_d = sum(pert%g*curr%d)
 
@@ -145,8 +149,8 @@ use m_Kernel
             !Wolfe conditions
             if_1st_cond = (pert%f <= curr%f+c1*self%alpha*curr%g_dot_d) !sufficient descent condition
             !if_1st_cond = (pert%f <= curr%f)
-            if_2nd_cond = (abs(pert%g_dot_d) <= c2*abs(curr%g_dot_d)) !strong curvature condition
-            !if_2nd_cond = (pert%g_dot_d >= c2*curr%g_dot_d) !weak curvature condition (note the diff of inequal sign..)
+            !if_2nd_cond = (abs(pert%g_dot_d) <= c2*abs(curr%g_dot_d)) !strong curvature condition
+            if_2nd_cond = (pert%g_dot_d >= c2*curr%g_dot_d) !weak curvature condition (note the diff of inequal sign..)
             if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'max')>0) then
                 if(setup%get_bool('IF_FLIP_CURVATURE_CONDITION',o_default='T')) then
                     call hud('flip curvature condition due to maximization')
@@ -247,29 +251,44 @@ use m_Kernel
     
     end subroutine
 
-    subroutine threshold(x,n)
-        real,dimension(n) :: x
+    function if_need_modeling(qp,n) result(res)
+        type(t_querypoint) :: qp
+        logical :: res
 
-        logical,dimension(n) :: is_reached
+        logical,dimension(:,:,:,:),allocatable :: is_reached
 
-        is_reached=.false.
+        res=.true.
 
-        !x should reside in [0,1]
-        where (x<0.) 
+        allocate(is_reached(param%n1,param%n2,param%n3,param%npars))
+        where (qp%x<0. .or. qp%x>1.) 
             is_reached=.true.
-            x=thres
+        elsewhere
+            is_reached=.false.
         endwhere
 
-        where (x>1.)
-            is_reached=.true.
-            x=1.-thres
-        endwhere
-
+        !notify
         if( size(pack(is_reached,.false.))>n/10 ) then
             call warn('x significantly reaches {0,1}. Something might be wrong.')
         endif
 
-    end subroutine
+        if(any(is_reached)) then
+            if(setup%get_str('REACHING_BOUNDS',o_default='threshold')=='threshold') then
+                where (qp%x<0.) qp%x=thres
+                where (qp%x<1.) qp%x=1.-thres
+        
+            elseif(setup%prev_str()=='infinity') then
+                qp%f=huge(1.)
+                qp%g=0.
+                qp%pg=0.
+                res=.false.
+
+            endif
+
+        endif
+
+        deallocate(is_reached)
+
+    end function
     
     !scale the problem s.t. 
     !qp%g, qp%pg, to be negated as qp%d, have a similar scale (or unit) as qp%x, 
@@ -299,8 +318,10 @@ use m_Kernel
             elseif(len(str)>0) then
                 eps=str2real(str)
                 eps=eps/maxval(abs(qp%pg(:,:,:,1))) !eg. =0.05/║pg(1)║∞, ie. maximum 50m/s perturbation on velocity
+
             else
                 call error('LINESEARCHER_SCALING input is zero!')
+
             endif
             
             self%scaler=eps/param%pars(1)%range

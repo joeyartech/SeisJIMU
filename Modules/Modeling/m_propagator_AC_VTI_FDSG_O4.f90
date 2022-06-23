@@ -86,7 +86,8 @@ use m_cpml
 
     !these procedures will be contained in an m_correlate module in future release
     public :: gradient_density, gradient_moduli, imaging, energy, gradient_postprocess, imaging_postprocess
-
+    public :: if_hicks, irdt, rdt
+    
     contains
     
     !========= for FDSG O(dx4,dt2) ===================  

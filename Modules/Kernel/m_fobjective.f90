@@ -345,7 +345,6 @@ use m_preconditioner
         logical,optional :: oif_update_m,oif_approx,oif_gradient
 
         type(t_string),dimension(:),allocatable :: smoothings
-        character(:),allocatable :: smask
         real,dimension(:,:,:),allocatable :: mask
 
         real,dimension(:,:,:),allocatable :: freeze_zone_in_m, freeze_zone_in_x
@@ -395,10 +394,9 @@ use m_preconditioner
         enddo
 
         !soft mask
-        smask=setup%get_file('GRADIENT_SOFT_MASK','MASK')
-        if(smask/='') then
+        if(setup%get_file('FILE_GRADIENT_SOFT_MASK','FILE_MASK')/='') then
             call alloc(mask,m%nz,m%nx,m%ny)
-            call sysio_read(smask,mask,size(mask))
+            call sysio_read(setup%prev_file(),mask,size(mask))
             
             do i=1,ppg%ngrad
                 m%gradient(:,:,:,i)=m%gradient(:,:,:,i)*mask
