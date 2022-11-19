@@ -77,9 +77,9 @@ use m_Optimization
     call sysio_write('qp0%g',qp0%g,size(qp0%g))
     call sysio_write('qp0%pg',qp0%pg,size(qp0%pg))
 
-    if(index(param%info,'pseudotime')>0) then
-        call sysio_write('m%gradient',m%gradient,size(m%gradient))
-    endif
+    ! if(index(param%info,'pseudotime')>0) then
+        call sysio_write('m0%gradient',m%gradient,size(m%gradient))
+    ! endif
 
     !scale problem by linesearcher
     call ls%init
