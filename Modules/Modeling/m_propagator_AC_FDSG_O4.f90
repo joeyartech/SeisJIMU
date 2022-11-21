@@ -88,7 +88,7 @@ use m_cpml
         class(t_propagator) :: self
 
         call hud('Invoked field & propagator modules info : '//s_NL//self%info)
-        call hud('FDGS Coef : '//num2str(coef(1))//', '//num2str(coef(2)))
+        call hud('FDSG Coef : '//num2str(coef(1))//', '//num2str(coef(2)))
         
     end subroutine
     
@@ -128,7 +128,7 @@ use m_cpml
 
         sumcoef=sum(abs(coef))
 
-        CFL = sumcoef*cb%velmax*self%dt*m%rev_cell_diagonal
+        CFL = sumcoef*cb%velmax*self%dt*m%rev_cell_diagonal !R. Courant, K. O. Friedrichs & H. Lewy (1928)
 
         call hud('CFL value: '//num2str(CFL))
         

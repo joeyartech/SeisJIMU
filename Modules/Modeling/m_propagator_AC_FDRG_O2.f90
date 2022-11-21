@@ -1,600 +1,613 @@
-!code from Geodynamics or Komatitsch's GitHub site:
-!https://github.com/geodynamics/seismic_cpml/blob/master/seismic_CPML_2D_pressure_second_order.f90
-
-
-! 2D acoustic finite-difference code in pressure formulation
-! with Convolutional-PML (C-PML) absorbing conditions for an heterogeneous isotropic acoustic medium
-
-! Dimitri Komatitsch, CNRS, Marseille, July 2018.
-
-! The pressure wave equation in an inviscid heterogeneous fluid is:
-!
-! 1/Kappa d2p / dt2 = div(grad(p) / rho) = d(1/rho dp/dx)/dx + d(1/rho dp/dy)/dy
-!
-! (see for instance Komatitsch and Tromp, Geophysical Journal International, vol. 149, p. 390-412 (2002), equations (19) and (21))
-!
-! The second-order staggered-grid formulation of Madariaga (1976) and Virieux (1986) is used:
-!
-!            ^ y
-!            |
-!            |
-!
-!            +-------------------+
-!            |                   |
-!            |                   |
-!            |                   |
-!            |                   |
-!            |                   |
-!      dp/dy +---------+         |
-!            |         |         |
-!            |         |         |
-!            |         |         |
-!            |         |         |
-!            |         |         |
-!            +---------+---------+  ---> x
-!            p       dp/dx
-!
-
-! The C-PML implementation is based in part on formulas given in Roden and Gedney (2000).
-! If you use this code for your own research, please cite some (or all) of these
-! articles:
-!
-! @ARTICLE{MaKoEz08,
-! author = {Roland Martin and Dimitri Komatitsch and Abdela\^aziz Ezziani},
-! title = {An unsplit convolutional perfectly matched layer improved at grazing
-! incidence for seismic wave equation in poroelastic media},
-! journal = {Geophysics},
-! year = {2008},
-! volume = {73},
-! pages = {T51-T61},
-! number = {4},
-! doi = {10.1190/1.2939484}}
-!
-! @ARTICLE{MaKo09,
-! author = {Roland Martin and Dimitri Komatitsch},
-! title = {An unsplit convolutional perfectly matched layer technique improved
-! at grazing incidence for the viscoelastic wave equation},
-! journal = {Geophysical Journal International},
-! year = {2009},
-! volume = {179},
-! pages = {333-344},
-! number = {1},
-! doi = {10.1111/j.1365-246X.2009.04278.x}}
-!
-! @ARTICLE{MaKoGe08,
-! author = {Roland Martin and Dimitri Komatitsch and Stephen D. Gedney},
-! title = {A variational formulation of a stabilized unsplit convolutional perfectly
-! matched layer for the isotropic or anisotropic seismic wave equation},
-! journal = {Computer Modeling in Engineering and Sciences},
-! year = {2008},
-! volume = {37},
-! pages = {274-304},
-! number = {3}}
-!
-! @ARTICLE{KoMa07,
-! author = {Dimitri Komatitsch and Roland Martin},
-! title = {An unsplit convolutional {P}erfectly {M}atched {L}ayer improved
-!          at grazing incidence for the seismic wave equation},
-! journal = {Geophysics},
-! year = {2007},
-! volume = {72},
-! number = {5},
-! pages = {SM155-SM167},
-! doi = {10.1190/1.2757586}}
-!
-! The original CPML technique for Maxwell's equations is described in:
-!
-! @ARTICLE{RoGe00,
-! author = {J. A. Roden and S. D. Gedney},
-! title = {Convolution {PML} ({CPML}): {A}n Efficient {FDTD} Implementation
-!          of the {CFS}-{PML} for Arbitrary Media},
-! journal = {Microwave and Optical Technology Letters},
-! year = {2000},
-! volume = {27},
-! number = {5},
-! pages = {334-339},
-! doi = {10.1002/1098-2760(20001205)27:5 < 334::AID-MOP14>3.0.CO;2-A}}
-
-    !---
-    !--- program starts here
-    !---
-
-
-!module m_propagator
-program main
-
-    ! private
-
-    ! type,public :: t_propagator
-    !   !info
-    !   character(i_str_xxlen) :: info = &
-    !       'Time-domain ISOtropic 2D ACoustic propagation'//s_NL// &
-    !       '2nd-order Pressure formulation'//s_NL// &
-    !       'Regular (non-staggered) Grid Finite-Difference (FDRG) method'//s_NL// &
-    !       'Cartesian O(x²,t²) stencil'//s_NL// &
-    !       ! 'CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal'//s_NL// &
-    !       ! '   -> dt ≤ 0.606(for 2D) or 0.494(3D) *Vmax/dx'//s_NL// &
-    !       'Required model attributes: vp, rho'//s_NL// &
-    !       'Required field components: p'//s_NL// &
-    !       'Required boundary layer thickness: 2'//s_NL// &
-    !       'Imaging conditions: P-Pxcorr'//s_NL// &
-    !       'Energy terms: Σ_shot ∫ sfield%p² dt'//s_NL// &
-    !       'Basic gradients: grho gkpa'
-
-    !   integer :: nbndlayer=max(2,hicks_r) !minimum absorbing layer thickness
-    !   integer :: ngrad=2 !number of basic gradients
-    !   integer :: nimag=1 !number of basic images
-    !   integer :: nengy=1 !number of energy terms
-
-    !   logical :: if_compute_engy=.false.
-
-    !   !local models shared between fields
-    !   real,dimension(:,:,:),allocatable :: buoz, buox, buoy, kpa, inv_kpa
-
-    !   !time frames
-    !   integer :: nt
-    !   real :: dt
-
-    !   contains
-    !   procedure :: print_info
-    !   procedure :: estim_RAM
-    !   procedure :: check_model
-    !   procedure :: check_discretization
-    !   procedure :: init
-    !   procedure :: init_field
-    !   procedure :: init_abslayer
-
-    !   procedure :: forward
-    !   procedure :: adjoint
-      
-    !   procedure :: inject_velocities
-    !   procedure :: inject_stresses
-    !   procedure :: update_velocities
-    !   procedure :: update_stresses
-    !   procedure :: extract
-
-
-    !   final :: final
-
-    ! end type
-
-
-    ! flags to add PML layers to the edges of the grid
-    logical, parameter :: USE_PML_XMIN = .true.
-    logical, parameter :: USE_PML_XMAX = .true.
-    logical, parameter :: USE_PML_YMIN = .true.
-    logical, parameter :: USE_PML_YMAX = .true.
-
-    ! total number of grid points in each direction of the grid
-    integer, parameter :: NX = 201
-    integer, parameter :: NY = 201
-
-    ! size of a grid cell
-    real, parameter :: DELTAX = 1.5
-    real, parameter :: DELTAY = DELTAX
-
-    ! thickness of the PML layer in grid points
-    integer, parameter :: NPOINTS_PML = 10
-
-    ! P-velocity and density
-    ! the unrelaxed value is the value at frequency = 0 (the relaxed value would be the value at frequency = +infinity)
-    real, parameter :: cp_unrelaxed = 2000
-    real, parameter :: density = 2000
-
-    ! total number of time steps
-    integer, parameter :: NSTEP = 500
-
-    ! time step in seconds
-    real, parameter :: DELTAT = 5.2d-4
-
-    ! parameters for the source
-    real, parameter :: f0 = 35
-    real, parameter :: t0 = 1.20d0 / f0
-    real, parameter :: factor = 1
-
-    ! source (in pressure)
-    real, parameter :: xsource = 150
-    real, parameter :: ysource = 150
-    integer, parameter :: ISOURCE = xsource / DELTAX + 1
-    integer, parameter :: JSOURCE = ysource / DELTAY + 1
-
-    ! receivers
-    integer, parameter :: NREC = 1
-    !! DK DK I use 2301 here instead of 2300 in order to fall exactly on a grid point
-    real, parameter :: xdeb = 7.5   ! first receiver x in meters
-    real, parameter :: ydeb = 7.5   ! first receiver y in meters
-    real, parameter :: xfin = 300   ! last receiver x in meters
-    real, parameter :: yfin = 7.5   ! last receiver y in meters
-
-    ! display information on the screen from time to time
-    integer, parameter :: IT_DISPLAY = 100
-
-    ! value of PI
-    real, parameter :: PI = 3.1415927
-
-    ! zero
-    real, parameter :: ZERO = 0
-
-    ! large value for maximum
-    real, parameter :: HUGEVAL = huge(1.)
-
-    ! threshold above which we consider that the code became unstable
-    real, parameter :: STABILITY_THRESHOLD = huge(1.)
-
-    ! main arrays
-    real, dimension(NX,NY) :: pressure_past,pressure_present,pressure_future, &
-      pressure_xx,pressure_yy,dpressurexx_dx,dpressureyy_dy,kappa_unrelaxed,rho,Kronecker_source
-
-    ! to interpolate material parameters or velocity at the right location in the staggered grid cell
-    real :: rho_half_x,rho_half_y
-
-    ! power to compute d0 profile
-    real, parameter :: NPOWER = 2
-
-    ! from Stephen Gedney's unpublished class notes for class EE699, lecture 8, slide 8-11
-    real, parameter :: K_MAX_PML = 1
-    real, parameter :: ALPHA_MAX_PML = 2*PI*(f0/2) ! from Festa and Vilotte
-
-    ! arrays for the memory variables
-    ! could declare these arrays in PML only to save a lot of memory, but proof of concept only here
-    real, dimension(NX,NY) :: &
-      memory_dpressure_dx, &
-      memory_dpressure_dy, &
-      memory_dpressurexx_dx, &
-      memory_dpressureyy_dy
-
-    real :: &
-      value_dpressure_dx, &
-      value_dpressure_dy, &
-      value_dpressurexx_dx, &
-      value_dpressureyy_dy
-
-    ! 1D arrays for the damping profiles
-    real, dimension(NX) :: d_x,K_x,alpha_x,a_x,b_x,d_x_half,K_x_half,alpha_x_half,a_x_half,b_x_half
-    real, dimension(NY) :: d_y,K_y,alpha_y,a_y,b_y,d_y_half,K_y_half,alpha_y_half,a_y_half,b_y_half
-
-    real :: thickness_PML_x,thickness_PML_y,xoriginleft,xoriginright,yoriginbottom,yorigintop
-    real :: Rcoef,d0_x,d0_y,xval,yval,abscissa_in_PML,abscissa_normalized
-
-    ! for the source
-    real :: a,t,source_term
-
-    ! for receivers
-    real xspacerec,yspacerec,distval,dist
-    integer, dimension(NREC) :: ix_rec,iy_rec
-    real, dimension(NREC) :: xrec,yrec
-    integer :: myNREC
-
-    ! for seismograms
-    real, dimension(NSTEP,NREC) :: sispressure
-
-    integer :: i,j,it,irec
-
-    real :: Courant_number,pressurenorm
-
-
-
-    print *
-    print *,'2D acoustic finite-difference code in pressure formulation with C-PML'
-    print *
-
-    ! display size of the model
-    print *
-    print *,'NX = ',NX
-    print *,'NY = ',NY
-    print *
-    print *,'size of the model along X = ',(NX - 1) * DELTAX
-    print *,'size of the model along Y = ',(NY - 1) * DELTAY
-    print *
-    print *,'Total number of grid points = ',NX * NY
-    print *
-
-    !--- define profile of absorption in PML region
-
-    ! thickness of the PML layer in meters
-    thickness_PML_x = NPOINTS_PML * DELTAX
-    thickness_PML_y = NPOINTS_PML * DELTAY
-
-    ! reflection coefficient (INRIA report section 6.1) http://hal.inria.fr/docs/00/07/32/19/PDF/RR-3471.pdf
-    Rcoef = 0.001d0
-
-    ! check that NPOWER is okay
-    if (NPOWER < 1) stop 'NPOWER must be greater than 1'
-
-    ! compute d0 from INRIA report section 6.1 http://hal.inria.fr/docs/00/07/32/19/PDF/RR-3471.pdf
-    d0_x = - (NPOWER + 1) * cp_unrelaxed * log(Rcoef) / (2 * thickness_PML_x)
-    d0_y = - (NPOWER + 1) * cp_unrelaxed * log(Rcoef) / (2 * thickness_PML_y)
-
-    print *,'d0_x = ',d0_x
-    print *,'d0_y = ',d0_y
-    print *
-
-    d_x(:) = ZERO
-    d_x_half(:) = ZERO
-    K_x(:) = 1
-    K_x_half(:) = 1
-    alpha_x(:) = ZERO
-    alpha_x_half(:) = ZERO
-    a_x(:) = ZERO
-    a_x_half(:) = ZERO
-
-    d_y(:) = ZERO
-    d_y_half(:) = ZERO
-    K_y(:) = 1
-    K_y_half(:) = 1
-    alpha_y(:) = ZERO
-    alpha_y_half(:) = ZERO
-    a_y(:) = ZERO
-    a_y_half(:) = ZERO
-
-    ! damping in the X direction
-
-    ! origin of the PML layer (position of right edge minus thickness, in meters)
-    xoriginleft = thickness_PML_x
-    xoriginright = (NX-1)*DELTAX - thickness_PML_x
-
-    do i = 1,NX
-
-    ! abscissa of current grid point along the damping profile
-    xval = DELTAX * (i-1)
-
-    !---------- left edge
-    if (USE_PML_XMIN) then
-
-    ! define damping profile at the grid points
-      abscissa_in_PML = xoriginleft - xval
-      if (abscissa_in_PML >= ZERO) then
-        abscissa_normalized = abscissa_in_PML / thickness_PML_x
-        d_x(i) = d0_x * abscissa_normalized**NPOWER
-    ! from Stephen Gedney's unpublished class notes for class EE699, lecture 8, slide 8-2
-        K_x(i) = 1 + (K_MAX_PML - 1) * abscissa_normalized**NPOWER
-        alpha_x(i) = ALPHA_MAX_PML * (1 - abscissa_normalized)
-      endif
-
-    ! define damping profile at half the grid points
-      abscissa_in_PML = xoriginleft - (xval + DELTAX/2)
-      if (abscissa_in_PML >= ZERO) then
-        abscissa_normalized = abscissa_in_PML / thickness_PML_x
-        d_x_half(i) = d0_x * abscissa_normalized**NPOWER
-    ! from Stephen Gedney's unpublished class notes for class EE699, lecture 8, slide 8-2
-        K_x_half(i) = 1 + (K_MAX_PML - 1) * abscissa_normalized**NPOWER
-        alpha_x_half(i) = ALPHA_MAX_PML * (1 - abscissa_normalized)
-      endif
-
-    endif
-
-    !---------- right edge
-    if (USE_PML_XMAX) then
-
-    ! define damping profile at the grid points
-      abscissa_in_PML = xval - xoriginright
-      if (abscissa_in_PML >= ZERO) then
-        abscissa_normalized = abscissa_in_PML / thickness_PML_x
-        d_x(i) = d0_x * abscissa_normalized**NPOWER
-    ! from Stephen Gedney's unpublished class notes for class EE699, lecture 8, slide 8-2
-        K_x(i) = 1 + (K_MAX_PML - 1) * abscissa_normalized**NPOWER
-        alpha_x(i) = ALPHA_MAX_PML * (1 - abscissa_normalized)
-      endif
-
-    ! define damping profile at half the grid points
-      abscissa_in_PML = xval + DELTAX/2 - xoriginright
-      if (abscissa_in_PML >= ZERO) then
-        abscissa_normalized = abscissa_in_PML / thickness_PML_x
-        d_x_half(i) = d0_x * abscissa_normalized**NPOWER
-    ! from Stephen Gedney's unpublished class notes for class EE699, lecture 8, slide 8-2
-        K_x_half(i) = 1 + (K_MAX_PML - 1) * abscissa_normalized**NPOWER
-        alpha_x_half(i) = ALPHA_MAX_PML * (1 - abscissa_normalized)
-      endif
-
-    endif
-
-    ! just in case, for -5 at the end
-    if (alpha_x(i) < ZERO) alpha_x(i) = ZERO
-    if (alpha_x_half(i) < ZERO) alpha_x_half(i) = ZERO
-
-    b_x(i) = exp(- (d_x(i) / K_x(i) + alpha_x(i)) * DELTAT)
-    b_x_half(i) = exp(- (d_x_half(i) / K_x_half(i) + alpha_x_half(i)) * DELTAT)
-
-    ! this to avoid division by zero outside the PML
-    if (abs(d_x(i)) > 1.e-6) a_x(i) = d_x(i) * (b_x(i) - 1) / (K_x(i) * (d_x(i) + K_x(i) * alpha_x(i)))
-    if (abs(d_x_half(i)) > 1.e-6) a_x_half(i) = d_x_half(i) * &
-      (b_x_half(i) - 1) / (K_x_half(i) * (d_x_half(i) + K_x_half(i) * alpha_x_half(i)))
-
-    enddo
-
-    ! damping in the Y direction
-
-    ! origin of the PML layer (position of right edge minus thickness, in meters)
-    yoriginbottom = thickness_PML_y
-    yorigintop = (NY-1)*DELTAY - thickness_PML_y
-
-    do j = 1,NY
-
-    ! abscissa of current grid point along the damping profile
-    yval = DELTAY * (j-1)
-
-    !---------- bottom edge
-    if (USE_PML_YMIN) then
-
-    ! define damping profile at the grid points
-      abscissa_in_PML = yoriginbottom - yval
-      if (abscissa_in_PML >= ZERO) then
-        abscissa_normalized = abscissa_in_PML / thickness_PML_y
-        d_y(j) = d0_y * abscissa_normalized**NPOWER
-    ! from Stephen Gedney's unpublished class notes for class EE699, lecture 8, slide 8-2
-        K_y(j) = 1 + (K_MAX_PML - 1) * abscissa_normalized**NPOWER
-        alpha_y(j) = ALPHA_MAX_PML * (1 - abscissa_normalized)
-      endif
-
-    ! define damping profile at half the grid points
-      abscissa_in_PML = yoriginbottom - (yval + DELTAY/2)
-      if (abscissa_in_PML >= ZERO) then
-        abscissa_normalized = abscissa_in_PML / thickness_PML_y
-        d_y_half(j) = d0_y * abscissa_normalized**NPOWER
-    ! from Stephen Gedney's unpublished class notes for class EE699, lecture 8, slide 8-2
-        K_y_half(j) = 1 + (K_MAX_PML - 1) * abscissa_normalized**NPOWER
-        alpha_y_half(j) = ALPHA_MAX_PML * (1 - abscissa_normalized)
-      endif
-
-    endif
-
-    !---------- top edge
-    if (USE_PML_YMAX) then
-
-    ! define damping profile at the grid points
-      abscissa_in_PML = yval - yorigintop
-      if (abscissa_in_PML >= ZERO) then
-        abscissa_normalized = abscissa_in_PML / thickness_PML_y
-        d_y(j) = d0_y * abscissa_normalized**NPOWER
-    ! from Stephen Gedney's unpublished class notes for class EE699, lecture 8, slide 8-2
-        K_y(j) = 1 + (K_MAX_PML - 1) * abscissa_normalized**NPOWER
-        alpha_y(j) = ALPHA_MAX_PML * (1 - abscissa_normalized)
-      endif
-
-    ! define damping profile at half the grid points
-      abscissa_in_PML = yval + DELTAY/2 - yorigintop
-      if (abscissa_in_PML >= ZERO) then
-        abscissa_normalized = abscissa_in_PML / thickness_PML_y
-        d_y_half(j) = d0_y * abscissa_normalized**NPOWER
-    ! from Stephen Gedney's unpublished class notes for class EE699, lecture 8, slide 8-2
-        K_y_half(j) = 1 + (K_MAX_PML - 1) * abscissa_normalized**NPOWER
-        alpha_y_half(j) = ALPHA_MAX_PML * (1 - abscissa_normalized)
-      endif
-
-    endif
-
-    b_y(j) = exp(- (d_y(j) / K_y(j) + alpha_y(j)) * DELTAT)
-    b_y_half(j) = exp(- (d_y_half(j) / K_y_half(j) + alpha_y_half(j)) * DELTAT)
-
-    ! this to avoid division by zero outside the PML
-    if (abs(d_y(j)) > 1.e-6) a_y(j) = d_y(j) * (b_y(j) - 1) / (K_y(j) * (d_y(j) + K_y(j) * alpha_y(j)))
-    if (abs(d_y_half(j)) > 1.e-6) a_y_half(j) = d_y_half(j) * &
-      (b_y_half(j) - 1) / (K_y_half(j) * (d_y_half(j) + K_y_half(j) * alpha_y_half(j)))
-
-    enddo
-
-    ! compute the Lame parameter and density
-    do j = 1,NY
-    do i = 1,NX
-      rho(i,j) = density
-      kappa_unrelaxed(i,j) = density*cp_unrelaxed*cp_unrelaxed
-    enddo
-    enddo
-
-    ! print position of the source
-    print *,'Position of the source:'
-    print *
-    print *,'x = ',xsource
-    print *,'y = ',ysource
-    print *
-
-    ! define location of the source
-    Kronecker_source(:,:) = 0
-    Kronecker_source(ISOURCE,JSOURCE) = 1
-
-    ! define location of receivers
-    print *,'There are ',nrec,' receivers'
-    print *
-    if (NREC > 1) then
-    ! this is to avoid a warning with GNU gfortran at compile time about division by zero when NREC = 1
-    myNREC = NREC
-    xspacerec = (xfin-xdeb) / (myNREC-1)
-    yspacerec = (yfin-ydeb) / (myNREC-1)
-    else
-    xspacerec = 0
-    yspacerec = 0
-    endif
-    do irec=1,nrec
-    xrec(irec) = xdeb + (irec-1)*xspacerec
-    yrec(irec) = ydeb + (irec-1)*yspacerec
-    enddo
-
-    ! find closest grid point for each receiver
-    do irec=1,nrec
-    dist = HUGEVAL
-    do j = 1,NY
-    do i = 1,NX
-      distval = sqrt((DELTAX*(i-1) - xrec(irec))**2 + (DELTAY*(j-1) - yrec(irec))**2)
-      if (distval < dist) then
-        dist = distval
-        ix_rec(irec) = i
-        iy_rec(irec) = j
-      endif
-    enddo
-    enddo
-    print *,'receiver ',irec,' x_target,y_target = ',xrec(irec),yrec(irec)
-    print *,'closest grid point found at distance ',dist,' in i,j = ',ix_rec(irec),iy_rec(irec)
-    print *
-    enddo
-
-    ! check the Courant stability condition for the explicit time scheme
-    ! R. Courant et K. O. Friedrichs et H. Lewy (1928)
-    Courant_number = cp_unrelaxed * DELTAT * sqrt(1/DELTAX**2 + 1/DELTAY**2)
-    print *,'Courant number is ',Courant_number
-    print *
-    if (Courant_number > 1) stop 'time step is too large, simulation will be unstable'
-
-    ! initialize arrays
-    pressure_present(:,:) = ZERO
-    pressure_past(:,:) = ZERO
-
-    ! PML
-    memory_dpressure_dx(:,:) = ZERO
-    memory_dpressure_dy(:,:) = ZERO
-    memory_dpressurexx_dx(:,:) = ZERO
-    memory_dpressureyy_dy(:,:) = ZERO
-
-    ! initialize seismograms
-    sispressure(:,:) = ZERO
-
-    !---
-    !---  beginning of time loop
-    !---
-    open(11,file='pressure_present',access='stream')
-
-    do it = 1,NSTEP
-
-        ! output information
-        if (mod(it,IT_DISPLAY) == 0 .or. it == 5) then
-
-            ! print maximum of pressure and of norm of velocity
-            pressurenorm = maxval(abs(pressure_future))
-            print *,'Time step # ',it,' out of ',NSTEP
-            print *,'Time: ',sngl((it-1)*DELTAT),' seconds'
-            print *,'Max absolute value of pressure = ',pressurenorm
-            print *
-            ! check stability of the code, exit if unstable
-            if (pressurenorm > STABILITY_THRESHOLD) stop 'code became unstable and blew up'
+module m_propagator
+
+use m_System
+use m_hicks, only : hicks_r
+use m_resampler
+use m_model
+use m_shot
+use m_computebox
+use m_field
+use m_cpml
+
+    private
+
+    !FD coef
+    real,dimension(1),parameter :: coef = 1.
+    
+    real :: c1x, c1y, c1z
+    real :: c2x, c2y, c2z
+
+    type,public :: t_propagator
+        !info
+        character(i_str_xxlen) :: info = &
+            'Time-domain ISOtropic 2D/3D ACoustic propagation'//s_NL// &
+            '1st-order Velocity-Stress formulation'//s_NL// &
+            'Vireux-Levandar Staggered-Grid Finite-Difference (FDSG) method'//s_NL// &
+            'Cartesian O(x⁴,t²) stencil'//s_NL// &
+            'CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal'//s_NL// &
+            '   -> dt ≤ 0.5*Vmax/dx'//s_NL// &
+            'Required model attributes: vp, rho'//s_NL// &
+            'Required field components: vz, vx, vy(3D), p'//s_NL// &
+            'Required boundary layer thickness: 2'//s_NL// &
+            'Imaging conditions: P-Pxcorr'//s_NL// &
+            'Energy terms: Σ_shot ∫ sfield%p² dt'//s_NL// &
+            'Basic gradients: grho gkpa'
+
+        integer :: nbndlayer=max(1,hicks_r) !minimum absorbing layer thickness
+        integer :: ngrad=2 !number of basic gradients
+        integer :: nimag=1 !number of basic images
+        integer :: nengy=1 !number of energy terms
+
+        logical :: if_compute_engy=.false.
+
+        !local models shared between fields
+        real,dimension(:,:,:),allocatable :: buoz, buox, buoy, kpa, inv_kpa
+
+        !time frames
+        integer :: nt
+        real :: dt
+
+        contains
+        procedure :: print_info
+        procedure :: estim_RAM
+        procedure :: check_model
+        procedure :: check_discretization
+        procedure :: init
+        procedure :: init_field
+        procedure :: init_abslayer
+
+        procedure :: forward
+        procedure :: adjoint
+        
+        procedure :: inject_pressure
+        procedure :: update_pressure
+        procedure :: extract
+
+
+        final :: final
+
+    end type
+
+    type(t_propagator),public :: ppg
+
+    logical :: if_hicks
+    integer :: irdt
+    real :: rdt
+
+    !these procedures will be contained in an m_correlate module in future release
+    public :: gradient_density, gradient_moduli, imaging, energy, gradient_postprocess, imaging_postprocess
+
+    ! real,dimension(:,:,:),allocatable :: sf_p_save
+
+    contains
+
+
+   !========= for FDSG O(dx2,dt2) ===================  
+
+    subroutine print_info(self)
+        class(t_propagator) :: self
+
+        call hud('Invoked field & propagator modules info : '//s_NL//self%info)
+        call hud('FDRG Coef : 1') !//num2str(coef(1))//', '//num2str(coef(2)))
+        
+    end subroutine
+    
+    subroutine estim_RAM(self)
+        class(t_propagator) :: self
+    end subroutine
+    
+    subroutine check_model(self)
+        class(t_propagator) :: self
+        
+        if(index(self%info,'vp')>0  .and. .not. allocated(m%vp)) then
+            !call error('vp model is NOT given.')
+            call alloc(m%vp,m%nz,m%nx,m%ny,o_init=1500.)
+            call warn('Constant vp model (1500 m/s) is allocated by propagator.')
+        endif
+
+        if(index(self%info,'rho')>0 .and. .not. allocated(m%rho)) then
+            call alloc(m%rho,m%nz,m%nx,m%ny,o_init=1000.)
+            call warn('Constant rho model (1000 kg/m³) is allocated by propagator.')
+        endif
+                
+    end subroutine
+
+    subroutine check_discretization(self)
+        class(t_propagator) :: self
+
+        !grid dispersion condition
+        if (5.*m%dmin > cb%velmin/shot%fmax) then  !O(x4) rule: 5 points per wavelength
+            call warn(shot%sindex//' can have grid dispersion!'//s_NL// &
+                ' 5*dz, velmin, fmax = '//num2str(5.*m%dmin)//', '//num2str(cb%velmin)//', '//num2str(shot%fmax))
+        endif
+        
+        !time frames
+        self%nt=shot%nt
+        self%dt=shot%dt
+        time_window=(shot%nt-1)*shot%dt
+
+        sumcoef=1. !sum(abs(coef))
+
+        CFL = sumcoef*cb%velmax*self%dt*m%rev_cell_diagonal !R. Courant, K. O. Friedrichs & H. Lewy (1928)
+
+        call hud('CFL value: '//num2str(CFL))
+        
+        if(CFL>1.) then
+            self%dt = setup%get_real('CFL',o_default='0.9')/(sumcoef*cb%velmax*m%rev_cell_diagonal)
+            self%nt=nint(time_window/self%dt)+1
+
+            call warn('CFL > 1 on '//shot%sindex//'!'//s_NL//&
+                'vmax, dt, 1/dx = '//num2str(cb%velmax)//', '//num2str(self%dt)//', '//num2str(m%rev_cell_diagonal) //s_NL//&
+                'Adjusted dt, nt = '//num2str(self%dt)//', '//num2str(self%nt))
+
+        endif       
+        
+    end subroutine
+
+    subroutine init(self)
+        class(t_propagator) :: self
+
+        c1x=coef(1)/m%dx; c1y=coef(1)/m%dy; c1z=coef(1)/m%dz
+        !c2x=coef(2)/m%dx; c2y=coef(2)/m%dy; c2z=coef(2)/m%dz
+        
+        if_hicks=shot%if_hicks
+
+        !call alloc(self%buoz,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(self%buox,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(self%buoy,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(self%kpa,    [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(self%inv_kpa,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        
+        self%kpa=cb%rho*cb%vp**2
+        self%inv_kpa=1./self%kpa
+
+        self%buoz(cb%ifz,:,:)=1./cb%rho(cb%ifz,:,:)
+        self%buox(:,cb%ifx,:)=1./cb%rho(:,cb%ifx,:)
+        self%buoy(:,:,cb%ify)=1./cb%rho(:,:,cb%ify)
+
+        do iz=cb%ifz+1,cb%ilz
+            self%buoz(iz,:,:)=0.5/cb%rho(iz,:,:)+0.5/cb%rho(iz-1,:,:)
+        enddo
+        
+        do ix=cb%ifx+1,cb%ilx
+            self%buox(:,ix,:)=0.5/cb%rho(:,ix,:)+0.5/cb%rho(:,ix-1,:)
+        enddo
+
+        do iy=cb%ify+1,cb%ily
+            self%buoy(:,:,iy)=0.5/cb%rho(:,:,iy)+0.5/cb%rho(:,:,iy-1)
+        enddo
+
+        !initialize m_field
+        call field_init(.false.,self%nt,self%dt)
+
+        !rectified interval for time integration
+        !default to Nyquist, and must be a multiple of dt
+        rdt=setup%get_real('REF_RECT_TIME_INTEVAL','RDT',o_default=num2str(0.5/shot%fmax))
+        irdt=floor(rdt/self%dt)
+        if(irdt==0) irdt=1
+        rdt=irdt*self%dt
+        call hud('rdt, irdt = '//num2str(rdt)//', '//num2str(irdt))
+
+    end subroutine
+
+    subroutine init_field(self,f,name,ois_adjoint,oif_will_reconstruct)
+        class(t_propagator) :: self
+        type(t_field) :: f
+        character(*) :: name
+        logical,optional :: oif_will_reconstruct
+        logical,optional :: ois_adjoint
+
+        !field
+        ! call f%init(name)
+        f%name=name
+
+        f%is_adjoint=either(ois_adjoint,.false.,present(ois_adjoint))
+
+        call f%init_bloom
+
+        !f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
+        !if(f%if_will_reconstruct) call f%init_boundary
+        call f%init_boundary
+
+        call alloc(f%p_prev, [cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%p_curr, [cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%p_next, [cb%ifx,cb%ilx],[cb%ify,cb%ily])
+
+        !call alloc(f%dp_dz, [cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dp_dx, [cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dp_dy, [cb%ifx,cb%ilx],[cb%ify,cb%ily])
+
+        call alloc(f%dpxx_dx, [cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dpyy_dy, [cb%ifx,cb%ilx],[cb%ify,cb%ily])
+
+    end subroutine
+
+    subroutine init_abslayer(self)
+        class(t_propagator) :: self
+
+        call cpml%init
+
+    end subroutine
+
+    !========= Derivations =================
+    !PDE:      A u = ∂ₜ²u - κ∇·b∇u = f
+    !Adjoint:  Aᵀa = Aa = d
+    !where
+    !u=p=tr(s)=szz=sxx=syy is (hydrostatic) pressure
+    !f=fp*δ(x-xs), d is recorded data
+    !b=ρ⁻¹ is buoyancy, and a=pᵃ is the adjoint field
+    !
+    !Discrete case:
+    !Meshing with staggered grids in time and space (2D example):
+    !                            |       |   -½ ∂zp      |       |
+    !                            |       |       bz      |       |
+    !                            |       |       |       |       |
+    !                            κ   bx  κ   bx  κ   bx  κ   bx  κ
+    !  -∂ₜp--p-∂ₜp-p-∂ₜp-→ t    -p--∂ₓp--p--∂ₓp--p--∂ₓp--p--∂ₓp--p-→ x
+    !    -1 -½  0  ½  1         -2  -1½ -1  -½   0   ½   1   1½  2    
+    !                            |       |       |       |       | 
+    !                            |       |    ½ ∂zp      |       | 
+    !                            |       |       bz      |       | 
+    !                            |       |       |       |       | 
+    !                           -|-------|-----1-p-------|-------|-
+    !                            |       |       κ       |       | 
+    !                            |       |       |       |       | 
+    !                            |       |   1½ ∂zp      |       | 
+    !                            |       |       bz      |       | 
+    !                            |       |       |       |       | 
+    !                                          z ↓
+    !
+    !Forward:
+    !FD eqn:
+    !∂ₜ²p = ∂zᵇ(bz*∂zᶠp) + ∂ₓᵇ(bx*∂ₓᶠp) +f
+    !where
+    !∂ₜ²*dt² := p^n+1 -2p^n +p^n-1  ~O(t²)
+    !∂zᶠ*dz  := p(iz+1)-p(iz  )     ~O(x¹)
+    !∂zᵇ*dz  := p(iz  )-p(iz-1)     ~O(x¹)
+    !Step #1: p^n+½ += src
+    !Step #2: p^n+1½ = p^n+½ + spatial FD of p^n
+    !Step #3: sample p^n+1½ at receivers
+    !Step #4: save p^n+1½ to boundary values
+    !in reverse time:
+    !Step #4: load boundary values for p^n+1½
+    !Step #2: p^n+½ = p^n+1½ - spatial FD of p^n
+    !Step #1: p^n+½ -= src
+    !
+    !Adjoint:
+    !FD eqn:
+    !∂ₜ²ᵀpᵃ = ∂zᵇᵀ(bz*∂zᶠᵀpᵃ) + ∂ₓᵇᵀ(bx*∂ₓᶠᵀpᵃ) +d
+    !∂ₜ²ᵀ = ∂ₜ²
+    !∂zᶠᵀ = p(iz-1)-p(iz) = -∂zᵇ, ∂zᵇᵀ = -∂zᶠ
+    !so
+    !∂ₜ²pᵃ = ∂zᶠ(bz*∂zᵇpᵃ) + ∂ₓᶠ(bx*∂ₓᵇpᵃ) +d
+    !NOT exactly same as the discretized FD eqn!
+    !
+    !Time marching (in reverse time):
+    !Step #5: pᵃ^n+1½ += adjsrc
+    !Step #4: pᵃ^n+½ = pᵃ^n+1½ + spatial FD of pᵃ^n+1
+    !
+    !For adjoint test:
+    !In each step of forward time marching: dsyn=RGA
+    !!f:source wavelet, N=M⁻¹dt: diagonal 
+    !A:inject source into field, G=UK∂ᵇB∂ᶠ:propagator, with
+    !∂ᶠ: forward FD, ∂ᵇ: backward FD, U:2nd-ord time integration B:buoyancy, K:bulk modulus, 
+    !R:extract field at receivers
+    !while in each step of reverse-time adjoint marching: dadj=AᵀGᵀRᵀdsyn
+    !Rᵀ:inject adjoint sources, Gᵀ:adjoint propagator, Aᵀ:extract adjoint fields
+    !
+
+    subroutine forward(self,fld_u)
+        class(t_propagator) :: self
+        type(t_field) :: fld_u
+
+        real,parameter :: time_dir=1. !time direction
+
+        !seismo
+        call alloc(fld_u%seismo,shot%nrcv,self%nt)
+            
+        tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.
+
+        ift=1; ilt=self%nt
+
+        do it=ift,ilt
+            if(mod(it,500)==0 .and. mpiworld%is_master) then
+                write(*,*) 'it----',it
+                call fld_u%check_value
+            endif
+
+            !do forward time stepping (step# conforms with backward & adjoint time stepping)
+            !step 1: add pressure
+            call cpu_time(tic)
+            call self%inject_stresses(fld_u,time_dir,it)
+            call cpu_time(toc)
+            tt1=tt1+toc-tic
+
+            !step 2: update pressure
+            call cpu_time(tic)
+            call self%update_stresses(fld_u,time_dir,it)
+            call cpu_time(toc)
+            tt2=tt2+toc-tic
+
+            !step 3: sample pressure at receivers
+            call cpu_time(tic)
+            call self%extract(fld_u,it)
+            tt3=tt3+toc-tic
+
+            !snapshot
+            call fld_u%write(it)
+
+            !step 6: save v^it+1 in boundary layers
+            ! if(fld_u%if_will_reconstruct) then
+                call cpu_time(tic)
+                call fld_u%boundary_transport('save',it)
+                call cpu_time(toc)
+                tt4=tt4+toc-tic
+            ! endif
+
+            ! move new values to old values (the present becomes the past, the future becomes the present)
+            f%p_prev = f%p_curr
+            f%p_curr = f%p_next
+
+
+        enddo
+
+        if(mpiworld%is_master) then
+            write(*,*) 'Elapsed time to add source',tt1/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update field',tt2/mpiworld%max_threads
+            write(*,*) 'Elapsed time to extract field',tt3/mpiworld%max_threads
+            write(*,*) 'Elapsed time to save boundary',tt4/mpiworld%max_threads
+        endif
+
+        call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
+        call hud('ximage < snap_sfield%*  n1='//num2str(cb%nz)//' perc=99')
+        call hud('xmovie < snap_sfield%*  n1='//num2str(cb%nz)//' n2='//num2str(cb%nx)//' clip=?e-?? loop=2 title=%g')
+
+    end subroutine
+
+    
+
+    !forward: add RHS to s^it+0.5
+    !adjoint: add RHS to s^it+1.5
+    subroutine inject_pressure(self,f,time_dir,it)
+        class(t_propagator) :: self
+        type(t_field) :: f
+
+        if(.not. f%is_adjoint) then
+
+            if(if_hicks) then
+                ifz=shot%src%ifz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
+                ifx=shot%src%ifx-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
+                ify=shot%src%ify-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
+            else
+                ifz=shot%src%iz-cb%ioz+1; ilz=ifz
+                ifx=shot%src%ix-cb%iox+1; ilx=ifx
+                ify=shot%src%iy-cb%ioy+1; ily=ify
+            endif
+            
+            wl=time_dir*f%wavelet(1,it)
+            
+            if(shot%src%comp=='p') then !explosion
+                f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
+            endif
+            if(shot%src%comp=='pbnd') then !hard BC
+                f%p(ifz:ilz,ifx:ilx,ify:ily) =                                wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
+            endif
+                
+            return
 
         endif
 
+        do i=1,shot%nrcv
+
+            if(if_hicks) then
+                ifz=shot%rcv(i)%ifz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
+                ifx=shot%rcv(i)%ifx-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
+                ify=shot%rcv(i)%ify-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
+            else
+                ifz=shot%rcv(i)%iz-cb%ioz+1; ilz=ifz
+                ifx=shot%rcv(i)%ix-cb%iox+1; ilx=ifx
+                ify=shot%rcv(i)%iy-cb%ioy+1; ily=ify
+            endif
+
+            !adjsource for pressure
+            wl=f%wavelet(i,it)
+                
+            if(shot%rcv(i)%comp=='p') then
+                f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
+            endif
+            if(shot%rcv(i)%comp=='pbnd') then
+                f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
+            endif
+
+        enddo
+        
+    end subroutine
+
+    !forward: s^it+0.5 -> s^it+1.5 by FD of v^it+1
+    !adjoint: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
+    subroutine update_stresses(self,f,time_dir,it)
+        class(t_propagator) :: self
+        type(t_field) :: f
+
+        ifz=f%bloom(1,it)+1
+        ilz=f%bloom(2,it)-2
+        ifx=f%bloom(3,it)+1
+        ilx=f%bloom(4,it)-2
+        ify=f%bloom(5,it)+1
+        ily=f%bloom(6,it)-2
+        
+        if(m%is_freesurface) ifz=max(ifz,1)
+
+        if(m%is_cubic) then
+            ! call fd3d_stresses(f%vz,f%vx,f%vy,f%p,                     &
+            !                    f%dvz_dz,f%dvx_dx,f%dvy_dy,             &
+            !                    self%kpa,                               &
+            !                    ifz,ilz,ifx,ilx,ify,ily,time_dir*self%dt)
+        else
+            call fd2d_pressure(f%p,                            &
+                               f%dp_dx,f%dp_dy,                &
+                               self%buox,self%buoy,self%kpa,   &
+                               ifx,ilx,time_dir*self%dt        )
+        endif
+        
+
+        ! apply the time evolution scheme
+        ! we apply it everywhere, including at some points on the edges of the domain that have not be calculated above,
+        ! which is of course wrong (or more precisely undefined), but this does not matter because these values
+        ! will be erased by the Dirichlet conditions set on these edges below
+        f%p_next = - f%p_prev + 2*f%p_curr + &
+              DELTAT*DELTAT * ((f%dpxx_dx + f%dpyy_dy) * kpa ) !+ &
+              !4 * r_pi * vp**2 * source_term * Kronecker_source)
+
+        ! !apply free surface boundary condition if needed
+        ! if(m%is_freesurface) call fd_freesurface_stresses(f%p)
+
+        ! apply Dirichlet conditions at the bottom of the C-PML layers,
+        ! which is the right condition to implement in order for C-PML to remain stable at long times
+        
+        ! Dirichlet condition for pressure on the left boundary
+        f%p_next(1,:) = 0.
+
+        ! Dirichlet condition for pressure on the right boundary
+        f%p_next(NX,:) = 0.
+
+        ! Dirichlet condition for pressure on the bottom boundary
+        f%p_next(:,1) = 0.
+
+        ! Dirichlet condition for pressure on the top boundary
+        f%p_next(:,NY) = 0.
+
+    end subroutine
+
+    subroutine extract(self,f,it)
+        class(t_propagator) :: self
+        type(t_field) :: f
+        
+        if(.not.f%is_adjoint) then
+
+            do i=1,shot%nrcv
+                ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
+                ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
+                ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
+
+                if(if_hicks) then
+                    select case (shot%rcv(i)%comp)
+                        
+                        case ('p')
+                        f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef)
+                        ! case ('vz')
+                        ! f%seismo(i,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                        ! case ('vx')
+                        ! f%seismo(i,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                        ! case ('vy')
+                        ! f%seismo(i,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                    end select
+                    
+                else
+                    select case (shot%rcv(i)%comp)
+                        case ('p') !p[iz,ix,iy]
+                        f%seismo(i,it)=f%p(iz,ix,iy)
+                        ! case ('vz') !vz[iz-0.5,ix,iy]
+                        ! f%seismo(i,it)=f%vz(iz,ix,iy)
+                        ! case ('vx') !vx[iz,ix-0.5,iy]
+                        ! f%seismo(i,it)=f%vx(iz,ix,iy)
+                        ! case ('vy') !vy[iz,ix,iy-0.5]
+                        ! f%seismo(i,it)=f%vy(iz,ix,iy)
+                    end select
+                    
+                endif
+
+            enddo
+
+            return
+
+        endif
+
+            ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
+            ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
+            ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
+            
+            if(if_hicks) then
+                select case (shot%src%comp)
+                    case ('p')
+                    f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef)
+                    
+                    case ('vz')
+                    f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    
+                    case ('vx')
+                    f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    
+                    case ('vy')
+                    f%seismo(1,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    
+                end select
+                
+            else
+                select case (shot%src%comp)
+                    case ('p') !p[iz,ix,iy]
+                    f%seismo(1,it)=f%p(iz,ix,iy)
+                    
+                    case ('vz') !vz[iz-0.5,ix,iy]
+                    f%seismo(1,it)=f%vz(iz,ix,iy)
+                    
+                    case ('vx') !vx[iz,ix-0.5,iy]
+                    f%seismo(1,it)=f%vx(iz,ix,iy)
+                    
+                    case ('vy') !vy[iz,ix,iy-0.5]
+                    f%seismo(1,it)=f%vy(iz,ix,iy)
+                    
+                end select
+                
+            endif
+        
+    end subroutine
+    
+    subroutine final(self)
+        type(t_propagator) :: self
+        call dealloc(self%buoz, self%buox, self%buoy, self%kpa, self%inv_kpa)
+    end subroutine
 
 
-        ! compute the first spatial derivatives divided by density
 
+    subroutine fd2d_pressure(p,                &
+                             dp_dx,dp_dy,      &
+                             buox,buoy,kpa,    &
+                             ifx,ilx,ify,ily,dt)
+        real,dimension(*) :: p
+        real,dimension(*) :: dp_dx,dp_dy
+        real,dimension(*) :: buox,buoy
+        
+        nz=cb%nz
+        nx=cb%nx
+        
+        dp_dx_=0.; dp_dy_=0.
+        dpxx_dx_=0.; dpyy_dy_=0.
+
+        !dir$ simd
         do j = 1,NY
             do i = 1,NX-1
-            value_dpressure_dx = (pressure_present(i+1,j) - pressure_present(i,j)) / DELTAX
+                dp_dx_ = c1x*(f%p_curr(i+1,j) - f%p_curr(i,j))
 
-            memory_dpressure_dx(i,j) = b_x_half(i) * memory_dpressure_dx(i,j) + a_x_half(i) * value_dpressure_dx
+                f%dp_dx(i,j) = cmpl%b_x_half(i)*f%dp_dx(i,j) + cmpl%a_x_half(i)*dp_dx_
 
-            value_dpressure_dx = value_dpressure_dx / K_x_half(i) + memory_dpressure_dx(i,j)
+                dp_dx_ = dp_dx_ / cmpl%kpa_x_half(i) + f%dp_dx(i,j)
 
-            rho_half_x = 0.5d0 * (rho(i+1,j) + rho(i,j))
-            pressure_xx(i,j) = value_dpressure_dx / rho_half_x
+                rho_half_x = 0.5 * (rho(i+1,j) + rho(i,j))
+                f%pxx(i,j) = dp_dx_ / rho_half_x
             enddo
         enddo
 
         do j = 1,NY-1
             do i = 1,NX
-            value_dpressure_dy = (pressure_present(i,j+1) - pressure_present(i,j)) / DELTAY
+                dp_dy_ = c1y*(f%p_curr(i,j+1) - f%p_curr(i,j))
 
-            memory_dpressure_dy(i,j) = b_y_half(j) * memory_dpressure_dy(i,j) + a_y_half(j) * value_dpressure_dy
+                f%dp_dy(i,j) = cmpl%b_y_half(j)*f%dp_dy(i,j) + cmpl%a_y_half(j)*dp_dy_
 
-            value_dpressure_dy = value_dpressure_dy / K_y_half(j) + memory_dpressure_dy(i,j)
+                dp_dy_ = dp_dy_ / cmpl%kpa_y_half(j) + f%dp_dy(i,j)
 
-            rho_half_y = 0.5d0 * (rho(i,j+1) + rho(i,j))
-            pressure_yy(i,j) = value_dpressure_dy / rho_half_y
+                rho_half_y = 0.5 * (rho(i,j+1) + rho(i,j))
+                f%pyy(i,j) = dp_dy_ / rho_half_y
             enddo
         enddo
 
@@ -602,85 +615,28 @@ program main
 
         do j = 1,NY
             do i = 2,NX
-            value_dpressurexx_dx = (pressure_xx(i,j) - pressure_xx(i-1,j)) / DELTAX
+                dpxx_dx_ = c1x*(f%pxx(i,j) - f%pxx(i-1,j))
 
-            memory_dpressurexx_dx(i,j) = b_x(i) * memory_dpressurexx_dx(i,j) + a_x(i) * value_dpressurexx_dx
+                f%dpxx_dx(i,j) = cmpl%b_x(i)*f%dpxx_dx(i,j) + cmpl%a_x(i)*dpxx_dx_
 
-            value_dpressurexx_dx = value_dpressurexx_dx / K_x(i) + memory_dpressurexx_dx(i,j)
+                dpxx_dx_ = dpxx_dx_ / cmpl%kpa_x(i) + f%dpxx_dx(i,j)
 
-            dpressurexx_dx(i,j) = value_dpressurexx_dx
+                f%dpxx_dx(i,j) = dpxx_dx_
             enddo
         enddo
 
         do j = 2,NY
             do i = 1,NX
-            value_dpressureyy_dy = (pressure_yy(i,j) - pressure_yy(i,j-1)) / DELTAY
+                dpyy_dy_ = c1y*(f%pyy(i,j) - f%pyy(i,j-1))
 
-            memory_dpressureyy_dy(i,j) = b_y(j) * memory_dpressureyy_dy(i,j) + a_y(j) * value_dpressureyy_dy
+                f%dpyy_dy(i,j) = cmpl%b_y(j) * f%dpyy_dy(i,j) + cmpl%a_y(j) * dpyy_dy_
 
-            value_dpressureyy_dy = value_dpressureyy_dy / K_y(j) + memory_dpressureyy_dy(i,j)
+                dpyy_dy_ = dpyy_dy_ / cmpl%kpa_y(j) + f%dpyy_dy(i,j)
 
-            dpressureyy_dy(i,j) = value_dpressureyy_dy
+                f%dpyy_dy(i,j) = dpyy_dy_
             enddo
         enddo
 
-        ! add the source (pressure located at a given grid point)
-        a = pi*pi*f0*f0
-        t = (it-1)*DELTAT
-
-        ! Gaussian
-        ! source_term = - factor * exp(-a*(t-t0)**2) / (2 * a)
-
-        ! first derivative of a Gaussian
-        ! source_term = factor * (t-t0)*exp(-a*(t-t0)**2)
-
-        ! Ricker source time function (second derivative of a Gaussian)
-        source_term = factor * (1 - 2*a*(t-t0)**2)*exp(-a*(t-t0)**2)
-
-        ! apply the time evolution scheme
-        ! we apply it everywhere, including at some points on the edges of the domain that have not be calculated above,
-        ! which is of course wrong (or more precisely undefined), but this does not matter because these values
-        ! will be erased by the Dirichlet conditions set on these edges below
-        pressure_future(:,:) = - pressure_past(:,:) + 2 * pressure_present(:,:) + &
-                                      DELTAT*DELTAT * ((dpressurexx_dx(:,:) + dpressureyy_dy(:,:)) * kappa_unrelaxed(:,:) + &
-                                      4 * PI * cp_unrelaxed**2 * source_term * Kronecker_source(:,:))
-
-        ! apply Dirichlet conditions at the bottom of the C-PML layers,
-        ! which is the right condition to implement in order for C-PML to remain stable at long times
-
-        ! Dirichlet condition for pressure on the left boundary
-        pressure_future(1,:) = ZERO
-
-        ! Dirichlet condition for pressure on the right boundary
-        pressure_future(NX,:) = ZERO
-
-        ! Dirichlet condition for pressure on the bottom boundary
-        pressure_future(:,1) = ZERO
-
-        ! Dirichlet condition for pressure on the top boundary
-        pressure_future(:,NY) = ZERO
-
-        ! store seismograms
-        do irec = 1,NREC
-            sispressure(it,irec) = pressure_future(ix_rec(irec),iy_rec(irec))
-        enddo
-
-        
-        write(11) pressure_present
-
-        ! move new values to old values (the present becomes the past, the future becomes the present)
-        pressure_past = pressure_present
-        pressure_present = pressure_future
-
-    enddo   ! end of the time loop
-    close(11)
-
-    open(13,file='sispressure',access='stream')
-    write(13) sispressure
-    close(13)
-
-    print *
-    print *,'End of the simulation'
-    print *
+    end subroutine
 
 end
