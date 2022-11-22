@@ -35,7 +35,7 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:,:),allocatable ::     sxx,sxy
         real,dimension(:,:,:),allocatable ::         syy
         real,dimension(:,:,:),allocatable :: shh !szz, sxx or syy
-        real,dimension(:,:,:),allocatable :: p !negated pressure
+        real,dimension(:,:,:),allocatable :: p, p_prev !negated pressure
         !N.B. pressure is defined >0 for inward stress, but here tobe compatible with szz etc, p is defined >0 for outward stress
 
         !boundary components for wavefield recontruction
@@ -51,6 +51,7 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:,:),allocatable :: dszx_dx,dsxx_dx        
         real,dimension(:,:,:),allocatable :: dshh_dz,dshh_dx,dshh_dy
         real,dimension(:,:,:),allocatable :: dp_dz,dp_dx,dp_dy
+        real,dimension(:,:,:),allocatable :: dpzz_dz,dpxx_dx,dpyy_dy
 
         !source time function
         ! real,dimension(:,:),allocatable :: fz,fx,fy !forces
@@ -437,6 +438,55 @@ use, intrinsic :: ieee_arithmetic
                 call copy(action,self%vz,self%bnd%vz_right(:,it),[1,nz],[nx-2,nx  ],[1,1])
             endif
         endif
+        
+    end subroutine
+    
+    subroutine boundary_transport_pressure(self,action,it)
+        class(t_field) :: self
+        character(4) :: action
+        integer :: it
+        
+        nz=cb%mz
+        nx=cb%mx
+        ny=cb%my
+        if(m%is_cubic) then
+            !top
+            ! call copy(action,self%p,self%bnd%vz_top(:,it),  [1,3],    [1,nx],[1,ny])  !old version: [0,2],[1,nx],[1,nx]
+            ! !bottom
+            ! call copy(action,self%p,self%bnd%vz_bot(:,it),  [nz-1,nz+1],[1,nx],[1,ny])  !old version: [nz,nz+2],[1,nx],[1,nx]
+            ! !left
+            ! call copy(action,self%p,self%bnd%vx_left(:,it), [1,nz],[1,3],    [1,ny])
+            ! !right
+            ! call copy(action,self%p,self%bnd%vx_right(:,it),[1,nz],[nx-1,nx+1],[1,ny])
+            ! !front
+            ! call copy(action,self%p,self%bnd%vy_front(:,it),[1,nz],[1,nx],[1,3])
+            ! !rear
+            ! call copy(action,self%p,self%bnd%vy_rear(:,it), [1,nz],[1,nx],[ny-1,ny+1])
+        else
+            !top
+            call copy(action,self%p,self%bnd%p_top(:,it),  [1,3],    [1,nx],[1,1])
+            !bottom
+            call copy(action,self%p,self%bnd%p_bot(:,it),  [nz-1,nz+1],[1,nx],[1,1])
+            !left
+            call copy(action,self%p,self%bnd%p_left(:,it), [1,nz],[1,3],    [1,1])
+            !right
+            call copy(action,self%p,self%bnd%p_right(:,it),[1,nz],[nx-1,nx+1],[1,1])
+        endif
+
+        ! !shear part
+        ! if(if_shear) then
+        !     if(m%is_cubic) then
+        !     else
+        !         !top
+        !         call copy(action,self%vx,self%bnd%vx_top(:,it),  [1,3],    [1,nx],[1,1])
+        !         !bottom
+        !         call copy(action,self%vx,self%bnd%vx_bot(:,it),  [nz-2,nz  ],[1,nx],[1,1])
+        !         !left
+        !         call copy(action,self%vz,self%bnd%vz_left(:,it), [1,nz],[1,3],    [1,1])
+        !         !right
+        !         call copy(action,self%vz,self%bnd%vz_right(:,it),[1,nz],[nx-2,nx  ],[1,1])
+        !     endif
+        ! endif
         
     end subroutine
     

@@ -7,8 +7,10 @@
 WaveEq=AC
 # WaveEq=AC_VTI
 # WaveEq=PSV
-Solver=FDSG
-Order=O4
+#Solver=FDSG
+Solver=FDRG
+#Order=O4
+Order=O2
 ShotDec=batching
 
 ##########
