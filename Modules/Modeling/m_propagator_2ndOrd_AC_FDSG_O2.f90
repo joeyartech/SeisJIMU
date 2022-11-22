@@ -20,7 +20,7 @@ use m_cpml
         !info
         character(i_str_xxlen) :: info = &
             'Time-domain ISOtropic 2D/3D ACoustic propagation'//s_NL// &
-            '1st-order Velocity-Stress formulation'//s_NL// &
+            '2nd-order Pressure formulation'//s_NL// &
             'Vireux-Levandar Staggered-Grid Finite-Difference (FDSG) method'//s_NL// &
             'Cartesian O(x²,t²) stencil'//s_NL// &
             'CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal'//s_NL// &
@@ -59,6 +59,7 @@ use m_cpml
         procedure :: adjoint
         
         procedure :: inject_pressure
+        procedure :: set_pressure
         procedure :: update_pressure
         procedure :: evolve_pressure
         procedure :: extract
@@ -69,6 +70,8 @@ use m_cpml
     end type
 
     type(t_propagator),public :: ppg
+
+    real,dimension(:,:,:),allocatable :: D
 
     logical :: if_hicks
     integer :: irdt
@@ -88,7 +91,7 @@ use m_cpml
         class(t_propagator) :: self
 
         call hud('Invoked field & propagator modules info : '//s_NL//self%info)
-        call hud('FDRG Coef : 1') !//num2str(coef(1))//', '//num2str(coef(2)))
+        call hud('FDSG Coef : 1') !//num2str(coef(1))//', '//num2str(coef(2)))
         
     end subroutine
     
@@ -123,7 +126,7 @@ use m_cpml
         
         !time frames
         self%nt=shot%nt
-        self%dt=shot%dt; self%dt2=self%dt*self%dt
+        self%dt=shot%dt
         time_window=(shot%nt-1)*shot%dt
 
         sumcoef=1. !sum(abs(coef))
@@ -140,12 +143,16 @@ use m_cpml
                 'vmax, dt, 1/dx = '//num2str(cb%velmax)//', '//num2str(self%dt)//', '//num2str(m%rev_cell_diagonal) //s_NL//&
                 'Adjusted dt, nt = '//num2str(self%dt)//', '//num2str(self%nt))
 
-        endif       
+        endif
+
+        self%dt2=self%dt*self%dt
         
     end subroutine
 
     subroutine init(self)
         class(t_propagator) :: self
+
+        character(:),allocatable :: file
 
         c1x=coef(1)/m%dx; c1y=coef(1)/m%dy; c1z=coef(1)/m%dz
         !c2x=coef(2)/m%dx; c2y=coef(2)/m%dy; c2z=coef(2)/m%dz
@@ -182,7 +189,7 @@ use m_cpml
         file=setup%get_file('FILE_D')
         if(file/='') then
             call alloc(D,m%nz,m%nx,m%ny)
-            call sysio_read(file,D,self%n)
+            call sysio_read(file,D,m%n)
             call hud('D model is read.')
         endif
 
@@ -217,15 +224,19 @@ use m_cpml
 
         !f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
         !if(f%if_will_reconstruct) call f%init_boundary
-        call f%init_boundary
+        call f%init_boundary_pressure
 
-        call alloc(f%p     , [cb%ifz,cb%ilz]，[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%p_prev, [cb%ifz,cb%ilz]，[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%p_next, [cb%ifz,cb%ilz]，[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%p     , [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%p_prev, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%p_next, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
         call alloc(f%dp_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%dp_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%dp_dy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+
+        call alloc(f%dpzz_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dpxx_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dpyy_dy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
         call alloc(f%lapz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%lapx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -277,11 +288,11 @@ use m_cpml
     !
     !Forward:
     !FD eqn:
-    !∂ₜ²p = ∂zᵇ(bz*∂zᶠp) + ∂ₓᵇ(bx*∂ₓᶠp) +f
+    !∂ₜ²p = κ*∂zᶠ(bz*∂zᵇp) + κ*∂ₓᶠ(bx*∂ₓᵇp) +f
     !where
     !∂ₜ²*dt² := p^n+1 -2p^n +p^n-1  ~O(t²)
-    !∂zᶠ*dz  := p(iz+1)-p(iz  )     ~O(x¹)
     !∂zᵇ*dz  := p(iz  )-p(iz-1)     ~O(x¹)
+    !∂zᶠ*dz  := p(iz+1)-p(iz  )     ~O(x¹)
     !Step #1: p^n  += src
     !Step #2: sample p^n at receivers
     !Step #3: save p^n to boundary values
@@ -295,12 +306,12 @@ use m_cpml
     !
     !Adjoint:
     !FD eqn:
-    !∂ₜ²ᵀpᵃ = ∂zᵇᵀ(bz*∂zᶠᵀpᵃ) + ∂ₓᵇᵀ(bx*∂ₓᶠᵀpᵃ) +d
+    !∂ₜ²ᵀpᵃ = ∂zᶠᵀbz*(∂zᵇᵀκ*pᵃ) + ∂ₓᶠᵀ(bx*∂ₓᵇᵀκ*pᵃ) +d
     !∂ₜ²ᵀ = ∂ₜ²
-    !∂zᶠᵀ = p(iz-1)-p(iz) = -∂zᵇ, ∂zᵇᵀ = -∂zᶠ
+    !∂zᵇᵀ = p(iz)-p(iz+1) = -∂zᶠ, ∂zᶠᵀ = -∂zᵇ
     !so
-    !∂ₜ²pᵃ = ∂zᶠ(bz*∂zᵇpᵃ) + ∂ₓᶠ(bx*∂ₓᵇpᵃ) +d
-    !NOT exactly same as the discretized FD eqn!
+    !∂ₜ²pᵃ = ∂zᵇbz*(∂zᶠκ*pᵃ) + ∂ₓᵇbx*(∂ₓᶠκ*pᵃ) +d
+    !NOT same as the discretized FD eqn!
     !
     !Time marching (in reverse time):
     !Step #1: pᵃ^n += adjsrc
@@ -309,14 +320,15 @@ use m_cpml
     !Step #5: (pᵃ^n,pᵃ^n+1) = (pᵃ^n-1,pᵃ^n)
     !
     !For adjoint test:
-    !In each step of forward time marching: dsyn=RGA
-    !!f:source wavelet, N=M⁻¹dt: diagonal 
-    !A:inject source into field, G=UK∂ᵇB∂ᶠ:propagator, with
-    !∂ᶠ: forward FD, ∂ᵇ: backward FD, U:2nd-ord time integration B:buoyancy, K:bulk modulus, 
-    !R:extract field at receivers
-    !while in each step of reverse-time adjoint marching: dadj=AᵀGᵀRᵀdsyn
-    !Rᵀ:inject adjoint sources, Gᵀ:adjoint propagator, Aᵀ:extract adjoint fields
-    !
+    !In each step of forward time marching: dsyn=REGBndA
+    !A:inject source into field, Bnd:apply boundary condition, G=IK∂ᵇB∂ᶠ:propagator, with
+    !∂ᶠ: forward FD, ∂ᵇ: backward FD, I:2nd-ord time integration B:buoyancy, K:bulk modulus, 
+    !E:evolution, R:extract field at receivers
+    !while in each step of reverse-time adjoint marching: dadj=AᵀBndᵀGᵀEᵀRᵀdsyn
+    !Rᵀ:inject adjoint sources, Eᵀ:reverse-time evolution, Gᵀ:adjoint propagator, with
+    !Gᵀ=∂ᶠᵀBᵀ∂ᵇᵀKᵀIᵀ=∂ᵇBᵀ∂ᶠKIᵀ
+    !Bndᵀ:adjoint BC: pᵃ=0 where ∇p≠0 (Neumann BC); ∇pᵃ=0 where p≠0 (Dirichlet BC))
+    !Aᵀ:extract adjoint fields
 
     subroutine forward(self,fld_u)
         class(t_propagator) :: self
@@ -344,41 +356,48 @@ use m_cpml
             call cpu_time(toc)
             tt1=tt1+toc-tic
 
-            !step 3: sample pressure at receivers
-            call cpu_time(tic)
-            call self%extract(fld_u,it)
-            tt2=tt2+toc-tic
-
-            !snapshot
-            call fld_u%write(it)
-
-            !step 4: save v^it+1 in boundary layers
+            !step 2: save v^it+1 in boundary layers
             ! if(fld_u%if_will_reconstruct) then
                 call cpu_time(tic)
                 call fld_u%boundary_transport_pressure('save',it)
                 call cpu_time(toc)
-                tt3=tt3+toc-tic
+                tt5=tt5+toc-tic
             ! endif
 
-            !step 2: update pressure
+            !step 3: set hardBC
+            call cpu_time(tic)
+            call self%set_pressure(fld_u,time_dir,it)
+            call cpu_time(toc)
+            tt2=tt2+toc-tic
+
+            !step 4: update pressure
             call cpu_time(tic)
             call self%update_pressure(fld_u,time_dir,it)
             call cpu_time(toc)
-            tt4=tt4+toc-tic
+            tt3=tt3+toc-tic
 
-            !step 2: evolve pressure
+            !step 5: evolve pressure
             call cpu_time(tic)
             call self%evolve_pressure(fld_u,time_dir,it)
             call cpu_time(toc)
+            tt4=tt4+toc-tic
+
+            !step 6: sample pressure at receivers
+            call cpu_time(tic)
+            call self%extract(fld_u,it)
             tt5=tt5+toc-tic
+
+            !snapshot
+            call fld_u%write(it)
 
         enddo
 
         if(mpiworld%is_master) then
             write(*,*) 'Elapsed time to add source',tt1/mpiworld%max_threads
             write(*,*) 'Elapsed time to update field',tt2/mpiworld%max_threads
-            write(*,*) 'Elapsed time to extract field',tt3/mpiworld%max_threads
-            write(*,*) 'Elapsed time to save boundary',tt4/mpiworld%max_threads
+            write(*,*) 'Elapsed time to evolve field',tt3/mpiworld%max_threads
+            write(*,*) 'Elapsed time to extract field',tt4/mpiworld%max_threads
+            write(*,*) 'Elapsed time to save boundary',tt5/mpiworld%max_threads
         endif
 
         call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
@@ -388,7 +407,6 @@ use m_cpml
     end subroutine
 
     subroutine adjoint(self,fld_a,fld_u,oif_record_adjseismo,oif_compute_imag,oif_compute_grad)
-    !adjoint_a_star_Du
         class(t_propagator) :: self
         type(t_field) :: fld_a,fld_u
         logical,optional :: oif_record_adjseismo, oif_compute_imag, oif_compute_grad
@@ -431,60 +449,71 @@ use m_cpml
             !step# conforms with forward time stepping
 
             ! if(present(o_sf)) then
+                !backward step 5:
                 call cpu_time(tic)
                 call self%evolve_pressure(fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt1=tt1+toc-tic
 
+                !backward step 2: retrieve v^it+1 at boundary layers (BC)
+                call cpu_time(tic)
+                call fld_u%boundary_transport_pressure('load',it)
+                call cpu_time(toc)
+                tt2=tt2+toc-tic
+
+                !backward step 3: s^it+1.5 -> s^it+0.5 by FD of v^it+1
+                call cpu_time(tic)
+                call self%set_pressure(fld_u,time_dir,it)
+                call cpu_time(toc)
+                tt3=tt3+toc-tic
+
                 !backward step 4: s^it+1.5 -> s^it+0.5 by FD of v^it+1
                 call cpu_time(tic)
                 call self%update_pressure(fld_u,time_dir,it)
                 call cpu_time(toc)
-                tt2=tt2+toc-tic
+                tt4=tt4+toc-tic
 
-                !backward step 6: retrieve v^it+1 at boundary layers (BC)
-                call cpu_time(tic)
-                call fld_u%boundary_transport('load',it)
-                call cpu_time(toc)
-                tt1=tt1+toc-tic
-                
-
-                !backward step 3: rm pressure from s^it+0.5
+                !backward step 1: rm pressure from s^it+0.5
                 call cpu_time(tic)
                 call self%inject_pressure(fld_u,time_dir,it)
                 call cpu_time(toc)
-                tt3=tt3+toc-tic
+                tt5=tt5+toc-tic
             ! endif
 
 
             !--------------------------------------------------------!
 
-
-            !adjoint step 5: inject to s^it+1.5 at receivers
+            !adjoint step 6: inject to s^it+1.5 at receivers
             call cpu_time(tic)
             call self%inject_pressure(fld_a,time_dir,it)
             call cpu_time(toc)
-            tt4=tt4+toc-tic
+            tt6=tt6+toc-tic
+
+            !adjoint step 5
+            call cpu_time(tic)
+            call self%evolve_pressure(fld_a,time_dir,it)
+            call cpu_time(toc)
+            tt7=tt7+toc-tic
+
+            !adjoint step 4: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
+            call cpu_time(tic)
+            call self%update_pressure(fld_a,time_dir,it)
+            call cpu_time(toc)
+            tt8=tt8+toc-tic
+
+            ! !adjoint step 5: inject to s^it+1.5 at receivers
+            ! call cpu_time(tic)
+            ! call self%set_pressure(fld_a,time_dir,it)
+            ! call cpu_time(toc)
+            ! tt9=tt9+toc-tic
 
             !adjoint step 1: sample v^it or s^it+0.5 at source position
             if(if_record_adjseismo) then
                 call cpu_time(tic)
                 call self%extract(fld_a,it)
                 call cpu_time(toc)
-                tt11=tt11+toc-tic
+                tt10=tt10+toc-tic
             endif
-
-            !adjoint step 4: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
-            ! call cpu_time(tic)
-            call self%update_pressure(fld_a,time_dir,it)
-            ! call cpu_time(toc)
-            ! tt5=tt5+toc-tic
-
-            !reverse evolution
-            call cpu_time(tic)
-            call self%evolve_pressure(fld_a,time_dir,it)
-            call cpu_time(toc)
-            tt1=tt1+toc-tic
 
             !gkpa: rf%s^it+0.5 star D sf%s_dt^it+0.5
             !use sf%v^it+1 to compute sf%s_dt^it+0.5, as backward step 4
@@ -493,7 +522,7 @@ use m_cpml
                 call gradient_moduli(fld_a,fld_u,it,cb%grad(:,:,:,2))
                 call gradient_D     (fld_a,fld_u,it,cb%grad(:,:,:,3))
                 call cpu_time(toc)
-                tt6=tt6+toc-tic
+                tt11=tt11+toc-tic
             endif
 
             ! if(if_compute_imag.and.mod(it,irdt)==0) then
@@ -545,18 +574,18 @@ use m_cpml
         if(if_compute_grad) call gradient_postprocess
         
         if(mpiworld%is_master) then
-            write(*,*) 'Elapsed time to load boundary            ',tt1/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update stresses          ',tt2/mpiworld%max_threads
-            write(*,*) 'Elapsed time to rm source stresses       ',tt3/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update velocities        ',tt7/mpiworld%max_threads
-            write(*,*) 'Elapsed time to rm source velocities     ',tt8/mpiworld%max_threads
-            write(*,*) 'Elapsed time ----------------------------'
-            write(*,*) 'Elapsed time to add adjsource stresses   ',tt4/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update adj stresses      ',tt5/mpiworld%max_threads
-            write(*,*) 'Elapsed time to add adjsource velocities ',tt9/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update adj velocities    ',tt10/mpiworld%max_threads
-            write(*,*) 'Elapsed time to extract&write fields     ',tt11/mpiworld%max_threads
-            write(*,*) 'Elapsed time to correlate                ',tt6/mpiworld%max_threads
+            write(*,*) 'Elapsed time to evolve field          ',tt1/mpiworld%max_threads
+            write(*,*) 'Elapsed time to load boundary         ',tt2/mpiworld%max_threads
+            write(*,*) 'Elapsed time to set pressure          ',tt3/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update pressure       ',tt4/mpiworld%max_threads
+            write(*,*) 'Elapsed time to rm source             ',tt5/mpiworld%max_threads
+            write(*,*) 'Elapsed time -------------------------'
+            write(*,*) 'Elapsed time to add adjsource         ',tt6/mpiworld%max_threads
+            write(*,*) 'Elapsed time to evolve ad field       ',tt7/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update adj pressure   ',tt8/mpiworld%max_threads
+            write(*,*) 'Elapsed time to set adj pressure      ',tt9/mpiworld%max_threads
+            write(*,*) 'Elapsed time to extract&write fields  ',tt10/mpiworld%max_threads
+            write(*,*) 'Elapsed time to correlate             ',tt11/mpiworld%max_threads
 
         endif
 
@@ -590,10 +619,7 @@ use m_cpml
             wl=time_dir*f%wavelet(1,it)
             
             if(shot%src%comp=='p') then !explosion
-                f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
-            endif
-            if(shot%src%comp=='pbnd') then !hard BC
-                f%p(ifz:ilz,ifx:ilx,ify:ily) =                                wl                                  *shot%src%interp_coef
+                f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)!*shot%src%interp_coef
             endif
                 
             return
@@ -616,10 +642,56 @@ use m_cpml
             wl=f%wavelet(i,it)
                 
             if(shot%rcv(i)%comp=='p') then
-                f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
+                f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)!*shot%rcv(i)%interp_coef !no time_dir needed!
             endif
+
+        enddo
+        
+    end subroutine
+
+    subroutine set_pressure(self,f,time_dir,it)
+        class(t_propagator) :: self
+        type(t_field) :: f
+
+        if(.not. f%is_adjoint) then
+
+            if(if_hicks) then
+                ifz=shot%src%ifz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
+                ifx=shot%src%ifx-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
+                ify=shot%src%ify-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
+            else
+                ifz=shot%src%iz-cb%ioz+1; ilz=ifz
+                ifx=shot%src%ix-cb%iox+1; ilx=ifx
+                ify=shot%src%iy-cb%ioy+1; ily=ify
+            endif
+            
+            wl=f%wavelet(1,it)
+            
+            if(shot%src%comp=='pbnd') then !hard BC
+                f%p(ifz:ilz,ifx:ilx,ify:ily) =                                wl!                                  *shot%src%interp_coef
+            endif
+                
+            return
+
+        endif
+
+        do i=1,shot%nrcv
+
+            if(if_hicks) then
+                ifz=shot%rcv(i)%ifz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
+                ifx=shot%rcv(i)%ifx-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
+                ify=shot%rcv(i)%ify-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
+            else
+                ifz=shot%rcv(i)%iz-cb%ioz+1; ilz=ifz
+                ifx=shot%rcv(i)%ix-cb%iox+1; ilx=ifx
+                ify=shot%rcv(i)%iy-cb%ioy+1; ily=ify
+            endif
+
+            ! !adjsource for pressure
+            ! wl=f%wavelet(i,it)
+                
             if(shot%rcv(i)%comp=='pbnd') then
-                f%p(ifz:ilz,ifx:ilx,ify:ily) =                               wl                                  *shot%rcv(i)%interp_coef !no time_dir needed!
+                f%p(ifz:ilz,ifx:ilx,ify:ily) =                               0. !wl                                  !*shot%rcv(i)%interp_coef !no time_dir needed!
             endif
 
         enddo
@@ -632,63 +704,68 @@ use m_cpml
         class(t_propagator) :: self
         type(t_field) :: f
 
-        ifz=f%bloom(1,it)+1
-        if(m%is_freesurface) ifz=max(f%bloom(1,it)+1,1)
+        ifz=f%bloom(1,it)
+        if(m%is_freesurface) ifz=max(ifz,1)
 
         if(m%is_cubic) then
             ! call fd3d_pressure(f%p,                                      &
             !                    f%dp_dz,f%dp_dx,f%dp_dy,                  &
             !                    self%buoz,self%buox,self%buoy,self%kpa,   &
-            !                    ifz,f%bloom(2,it),f%bloom(3,it),f%bloom(4,it),self%dt2)
+            !                    ifz,f%bloom(2,it),f%bloom(3,it),f%bloom(4,it))
         else
-            call fd2d_laplacian(f%p,                           &
-                               f%dp_dz,f%dp_dx,f%lapz,f%lapx,  &
-                               self%buoz,self%buox,            &
-                               ifz,f%bloom(2,it),f%bloom(3,it),f%bloom(4,it),self%dt2,f%is_adjoint)
+            call fd2d_laplacian(f%p,                            &
+                                f%dp_dz,f%dp_dx,f%dpzz_dz,f%dpxx_dx,&
+                                f%lapz,f%lapx,&
+                                self%buoz,self%buox,self%kpa,           &
+                                ifz,f%bloom(2,it),f%bloom(3,it),f%bloom(4,it),f%is_adjoint)
         endif
 
-        if(time_dir>0.) !in forward time
-            f%p_next = 2*f%p -f%p_prev +dt2*self%kpa*(f%lapz + f%lapx)
+        if(time_dir>0.) then !in forward time
+                f%p_next = 2*f%p -f%p_prev +self%dt2*self%kpa*(f%lapz + f%lapx)
         else !in reverse time
-            f%p_prev = 2*f%p -f%p_next +dt2*self%kpa*(f%lapz + f%lapx)
+            if(.not.f%is_adjoint) then
+                f%p_prev = 2*f%p -f%p_next +self%dt2*self%kpa*(f%lapz + f%lapx)
+            else
+                f%p_prev = 2*f%p -f%p_next +self%dt2*         (f%lapz + f%lapx) !kpa has been multiplied in fd2d_laplacian
+            endif
         endif
 
-
-        if(time_dir>0.) !in forward time
-            f%p_next(1:cb%mz,1:cb%mx,1:cb%my) = f%p_next(1:cb%mz,1:cb%mx,1:cb%my) + D*f%p(1:cb%mz,1:cb%mx,1:cb%my)
-        else !in reverse time
-            f%p_prev(1:cb%mz,1:cb%mx,1:cb%my) = f%p_prev(1:cb%mz,1:cb%mx,1:cb%my) + D*f%p(1:cb%mz,1:cb%mx,1:cb%my)
-        endif
+        ! if(allocated(D)) then
+        !     if(time_dir>0.) then !in forward time
+        !         f%p_next(1:cb%mz,1:cb%mx,1:cb%my) = f%p_next(1:cb%mz,1:cb%mx,1:cb%my) + D*f%p(1:cb%mz,1:cb%mx,1:cb%my)
+        !     else !in reverse time
+        !         f%p_prev(1:cb%mz,1:cb%mx,1:cb%my) = f%p_prev(1:cb%mz,1:cb%mx,1:cb%my) + D*f%p(1:cb%mz,1:cb%mx,1:cb%my)
+        !     endif
+        ! endif
 
 
         ! !apply free surface boundary condition if needed
         ! if(m%is_freesurface) call fd_freesurface_stresses(f%p)
 
-        ! apply Dirichlet conditions at the bottom of the C-PML layers,
-        ! the right condition to keep C-PML stable at long time
-        f%p_next(    1,:,:)=0.
-        f%p_next(cb%nz,:,:)=0.
-        f%p_next(:,1    ,:)=0.
-        f%p_next(:,cb%nx,:)=0.
-        f%p_next(:,:,1    )=0.
-        f%p_next(:,:,cb%ny)=0.
+        ! ! apply Dirichlet conditions at the bottom of the C-PML layers,
+        ! ! the right condition to keep C-PML stable at long time
+        ! f%p_next(cb%ifz,:,:)=0.
+        ! f%p_next(cb%ilz,:,:)=0.
+        ! f%p_next(:,cb%ifx,:)=0.
+        ! f%p_next(:,cb%ilx,:)=0.
+        ! f%p_next(:,:,cb%ify)=0.
+        ! f%p_next(:,:,cb%ily)=0.
 
     end subroutine
 
-    subroutine evolve_pressure((self,f,time_dir,it)
+    subroutine evolve_pressure(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
 
-        ifz=f%bloom(1,it)+1
-        if(m%is_freesurface) ifz=max(f%bloom(1,it)+1,1)
-
-        if(time_dir>0.) !in forward time
+        if(time_dir>0.) then !in forward time
             f%p_prev = f%p
             f%p      = f%p_next
         else !in reverse time
             f%p_next = f%p
             f%p      = f%p_prev
         endif
+
+    end subroutine
 
     subroutine extract(self,f,it)
         class(t_propagator) :: self
@@ -862,16 +939,19 @@ use m_cpml
     !========= Finite-Difference on flattened arrays ==================
     
     subroutine fd2d_laplacian(p,                &
-                             dp_dz,dp_dx,lapz,lapx,&
-                             buoz,buox,    &
-                             ifz,ilz,ifx,ilx,dt2,is_adjoint)
-        real,dimension(:,:,:) :: p
-        real,dimension(:,:,:) :: dp_dz,dp_dx,lapz,lapx
-        real,dimension(:,:,:) :: buoz,buox
+                              dp_dz,dp_dx,dpzz_dz,dpxx_dx,&
+                              lapz,lapx,&
+                              buoz,buox,kpa,&
+                              ifz,ilz,ifx,ilx,is_adjoint)
+        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: p
+        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: dp_dz,dp_dx,dpzz_dz,dpxx_dx
+        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: lapz,lapx,kpa
+        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: buoz,buox
         logical :: is_adjoint
 
-        call alloc(pzz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(pxx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        real,dimension(:,:),allocatable :: pzz,pxx
+        call alloc(pzz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(pxx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
 
         nz=cb%nz
         nx=cb%nx
@@ -881,68 +961,15 @@ use m_cpml
 
         if(.not. is_adjoint) then
 
-            !flux: b∇u ~= ( bz*∂zᶠp , bx*∂ₓᶠp )
-            !dir$ simd
-            do ix = ifx,ilx
-                do iz = ifz,ilz-1
-                    dp_dz_ = c1z*(p(iz+1,ix) - p(iz,ix))
-
-                    dp_dz(iz+1,ix) = cmpl%b_z_half(iz+1)*dp_dz(iz+1,ix) + cmpl%a_z_half(iz+1)*dp_dz_
-
-                    dp_dz_ = dp_dz_/cmpl%kpa_z_half(iz+1) + dp_dz(iz+1,ix)
-
-                    pzz(iz,ix) =  buoz(iz+1,ix)*dp_dz_
-                enddo
-            enddo
-
-            do ix = ifx,ilx-1
-                do iz = ifz,ilz
-                    dp_dx_ = c1x*(p(iz,ix+1) - p(iz,ix))
-
-                    dp_dx(iz,ix+1) = cmpl%b_x_half(ix+1)*dp_dx(iz,ix+1) + cmpl%a_x_half(ix)*dp_dx_
-
-                    dp_dx_ = dp_dx_/cmpl%kpa_x_half(ix+1) +%dp_dx(iz,ix+1)
-
-                    pxx(iz,ix) = buox(iz,ix+1)*dp_dx_
-                enddo
-            enddo
-
-            !laplacian: κ∇·b∇u ~= ∂zᵇ(bz*∂zᶠp) + ∂ₓᵇ(bx*∂ₓᶠp)
-            do ix = ifx,ilx
-                do iz = ifz-1,ilz
-                    dpzz_dz_ = c1z*(pzz(iz+1,ix) - pzz(iz,ix))
-
-                    lapz(iz,ix) = cmpl%b_z(iz)*lapz(iz,ix) + cmpl%a_z(iz)*dpzz_dz_
-
-                    dpzz_dz_ = dpzz_dz_ / cmpl%kpa_z(iz) + lapz(iz,ix)
-
-                    lapz(iz,ix) = dpzz_dz_
-                enddo
-            enddo
-
-            do ix = ifx,ilx
-                do iz = ifz-1,ilz
-                    dpxx_dx_ = c1x*(pxx(iz,ix) - pxx(iz,ix+1))
-
-                    lapx(iz,ix) = cmpl%b_x(ix)*lapx(iz,ix) + cmpl%a_x(ix)*dpxx_dx_
-
-                    dpxx_dx_ = dpxx_dx_ / cmpl%kpa_x(ix) + lapx(iz,ix)
-
-                    lapx(iz,ix) = dpxx_dx_
-                enddo
-            enddo
-
-        else
-
-            !flux: b∇u ~= ( bz*∂zᵇpᵃ , bx*∂ₓᵇpᵃ )
+            !flux: b∇u ~= ( bz*∂zᵇp , bx*∂ₓᵇp )
             !dir$ simd
             do ix = ifx,ilx
                 do iz = ifz+1,ilz
                     dp_dz_ = c1z*(p(iz,ix) - p(iz-1,ix))
 
-                    dp_dz(iz,ix) = cmpl%b_z_half(iz)*dp_dz(iz,ix) + cmpl%a_z_half(iz)*dp_dz_
+                    dp_dz(iz,ix) = cpml%b_z_half(iz)*dp_dz(iz,ix) + cpml%a_z_half(iz)*dp_dz_
 
-                    dp_dz_ = dp_dz_ / cmpl%kpa_z_half(iz) + dp_dz(iz,ix)
+                    dp_dz_ = dp_dz_/cpml%kpa_z_half(iz) + dp_dz(iz,ix)
 
                     pzz(iz,ix) =  buoz(iz,ix)*dp_dz_
                 enddo
@@ -952,24 +979,24 @@ use m_cpml
                 do iz = ifz,ilz
                     dp_dx_ = c1x*(p(iz,ix) - p(iz,ix-1))
 
-                    dp_dx(iz,ix) = cmpl%b_x_half(ix)*dp_dx(iz,ix) + cmpl%a_x_half(ix)*dp_dx_
+                    dp_dx(iz,ix) = cpml%b_x_half(ix)*dp_dx(iz,ix) + cpml%a_x_half(ix)*dp_dx_
 
-                    dp_dx_ = dp_dx_ / cmpl%kpa_x_half(ix) + dp_dx(iz,ix)
+                    dp_dx_ = dp_dx_/cpml%kpa_x_half(ix) + dp_dx(iz,ix)
 
                     pxx(iz,ix) = buox(iz,ix)*dp_dx_
                 enddo
             enddo
 
-            !laplacian: κ∇·b∇u ~= ∂zᶠ(bz*∂zᵇpᵃ) + ∂ₓᶠ(bx*∂ₓᵇpᵃ)
+            !laplacian: ∇·b∇u ~= ∂zᶠ(bz*∂zᵇp) + ∂ₓᶠ(bx*∂ₓᵇp)
             do ix = ifx,ilx
                 do iz = ifz,ilz-1
                     dpzz_dz_ = c1z*(pzz(iz+1,ix) - pzz(iz,ix))
 
-                    lapz(iz,ix) = cmpl%b_z(iz)*lapz(iz,ix) + cmpl%a_z(iz)*dpzz_dz_
+                    dpzz_dz(iz,ix) = cpml%b_z(iz)*dpzz_dz(iz,ix) + cpml%a_z(iz)*dpzz_dz_
 
-                    dpzz_dz_ = dpzz_dz_ / cmpl%kpa_z(iz) + lapz(iz,ix)
+                    dpzz_dz_ = dpzz_dz_/cpml%kpa_z(iz) + dpzz_dz(iz,ix)
 
-                    lapz(iz,ix) = dpzz_dz_
+                    lapz(iz,ix) = dpzz_dz_ !*kpa(iz,ix) !keep kpa later because lapz is needed for gradient computatin
                 enddo
             enddo
 
@@ -977,9 +1004,62 @@ use m_cpml
                 do iz = ifz,ilz
                     dpxx_dx_ = c1x*(pxx(iz,ix+1) - pxx(iz,ix))
 
-                    lapx(iz,ix) = cmpl%b_x(ix) * lapx(iz,ix) + cmpl%a_x(ix) * dpxx_dx_
+                    dpxx_dx(iz,ix) = cpml%b_x(ix)*dpxx_dx(iz,ix) + cpml%a_x(ix)*dpxx_dx_
 
-                    dpxx_dx_ = dpxx_dx_ / cmpl%kpa_x(ix) + lapx(iz,ix)
+                    dpxx_dx_ = dpxx_dx_/cpml%kpa_x(ix) + dpxx_dx(iz,ix)
+
+                    lapx(iz,ix) = dpxx_dx_ !*kpa(iz,ix) !keep kpa later because lapz is needed for gradient computatin
+                enddo
+            enddo
+
+        else
+
+            !flux: b∇κa ~= ( bz*∂zᶠκ*pᵃ , bx*∂ₓᶠκ*pᵃ )
+            !dir$ simd
+            do ix = ifx,ilx
+                do iz = ifz,ilz-1
+                    dp_dz_ = c1z*(kpa(iz+1,ix)*p(iz+1,ix) - kpa(iz,ix)*p(iz,ix))
+
+                    dp_dz(iz,ix) = cpml%b_z_half(iz)*dp_dz(iz,ix) + cpml%a_z_half(iz)*dp_dz_
+
+                    dp_dz_ = dp_dz_/cpml%kpa_z_half(iz) + dp_dz(iz,ix)
+
+                    pzz(iz,ix) =  buoz(iz,ix)*dp_dz_
+                enddo
+            enddo
+
+            do ix = ifx,ilx-1
+                do iz = ifz,ilz
+                    dp_dx_ = c1x*(kpa(iz,ix+1)*p(iz,ix+1) - kpa(iz,ix)*p(iz,ix))
+
+                    dp_dx(iz,ix) = cpml%b_x_half(ix)*dp_dx(iz,ix) + cpml%a_x_half(ix)*dp_dx_
+
+                    dp_dx_ = dp_dx_/cpml%kpa_x_half(ix) + dp_dx(iz,ix)
+
+                    pxx(iz,ix) = buox(iz,ix)*dp_dx_
+                enddo
+            enddo
+
+            !laplacian: ∇·b∇κa ~= ∂zᵇ(bz*∂zᶠpᵃ) + ∂ₓᵇ(bx*∂ₓᶠpᵃ)
+            do ix = ifx,ilx
+                do iz = ifz+1,ilz
+                    dpzz_dz_ = c1z*(pzz(iz,ix) - pzz(iz-1,ix))
+
+                    dpzz_dz(iz,ix) = cpml%b_z(iz)*dpzz_dz(iz,ix) + cpml%a_z(iz)*dpzz_dz_
+
+                    dpzz_dz_ = dpzz_dz_/cpml%kpa_z(iz) + dpzz_dz(iz,ix)
+
+                    lapz(iz,ix) = dpzz_dz_
+                enddo
+            enddo
+
+            do ix = ifx+1,ilx
+                do iz = ifz,ilz
+                    dpxx_dx_ = c1x*(pxx(iz,ix) - pxx(iz,ix-1))
+
+                    dpxx_dx(iz,ix) = cpml%b_x(ix)*dpxx_dx(iz,ix) + cpml%a_x(ix)*dpxx_dx_
+
+                    dpxx_dx_ = dpxx_dx_/cpml%kpa_x(ix) + dpxx_dx(iz,ix)
 
                     lapx(iz,ix) = dpxx_dx_
                 enddo
@@ -1018,7 +1098,7 @@ use m_cpml
 
     end subroutine
 
-    subroutine grad2dD(rf_p,sf_p,&
+    subroutine grad2d_D(rf_p,sf_p,&
                              grad,          &
                              ifz,ilz,ifx,ilx)
         real,dimension(*) :: rf_p,sf_p

@@ -19,6 +19,10 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:),allocatable :: vy_front,vy_rear
         real,dimension(:,:),allocatable :: vx_top,vx_bot,vz_left,vz_right
 
+        real,dimension(:,:),allocatable :: p_top,  p_bot
+        real,dimension(:,:),allocatable :: p_left, p_right
+        real,dimension(:,:),allocatable :: p_front,p_rear
+
     end type
 
     !fields
@@ -35,7 +39,7 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:,:),allocatable ::     sxx,sxy
         real,dimension(:,:,:),allocatable ::         syy
         real,dimension(:,:,:),allocatable :: shh !szz, sxx or syy
-        real,dimension(:,:,:),allocatable :: p, p_prev !negated pressure
+        real,dimension(:,:,:),allocatable :: p, p_prev, p_next !negated pressure
         !N.B. pressure is defined >0 for inward stress, but here tobe compatible with szz etc, p is defined >0 for outward stress
 
         !boundary components for wavefield recontruction
@@ -52,6 +56,7 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:,:),allocatable :: dshh_dz,dshh_dx,dshh_dy
         real,dimension(:,:,:),allocatable :: dp_dz,dp_dx,dp_dy
         real,dimension(:,:,:),allocatable :: dpzz_dz,dpxx_dx,dpyy_dy
+        real,dimension(:,:,:),allocatable :: lapz,lapx,lapy
 
         !source time function
         ! real,dimension(:,:),allocatable :: fz,fx,fy !forces
@@ -73,6 +78,7 @@ use, intrinsic :: ieee_arithmetic
         ! procedure :: init
         procedure :: init_bloom
         procedure :: init_boundary
+        procedure :: init_boundary_pressure
         procedure :: reinit
         procedure :: check_value
         procedure :: ignite
@@ -80,6 +86,7 @@ use, intrinsic :: ieee_arithmetic
         procedure :: write
         procedure :: write_ext
         procedure :: boundary_transport
+        procedure :: boundary_transport_pressure
         final :: final
         
         procedure :: is_registered
@@ -231,38 +238,60 @@ use, intrinsic :: ieee_arithmetic
 
     end subroutine
 
+    subroutine init_boundary_pressure(self)
+        class(t_field) :: self
+        !save 3 grid points, for 4th order FD only
+        !different indexing
+        n=3*cb%mx*cb%my
+        call alloc(self%bnd%p_top,n,nt)
+        call alloc(self%bnd%p_bot,n,nt)
+        ! if(if_shear) then
+        !     call alloc(self%bnd%p_top,n,nt)
+        !     call alloc(self%bnd%p_bot,n,nt)
+        ! endif
+        
+        n=cb%mz*3*cb%my
+        call alloc(self%bnd%p_left, n,nt)
+        call alloc(self%bnd%p_right,n,nt)
+        ! if(if_shear) then
+        !     call alloc(self%bnd%p_left, n,nt)
+        !     call alloc(self%bnd%p_right,n,nt)
+        ! endif
+
+        ! if(m%is_cubic) then
+        !     n=cb%mz*cb%mx*3
+        !     call alloc(self%bnd%vy_front,n,nt)
+        !     call alloc(self%bnd%vy_rear, n,nt)
+        ! endif
+
+    end subroutine
+
     subroutine reinit(self)
         class(t_field) :: self
-                                        self%dvz_dz=0.
-                                        self%dvx_dx=0.
-            if(allocated(self%dvy_dy))  self%dvy_dy=0.
-                        
-            if(allocated(self%dvz_dx))  self%dvz_dx=0.
-            if(allocated(self%dvx_dz))  self%dvx_dz=0.
 
-            if(allocated(self%dp_dz))   self%dp_dz=0.
-            if(allocated(self%dp_dx))   self%dp_dx=0.
-            if(allocated(self%dp_dy))   self%dp_dy=0.
+        if(allocated(self%dp_dz))   self%dp_dz=0.
+        if(allocated(self%dp_dx))   self%dp_dx=0.
+        if(allocated(self%dp_dy))   self%dp_dy=0.
 
-            if(allocated(self%dszz_dz)) self%dszz_dz=0.
-            if(allocated(self%dshh_dx)) self%dshh_dx=0.
-            if(allocated(self%dshh_dy)) self%dshh_dy=0.
+        if(allocated(self%dpzz_dz))   self%dpzz_dz=0.
+        if(allocated(self%dpxx_dx))   self%dpxx_dx=0.
+        if(allocated(self%dpyy_dy))   self%dpyy_dy=0.
 
-            if(allocated(self%dsxx_dx)) self%dsxx_dx=0.
-            if(allocated(self%dszx_dz)) self%dszx_dz=0.
-            if(allocated(self%dszx_dx)) self%dszx_dx=0.
+        if(allocated(self%lapz)) self%lapz=0.
+        if(allocated(self%lapx)) self%lapx=0.
+        if(allocated(self%lapy)) self%lapy=0.
 
     end subroutine
     
     subroutine check_value(self)
         class(t_field) :: self
         
-        if(mpiworld%is_master) write(*,*) self%name//' minmax values:',minval(self%vz),maxval(self%vz)
+        if(mpiworld%is_master) write(*,*) self%name//' minmax values:',minval(self%p),maxval(self%p)
         
-        if(any(.not. ieee_is_finite(self%vz))) then
+        if(any(.not. ieee_is_finite(self%p))) then
             call error(self%name//' values become Infinity on '//shot%sindex//' !!')
         endif
-        if(any(ieee_is_nan(self%vz))) then
+        if(any(ieee_is_nan(self%p))) then
             call error(self%name//' values become NaN on '//shot%sindex//' !!')
         endif
         
@@ -281,21 +310,25 @@ use, intrinsic :: ieee_arithmetic
             if(it==1 .or. mod(it,i_snapshot)==0 .or. it==nt) then
                 do i=1,size(snapshot)
                     select case (snapshot(i)%s)
-                    case ('vz')
-                        call sysio_write('snap_'//self%name//'%vz'//suf,self%vz,size(self%vz),o_mode='append')
-                    case ('vx')
-                        call sysio_write('snap_'//self%name//'%vx'//suf,self%vx,size(self%vx),o_mode='append')
-                    case ('vy')
-                        call sysio_write('snap_'//self%name//'%vx'//suf,self%vy,size(self%vy),o_mode='append')
+                    ! case ('vz')
+                    !     call sysio_write('snap_'//self%name//'%vz'//suf,self%vz,size(self%vz),o_mode='append')
+                    ! case ('vx')
+                    !     call sysio_write('snap_'//self%name//'%vx'//suf,self%vx,size(self%vx),o_mode='append')
+                    ! case ('vy')
+                    !     call sysio_write('snap_'//self%name//'%vx'//suf,self%vy,size(self%vy),o_mode='append')
                         
                     case ('p')
                         call sysio_write('snap_'//self%name//'%p'//suf,self%p,size(self%p),o_mode='append')
-                    case ('szz')
-                        call sysio_write('snap_'//self%name//'%szz'//suf,self%szz,size(self%szz),o_mode='append')
-                    case ('sxx')
-                        call sysio_write('snap_'//self%name//'%sxx'//suf,self%sxx,size(self%sxx),o_mode='append')
-                    case ('szx')
-                        call sysio_write('snap_'//self%name//'%szx'//suf,self%szx,size(self%szx),o_mode='append')
+                    ! case ('szz')
+                    !     call sysio_write('snap_'//self%name//'%szz'//suf,self%szz,size(self%szz),o_mode='append')
+                    ! case ('sxx')
+                    !     call sysio_write('snap_'//self%name//'%sxx'//suf,self%sxx,size(self%sxx),o_mode='append')
+                    ! case ('szx')
+                    !     call sysio_write('snap_'//self%name//'%szx'//suf,self%szx,size(self%szx),o_mode='append')
+                    case ('dp_dz')
+                        call sysio_write('snap_'//self%name//'%dp_dz'//suf,self%dp_dz,size(self%dp_dz),o_mode='append')
+                    case ('lapz')
+                        call sysio_write('snap_'//self%name//'%lapz'//suf,self%lapz,size(self%lapz),o_mode='append')
                     end select
                 enddo
             endif

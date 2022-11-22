@@ -307,14 +307,14 @@ use m_model
 
         !source
         select case (self%src%comp)
-        case('p') !explosive source or non-vertical force
+        case('p','pbnd') !explosive source or non-vertical force
             call hicks_put_position(self%src%z,       self%src%x,       self%src%y)
-        case('vz') !vertical force
-            call hicks_put_position(self%src%z+halfz, self%src%x,       self%src%y)
-        case('vx')
-            call hicks_put_position(self%src%z,       self%src%x+halfx, self%src%y)
-        case('vy')
-            call hicks_put_position(self%src%z,       self%src%x,       self%src%y+halfy)
+        ! case('vz') !vertical force
+        !     call hicks_put_position(self%src%z+halfz, self%src%x,       self%src%y)
+        ! case('vx')
+        !     call hicks_put_position(self%src%z,       self%src%x+halfx, self%src%y)
+        ! case('vy')
+        !     call hicks_put_position(self%src%z,       self%src%x,       self%src%y+halfy)
         end select
 
         call hicks_get_position(self%src%ifz, self%src%ifx, self%src%ify,&
@@ -322,12 +322,12 @@ use m_model
                                 self%src%ilz, self%src%ilx, self%src%ily )
 
         select case (self%src%comp)
-        case('p') !explosive source or non-vertical force
+        case('p','pbnd') !explosive source or non-vertical force
             call hicks_get_coefficient('antisymm', self%src%interp_coef)
-        case('vz') !vertical force
-            call hicks_get_coefficient('symmetric',self%src%interp_coef)
-        case default
-            call hicks_get_coefficient('truncate', self%src%interp_coef)
+        ! case('vz') !vertical force
+        !     call hicks_get_coefficient('symmetric',self%src%interp_coef)
+        ! case default
+        !     call hicks_get_coefficient('truncate', self%src%interp_coef)
         end select
 
         !set reference to balance pressure vs velocities data
@@ -339,14 +339,14 @@ use m_model
         do i=1,self%nrcv
 
             select case (self%rcv(i)%comp)
-            case('p') !explosive source or non-vertical force
+            case('p','pbnd') !explosive source or non-vertical force
                 call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y)
-            case('vz') !vertical force
-                call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x,       self%rcv(i)%y)
-            case('vx')
-                call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x+halfx, self%rcv(i)%y)
-            case('vy')
-                call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y+halfy)
+            ! case('vz') !vertical force
+            !     call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x,       self%rcv(i)%y)
+            ! case('vx')
+            !     call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x+halfx, self%rcv(i)%y)
+            ! case('vy')
+            !     call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y+halfy)
             end select
 
             call hicks_get_position(self%rcv(i)%ifz, self%rcv(i)%ifx, self%rcv(i)%ify,&
@@ -354,12 +354,12 @@ use m_model
                                     self%rcv(i)%ilz, self%rcv(i)%ilx, self%rcv(i)%ily )
 
             select case (self%rcv(i)%comp)
-            case('p') !explosive source or non-vertical force
+            case('p','pbnd') !explosive source or non-vertical force
                 call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)
-            case('vz') !vertical force
-                call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef)
-            case default
-                call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
+            ! case('vz') !vertical force
+            !     call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef)
+            ! case default
+            !     call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
             end select
 
         enddo
