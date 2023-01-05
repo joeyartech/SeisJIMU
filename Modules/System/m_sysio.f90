@@ -1,333 +1,128 @@
 module m_sysio
+use m_string
+use m_mpienv
 use m_message
+use m_setup
 
-    character(:),allocatable :: file_setup
-    
+    character(:),allocatable :: dir_in, dir_out
+
     contains
-    
-    subroutine init_setup(istat)
-        integer :: istat
-        logical :: alive
-        character(256) :: tmp
-        
-        !get setup file
-        istat=0
-        
-        call getarg(1,tmp)
-        file_setup=trim(adjustl(tmp))
-        
-        if(file_setup=='') then
-            istat=0
-            call hud('No input setup file. Print manual..')
-            return
-        else
-            inquire(file=file_setup, exist=alive)
-            if(.not.alive) then
-                call hud('Setup file '//file_setup//' does NOT exist!')
-                istat=-1
-                return
-            endif
-            
-            call hud('Setup file: '//file_setup)
-            istat=1
-            return
-            
-        endif
-    end subroutine
-    
-    function ask_setup(word,word2,default) result(found)
-        character(*) :: word
-        character(*),optional :: word2 !alias of inquired word
-        logical,optional :: default
-        
-        character(80) :: text
-        character(80) :: tmp,tmp2,tmp3
-        
-        logical :: found
-        
-        found=.false.
-        if(present(default)) found=default
-        
-        open(10,file=file_setup,action='read')
-        do
-            read (10,"(a)",iostat=msg) text ! read line into character variable
-            if (msg < 0) exit !end of file
-            if (msg > 0) stop 'Check setup file.  Something is wrong.'
-            if (text=='') cycle !blank line
-            
-            read (text,*) tmp
-            if(present(word2)) then
-                if(word2==trim(adjustl(tmp))) then
-                    found=.true.
-                endif
-            endif
-            if(word==trim(adjustl(tmp)) ) then
-                found=.true.
-            endif
-        end do
-        close(10)
-    end function
-    
-    integer function get_setup_int(word,word2,default)
-        character(*) :: word
-        character(*),optional :: word2 !alias of inquired word
-        integer,optional :: default
-        
-        character(80) :: text
-        character(80) :: tmp,tmp2,tmp3
-        
-        logical :: found
-        
-        found=.false.
-                
-        open(10,file=file_setup,action='read')
-        do
-            read (10,"(a)",iostat=msg) text ! read line into character variable
-            if (msg < 0) exit !end of file
-            if (msg > 0) stop 'Check setup file.  Something is wrong.'
-            if (text=='') cycle !blank line
-            
-            read (text,*) tmp
-            if(present(word2)) then
-                if(word2==trim(adjustl(tmp))) then
-                    read(text,*) tmp2, get_setup_int
-                    found=.true.
-                endif
-            endif
-            if(word==trim(adjustl(tmp)) ) then
-                read(text,*) tmp2, get_setup_int
-                found=.true.
-            endif
-        end do
-        close(10)
-        
-        if(found) then
-            write(tmp,*) get_setup_int
-            call hud(word//' '//trim(adjustl(tmp)))
-        else
-            if(present(default)) then
-                get_setup_int=default
-                write(tmp,*) default
-                call hud(word//' is NOT found, take default: '//trim(adjustl(tmp)))
-            else
-                get_setup_int=0
-                call hud(word//' is NOT found, take 0')
-            endif
-        endif
-        
-    end function
-    
-    real function get_setup_real(word,word2,default)
-        character(*) :: word
-        character(*),optional :: word2
-        real, optional :: default
-        
-        character(80) :: text
-        character(80) :: tmp,tmp2,tmp3
-        
-        logical :: found
-        
-        found=.false.
-        
-        open(10,file=file_setup,action='read')
-        do
-            read (10,"(a)",iostat=msg) text ! read line into character variable
-            if (msg < 0) exit !end of file
-            if (msg > 0) stop 'Check setup file.  Something is wrong.'
-            if (text=='') cycle !blank line
-            
-            read (text,*) tmp
-            if(present(word2)) then
-                if(word2==trim(adjustl(tmp))) then
-                    read(text,*) tmp2, get_setup_real
-                    found=.true.
-                endif
-            endif
-            if(word==trim(adjustl(tmp)) ) then
-                read(text,*) tmp2, get_setup_real
-                found=.true.
-            endif
-        end do
-        close(10)
-        
-        if(found) then
-            write(tmp,*) get_setup_real
-            call hud(word//' '//trim(adjustl(tmp)))
-        else
-            if(present(default)) then
-                get_setup_real=default
-                write(tmp,*) default
-                call hud(word//' is NOT found, take default: '//trim(adjustl(tmp)))
-                
-            else
-                get_setup_real=0.
-                call hud(word//' is NOT found, take 0.')
-            endif
-        endif
-        
-    end function
-    
-    function get_setup_char(word,word2,default)
-        character(:),allocatable :: get_setup_char
-        character(*) :: word
-        character(*),optional :: word2
-        character(*), optional :: default
-        
-        character(160) :: text
-        character(160) :: tmp,tmp2,tmp3
-        
-        logical :: found
-        
-        found=.false.
-        
-        open(10,file=file_setup,action='read')
-        do
-            read (10,"(a)",iostat=msg) text ! read line into character variable
-            if (msg < 0) exit !end of file
-            if (msg > 0) stop 'Check setup file.  Something is wrong.'
-            if (text=='') cycle !blank line
-            
-            read (text,*) tmp
-            if(present(word2)) then
-                if(word2==trim(adjustl(tmp))) then
-                    read(text,*) tmp2, tmp3
-                    get_setup_char=trim(adjustl(tmp3))
-                    found=.true.
-                endif
-            endif
-            if(word==trim(adjustl(tmp))) then
-                read(text,*) tmp2, tmp3
-                get_setup_char=trim(adjustl(tmp3))
-                found=.true.
-            endif
-        end do
-        close(10)
-        
-        if(found) then
-            if(mpiworld%is_master) write(*,*) word//' '//get_setup_char
-        else
-            if(present(default)) then
-                get_setup_char=default
-                call hud(word//' is NOT found, take default: '//get_setup_char)
-            else
-                get_setup_char=''
-                call hud(word//' is NOT found, take empty string')
-            endif
-        endif
-        
-    end function
-    
-    function get_setup_file(word,word2)
-        character(:),allocatable :: get_setup_file
-        character(*) :: word
-        character(*),optional :: word2
-        
-        character(80) :: text
-        character(80) :: tmp,tmp2,tmp3,tmp4
-        
-        logical :: found, alive
-        
-        found=.false.
-        alive=.false.
-        
-        open(10,file=file_setup,action='read')
-        do
-            read (10,"(a)",iostat=msg) text ! read line into character variable
-            if (msg < 0) exit !end of file
-            if (msg > 0) stop 'Check setup file.  Something is wrong.'
-            if (text=='') cycle !blank line
-            
-            read (text,*) tmp
-            
-            if(present(word2)) then
-                if(word2==trim(adjustl(tmp))) then
-                    read(text,*) tmp2, tmp3
-                    tmp4=tmp3
-                    found=.true.
-                endif
-            endif
-            if(word==trim(adjustl(tmp))) then
-                read(text,*) tmp2, tmp3
-                tmp4=tmp3
-                found=.true.
-            endif
-        end do
-        close(10)
-        
-        if(found) inquire(file=trim(adjustl(tmp4)),exist=alive)
-        
-        found=found.and.alive
-        
-        
-        if(found) then
-            get_setup_file=trim(adjustl(tmp4))
-            if(mpiworld%is_master) write(*,*) word//' '//get_setup_file
-        else
-            get_setup_file=''
-            call hud(word//' is NOT found, take empty filename')
-        endif
-        
-    end function
-        
-    logical function get_setup_logical(word,word2,default)
-        character(*) :: word
-        character(*),optional :: word2
-        logical, optional :: default
-        
-        character(80) :: text
-        character(80) :: tmp,tmp2,tmp3
-        
-        logical :: found
-        
-        found=.false.
-        
-        open(10,file=file_setup,action='read')
-        do
-            read (10,"(a)",iostat=msg) text ! read line into character variable
-            if (msg < 0) exit !end of file
-            if (msg > 0) stop 'Check setup file.  Something is wrong.'
-            if (text=='') cycle !blank line
-            
-            read (text,*) tmp
-            if(present(word2)) then
-                if(word2==trim(adjustl(tmp))) then
-                    read(text,*) tmp2, get_setup_logical
-                    found=.true.
-                endif
-            endif
-            if(word==trim(adjustl(tmp)) ) then
-                read(text,*) tmp2, get_setup_logical
-                found=.true.
-            endif
-        end do
-        close(10)
-        
-        if(found) then
-            write(tmp,*) get_setup_logical
-            call hud(word//' '//trim(adjustl(tmp)))
-        else
-            if(present(default)) then
-                get_setup_logical=default
-                write(tmp,*) default
-                call hud(word//' is NOT found, take default: '//trim(adjustl(tmp)))
-                
-            else
-                get_setup_logical=.false.
-                call hud(word//' is NOT found, take .false.')
-            endif
-        endif
-        
-    end function
 
-!     subroutine write_master(array,filename)
-!         real,dimension(*) :: array
-!         character(*) :: filename
-!         if(mpiworld%iproc==0) then
-!             open(66,file=trim(adjustl(filename)),access='direct',recl=4*size(array))
-!             write(66,rec=1)array
-!             close(66)
-!         endif
-!     end
+    subroutine sysio_init
+        logical exist
+
+        !input directory
+        dir_in=setup%get_str('DIR_IN',o_default='./')
+
+#ifdef gfortran
+        inquire(file=dir_in,exist=exist)
+#endif
+#ifdef ifort
+        inquire(directory=dir_in,exist=exist)
+#endif
+
+        n=len(dir_in)
+        if(dir_in(n:n)/='/') dir_in=dir_in//'/'
+        
+        if(.not.exist) then !input directory not exist
+            call hud('Input directory: '//dir_in//' does NOT exist, reset to ./')
+            dir_in='./'
+        endif
+
+        call hud('Input directory: '//dir_in)
+
+        deallocate(setup%dir_in); setup%dir_in=dir_in
+
+        !output directory
+        dir_out=setup%get_str('DIR_OUT',o_default='./results/')
+        n=len(dir_out)
+        if(dir_out(n:n)/='/') dir_out=dir_out//'/'
+
+        call execute_command_line('mkdir -p '//dir_out, wait=.true.)
+        
+        call hud('Output directory:'//dir_out)
+
+    end subroutine
+
+    subroutine sysio_write(file,array,n,o_mode)
+        character(*) :: file
+        real,dimension(n) :: array
+        character(*),optional :: o_mode
+        !integer,optional :: o_iproc
+
+        integer :: file_size
+        real,dimension(:),allocatable :: tmp_array
+
+        if(present(o_mode)) then
+            if(o_mode=='append') then
+                !open(12,file=dir_out//file,access='direct',recl=4*n,position='append')
+                open(12,file=dir_out//file,access='stream',position='append')
+                write(12) array
+            endif
+            !this way of stacking cannot work properly without MPI_File and file locks..
+            ! if(o_mode=='stack') then
+            !     inquire(file=dir_out//file,size=file_size)
+            !     if(file_size<4*n) then
+            !         open(12,file=dir_out//file,access='direct',recl=4*n)
+            !         write(12,rec=1) array
+            !     else    
+            !         open(12,file=dir_out//file,access='direct',recl=4*n)
+            !         allocate(tmp_array(n))
+            !         read(12,rec=1) tmp_array
+            !         tmp_array=tmp_array+array
+            !         write(12,rec=1) tmp_array
+            !         deallocate(tmp_array)
+            !     endif
+            ! endif
+        else
+            open(12,file=dir_out//file,access='direct',recl=4*n)
+            write(12,rec=1) array
+        endif
+        
+        close(12)
+
+    end subroutine
+
+    subroutine sysio_read(file,array,n,o_mode,o_iproc)
+        character(*) :: file
+        real,dimension(n) :: array
+        character(*),optional :: o_mode
+        integer,optional :: o_iproc
+
+        if(present(o_iproc)) then
+            if(mpiworld%iproc==o_iproc) then
+                open(12,file=dir_in//file,access='direct',recl=4*n)
+            endif
+        else
+            open(12,file=dir_in//file,access='direct',recl=4*n)
+        endif
+
+        read(12,rec=1) array
+        close(12)
+        
+    end subroutine
+
+    subroutine sysio_mv(file_old,file_new,o_wait)
+        character(*) :: file_old,file_new
+        logical,optional :: o_wait
+
+        if(mpiworld%is_master) then
+            call execute_command_line('mv '//dir_out//file_old//' '//dir_out//file_new,wait=either(o_wait,.true.,present(o_wait)))
+        endif
+
+    end subroutine
+
+    subroutine sysio_rm(file,o_wait)
+        character(*) :: file
+        logical,optional :: o_wait
+
+        if(mpiworld%is_master) then
+            call execute_command_line('rm -rf '//dir_out//file,wait=either(o_wait,.true.,present(o_wait)))
+        endif
+
+    end subroutine
+
+end
 !     
 !     
 !     subroutine write_mpi_ascii(array,prefix)
@@ -423,5 +218,3 @@ use m_message
 ! 
 !         end if
 !     end subroutine
-
-end

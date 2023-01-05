@@ -1,238 +1,346 @@
+!Find proper steplength alpha (α) based
+!first on a bracketing strategy,
+!then on a dichotomy algorithm. 
+!Ref: Numerical Optimizationn Theoretical and Practical Aspects, J.F.Bonnans, J.C.Gilbert, C. Lemaréchal, C.A. Sagastizábal,  Springer-Verlag, Universitext
+
+!This alpha should satisfy Wolfe's conditions 
+!1st_cond: sufficient descent
+!2nd_cond: sufficient curvature
+!Ref: Nocedal, Numerical Optimization, 2nd Ed, P. 33
+
 module m_linesearcher
-use m_mpienv
-use m_sysio
-use m_gradient
-use m_parameterization
-use m_preconditioner
+use m_System
+use m_Modeling
+use m_Kernel
 
     private
-    public alpha, isearch, imodeling, max_search, max_modeling, if_project_x, if_reinitialize_alpha, if_scaling, n
-    public t_forwardmap, linesearcher, linesearch_scaling
     
-    ! This linesearch enforces the Wolfe          !
-    ! conditions: sufficient decrease             !
-    !             sufficient curvature            !
-    ! The Wolfe conditions can be found in        !
-    ! Nocedal, Numerical Optimization, 2nd        !
-    ! edition, p.33                               !
-    !                                             !
-    ! The linesearch method implemented here is   !
-    ! based first on a bracketing strategy, then  !
-    ! on a dichotomy algorithm. A full description!
-    ! of this strategy can be found in            !
-    ! Numerical Optimizationn Theoretical and     !
-    ! Practical Aspects, J.F.Bonnans, J.C.Gilbert,!
-    ! C. Lemaréchal, C.A. Sagastizábal,           !
-    ! Springer-Verlag, Universitext               !
-    
+    character(*),parameter :: info='Linesearch based on a bracketing - dichotomy algoritm'//s_NL// &
+                                   'Steplength (alpha) judged by Wolfe conditions'
+
     !Wolfe conditions parameters (Nocedal value)
-    real,parameter :: c1=1e-4, c2=0.9 !for (quasi-)Newton method, 0.1 for NLCG
+    real,parameter :: c1=1e-4, c2=0.9 !c2=0.9 for (quasi-)Newton method, 0.1 for NLCG
     !Bracketting parameter (Gilbert value)
-    integer,parameter :: multiplyfactor=10
+    real,parameter :: multiplier=10.
     
-    !steplength
+    !thresholding
+    real,parameter :: thres=0.
+
+    !priors for steplength
     real,parameter :: alpha0=1.
-    real :: alpha=alpha0  !very initial steplength
-    real :: alphaL=0., alphaR=0.
+    real,parameter :: alphaL0=1e-4 !~=2^-10
+    real,parameter :: alphaR0=1e4  !=10^4
+
+    !Wolfe conditions
+    logical :: if_1st_cond, if_2nd_cond
+
+    type,public :: t_linesearcher
+        real :: alpha  !steplength
+        real :: alphaL, alphaR !search interval: alpha \in [alphaL, alphaR]
+        real :: scaler
+        character(7) :: result
+        
+        !counter
+        integer :: isearch !number of linesearch performed in each iterate
+        integer :: max_search !max number of linesearch allowed per iteration
+        integer :: igradient=1 !total number of gradient computed
+        integer :: max_gradient !max total number of gradient computation allowed
     
-    logical :: if_reinitialize_alpha=.false.
-    
-    !counter
-    integer :: isearch=0 !number of linesearch performed
-    integer :: imodeling=1 !number of modeling performed
-    !integer,parameter :: max_search=20 !max number of linesearch allowed
-integer,parameter :: max_search=12
-    integer :: max_modeling  !max number of modeling allowed
-    
-    !projection
-    logical :: if_project_x=.true.
-    real,parameter :: threshold=0.
-    
-    !scaling
-    logical :: if_scaling=.true.
-    
-    type t_forwardmap
-        real,dimension(:),allocatable :: x !point
-        real,dimension(:),allocatable :: g !gradient
-        real,dimension(:),allocatable :: pg !preconditioned gradient
-        real,dimension(:),allocatable :: d !descent direction
-        real :: f
-        real :: gdotd  !dot product of g and d
+        contains
+        procedure :: init
+        procedure :: search
+        procedure :: scale
+        procedure :: write
     end type
-    
-    integer n !problem size
+
+    type(t_linesearcher),public :: ls
+
     
     contains
     
-    subroutine linesearcher(iterate,current,perturb,gradient_history,result)
-        integer,intent(in) :: iterate
-        type(t_forwardmap),intent(inout) :: current, perturb
-        real,dimension(:,:),intent(inout),optional :: gradient_history
-        character(7) :: result
+    subroutine init(self)
+        class(t_linesearcher) :: self
+
+        call hud(info)
+        call hud('Wolfe condition parameters: c1='//num2str(c1)//', c2='//num2str(c2))
+
+        self%alpha=alpha0
+
+        !read setup        
+        self%max_search=setup%get_int('MAX_SEARCH',o_default='12')
+
+    end subroutine
+    
+    subroutine search(self,if_reinit_alpha,iterate,curr,pert,o_gradient_history)
+        use mpi
+        class(t_linesearcher) :: self
+        logical :: if_reinit_alpha
+        type(t_querypoint) :: curr,pert
+        real,dimension(:,:,:,:,:),optional :: o_gradient_history
+
+        type(t_checkpoint),save :: chp
+
+        !alpha probably can't be outside [alphaL0,alphaR0]
+        !a prudent range as we've appropriately scaled the optimization problem
+        !by the norm of the gradient (linesearcher scaler)
+        !if alpha < alphaL0 then probably no significant model updates
+        !if alpha > alphaR0 then probably too-large model updates
+        self%alphaL=alphaL0  !0.
+        self%alphaR=alphaR0  !huge(1.)
+
+        !reset alpha = alpha0 if requested by the optimization algorithm
+        if(if_reinit_alpha) self%alpha=alpha0
         
-        logical :: first_condition, second_condition
-        
-        !initialize
-        alphaL=0.
-        alphaR=0.
-        if(if_reinitialize_alpha) alpha=alpha0 !reinitialize alpha in each iterate may help convergence for LBFGS method..
-!         if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Initial alphaL/alpha/alphaR =',alphaL,alpha,alphaR
-        if(mpiworld%is_master) write(*,'(a, 2x,es8.2)')   ' Initial alpha =',alpha
-        if(mpiworld%is_master) write(*,*) 'Initial f,||g|| =',current%f,norm2(current%g)
-        perturb%x=current%x+alpha*current%d
-        
+        ! if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Initial alphaL/alpha/alphaR =',alphaL,alpha,alphaR
+        call hud('Initial alpha = '//num2str(self%alpha))
+        call hud('Current qp%f, ║g║₁ = '//num2str(curr%f)//', '//num2str(sum(abs(curr%g))))
+
         !save gradients
-        if(present(gradient_history)) then
-            l=size(gradient_history,2) !number of gradient in history
+        if(present(o_gradient_history)) then
+            l=size(o_gradient_history,5) !number of gradient in history
             i=1
-            gradient_history(:,i)=current%g
-            i=i+1; if(i>l) i=1;
+            o_gradient_history(:,:,:,:,i)=curr%g !?? and why not eoshift(o_gradient_history,1,curr%g)
+            i=i+1; if(i>l) i=1
         endif
         
+        call hud('------------ START LINESEARCH ------------')
         !linesearch loop
-        loop: do isearch=1,max_search
-        
-            if(mpiworld%is_master) write(*,'(a,3(2x,i5))') '  Iteration.Linesearch.Modeling#',iterate,isearch,imodeling
+        loop: do isearch=1,self%max_search
+            self%isearch=isearch !gfortran requires so
+
+            !perturb current point
+            pert%x = curr%x + self%alpha*curr%d
+            !if(mpiworld%is_master) call sysio_write('pert%x',pert%x,size(pert%x),o_mode='append')
+            call threshold(pert%x,size(pert%x))
+            call hud('Modeling with perturbed models')
+            call chp%init('FWI_querypoint_linesearcher','Gradient#','per_init')
+            if(.not.pert%is_registered(chp)) then
+                call fobj%eval(pert)
+                call pert%register(chp)
+            endif
+
+            ! if(.not. curr%is_fitting_data) then
+            !     call hud('Negate the sign of pert due to curr')
+            !     call pert%set_sign(o_sign='-')
+            ! endif
             
-            call hud('Modeling with perturbed parameters')
-            if(if_project_x) call linesearcher_project(perturb%x)
-            call parameterization_transform('x2m',perturb%x)
-            call gradient_modeling(if_gradient=.true.)
-            perturb%f=fobjective
-            call parameterization_transform('m2x',perturb%x,perturb%g)
-            if(if_scaling) call linesearch_scaling(perturb)
-            call preconditioner_apply(perturb%g,perturb%pg)
-            imodeling=imodeling+1
-            
-            call hud('Judge alpha by Wolfe conditions')
-            
-            perturb%gdotd=sum(perturb%g*current%d)
+            call self%scale(pert)
+
+            pert%g_dot_d = sum(pert%g*curr%d)
+
+            self%igradient=self%igradient+1
+
+            !save gradients
+            if(present(o_gradient_history)) then
+                o_gradient_history(:,:,:,:,i)=pert%g
+                i=i+1; if(i>l) i=1
+            endif
+
+            call hud('Iterate.LineSearch.Gradient# = '//num2str(iterate)//'.'//num2str(self%isearch)//'.'//num2str(self%igradient))
+
+            !if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Linesearch alphaL/alpha/alphaR =',alphaL,alpha,alphaR
+            call hud('alpha (α) = '//num2str(self%alpha)//' in ['//num2str(self%alphaL)//','//num2str(self%alphaR)//']')
+            call hud('Perturb qp%f, ║g║₁ = '//num2str(pert%f)//', '//num2str(sum(abs(pert%g))))
             
             !Wolfe conditions
-            first_condition = (perturb%f <= (current%f+c1*alpha*current%gdotd))
-            !second_condition= (abs(perturb%gdotd) >= c2*abs(current%gdotd)) !strong Wolfe condition
-            second_condition= (perturb%gdotd >= c2*current%gdotd) !strong Wolfe condition
-            
-! print*,'1st cond',perturb%f,current%f,current%gdotd, first_condition
-! print*,'2nd cond',perturb%gdotd, second_condition
-! print*,'alpha(3)',alphaL,alpha,alpha_R
+            if_1st_cond = (pert%f <= curr%f+c1*self%alpha*curr%g_dot_d) !sufficient descent condition
+            !if_1st_cond = (pert%f <= curr%f)
+            if_2nd_cond = (abs(pert%g_dot_d) <= c2*abs(curr%g_dot_d)) !strong curvature condition
+            !if_2nd_cond = (pert%g_dot_d >= c2*curr%g_dot_d) !weak curvature condition (note the diff of inequal sign..)
+            if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'max')>0) then
+                if(setup%get_bool('IF_FLIP_CURVATURE_CONDITION',o_default='T')) then
+                    call hud('flip curvature condition due to maximization')
+                    if_2nd_cond = .not.if_2nd_cond
+                endif
+            endif
 
             !occasionally optimizers on processors don't have same behavior
             !try to avoid this by broadcast controlling logicals.
-            call mpi_bcast(first_condition,  1, mpi_logical, 0, mpiworld%communicator, mpiworld%ierr)
-            call mpi_bcast(second_condition, 1, mpi_logical, 0, mpiworld%communicator, mpiworld%ierr)
+            call mpi_bcast(if_1st_cond, 1, mpi_logical, 0, mpiworld%communicator, mpiworld%ierr)
+            call mpi_bcast(if_2nd_cond, 1, mpi_logical, 0, mpiworld%communicator, mpiworld%ierr)
+
+            call self%write(iterate,pert)
 
             !1st condition OK, 2nd condition OK => use alpha
-            if(first_condition .and. second_condition) then
+            if(if_1st_cond .and. if_2nd_cond) then
                 call hud('Wolfe conditions are satisfied')
                 call hud('Enter new iterate')
-                result='success'
+                self%result='success'
                 exit loop
             endif
             
-            if(isearch==max_search) then
+            !bracketing-dichotomy strategy to find alpha
+            if(self%isearch<self%max_search-1) then
             
-                !1st condition BAD => failure
-                if(.not. first_condition) then
-                    call hud("Linesearch failure: can't find good alpha.")
-                    result='failure'
-                    exit loop
+                !1st condition BAD => [ <-]
+                if(.not. if_1st_cond) then
+                    call hud("Sufficient descent condition NOT satified. Now try a smaller alpha (α)")
+                    self%result='perturb'
+                    self%alphaR=self%alpha
+                    self%alpha=0.5*(self%alphaL+self%alphaR) !shrink the search interval
                 endif
                 
-                !2nd condition BAD => use alpha
-                if(.not. second_condition) then
-                    call hud("Maximum linesearch number reached. Use alpha although curvature condition is not satisfied")
-                    call hud('Enter new iterate')
-                    result='success'
-                    exit loop
-                endif
-                
-            else
-            
-                !1st condition BAD => shrink alpha
-                if(.not. first_condition) then
-                    call hud("Armijo condition is not satified. Now try a smaller alpha")
-                    result='perturb'
-                    alphaR=alpha
-                    alpha=0.5*(alphaL+alphaR)
-                    perturb%x=current%x+alpha*current%d
-                    !save gradient
-                    if(present(gradient_history)) then
-                        gradient_history(:,i)=perturb%g
-                        i=i+1; if(i>l) i=1;
-                    endif
-                endif
-                
-                !2nd condition BAD => increase alpha unless alphaR=0.
-                if(first_condition .and. .not. second_condition) then
-                    call hud("Curvature condition is not satified. Now try a larger alpha")
-                    result='perturb'
-                    alphaL=alpha
-                    if(abs(alphaR) > tiny(1.e0)) then
-                        alpha=0.5*(alphaL+alphaR)
+                !2nd condition BAD => [-> ]
+                if(if_1st_cond .and. .not. if_2nd_cond) then
+                    call hud("Curvature condition is NOT satified. Now try a larger alpha (α)")
+                    self%result='perturb'
+                    self%alphaL=self%alpha
+                    if(self%alphaR < alphaR0) then
+                        self%alpha=0.5*(self%alphaL+self%alphaR) !shrink the search interval
                     else
-                        alpha=alpha*multiplyfactor
-                    endif
-                    perturb%x=current%x+alpha*current%d
-                    !save gradient
-                    if(present(gradient_history)) then
-                        gradient_history(:,i)=perturb%g
-                        i=i+1; if(i>l) i=1;
+                        self%alpha=self%alpha*multiplier !extend search interval
                     endif
                 endif
                 
             endif
-            
-            !if(mpiworld%is_master) write(*,'(a,3(2x,es8.2))') ' Linesearch alphaL/alpha/alphaR =',alphaL,alpha,alphaR
-            if(mpiworld%is_master) write(*,'(a, 2x,es8.2)')   ' Linesearch alpha =',alpha
-            if(mpiworld%is_master) write(*,*) 'f,||g|| =',perturb%f,norm2(perturb%g)
-        
+
+            !exit loop, 1st condition has priority over 2nd condition
+            !unless re-use alphaL if necessary
+            if(self%isearch==self%max_search-1) then
+                if(.not. if_1st_cond) then
+                    call hud("Sufficient decrease condition NOT satified && LinS# = max_search-1.")
+                    if(self%alphaL>alphaL0) then
+                        call hud("Redo linesearch with alpha = alphaL")
+                        self%alpha=self%alphaL
+                    else
+                        call hud("alphaL==alphaL0. No need to do the last search.")
+                        call hud("Linesearch failure: can't find good alpha.")
+                        self%result='failure'
+                        exit loop
+                    endif
+                
+                else
+                    if(.not. if_2nd_cond) call hud("LinS# = max_search-1. Use alpha although curvature condition is not satisfied")
+                    call hud('Enter new iterate')
+                    self%result='success'
+                    exit loop
+
+                endif
+
+            endif
+
+            !last
+            if(self%isearch==self%max_search) then
+                if(.not. if_2nd_cond) call hud("Linesearch max_search reached. Use alpha although curvature condition is not satisfied")
+                call hud('Enter new iterate')
+                self%result='success'
+                exit loop
+                
+            endif
+
         enddo loop
+
+
+        ! if(pert%is_fitting_data) then
+        !     call hud('Set positive sign to pert')
+        !     call pert%set_sign(o_sign='+')
+        ! else
+        !     call hud('Set negative sign to pert')
+        !     call pert%set_sign(o_sign='-')
+        ! endif
+
         
-        if (imodeling>=max_modeling) then
-            call hud('Maximum modeling number reached. Finalize program now..')
-            result='maximum'
+        if(self%igradient>=self%max_gradient) then
+            call hud('Maximum number of gradients reached. Finalize program now..')
+            self%result='maximum'
         endif       
     
     end subroutine
 
-    
-    
-    subroutine linesearcher_project(x)
+    subroutine threshold(x,n)
         real,dimension(n) :: x
 
-        !x should be inside [0,1] due to scaling
-        where (x<0.) x=threshold
-        where (x>1.) x=1.-threshold
+        logical,dimension(n) :: is_reached
 
-        !x should be fixed in the mask area (e.g. water)
-        call parameterization_applymask(x)
+        is_reached=.false.
+
+        !x should reside in [0,1]
+        where (x<0.) 
+            is_reached=.true.
+            x=thres
+        endwhere
+
+        where (x>1.)
+            is_reached=.true.
+            x=1.-thres
+        endwhere
+
+        if( size(pack(is_reached,.false.))>n/10 ) then
+            call warn('x significantly reaches {0,1}. Something might be wrong.')
+        endif
 
     end subroutine
     
-    
-    !scale problem
-    subroutine linesearch_scaling(fm)
-        type(t_forwardmap) :: fm
-        
-        real,save :: scaling=1.
-        logical,save :: if_computed_scale=.false.
-        
-        if(.not.if_computed_scale) then
-        
-            !scaling=1e3* 1e-2*m%n/ (sum(abs(fm%g(1:m%n)))) / (par_vp_max -par_vp_min)  !=1e3* |gp1|_L1 / |gvp|_L1 / (vpmax-vpmin)
+    !scale the problem s.t. 
+    !qp%g, qp%pg, to be negated as qp%d, have a similar scale (or unit) as qp%x, 
+    !and alpha0 can be simply 1 (unitless).
+    !update=alpha*qp%d=-alpha*qp%pg
+    subroutine scale(self,qp)
+        class(t_linesearcher) :: self
+        type(t_querypoint) :: qp
 
-            scaling=1e3* 1e-2*m%n/ (sum(abs(fm%g(1:m%n)))) / (pars_max(1)-pars_min(1))  !=1e3* |gpar1|_L1 / |gpar|_L1 / par1_range
+        logical,save :: is_first_in=.true.
+        character(:),allocatable :: str
+        
+        if(is_first_in) then
 
-            if(mpiworld%is_master) write(*,*) 'Linesearch Scaling Factor:', scaling
+            !first do sanity check
+            if(sum(abs(qp%pg))==0.) then
+                call error('Gradient becomes absolutely zero!')
+            endif
 
-            if_computed_scale=.true.
+            str=setup%get_str('LINESEARCHER_SCALING','LS_SCALING',o_default='by total_volume/||pg(1)||1')
+
+            if(str=='by total_volume/||pg(1)||1') then
+                !total_volume = ∫   1     dy³ = n1*n2*n3  *d1*d2*d3
+                !║pg(1)║₁     = ∫ |pg(1)| dy³ = Σ |pg(1)| *d1*d2*d3
+                eps=param%n1*param%n2*param%n3/sum(abs(qp%pg(:,:,:,1)))
+                
+            elseif(len(str)>0) then
+                eps=str2real(str)
+                eps=eps/maxval(abs(qp%pg(:,:,:,1))) !eg. =0.05/║pg(1)║∞, ie. maximum 50m/s perturbation on velocity
+            else
+                call error('LINESEARCHER_SCALING input is zero!')
+            endif
+            
+            self%scaler=eps/param%pars(1)%range
+            
+            call hud('Linesearch scaler= '//num2str(self%scaler))
+
+            is_first_in=.false.
+
         endif
         
-        fm%f=fm%f*scaling
-        fm%g=fm%g*scaling
+        qp%f=qp%f*self%scaler
+        qp%g=qp%g*self%scaler
+        qp%pg=qp%pg*self%scaler
         
-        
+    end subroutine
+
+    subroutine write(self,iterate,pert)
+        class(t_linesearcher) :: self
+        integer :: iterate
+        type(t_querypoint) :: pert
+
+        character(*),parameter :: fmt='(x,5x,2x,i5,2x,i5,2x,es8.2,6x,es11.4,22x,es9.2,3x,l,x,l)'
+
+        if(mpiworld%is_master) then
+            
+            open(16,file=dir_out//'optimization.log',position='append',action='write')
+            write(16,fmt)  ls%isearch, ls%igradient, ls%alpha, pert%f, pert%g_dot_d, if_1st_cond, if_2nd_cond
+            !write(16,'(a)') 'pert%f (pert%f-curr%f)/α pert%g·d curr%g·d'
+            !write(16,*) pert%f, (pert%f-curr%f)/self%alpha, pert%g_dot_d, curr%g_dot_d
+            close(16)
+
+        endif
+
+        if(setup%get_bool('IF_LINESEARCH_WRITE','IF_LS_WRITE',o_default='F')) then
+            call sysio_write('model_Iter'//num2str(iterate)//'.LinS'//num2str(ls%isearch),m%vp,m%n)
+            call sysio_write('image_Iter'//num2str(iterate)//'.LinS'//num2str(ls%isearch),m%image,m%n)
+            call sysio_mv( 'Ru_Shot0001.su', 'Ru_Shot0001_Iter'//num2str(iterate)//'.LinS'//num2str(ls%isearch)//'.su')
+            call sysio_mv('Rdu_Shot0001.su','Rdu_Shot0001_Iter'//num2str(iterate)//'.LinS'//num2str(ls%isearch)//'.su')
+        endif
+
     end subroutine
     
 
