@@ -14,11 +14,6 @@ m_propagator_$(WaveEq)_$(Solver)_$(Order).f90 \
 m_Modeling.f90
 
 
-ifeq '$(App)' 'WPI'
-	src += m_propagator_WPI.f90
-endif
-
-
 all : $(src:.f90=.o)
 	@printf "\n"
 
