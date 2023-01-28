@@ -1,20 +1,28 @@
 # SeisJIMU
 
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+─██████████████─██████████████─██████████─██████████████─────────██████─██████████─██████──────────██████─██████──██████─
+─██░░░░░░░░░░██─██░░░░░░░░░░██─██░░░░░░██─██░░░░░░░░░░██─────────██░░██─██░░░░░░██─██░░██████████████░░██─██░░██──██░░██─
+─██░░██████████─██░░██████████─████░░████─██░░██████████─────────██░░██─████░░████─██░░░░░░░░░░░░░░░░░░██─██░░██──██░░██─
+─██░░██─────────██░░██───────────██░░██───██░░██─────────────────██░░██───██░░██───██░░██████░░██████░░██─██░░██──██░░██─
+─██░░██████████─██░░██████████───██░░██───██░░██████████─────────██░░██───██░░██───██░░██──██░░██──██░░██─██░░██──██░░██─
+─██░░░░░░░░░░██─██░░░░░░░░░░██───██░░██───██░░░░░░░░░░██─────────██░░██───██░░██───██░░██──██░░██──██░░██─██░░██──██░░██─
+─██████████░░██─██░░██████████───██░░██───██████████░░██─██████──██░░██───██░░██───██░░██──██████──██░░██─██░░██──██░░██─
+─────────██░░██─██░░██───────────██░░██───────────██░░██─██░░██──██░░██───██░░██───██░░██──────────██░░██─██░░██──██░░██─
+─██████████░░██─██░░██████████─████░░████─██████████░░██─██░░██████░░██─████░░████─██░░██──────────██░░██─██░░██████░░██─
+─██░░░░░░░░░░██─██░░░░░░░░░░██─██░░░░░░██─██░░░░░░░░░░██─██░░░░░░░░░░██─██░░░░░░██─██░░██──────────██░░██─██░░░░░░░░░░██─
+─██████████████─██████████████─██████████─██████████████─██████████████─██████████─██████──────────██████─██████████████─
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+(https://fsymbols.com/generators/carty/)
 
-	███████ ███████ ██ ███████      ██ ██ ███    ███ ██    ██ 
-	██      ██      ██ ██           ██ ██ ████  ████ ██    ██ 
-	███████ █████   ██ ███████      ██ ██ ██ ████ ██ ██    ██ 
-	     ██ ██      ██      ██ ██   ██ ██ ██  ██  ██ ██    ██ 
-	███████ ███████ ██ ███████  █████  ██ ██      ██  ██████
-	                                          
 SeisJIMU is a module based seismic modeling and inversion (FWI) code,
 licensed under GNU GENERAL PUBLIC LICENSE Version 3 (see LICENSE).
 
-~Version 1.1.1.1
+~Version Code UGA_22
  - Authors: 
-	 - Joeyartech  (joeyartech@gmail.com)
+	 - Wei Zhou  (joeywzhou1986@gmail.com)
 	 - David Lumley (david.lumley@utdallas.edu)
- - Language: Fortran
+ - Language: Fortran 95, 2003
  - Libraries: OpenMP, MPI
  - Compilers: gfortran (Ver>=5), ifort
 <!---  - Tested on CPU: Intel(R) Xeon(R) Gold 6140 CPU @ 2.30GHz --->
@@ -50,7 +58,7 @@ licensed under GNU GENERAL PUBLIC LICENSE Version 3 (see LICENSE).
 
 3. Compilation  
     a. create directory:
-``` $ make dir ```  
+``` $ make prepare ```  
     b. compile:
     - For FWD (forward modeling):
 ``` $ make fwd ```
@@ -70,7 +78,7 @@ The newest compiled executable has a nickname simply as FWD or FWI.
 ## Running programs
 A handy manual is available by just running the executable in the terminal:
 ``` $ ./exe/FWD ```
-``` $ ./exe/FWi ```
+``` $ ./exe/FWI ```
 
 1. Create/Edit `setup.in`:
   Check the manual to see which items are mandatory or optional in `setup.in`. Modify it for your problem.
@@ -97,6 +105,6 @@ See LICENSE
 References
 ----
 If you publish results using this code, please acknowledge and reference our paper:
+
 - [Wei Zhou and David Lumley (2021), Central-difference time-lapse 4D seismic full waveform inversion, _Geophysics_](https://library.seg.org/doi/10.1190/geo2019-0834.1)
 - [Wei Zhou and David Lumley (2021), Non-repeatability Effects on Time-Lapse 4D Seismic Full Waveform Inversion for Ocean-Bottom Node Data, _Geophysics_](https://library.seg.org/doi/10.1190/geo2020-0577.1)
-

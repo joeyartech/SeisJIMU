@@ -1,16 +1,16 @@
 #####################################
 # Don't track these files & folders #
 #####################################
-Doc/
-Demo/
+#Doc/
+#Demo/
 devel/
 exe/
 mod/
 philosophy.odp
 Validations/
 test
-compiler.inc
-modules.inc
+#compiler.inc
+#modules.inc
 
 
 
