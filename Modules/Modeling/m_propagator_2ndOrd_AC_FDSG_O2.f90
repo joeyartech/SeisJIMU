@@ -361,31 +361,32 @@ use m_cpml
                 call cpu_time(tic)
                 call fld_u%boundary_transport_pressure('save',it)
                 call cpu_time(toc)
-                tt5=tt5+toc-tic
+                tt2=tt2+toc-tic
             ! endif
 
             !step 3: set hardBC
             call cpu_time(tic)
             call self%set_pressure(fld_u,time_dir,it)
             call cpu_time(toc)
-            tt2=tt2+toc-tic
+            tt3=tt3+toc-tic
 
             !step 4: update pressure
             call cpu_time(tic)
             call self%update_pressure(fld_u,time_dir,it)
             call cpu_time(toc)
-            tt3=tt3+toc-tic
+            tt4=tt4+toc-tic
 
             !step 5: evolve pressure
             call cpu_time(tic)
             call self%evolve_pressure(fld_u,time_dir,it)
             call cpu_time(toc)
-            tt4=tt4+toc-tic
+            tt5=tt5+toc-tic
 
             !step 6: sample pressure at receivers
             call cpu_time(tic)
             call self%extract(fld_u,it)
-            tt5=tt5+toc-tic
+            call cpu_time(toc)
+            tt6=tt6+toc-tic
 
             !snapshot
             call fld_u%write(it)
@@ -393,11 +394,12 @@ use m_cpml
         enddo
 
         if(mpiworld%is_master) then
-            write(*,*) 'Elapsed time to add source',tt1/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update field',tt2/mpiworld%max_threads
-            write(*,*) 'Elapsed time to evolve field',tt3/mpiworld%max_threads
-            write(*,*) 'Elapsed time to extract field',tt4/mpiworld%max_threads
-            write(*,*) 'Elapsed time to save boundary',tt5/mpiworld%max_threads
+            write(*,*) 'Elapsed time to add source   ',tt1/mpiworld%max_threads
+            write(*,*) 'Elapsed time to save boundary',tt2/mpiworld%max_threads
+            write(*,*) 'Elapsed time to set field    ',tt3/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update field ',tt4/mpiworld%max_threads
+            write(*,*) 'Elapsed time to evolve field ',tt5/mpiworld%max_threads
+            write(*,*) 'Elapsed time to extract field',tt6/mpiworld%max_threads
         endif
 
         call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
@@ -501,11 +503,11 @@ use m_cpml
             call cpu_time(toc)
             tt8=tt8+toc-tic
 
-            ! !adjoint step 5: inject to s^it+1.5 at receivers
-            ! call cpu_time(tic)
-            ! call self%set_pressure(fld_a,time_dir,it)
-            ! call cpu_time(toc)
-            ! tt9=tt9+toc-tic
+            !adjoint step 5: inject to s^it+1.5 at receivers
+            call cpu_time(tic)
+            call self%set_pressure(fld_a,time_dir,it)
+            call cpu_time(toc)
+            tt9=tt9+toc-tic
 
             !adjoint step 1: sample v^it or s^it+0.5 at source position
             if(if_record_adjseismo) then
@@ -574,18 +576,18 @@ use m_cpml
         if(if_compute_grad) call gradient_postprocess
         
         if(mpiworld%is_master) then
-            write(*,*) 'Elapsed time to evolve field          ',tt1/mpiworld%max_threads
-            write(*,*) 'Elapsed time to load boundary         ',tt2/mpiworld%max_threads
-            write(*,*) 'Elapsed time to set pressure          ',tt3/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update pressure       ',tt4/mpiworld%max_threads
-            write(*,*) 'Elapsed time to rm source             ',tt5/mpiworld%max_threads
-            write(*,*) 'Elapsed time -------------------------'
-            write(*,*) 'Elapsed time to add adjsource         ',tt6/mpiworld%max_threads
-            write(*,*) 'Elapsed time to evolve ad field       ',tt7/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update adj pressure   ',tt8/mpiworld%max_threads
-            write(*,*) 'Elapsed time to set adj pressure      ',tt9/mpiworld%max_threads
-            write(*,*) 'Elapsed time to extract&write fields  ',tt10/mpiworld%max_threads
-            write(*,*) 'Elapsed time to correlate             ',tt11/mpiworld%max_threads
+            write(*,*) 'Elapsed time to evolve field        ',tt1/mpiworld%max_threads
+            write(*,*) 'Elapsed time to load boundary       ',tt2/mpiworld%max_threads
+            write(*,*) 'Elapsed time to set field           ',tt3/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update field        ',tt4/mpiworld%max_threads
+            write(*,*) 'Elapsed time to rm source           ',tt5/mpiworld%max_threads
+            write(*,*) 'Elapsed time -----------------------'
+            write(*,*) 'Elapsed time to add adj source      ',tt6/mpiworld%max_threads
+            write(*,*) 'Elapsed time to evolve adj field    ',tt7/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update adj field    ',tt8/mpiworld%max_threads
+            write(*,*) 'Elapsed time to set adj field       ',tt9/mpiworld%max_threads
+            write(*,*) 'Elapsed time to extract&write fields',tt10/mpiworld%max_threads
+            write(*,*) 'Elapsed time to correlate           ',tt11/mpiworld%max_threads
 
         endif
 
@@ -780,9 +782,10 @@ use m_cpml
 
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
-                        
-                        case ('p')
+                        case default
+                        !case ('p')
                         f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef)
+
                         ! case ('vz')
                         ! f%seismo(i,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
                         ! case ('vx')
@@ -793,8 +796,10 @@ use m_cpml
                     
                 else
                     select case (shot%rcv(i)%comp)
-                        case ('p') !p[iz,ix,iy]
+                        case default
+                        !case ('p') !p[iz,ix,iy]
                         f%seismo(i,it)=f%p(iz,ix,iy)
+
                         ! case ('vz') !vz[iz-0.5,ix,iy]
                         ! f%seismo(i,it)=f%vz(iz,ix,iy)
                         ! case ('vx') !vx[iz,ix-0.5,iy]
@@ -817,7 +822,8 @@ use m_cpml
             
             if(if_hicks) then
                 select case (shot%src%comp)
-                    case ('p')
+                    case default
+                    !case ('p')
                     f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef)
                     
                     ! case ('vz')
@@ -833,7 +839,8 @@ use m_cpml
                 
             else
                 select case (shot%src%comp)
-                    case ('p') !p[iz,ix,iy]
+                    case default
+                    !case ('p') !p[iz,ix,iy]
                     f%seismo(1,it)=f%p(iz,ix,iy)
                     
                     ! case ('vz') !vz[iz-0.5,ix,iy]
