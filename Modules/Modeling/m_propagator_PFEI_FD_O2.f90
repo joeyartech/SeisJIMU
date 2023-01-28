@@ -59,7 +59,7 @@ use m_cpml
         procedure :: adjoint
         
         procedure :: inject_pressure
-        procedure :: set_pressure
+        ! procedure :: set_pressure
         procedure :: update_pressure
         procedure :: evolve_pressure
         procedure :: extract
@@ -253,7 +253,7 @@ use m_cpml
 
     !========= Derivations =================
     !PDE:      A u = ∂ₜ²u - κ∇·b∇u = f
-    !Adjoint:  Aᵀa = Aa = d
+    !Adjoint:  Aᵀa = d
     !where
     !u=p=tr(s)=szz=sxx=syy is (hydrostatic) pressure
     !f=fp*δ(x-xs), d is recorded data
@@ -327,7 +327,7 @@ use m_cpml
     !while in each step of reverse-time adjoint marching: dadj=AᵀBndᵀGᵀEᵀRᵀdsyn
     !Rᵀ:inject adjoint sources, Eᵀ:reverse-time evolution, Gᵀ:adjoint propagator, with
     !Gᵀ=∂ᶠᵀBᵀ∂ᵇᵀKᵀIᵀ=∂ᵇBᵀ∂ᶠKIᵀ
-    !Bndᵀ:adjoint BC: pᵃ=0 where ∇p≠0 (Neumann BC); ∇pᵃ=0 where p≠0 (Dirichlet BC))
+    !Bndᵀ:adjoint BC: pᵃ=0 where ∇p≠0 (Neumann BC); ∇pᵃ=0 where p≠0 (Dirichlet BC)
     !Aᵀ:extract adjoint fields
 
     subroutine forward(self,fld_u)
@@ -356,7 +356,7 @@ use m_cpml
             call cpu_time(toc)
             tt1=tt1+toc-tic
 
-            !step 2: save v^it+1 in boundary layers
+            !step 2: save p^it+1 in boundary layers
             ! if(fld_u%if_will_reconstruct) then
                 call cpu_time(tic)
                 call fld_u%boundary_transport_pressure('save',it)
@@ -364,11 +364,11 @@ use m_cpml
                 tt2=tt2+toc-tic
             ! endif
 
-            !step 3: set hardBC
-            call cpu_time(tic)
-            call self%set_pressure(fld_u,time_dir,it)
-            call cpu_time(toc)
-            tt3=tt3+toc-tic
+            ! !step 3: set hardBC
+            ! call cpu_time(tic)
+            ! call self%set_pressure(fld_u,time_dir,it)
+            ! call cpu_time(toc)
+            ! tt3=tt3+toc-tic
 
             !step 4: update pressure
             call cpu_time(tic)
@@ -396,7 +396,7 @@ use m_cpml
         if(mpiworld%is_master) then
             write(*,*) 'Elapsed time to add source   ',tt1/mpiworld%max_threads
             write(*,*) 'Elapsed time to save boundary',tt2/mpiworld%max_threads
-            write(*,*) 'Elapsed time to set field    ',tt3/mpiworld%max_threads
+            ! write(*,*) 'Elapsed time to set field    ',tt3/mpiworld%max_threads
             write(*,*) 'Elapsed time to update field ',tt4/mpiworld%max_threads
             write(*,*) 'Elapsed time to evolve field ',tt5/mpiworld%max_threads
             write(*,*) 'Elapsed time to extract field',tt6/mpiworld%max_threads
@@ -457,19 +457,19 @@ use m_cpml
                 call cpu_time(toc)
                 tt1=tt1+toc-tic
 
-                !backward step 2: retrieve v^it+1 at boundary layers (BC)
+                !backward step 2: retrieve p^it+1 at boundary layers (BC)
                 call cpu_time(tic)
                 call fld_u%boundary_transport_pressure('load',it)
                 call cpu_time(toc)
                 tt2=tt2+toc-tic
 
-                !backward step 3: s^it+1.5 -> s^it+0.5 by FD of v^it+1
-                call cpu_time(tic)
-                call self%set_pressure(fld_u,time_dir,it)
-                call cpu_time(toc)
-                tt3=tt3+toc-tic
+                ! !backward step 3: s^it+1.5 -> s^it+0.5
+                ! call cpu_time(tic)
+                ! call self%set_pressure(fld_u,time_dir,it)
+                ! call cpu_time(toc)
+                ! tt3=tt3+toc-tic
 
-                !backward step 4: s^it+1.5 -> s^it+0.5 by FD of v^it+1
+                !backward step 4: s^it+1.5 -> s^it+0.5
                 call cpu_time(tic)
                 call self%update_pressure(fld_u,time_dir,it)
                 call cpu_time(toc)
@@ -497,17 +497,17 @@ use m_cpml
             call cpu_time(toc)
             tt7=tt7+toc-tic
 
-            !adjoint step 4: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
+            !adjoint step 4: s^it+1.5 -> s^it+0.5
             call cpu_time(tic)
             call self%update_pressure(fld_a,time_dir,it)
             call cpu_time(toc)
             tt8=tt8+toc-tic
 
-            !adjoint step 5: inject to s^it+1.5 at receivers
-            call cpu_time(tic)
-            call self%set_pressure(fld_a,time_dir,it)
-            call cpu_time(toc)
-            tt9=tt9+toc-tic
+            ! !adjoint step 5: inject to s^it+1.5 at receivers
+            ! call cpu_time(tic)
+            ! call self%set_pressure(fld_a,time_dir,it)
+            ! call cpu_time(toc)
+            ! tt9=tt9+toc-tic
 
             !adjoint step 1: sample v^it or s^it+0.5 at source position
             if(if_record_adjseismo) then
@@ -518,7 +518,6 @@ use m_cpml
             endif
 
             !gkpa: rf%s^it+0.5 star D sf%s_dt^it+0.5
-            !use sf%v^it+1 to compute sf%s_dt^it+0.5, as backward step 4
             if(if_compute_grad.and.mod(it,irdt)==0) then
                 call cpu_time(tic)
                 call gradient_moduli(fld_a,fld_u,it,cb%grad(:,:,:,2))
@@ -578,14 +577,14 @@ use m_cpml
         if(mpiworld%is_master) then
             write(*,*) 'Elapsed time to evolve field        ',tt1/mpiworld%max_threads
             write(*,*) 'Elapsed time to load boundary       ',tt2/mpiworld%max_threads
-            write(*,*) 'Elapsed time to set field           ',tt3/mpiworld%max_threads
+            ! write(*,*) 'Elapsed time to set field           ',tt3/mpiworld%max_threads
             write(*,*) 'Elapsed time to update field        ',tt4/mpiworld%max_threads
             write(*,*) 'Elapsed time to rm source           ',tt5/mpiworld%max_threads
             write(*,*) 'Elapsed time -----------------------'
             write(*,*) 'Elapsed time to add adj source      ',tt6/mpiworld%max_threads
             write(*,*) 'Elapsed time to evolve adj field    ',tt7/mpiworld%max_threads
             write(*,*) 'Elapsed time to update adj field    ',tt8/mpiworld%max_threads
-            write(*,*) 'Elapsed time to set adj field       ',tt9/mpiworld%max_threads
+            ! write(*,*) 'Elapsed time to set adj field       ',tt9/mpiworld%max_threads
             write(*,*) 'Elapsed time to extract&write fields',tt10/mpiworld%max_threads
             write(*,*) 'Elapsed time to correlate           ',tt11/mpiworld%max_threads
 
@@ -620,9 +619,9 @@ use m_cpml
             
             wl=time_dir*f%wavelet(1,it)
             
-            if(shot%src%comp=='p') then !explosion
+            ! if(shot%src%comp=='p') then !explosion
                 f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)!*shot%src%interp_coef
-            endif
+            ! endif
                 
             return
 
@@ -643,62 +642,62 @@ use m_cpml
             !adjsource for pressure
             wl=f%wavelet(i,it)
                 
-            if(shot%rcv(i)%comp=='p') then
+            ! if(shot%rcv(i)%comp=='p') then
                 f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)!*shot%rcv(i)%interp_coef !no time_dir needed!
-            endif
+            ! endif
 
         enddo
         
     end subroutine
 
-    subroutine set_pressure(self,f,time_dir,it)
-        class(t_propagator) :: self
-        type(t_field) :: f
+    ! subroutine set_pressure(self,f,time_dir,it)
+    !     class(t_propagator) :: self
+    !     type(t_field) :: f
 
-        if(.not. f%is_adjoint) then
+    !     if(.not. f%is_adjoint) then
 
-            if(if_hicks) then
-                ifz=shot%src%ifz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
-                ifx=shot%src%ifx-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
-                ify=shot%src%ify-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
-            else
-                ifz=shot%src%iz-cb%ioz+1; ilz=ifz
-                ifx=shot%src%ix-cb%iox+1; ilx=ifx
-                ify=shot%src%iy-cb%ioy+1; ily=ify
-            endif
+    !         if(if_hicks) then
+    !             ifz=shot%src%ifz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
+    !             ifx=shot%src%ifx-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
+    !             ify=shot%src%ify-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
+    !         else
+    !             ifz=shot%src%iz-cb%ioz+1; ilz=ifz
+    !             ifx=shot%src%ix-cb%iox+1; ilx=ifx
+    !             ify=shot%src%iy-cb%ioy+1; ily=ify
+    !         endif
             
-            wl=f%wavelet(1,it)
+    !         wl=f%wavelet(1,it)
             
-            if(shot%src%comp=='pbnd') then !hard BC
-                f%p(ifz:ilz,ifx:ilx,ify:ily) =                                wl!                                  *shot%src%interp_coef
-            endif
+    !         if(shot%src%comp=='pbnd') then !hard BC
+    !             f%p(ifz:ilz,ifx:ilx,ify:ily) =                                wl!                                  *shot%src%interp_coef
+    !         endif
                 
-            return
+    !         return
 
-        endif
+    !     endif
 
-        do i=1,shot%nrcv
+    !     do i=1,shot%nrcv
 
-            if(if_hicks) then
-                ifz=shot%rcv(i)%ifz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
-                ifx=shot%rcv(i)%ifx-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
-                ify=shot%rcv(i)%ify-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
-            else
-                ifz=shot%rcv(i)%iz-cb%ioz+1; ilz=ifz
-                ifx=shot%rcv(i)%ix-cb%iox+1; ilx=ifx
-                ify=shot%rcv(i)%iy-cb%ioy+1; ily=ify
-            endif
+    !         if(if_hicks) then
+    !             ifz=shot%rcv(i)%ifz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
+    !             ifx=shot%rcv(i)%ifx-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
+    !             ify=shot%rcv(i)%ify-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
+    !         else
+    !             ifz=shot%rcv(i)%iz-cb%ioz+1; ilz=ifz
+    !             ifx=shot%rcv(i)%ix-cb%iox+1; ilx=ifx
+    !             ify=shot%rcv(i)%iy-cb%ioy+1; ily=ify
+    !         endif
 
-            ! !adjsource for pressure
-            ! wl=f%wavelet(i,it)
+    !         ! !adjsource for pressure
+    !         ! wl=f%wavelet(i,it)
                 
-            if(shot%rcv(i)%comp=='pbnd') then
-                f%p(ifz:ilz,ifx:ilx,ify:ily) =                               0. !wl                                  !*shot%rcv(i)%interp_coef !no time_dir needed!
-            endif
+    !         if(shot%rcv(i)%comp=='pbnd') then
+    !             f%p(ifz:ilz,ifx:ilx,ify:ily) =                               0. !wl                                  !*shot%rcv(i)%interp_coef !no time_dir needed!
+    !         endif
 
-        enddo
+    !     enddo
         
-    end subroutine
+    ! end subroutine
 
     !forward: s^it+0.5 -> s^it+1.5 by FD of v^it+1
     !adjoint: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
