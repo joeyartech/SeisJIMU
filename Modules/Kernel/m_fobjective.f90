@@ -22,7 +22,7 @@ use m_preconditioner
         real,dimension(:),allocatable :: dnorm_normalizers, xnorm_normalizers
         real,dimension(:),allocatable :: dnorm_weights,     xnorm_weights
 
-        real FWI_misfit
+        real misfit
 
         contains
 
@@ -338,7 +338,7 @@ use m_preconditioner
     end subroutine
 
     subroutine eval(self,qp,oif_update_m,oif_approx,oif_gradient)
-    use m_pseudotime
+    !use m_pseudotime
 
         class(t_fobjective) :: self
         type(t_querypoint) :: qp
@@ -362,13 +362,13 @@ use m_preconditioner
             call modeling_gradient!(qp%is_fitting_data)
         ! endif
 
-        if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'max')>0) then
-            if(setup%get_bool('IF_FLIP_PROBLEM',o_default='T')) then
-                call hud('flip problem sign due to maximization')
-                self%dnorms=-self%dnorms
-                m%gradient =-m%gradient
-            endif
-        endif
+        ! if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'max')>0) then
+        !     if(setup%get_bool('IF_FLIP_PROBLEM',o_default='T')) then
+        !         call hud('flip problem sign due to maximization')
+        !         self%dnorms=-self%dnorms
+        !         correlation_gradient =-correlation_gradient
+        !     endif
+        ! endif
         
         qp%f = sum(self%dnorm_weights*self%dnorms) ! + sum(self%xnorm_weights*self%xnorms)
 
@@ -383,15 +383,15 @@ use m_preconditioner
                 call hud('Laplacian smoothing')
                 call smoother_Laplacian_init([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%fpeak)
                 do j=1,ppg%ngrad
-                    call smoother_Laplacian_extend_mirror(m%gradient(:,:,:,j),m%ibathy)
-                    call smoother_Laplacian_pseudo_nonstationary(m%gradient(:,:,:,j),m%vp)
+                    call smoother_Laplacian_extend_mirror(correlation_gradient(:,:,:,j),m%ibathy)
+                    call smoother_Laplacian_pseudo_nonstationary(correlation_gradient(:,:,:,j),m%vp)
                 enddo    
             endif
         enddo
 
         !freeze_zone as hard mask
         do i=1,ppg%ngrad
-            where(m%is_freeze_zone) m%gradient(:,:,:,i)=0.
+            where(m%is_freeze_zone) correlation_gradient(:,:,:,i)=0.
         enddo
 
         !soft mask
@@ -401,15 +401,16 @@ use m_preconditioner
             call sysio_read(smask,mask,size(mask))
             
             do i=1,ppg%ngrad
-                m%gradient(:,:,:,i)=m%gradient(:,:,:,i)*mask
+                correlation_gradient(:,:,:,i)=correlation_gradient(:,:,:,i)*mask
             enddo
         endif
 
-        ! call sysio_write('grho',m%gradient(:,:,:,1),size(m%gradient(:,:,:,1)))
-        ! call sysio_write('gkpa',m%gradient(:,:,:,2),size(m%gradient(:,:,:,2)))
+        ! call sysio_write('grho',correlation_gradient(:,:,:,1),size(correlation_gradient(:,:,:,1)))
+        ! call sysio_write('gkpa',correlation_gradient(:,:,:,2),size(correlation_gradient(:,:,:,2)))
 
-        !transform to x-domain
-        call param%transform(o_g=qp%g)
+        !!transform to x-domain
+        !call param%transform(o_g=qp%g)
+        qp%g=correlation_gradient
 
         !Regularization in x-domain
         ! if(either(oif_approx,.false.,present(oif_approx))) then
@@ -423,7 +424,7 @@ use m_preconditioner
         call preco%apply(qp%g,qp%pg)
 
         !save some RAM
-        !call dealloc(m%gradient,m%energy)
+        !call dealloc(correlation_gradient,m%energy)
 
     end subroutine
 

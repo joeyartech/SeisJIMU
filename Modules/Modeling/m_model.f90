@@ -19,6 +19,8 @@ use m_System
         real,dimension(:,:,:),allocatable :: eps,del,eta
         real,dimension(:,:,:),allocatable :: qp,qs
 
+        real,dimension(:,:,:),allocatable :: tDt, tDs
+
         !prior models
         real,dimension(:,:,:),allocatable :: vp_prior,vs_prior,rho_prior
 
@@ -159,6 +161,16 @@ use m_System
                 read(12,rec=i) self%qs
                 call hud('qs model is read.')
 
+
+            case ('tDt')
+                call alloc(self%tDt,self%nz,self%nx,self%ny)
+                read(12) m%tDt
+                call hud('tDt model is read.')
+            case ('tDs')
+                call alloc(self%tDs,self%nz,self%nx,self%ny)
+                read(12) m%tDs
+                call hud('tDs model is read.')
+
             end select
 
         enddo
@@ -222,6 +234,29 @@ use m_System
         endif
 
         call dealloc(tmp)
+
+        !4th check if tDt model is derived from vp2
+        if(setup%get_str('TDT_MODEL_FROM','TDT_FROM',o_default='conditional_-200lapvp2')=='conditional_-200lapvp2') then
+            call alloc(self%tDt,self%nz,self%nx,self%ny)
+            do ix=2,self%nx-1
+            do iz=2,self%nz-1
+                if(self%vp(iz+1,ix,1)<self%vp(iz,ix,1)) then
+                    self%tDt(iz,ix,1) = -200.*( &
+                        (self%vp(iz+1,ix,1)**2-2.*self%vp(iz,ix,1)**2+self%vp(iz-1,ix,1)**2)/self%dz**2 &
+                       +(self%vp(iz,ix+1,1)**2-2.*self%vp(iz,ix,1)**2+self%vp(iz,ix-1,1)**2)/self%dx**2 &
+                        )
+                endif
+            enddo; enddo
+            self%tDt(1 ,:,1)     =self%tDt(2   ,:,1)
+            self%tDt(self%nz,:,1)=self%tDt(self%nz-1,:,1)
+            self%tDt(:,1 ,1)     =self%tDt(:,2   ,1)
+            self%tDt(:,self%nx,1)=self%tDt(:,self%nx-1,1)
+
+            call hud('tDt model is built from -200∇²vp² where ∂z(vp)<0.')
+
+            call sysio_write('starting_tDt',self%tDt,size(self%tDt))
+
+        endif
 
     end subroutine
 
@@ -419,6 +454,17 @@ use m_System
                     write(13,rec=i) self%qs
                     ! call hud('qs model is written.')
                 endif
+
+            case ('tDt')
+                if(allocated(self%tDt)) then
+                    write(13,rec=i) self%tDt
+                    call hud('tDt model is written.')
+                endif
+            case ('tDs')
+                if(allocated(self%tDs)) then
+                    write(13,rec=i) self%tDs
+                    call hud('tDs model is written.')
+                endif                
 
             end select
 

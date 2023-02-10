@@ -1,130 +1,8 @@
-!adjoint eqn from FWI: Aᴴa = Rᴴ(d-u)
-!imaging condition I := a★u (~FWI gradient),
-!leading to similar phases in Rᴴδu and Rᴴ(d-u) (data residuals)
-!therefore, Rᴴδu is a migrated-then-demigrated version of Rᴴ(d-u) (simpler, smoother)
-!on the other hand, this choice gives a minus signs in front of the RE terms of the WPI gradient
-
-!L2 norm of image
-!I(x) = ∫ a(x,t)u(x,t) dt
-!C= ½║I║² = ½∫ I(x)² dx³ = ½∫ a(x,t₁)u(x,t₁) a(x,t₂)u(x,t₂) dt₁dt₂dx³
-!δC = ½∫ a(t₁)a(t₂)(u(t₁)δu(t₂)+δu(t₁)u(t₂)) dt₁dt₂dx³
-!   =  ∫ a(t₁)a(t₂)u(t₁)δu(t₂) dt₁dt₂dx³
-!   =  ∫ I a δu dtdx³
-!KᵤC = Ia
-!similarly, KₐC = Iu
-!
-!Adjoint state method with Lagrangian formulation to compute the gradient
-!A u=f
-!Aᴴa =Rᴴ(d-u)
-!L = C +<λ|Au-f> +<μ|Aᴴa-Rᴴ(d-u)>
-!  ≐ C +<Aᴴλ|u>  +<Aμ|a> +<Rμ|u>
-!0 = KᵤL = KᵤC +Aᴴλ +Rμ => Aᴴλ =-Ia -Rμ => λ=-δa +Adj(Rᴴδu)
-!0 = KₐL = KₐC +Aμ      => Aμ  =-Iu     => μ=-δu
-!where
-!Aᴴδa =Ia, Aᴴ(Adj(Rᴴδu))=Adj(Rᴴδu)
-!A δu =Iu
-!KₘL = λᴴ KₘA u + μᴴ KₘAᴴ a
-!    = -δa★Du +δu★Da +Adj(Rᴴδu)★Du
-!
-!For PDE:      A u = M ∂ₜ u - D u = f
-!    Adjoint:  Aᵀa = M ∂ₜᵀa - Dᵀa = d
-!    μᴴ KₘAᵀ a
-!= -δuᴴ KₘM ∂ₜᵀa
-!≐ -δuᴴ KₘM (M⁻¹Dᵀa)
-!=  δuᴴ KₘM (M⁻¹D a)
-!=  δu★Da  (more accurate)
-!= -a★Dδu  (symmetric to -δa★Du, looks nicer)
-
-subroutine modeling_imaging
-use mpi
-use m_System
-use m_Modeling
-use m_propagator_WPI
-use m_weighter
-use m_Lpnorm
-use m_fobjective
-use m_matchfilter
-use m_smoother_laplacian_sparse
-
-    type(t_field) :: fld_u, fld_a
-    ! real,dimension(:,:),allocatable :: Wdres
-    ! character(:),allocatable :: update_wavelet
-    ! real,dimension(:,:),allocatable :: Rmu, Rdiff
-    
-    call alloc(m%image,m%nz,m%nx,m%ny,1)
-    
-    call hud('===== START LOOP OVER SHOTS =====')
-    
-    do i=1,shls%nshots_per_processor
-    
-        call shot%init(shls%yield(i))
-        call shot%read_from_data
-        call shot%set_var_time
-        call shot%set_var_space(index(ppg_WPI%info,'FDSG')>0)
-        call hud('Modeling Shot# '//shot%sindex)
-        
-        call cb%init(ppg_WPI%nbndlayer)
-        call cb%project
-        
-        call ppg_WPI%check_discretization
-        call ppg_WPI%init
-        call ppg_WPI%init_abslayer
-        
-        call hud('---------------------------------')
-        call hud('     Imaging (aka Wavepath)      ')
-        call hud('---------------------------------')
-        !forward modeling on u
-        call ppg_WPI%init_field(fld_u,name='Imag_fld_u');    call fld_u%ignite
-        call ppg_WPI%forward(fld_u);                         call fld_u%acquire
-        call shot%write('Imag_Ru_',shot%dsyn)
-
-        !weighting on the adjoint source for the image
-        call wei%update!('_4IMAGING')
-        
-        if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'residual')>0) then
-            tmp = L2sq(0.5,shot%nrcv*shot%nt,&
-                wei%weight, shot%dobs-shot%dsyn, shot%dt)
-        else
-            tmp = L2sq(0.5,shot%nrcv*shot%nt,&
-                wei%weight, shot%dobs          , shot%dt)
-        endif
-        
-        call alloc(shot%dadj,shot%nt,shot%nrcv)
-        call kernel_L2sq(shot%dadj)
-        call shot%write('Imag_dadj_',shot%dadj)
-        
-        !adjoint modeling
-        call ppg_WPI%init_field(fld_a,name='Imag_fld_a',ois_adjoint=.true.); call fld_a%ignite
-        call ppg_WPI%adjoint(fld_a,fld_u,oif_compute_imag=.true.)
-        call hud('---------------------------------')
-
-        call cb%project_back
-
-    enddo
-    
-    call hud('        END LOOP OVER SHOTS        ')
-
-    !collect
-    call mpi_allreduce(mpi_in_place, m%image,  size(m%image), mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-
-    call mpiworld%barrier
-
-    if(setup%get_str('JOB')=='imaging') then
-        call sysio_write('Image',m%image,size(m%image))
-        call mpiworld%final
-        stop
-    endif
-
-end subroutine
-
-
 subroutine modeling_gradient
 use mpi
 use m_System
 use m_Modeling
-use m_propagator_WPI
 use m_weighter
-use m_image_weighter
 use m_Lpnorm
 use m_fobjective
 use m_matchfilter
@@ -133,40 +11,19 @@ use m_resampler
 
     logical,save :: is_first_in=.true.
 
-    character(:),allocatable :: corrs
-    type(t_field) :: fld_u, fld_du, fld_Adj_du, fld_a, fld_da
+    type(t_field) :: fld_E0, fld_dE, fld_F1, fld_F2
+    type(t_correlation) :: F2_star_E0, F1_star_lapE0, F2_star_lapdE, gtDt, gtDs, gvp2
     ! real,dimension(:,:),allocatable :: Wdres
-    real,dimension(:,:,:),allocatable :: W2Idt
+    !real,dimension(:,:,:),allocatable :: Ddt2
     ! character(:),allocatable :: update_wavelet
     ! real,dimension(:,:),allocatable :: Rmu, Rdiff
-
-    !info
-    call hud('Entering modeling_gradient')
-
-    !First do imaging
-    ! call modeling_imaging
-    if(setup%get_file('FILE_IMAGE')/='') then
-        call alloc(m%image,m%nz,m%nx,m%ny,1)
-        call sysio_read(setup%get_file('FILE_IMAGE'),m%image,size(m%image))
-        call sysio_write('loaded_I',m%image,size(m%image))    
-        
-        !get shot%dt
-        call shot%init(shls%yield(1))
-        call shot%read_from_data
-        call shot%set_var_time
-    else
-        call hud('Will do imaging')
-        call modeling_imaging
-    endif
-        
     
-    !FWI misfit
-    fobj%FWI_misfit=0.
-
-    call alloc(m%correlate, m%nz,m%nx,m%ny,5)
-
-    corrs=setup%get_str('COMPUTE_CORRELATIONS','CORRS','RE+DR')
-    ! corrs='RE+DR'
+    call gtDt%init('gtDt',shape123_from='model')
+    ! call gtDs%init('gtDs',shape123_from='model')
+    call gvp2%init('gvp2',shape123_from='model')
+    
+    !PFEI misfit
+    fobj%misfit=0.    
     
     call hud('===== START LOOP OVER SHOTS =====')
     
@@ -175,131 +32,148 @@ use m_resampler
         call shot%init(shls%yield(i))
         call shot%read_from_data
         call shot%set_var_time
-        call shot%set_var_space(index(ppg_WPI%info,'FDSG')>0)
+        call shot%set_var_space(index(ppg%info,'FDSG')>0)
 
         call hud('Modeling Shot# '//shot%sindex)
         
-        call cb%init(ppg_WPI%nbndlayer)
+        call cb%init(ppg%nbndlayer)
         call cb%project
         
-        call ppg_WPI%check_discretization
-        call ppg_WPI%init
-        call ppg_WPI%init_abslayer
+        call ppg%check_discretization
+        call ppg%init
+        call ppg%init_abslayer
 
-        call alloc(cb%corr,     cb%mz,cb%mx,cb%my,5)
-        !corr(:,:,:,1) = FWI gradient a★Du
-        !corr(:,:,:,2) = one RE -δa★Du
-        !corr(:,:,:,3) = one RE  δu★Da
-        !corr(:,:,:,4) = 2ndMI δa★Dδu
-        !corr(:,:,:,5) = demig-remig (DR) Adj(Rᴴδu)★Du
-
-
-        call ppg_WPI%init_field(fld_u, name='fld_u');    call fld_u%ignite
-        call ppg_WPI%init_field(fld_du,name='fld_du')
+        call ppg%init_field(fld_E0,name='fld_E0');    call fld_E0%ignite
+        call ppg%init_field(fld_dE,name='fld_dE')
 
         !forward modeling
-        !A u = f
-        !Aδu = Iu
-        call ppg_WPI%forward_scattering(fld_du,fld_u,W2Idt)
-        call fld_du%acquire; call shot%write('Rdu_',shot%dsyn)
-        call fld_u%acquire;  call shot%write('Ru_', shot%dsyn)
-        shot%dsyn_aux=shot%dsyn
+        !A E₀= s
+        !AδE = DE₀
+        call ppg%forward_scattering(fld_dE,fld_E0)
+        call fld_dE%acquire; call shot%write('RdE_',shot%dsyn); shot%dsyn_aux=shot%dsyn
+        call fld_E0%acquire; call shot%write('RE0_',shot%dsyn)
 
-        !compute FWI data misfit C_data=║Δd║²
-        call wei%update
-        fobj%FWI_misfit = fobj%FWI_misfit &
-                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
+        if(setup%get_str('JOB')=='forward modeling') cycle
 
-        if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'residual')>0) then
-            tmp = fobj%FWI_misfit 
-        else
-            tmp = L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs          , shot%dt)
+        if(index(setup%get_str('JOB'),'build tilD')>0) then
+            call hud('--------------------------------')
+            call hud('        Build tilD model         ')
+            call hud('--------------------------------')
+
+            call F2_star_E0%init('F2_star_E0',shape123_from='model') !F₂★E₀ for gtDt
+
+            call wei%update!('_4IMAGING')
+            fobj%misfit = fobj%misfit &
+                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-(shot%dsyn+shot%dsyn_aux), shot%dt)
+            
+            call alloc(shot%dadj,shot%nt,shot%nrcv)
+            call kernel_L2sq(shot%dadj)
+            call shot%write('dadj_',shot%dadj)
+            
+            !adjoint modeling
+            !AᴴF₂ = -RᴴN(E+δE)
+            call ppg%init_field(fld_F2,name='fld_F2',ois_adjoint=.true.); call fld_F2%ignite
+            call ppg%adjoint_tilD(fld_F2,fld_E0,F2_star_E0)
+            call hud('---------------------------------')
+
+            !call cb%project_back
+            gtDt%sp_rp(cb%ioz:cb%ioz+cb%mz-1,&
+                       cb%iox:cb%iox+cb%mx-1,&
+                       cb%ioy:cb%ioy+cb%my-1,:) = &
+            gtDt%sp_rp(cb%ioz:cb%ioz+cb%mz-1,&
+                       cb%iox:cb%iox+cb%mx-1,&
+                       cb%ioy:cb%ioy+cb%my-1,:) + F2_star_E0%sp_rp(:,:,:,:)
+            ! gtDs%sp_rp(cb%ioz:cb%ioz+cb%mz-1,&
+            !            cb%iox:cb%iox+cb%mx-1,&
+            !            cb%ioy:cb%ioy+cb%my-1,shot%index) = F2_star_E0%sp_rp(:,:,:,1)
+
         endif
         
-        !adjoint modeling
-        !Aᴴ a = Rᴴ(d-u)
-        !Aᴴδa = Ia
-        call alloc(shot%dadj,shot%nt,shot%nrcv)
-        call kernel_L2sq(shot%dadj)
+        if(index(setup%get_str('JOB'),'update velocity')>0) then
+            call hud('---------------------------------')
+            call hud('     Update velocity model       ')
+            call hud('---------------------------------')
 
-        call ppg_WPI%init_field(fld_a, name='fld_a' ,ois_adjoint=.true.); call fld_a%ignite
-        call ppg_WPI%init_field(fld_da,name='fld_da',ois_adjoint=.true.)
-        
-        call ppg_WPI%init_field(fld_Adj_du,name='fld_Adj_du',ois_adjoint=.true.)
-        call fld_du%acquire
-        shot%dadj=shot%dsyn*wei%weight*wei%weight
-        if(mpiworld%is_master) call shot%write('Wei_Rdu_',shot%dadj)
-        call fld_Adj_du%ignite
-                
-        call ppg_WPI%adjoint_WPI(fld_da,fld_a,fld_Adj_du,fld_du,fld_u,W2Idt,corrs)
-        !if(index(corrs,'RE')>0) cb%corr(:,:,:,2)=-cb%corr(:,:,:,2)
-        cb%corr(:,:,:,2)=-cb%corr(:,:,:,2)
+            call F1_star_lapE0%init('F1_star_lapE0',shape123_from='model') !F₁★∇²E₀ for gvp2 (one RE)
+            call F2_star_lapdE%init('F2_star_lapdE',shape123_from='model') !F₂★∇²δE for gvp2 (the other RE)
 
-        call cb%project_back
+            call wei%update
+            fobj%misfit = fobj%misfit &
+                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-(shot%dsyn+shot%dsyn_aux), shot%dt)
+
+            call alloc(shot%dadj,shot%nt,shot%nrcv)
+            call kernel_L2sq(shot%dadj)
+            call shot%write('dadj_',shot%dadj)
+            
+            !adjoint modeling
+            !AᴴF₂ =      +Rᴴ(d-(E₀+δE))
+            !AᴴF₁ = -DF₂ +Rᴴ(d-(E₀+δE))
+            call ppg%init_field(fld_F1,name='fld_F1',ois_adjoint=.true.)
+            call ppg%init_field(fld_F2,name='fld_F2',ois_adjoint=.true.); call fld_F2%ignite
+            call ppg%adjoint_vp2(fld_F1,fld_F2,fld_dE,fld_E0,F1_star_lapE0,F2_star_lapdE)
+            call hud('---------------------------------')
+    
+            !project back    
+            gvp2%sp_rp(cb%ioz:cb%ioz+cb%mz-1,&
+                       cb%iox:cb%iox+cb%mx-1,&
+                       cb%ioy:cb%ioy+cb%my-1,:) = &
+            gvp2%sp_rp(cb%ioz:cb%ioz+cb%mz-1,&
+                       cb%iox:cb%iox+cb%mx-1,&
+                       cb%ioy:cb%ioy+cb%my-1,:) + F1_star_lapE0%sp_rp(:,:,:,:) + F2_star_lapdE%sp_rp(:,:,:,:)
+            
+        endif
 
     enddo
     
     call hud('        END LOOP OVER SHOTS        ')
 
+    if(setup%get_str('JOB')=='forward modeling') then
+        call mpiworld%final
+        stop
+    endif
 
-    !collect FWI misfit values
+    !collect PFEI misfit values
     !no need to collect WPI misfit values
-    call mpi_allreduce(mpi_in_place, fobj%FWI_misfit, 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-    call hud('Stacked FWI_misfit '//num2str(fobj%FWI_misfit))
+    call mpi_allreduce(mpi_in_place, [fobj%misfit], 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    call hud('Stacked PFEI_misfit '//num2str(fobj%misfit))
 
     call fobj%print_dnorms('Stacked but not yet linesearch-scaled','')
     
     !collect global correlations
-    call mpi_allreduce(mpi_in_place, m%correlate,  m%n*5, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    !call mpi_allreduce(mpi_in_place, gtilD%sp_rp, m%n, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    call mpi_allreduce(mpi_in_place, gvp2%sp_rp,  m%n, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     
     !scale
-    call shls%scale(1,o_from_sampled=[fobj%FWI_misfit])
+    call shls%scale(1,o_from_sampled=[fobj%misfit])
     call shls%scale(fobj%n_dnorms,o_from_sampled=fobj%dnorms)
-    call shls%scale(m%n*5,o_from_sampled=m%correlate)
+    call shls%scale(m%n*3,o_from_sampled=m%correlate)
 
-    if(mpiworld%is_master) then
-            call sysio_write( 'a_star_Du',     m%correlate(:,:,:,1),m%n)
-        if(index(corrs,'RE')>0) then
-            call sysio_write('-da_star_Du',    m%correlate(:,:,:,2),m%n)
-            call sysio_write( 'a_star_Ddu',    m%correlate(:,:,:,3),m%n)
-            call sysio_write('RE',             m%correlate(:,:,:,2)+m%correlate(:,:,:,3),m%n)
+
+    !call alloc(m%gradient,m%nz,m%nx,m%ny,1)
+
+    call alloc(correlation_gradient,m%nz,m%nx,m%ny,1)
+
+    if(index(setup%get_str('JOB'),'build tilD')>0) then
+        if(mpiworld%is_master) then
+            call gtDt%write
         endif
-        if(index(corrs,'DR')>0) then
-            call sysio_write('Adj(du)_star_Du',m%correlate(:,:,:,5),m%n)
-        endif
+        correlation_gradient=correlation_gradient +gtDt%sp_rp
+        !correlation_gradient=correlation_gradient +gtDs%sp_rp
     endif
 
-    call alloc(m%gradient,m%nz,m%nx,m%ny,2)
-    ! if(index(corrs,'FWI')>0) then
-    !     m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,1)
-    ! endif
-    ! if(index(corrs,'RE')>0) then
-    !     m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,2)+m%correlate(:,:,:,3)
-    ! endif
-    ! if(index(corrs,'DR')>0) then
-    !     m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,5)
-    ! endif
-    
-    !RE
-    m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,2)+m%correlate(:,:,:,3)
-
-    !DR
-    if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'residual')>0) then
-        m%gradient(:,:,:,2)=m%gradient(:,:,:,2) +m%correlate(:,:,:,5)
+    if(index(setup%get_str('JOB'),'update velocity')>0) then
+        if(mpiworld%is_master) then
+            call F1_star_lapE0%write
+            call F2_star_lapdE%write
+            call gvp2%write
+        endif
+        correlation_gradient=correlation_gradient +gvp2%sp_rp
     endif
 
-
-    !deallocate(m%correlate)
-    
-    !required, otherwise cb%project_back will project back cb%corr
-    !in the sequential calling of modeling_imaging
-    deallocate(cb%corr)
+    ! if(ppg%if_compute_engy) then
+    !     call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    ! endif
         
-    ! if(ppg_WPI%if_compute_engy) then
-    !     call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg_WPI%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-    ! endif
-    
-    
     call mpiworld%barrier
 
 end subroutine

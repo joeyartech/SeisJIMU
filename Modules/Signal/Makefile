@@ -9,6 +9,7 @@ m_butterworth.f90 \
 m_resampler.f90 \
 m_wavelet.f90 \
 m_matchfilter.f90 \
+m_Hilbert.f90 \
 m_Lpnorm.f90 \
 m_pseudotime.f90 \
 m_smoother_Laplacian_sparse.f90

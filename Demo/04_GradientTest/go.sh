@@ -2,31 +2,45 @@
 
 n=101
 
-# FWD ##
+# # FWD ##
+# makevel nz=49 nx=$n v000=1500 > vp1
+# makevel nz=3  nx=$n v000=1800 > vp2
+# cat vp1  vp2  vp1  > tmp1 && transp < tmp1 n1=$n > model
+# rm vp1 vp2 rho1 rho2 tmp*
+# 
+# ../../exe/FWD setup.in > out_fwd
+# 
+# rm -r results_fwd
+# mv results  results_fwd
+
+
+## PFEI ##
 makevel nz=49 nx=$n v000=1500 > vp1
 makevel nz=3  nx=$n v000=1800 > vp2
-makevel nz=49 nx=$n v000=1000 > rho1
-makevel nz=3  nx=$n v000=2000 > rho2
-cat vp1  vp2  vp1  > tmp1 && transp < tmp1 n1=$n > tmpvp
-cat rho1 rho2 rho1 > tmp1 && transp < tmp1 n1=$n > tmprho
-cat tmpvp tmprho > model
-rm vp1 vp2 rho1 rho2 tmp*
+cat vp1  vp2  vp1  > tmp1 && transp < tmp1 n1=$n > model
 
-../../exe/FWD setup.in > out_FWD
+#makevel nz=$n nx=$n v000=1750 > model
 
-rm -r results_fwd
-mv results  results_fwd
+# makevel nz=49 nx=$n v000=1750 > vp1
+# makevel nz=52 nx=$n v000=1500 > vp2
+# cat vp1  vp2 > tmp1 && transp < tmp1 n1=$n > model
 
-
-## FWI ##
-makevel nz=$n nx=$n v000=1750 > vp
-makevel nz=$n nx=$n v000=1500 > rho
-cat vp rho > model; rm vp rho
 makevel nz=1 nx=$n v000=100 > topo
 #makevel nz=1 nx=$n v000=400 > topo
 
+rm vp1 vp2 rho1 rho2 tmp*
+
+# rm -r results_grad
+# ../../exe/PFEI setup.in > out_grad
+# mv results results_grad
+# suximage < results/RE0_Shot0001.su clip=1e-5 &
+# suximage < results/RdE_Shot0001.su clip=1e-5 &
+# susum  results/RE0_Shot0001.su  results/RdE_Shot0001.su | suximage clip=1e-5 &
+
 rm -r results
-../../exe/GradientTest  setup.in > out_FWI
+../../exe/GradientTest  setup.in > out
 
 echo '            alpha    pert%f    curr%f    (pert%f-curr%f)/alpha    curr%g_dot_d    if_1st_cond'
-grep '1st cond' out_FWI
+grep '1st cond' out
+
+

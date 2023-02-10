@@ -1,0 +1,150 @@
+ MPIWorld info:
+  MPI_INIT_THREAD level:           0
+  Number of MPI processors:           1
+  Max number of OMP threads / processor:           8
+ Working directory: (pwd)
+/home/wzhou/Codes/GitHub/SeisJIMU/Demo/01_ForwardModeling
+ Using executable: (ls -l $exe)
+-rwxrwxr-x 1 wzhou wzhou 488504 Feb 11 18:06 ../../exe/fwd_AC_FDSG_O4
+ Git Commit: 0bd73ec
+ Git Branch: master
+ Compiler: gfortran v11.3.0
+ Version: 11.3.0
+ Endianness:         1234
+ System date: 02/11/2023
+System time: 18:08:09
+System timezone: +03:00
+                        
+ ======================================
+   WELCOME TO SeisJIMU FWD MODELING   
+======================================
+ Setup file: setup.in
+ DIR_IN is NOT found, take default: ./
+ Input directory: ./
+ DIR_OUT is NOT found, take default: ./results/
+ Output directory:./results/
+ Invoked field & propagator modules info : 
+Time-domain ISOtropic 2D/3D ACoustic propagation
+1st-order Velocity-Stress formulation
+Vireux-Levandar Staggered-Grid Finite-Difference (FDSG) method
+Cartesian O(x⁴,t²) stencil
+CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal
+   -> dt ≤ 0.606(for 2D) or 0.494(3D) *Vmax/dx
+Required model attributes: vp, rho
+Required field components: vz, vx, vy(3D), p
+Required boundary layer thickness: 2
+Imaging conditions: P-Pxcorr
+Energy terms: Σ_shot ∫ sfield%p² dt
+Basic gradients: grho gkpa                           
+ FDGS Coef : 1.12500000, -4.16666679E-02
+ IF_CHECKPOINT is NOT found, take default: F
+ IF_USE_CHECKPOINT : F
+ DIR_CHECKPOINT (DIR_CHP) is NOT found, take default: ./checkpoints/
+ MODEL_SIZE (NZXY) : 101   101   1
+ MODEL_SPACING (DZXY) : 20    20    1
+ 2D geometry
+ MODEL_ORIGIN (OZXY) : 0     0     0
+ FILE_MODEL is NOT found, take 0, '' or F
+ MODEL_ATTRIBUTES is NOT found, take default: vp rho
+ MODEL_ATTRIBUTES_WRITE is NOT found, take default: vp rho
+ IS_FREESURFACE : F
+ [40m[33m[1mWARNING:[0m Constant vp model (1500 m/s) is allocated by propagator.
+ [40m[33m[1mWARNING:[0m Constant rho model (1000 kg/m³) is allocated by propagator.
+ ACQUI_GEOMETRY : spread
+ NUMBER_SOURCE (NS) is NOT found, take default: 1
+ Will compute 1 synthetic shots.
+ FILE_SHOT_BATCH is NOT found, take 0, '' or F
+ SHOT_BATCH_SIZE (NBATCH) is NOT found, take default: 1
+ SHOT_SAMPLE_METHOD is NOT found, take default: cyclic
+ Proc0001 has 1 assigned shots
+ See file "shotlist.log" for details.
+ ===== START LOOP OVER SHOTS =====
+ TIME_STEP (NT) : 500
+ TIME_INTERVAL (DT) : 0.004
+ SOURCE_COMPONENT (SCOMP) : vz
+ ACQUI_GEOMETRY : spread
+ SOURCE_FIRST (FS) : 26 505 500
+ RECEIVER_FIRST (FR) : 46 10  0
+ SOURCE_SPACING (DS) is NOT found, take default: 0. 0. 0.
+ RECEIVER_SPACING (DR) : 0 20 0
+ NUMBER_RECEIVER (NR) : 100
+ RECEIVER_COMPONENT (RCOMP) : p vz vx
+ PEAK_FREQUENCY (FPEAK) : 7
+ MAX_FREQUENCY (FMAX) is NOT found, take default: 14.0000000
+ FILE_SRC_TIME_FUNC (FILE_WAVELET) is NOT found, take 0, '' or F
+ WAVELET_TYPE : ricker
+ Use Ricker wavelet
+ RICKER_DELAYTIME (T0) is NOT found, take default: 0.142857149
+ WAVELET_SCALING is NOT found, take 0, '' or F
+ SU data write success.
+ IF_HICKS is NOT found, take default: T
+ MODEL_REFERENCE is NOT found in setup.in
+ Reference vp value =   1500.00000    
+ Reference rho value =   1000.00000    
+ =================================
+ Shot0001 info:
+ =================================
+   nt,dt:         500   4.00000019E-03
+ ---------------------------------
+ S/R positions after removing m%oz,ox,iy,
+   sz,iz:   26.0000000               3
+   sx,ix:   505.000000              26
+   sy,iy:   0.00000000               1
+   ifz,ilz:          -1           7
+   ifx,ilx:          22          30
+   ify,ily:           1           1
+ ---------------------------------
+   minmax rz,iz:   46.0000000       46.0000000               3           4
+   minmax rx,ix:   10.0000000       1990.00000               2         101
+   minmax ry,iy:   0.00000000       0.00000000               1           1
+   minmax ifz,ilz:          -1           0           7           8
+   minmax ifx,ilx:          -2          97           6         105
+   minmax ify,ily:           1           1           1           1
+   nrcv:         300
+ ---------------------------------
+ Modeling Shot# Shot0001
+ ADD_APERTURE is NOT found, take default: -99999 99999 -99999 99999
+ REF_BNDLAYER_THICKNESS (NCPML) is NOT found, take default: 20
+ Computebox Size = [ifz,ilz] x [ifx,ilx] x [ify,ily] =        22201
+   [ifz,ilz],nz:         -23         125         149
+   [ifx,ilx],nx:         -23         125         149
+   [ify,ilx],ny:           1           1           1
+ Inner area of Computebox:
+   ioz,mz:           1         101
+   iox,mx:           1         101
+   ioy,my:           1           1
+ Computebox value ranges:
+ vp   1500.00000       1500.00000    
+ rho   1000.00000       1000.00000    
+ ip   1500000.00       1500000.00    
+ CFL value: 0.494974762
+ SNAPSHOT : p vz vx
+ REF_NUMBER_SNAPSHOT (NSNAPSHOT) is NOT found, take default: 50
+ REF_RECT_TIME_INTEVAL (RDT) is NOT found, take default: 3.57142873E-02
+ rdt, irdt = 3.20000015E-02, 8
+ IF_BLOOM is NOT found, take default: T
+ it----         500
+ field minmax values:  -1.42148959E-10   1.76380049E-10
+ Elapsed time to add source velocities   9.19774175E-05
+ Elapsed time to update velocities       9.68744606E-03
+ Elapsed time to add source stresses     7.52583146E-05
+ Elapsed time to update stresses         1.62413716E-02
+ Elapsed time to extract field           2.21686959E-02
+ Elapsed time to save boundary           4.40753996E-04
+ Viewing the snapshots (if written) with SU ximage/xmovie:
+ ximage < snap_sfield%*  n1=149 perc=99
+ xmovie < snap_sfield%*  n1=149 n2=149 clip=?e-?? loop=2 title=%g
+ DATA_FORMAT is NOT found, take default: su
+ Found proper SU scalel = 1.00000000
+ SU_SCALEL is NOT found, take default: 1.00000000
+ Found proper SU scalco = 1.00000000
+ SU_SCALCO is NOT found, take default: 1.00000000
+ SU data write success.
+         END LOOP OVER SHOTS        
+ ===================================
+   SeisJIMU has finished the job   
+===================================
+ System date: 02/11/2023
+System time: 18:08:09
+System timezone: +03:00
+                        

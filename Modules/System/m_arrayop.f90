@@ -15,6 +15,7 @@ use m_mpienv
         module procedure alloc_real1
         module procedure alloc_real2
         module procedure alloc_real3
+        module procedure alloc_real4
     end interface
 
     interface dealloc
@@ -361,6 +362,46 @@ use m_mpienv
         endif
 
         allocate(a(n1(1):n1(2),n2(1):n2(2),n3(1):n3(2)),source=either(o_init,0.,present(o_init)))
+        
+    end subroutine
+
+    subroutine alloc_real4(a,n1,n2,n3,n4,old2,oif_protect,o_init)
+        integer,dimension(2) :: n1,n2,n3,n4
+        real,dimension(:,:,:,:),allocatable :: a
+        real,dimension(:,:,:,:),optional :: old2
+        logical,optional :: oif_protect
+        real,optional :: o_init
+        
+        if(n1(1)>n1(2)) then
+            if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n1=',n1
+            error stop
+        endif
+        
+        if(n2(1)>n2(2)) then
+            if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n2=',n2
+            error stop
+        endif
+        
+        if(n3(1)>n3(2)) then
+            if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n3=',n3
+            error stop
+        endif
+
+        if(n4(1)>n4(2)) then
+            if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n3=',n3
+            error stop
+        endif
+        
+        if (allocated(a)) then
+            if(either(oif_protect,.false.,present(oif_protect))) return
+            
+            if(present(old2)) then
+                old2=a
+            endif
+            deallocate(a)
+        endif
+
+        allocate(a(n1(1):n1(2),n2(1):n2(2),n3(1):n3(2),n4(1):n4(2)),source=either(o_init,0.,present(o_init)))
         
     end subroutine
 

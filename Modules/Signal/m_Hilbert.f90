@@ -1,111 +1,68 @@
-!! module for hilbert transform
-!! created by Yanhua O. Yuan ( yanhuay@princeton.edu)
-!! https://github.com/yanhuay/seisDD/blob/master/seisDD/lib/src/m_hilbert_transform.f90
+module m_hilbert
+use m_System
+use m_math
+use singleton
 
-module m_hilbert_transform
-    use constants, only : CUSTOM_REAL
-    implicit none 
+    contains
 
-    complex :: CI=(0.0,1.0)
+    subroutine hilbert_transform(datain, dataout, nt, ntr)
+        real,dimension(nt,ntr) :: datain, dataout
+        !! return hilbert transform of real signal datain
+        !! and the analytic signal = cmplx(datain, dataout)
 
-contains
+        real,dimension(:,:),allocatable :: data
+        complex(fftkind),dimension(:,:),allocatable :: data_fft
 
-    subroutine hilbert(trace,nt)
-        !! return hilbert transform of real signal trace(nt)
-        !! i.e. imaginary part of analytic signal 
-        !! a = cmplx(trace, hilbert(trace))
+        npt = 2**(int(log10(real(nt))/0.30104)+1)
+        ! if ( npt /= nt) print*,'pad trace from length ', nt, ' to ',npt
+        if (npt > 16784) call error('npt in Hilbert transform exceeds 16784 !')
+        imid = npt/2
 
-        integer,                  intent(in)    :: nt
-        real(kind=CUSTOM_REAL),         intent(inout) :: trace(nt)
+        !input
+        allocate(data(npt,ntr))
 
-        complex, allocatable, dimension(:) :: C
-        integer :: NPT,IMID   
+        data(1:nt,:)=datain
 
-        ! extend nt to a power of 2
-        IF ( nt <= 0 ) STOP 'FATAL ERROR in HILBERT: nt must be positive'
+        data_fft = fft(dcmplx(data),dim=[1])  !may require "ulimit -s unlimited"
 
-        NPT = 2**( INT( LOG10( REAL( nt ) ) / 0.30104 ) + 1 )
-        ! IF ( NPT /= nt) print*,'pad trace from length ', nt, ' to ',NPT
-        IF (NPT > 16784) STOP 'FATAL ERROR in HILBERT: nt(NPT) exceeds 16784 '
+        ! ! fourier transform 
+        ! call cfft(c,npt,1)
+        ! ! scaling 
+        ! c=c/npt
 
-        allocate(C(NPT))
-        C=cmplx(0.,0.)
-        C(1:nt)=cmplx(trace(1:nt),0.0)
+        !90deg phase shift == multiply by i*sgn(freq)
+        !ref: https://github.com/yanhuay/seisDD/blob/master/seisDD/lib/src/m_hilbert_transform.f90
+        !created by Yanhua O. Yuan (yanhuay@princeton.edu)
+        data_fft(1:imid-1    ,:) =-c_i*data_fft(1:imid-1    ,:) ! pos. spectrum (-i)
+        data_fft(  imid      ,:) = 0.0                           ! d.c. component
+        data_fft(  imid+1:npt,:) = c_i*data_fft(  imid+1:npt,:) ! neg. spectrum (i)
 
-        ! Fourier transform 
-        call CFFT(C,NPT,1)
-        ! scaling 
-        C=C/NPT
+        ! inverse fourier transform
+        data=real(fft(data_fft,dim=[1],inv=.true.),kind=4)
 
-        !  Multiply by i * sgn( f )
-        IMID = NPT / 2
-        C( 1:IMID-1 ) = -CI * C( 1:IMID-1 )   ! pos. spectrum (-i)
-        C( IMID     ) = 0.0                   ! d.c. component
-        C(IMID+1:NPT) = CI * C( IMID+1:NPT )   ! neg. spectrum (i)
+        !output
+        dataout=data(1:nt,:)
 
-        ! inverse Fourier transform
-        call  CFFT(C,NPT,-1) 
+        deallocate(data,data_fft)
 
-        ! output
-        trace(1:nt)=real(C(1:nt))
+    end subroutine
 
-        deallocate(C)
+    subroutine hilbert_envelope(datain,dataout,nt,ntr)
+        real,dimension(nt,ntr) :: datain, dataout
 
-    end subroutine hilbert
+        call hilbert_transform(datain,dataout,nt,ntr)
+        
+        dataout=sqrt(datain**2+dataout**2)
 
-    SUBROUTINE CFFT(trace,N,iforw)
-        !!! complex FFT
-        IMPLICIT NONE  
-        integer,         intent(in)    :: N, iforw
-        complex,         intent(inout) :: trace(N)
-        INTEGER :: I1, I2A, I2B, I3, I3Rev, IP1, IP2, ISign
-        REAL    ::  theta, sinth
-        COMPLEX :: TEMP, W, WSTP
+    end subroutine
 
-        ISIGN = -IFORW
-        I3REV = 1
+    subroutine hilbert_phase(datain,dataout,nt,ntr)
+        real,dimension(nt,ntr) :: datain, dataout
+        
+        call hilbert_transform(datain,dataout,nt,ntr)
+        
+        dataout=atan2(dataout,datain)
 
-        DO I3 = 1, N
-        IF ( I3 < I3REV ) THEN   ! switch values
-            TEMP          = trace( I3 )
-            trace( I3 )    = trace( I3REV )
-            trace( I3REV ) = TEMP
-        ENDIF
-        ! following loop is just to compute I3REV
-        IP1 = N / 2
-        DO WHILE (  I3REV > IP1 )
-        IF ( IP1 <= 1 ) EXIT
-        I3REV = I3REV - IP1
-        IP1   = IP1 / 2
-        END DO
-        I3REV = I3REV + IP1
-        END DO
+    end subroutine
 
-        IP1 = 1
-
-        DO WHILE  ( IP1 < N )
-        IP2   = IP1 * 2
-        THETA = 6.283185307 / FLOAT( ISIGN * IP2 )
-        SINTH = SIN( THETA / 2.)
-        WSTP  = CMPLX( -2. * SINTH * SINTH, SIN( THETA ) )
-        W     = 1.
-
-        DO I1 = 1, IP1
-        DO I3 = I1, N, IP2
-        I2A = I3
-        I2B = I2A + IP1
-        TEMP      = W * trace( I2B )
-        trace( I2B ) = trace( I2A ) - TEMP
-        trace( I2A ) = trace( I2A ) + TEMP
-        END DO
-
-        W = W * WSTP + W
-        END DO
-
-        IP1 = IP2
-        END DO
-
-        RETURN
-    END SUBROUTINE CFFT
-
-end module m_hilbert_transform
+end module m_hilbert

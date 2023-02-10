@@ -3,6 +3,9 @@ include ../compiler.inc
 include ../modules.inc
 
 
+APP = FWD
+app = $(shell echo $(APP) | tr A-Z a-z)
+
 obj = \
 ../Modules/System/*.o \
 ../Modules/Etc/*.o \
@@ -12,7 +15,7 @@ obj = \
 ../Modules/Modeling/m_shot.o \
 ../Modules/Modeling/m_computebox.o \
 ../Modules/Modeling/m_field.o \
-../Modules/Modeling/m_cpml_$(Solver).o \
+../Modules/Modeling/m_cpml.o \
 ../Modules/Modeling/m_propagator_$(WaveEq)_$(Solver)_$(Order).o \
 ../Modules/Modeling/m_Modeling.o
 
@@ -30,8 +33,8 @@ mod :
 	(cd ../Modules/Modeling; make)
 
 exe : main.o
-	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/fwd_$(WaveEq)_$(Solver)_$(Order)
-	(cd ../exe; ln -sf fwd_$(WaveEq)_$(Solver)_$(Order) FWD )
+	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/$(app)_$(WaveEq)_$(Solver)_$(Order)
+	(cd ../exe; ln -sf $(app)_$(WaveEq)_$(Solver)_$(Order) $(APP) )
 
 clean :
 	-rm main.o
@@ -45,5 +48,5 @@ cleanall :
 	(cd ../Modules/Signal; make clean)
 	#Modeling
 	(cd ../Modules/Modeling; make clean)
-	#FWD
+	#$(APP)
 	make clean
