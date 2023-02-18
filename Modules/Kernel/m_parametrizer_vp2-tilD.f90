@@ -16,7 +16,7 @@ use m_Modeling
         !info
         character(i_str_xxlen) :: info = &
             'Parameterization: vp2-tilD'//s_NL// &
-            'Allowed pars: vp2, tDt, tDs'!//s_NL// &
+            'Allowed pars: vp2, tilD'!//s_NL// &
             !'Available empirical law: Gardner, Castagna'
 
         type(t_parameter),dimension(:),allocatable :: pars
@@ -121,12 +121,8 @@ use m_Modeling
                 self%pars(i)%name='vp2'
                 self%npars=self%npars+1
 
-            case ('tDt')
-                self%pars(i)%name='tDt'
-                self%npars=self%npars+1
-
-            case ('tDs')
-                self%pars(i)%name='tDs'
+            case ('tilD')
+                self%pars(i)%name='tilD'
                 self%npars=self%npars+1
 
             ! case ('vs' )
@@ -197,8 +193,7 @@ use m_Modeling
                 do i=1,self%npars
                         select case (self%pars(i)%name)
                         case ('vp2' ); o_x(:,:,:,i) = (m%vp**2 -self%pars(i)%min)/self%pars(i)%range
-                        case ('tDt'); o_x(:,:,:,i) = (m%tDt  -self%pars(i)%min)/self%pars(i)%range
-                        case ('tDs'); o_x(:,:,:,i) = (m%tDs  -self%pars(i)%min)/self%pars(i)%range
+                        case ('tilD'); o_x(:,:,:,i) = (m%tilD  -self%pars(i)%min)/self%pars(i)%range
                         ! case ('vs' ); o_x(:,:,:,i) = (m%vs -self%pars(i)%min)/self%pars(i)%range
                         ! case ('rho'); o_x(:,:,:,i) = (m%rho-self%pars(i)%min)/self%pars(i)%range
                         end select
@@ -208,8 +203,7 @@ use m_Modeling
                 do i=1,self%npars
                     select case (self%pars(i)%name)
                     case ('vp2' ); m%vp = sqrt(o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min)
-                    case ('tDt'); m%tDt = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
-                    case ('tDs'); m%tDs = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
+                    case ('tilD'); m%tilD = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
                     !case ('vs' ); m%vs = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
                     !case ('rho'); m%rho= o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
                     end select
@@ -242,8 +236,7 @@ use m_Modeling
                 do i=1,param%npars
                     select case (param%pars(i)%name)
                     case ('vp2 '); o_g(:,:,:,i) = correlation_gradient(:,:,:,i)
-                    case ('tDt'); o_g(:,:,:,i) = correlation_gradient(:,:,:,i)
-                    case ('tDs'); o_g(:,:,:,i) = correlation_gradient(:,:,:,i)
+                    case ('tilD'); o_g(:,:,:,i) = correlation_gradient(:,:,:,i)
                     end select
                 enddo
 

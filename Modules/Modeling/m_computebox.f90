@@ -46,7 +46,7 @@ use m_shot
         real,dimension(:,:,:),allocatable :: qp,qs
         
         real,dimension(:,:,:,:),allocatable :: grad, imag, engy, corr
-        real,dimension(:,:,:),allocatable :: tDt,tDs
+        real,dimension(:,:,:),allocatable :: tilD
         
         contains
         procedure :: init
@@ -184,8 +184,7 @@ use m_shot
         call m2cb(m%qp ,self%qp )
         call m2cb(m%qs ,self%qs )
 
-        call m2cb(m%tDt,self%tDt)
-        call m2cb(m%tDs,self%tDs)
+        call m2cb(m%tilD,self%tilD)
 
         self%velmin=minval(self%vp)
         if(allocated(self%vs)) then

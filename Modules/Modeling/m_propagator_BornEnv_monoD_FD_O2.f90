@@ -17,6 +17,11 @@ use m_cpml
     real :: c1x, c1y, c1z
     real :: c2x, c2y, c2z
 
+    !time frames
+    integer :: nt
+    real :: dt, dt2
+    real :: inv_2dz, inv_2dx, inv_2dt
+
     type,public :: t_propagator
         !info
         character(i_str_xxlen) :: info = &
@@ -26,12 +31,12 @@ use m_cpml
             'Cartesian O(x²,t²) stencil'//s_NL// &
             'CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal'//s_NL// &
             '   -> dt ≤ 0.5*Vmax/dx'//s_NL// &
-            'Required model attributes: vp, rho, tDt'//s_NL// &
+            'Required model attributes: vp, rho, tilD'//s_NL// &
             'Required field components: p, p_prev, p_next'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
             'Imaging conditions: P-Pxcorr'//s_NL// &
             'Energy terms: Σ_shot ∫ sfield%p² dt'//s_NL// &
-            'Basic gradients: gvp2 gtDt'
+            'Basic gradients: gvp2 gtilD'
             !'Basic gradients: grho gkpa gtilD'
 
         integer :: nbndlayer=max(1,hicks_r) !minimum absorbing layer thickness
@@ -43,14 +48,10 @@ use m_cpml
         logical :: if_compute_engy=.false.
 
         !local models shared between fields
-        real,dimension(:,:,:),allocatable :: buoz, buox, buoy, kpa, inv_kpa, tDt_dt
+        real,dimension(:,:,:),allocatable :: buoz, buox, buoy, kpa, inv_kpa, r2, tilD_vp2
 
-        !time frames
-        integer :: nt
-        real :: dt, dt2
-
-        !reference value
-        real :: invsqEref
+        !!reference value
+        !real :: invsqEref
 
         contains
         procedure :: print_info
@@ -121,9 +122,9 @@ use m_cpml
             call warn('Constant rho model (1000 kg/m³) is allocated by propagator.')
         endif
 
-        if(index(self%info,'tDt')>0 .and. .not. allocated(m%tDt)) then
-            call alloc(m%tDt,m%nz,m%nx,m%ny,o_init=0.)
-            call warn('Constant tDt model (0) is allocated by propagator.')
+        if(index(self%info,'tilD')>0 .and. .not. allocated(m%tilD)) then
+            call alloc(m%tilD,m%nz,m%nx,m%ny,o_init=0.)
+            call warn('Constant tilD model (0) is allocated by propagator.')
         endif
                 
     end subroutine
@@ -138,27 +139,28 @@ use m_cpml
         endif
         
         !time frames
-        self%nt=shot%nt
-        self%dt=shot%dt
+        nt=shot%nt
+        dt=shot%dt
         time_window=(shot%nt-1)*shot%dt
 
         sumcoef=1. !sum(abs(coef))
 
-        CFL = sumcoef*cb%velmax*self%dt*m%rev_cell_diagonal !R. Courant, K. O. Friedrichs & H. Lewy (1928)
+        CFL = sumcoef*cb%velmax*dt*m%rev_cell_diagonal !R. Courant, K. O. Friedrichs & H. Lewy (1928)
 
         call hud('CFL value: '//num2str(CFL))
         
         if(CFL>1.) then
-            self%dt = setup%get_real('CFL',o_default='0.9')/(sumcoef*cb%velmax*m%rev_cell_diagonal)
-            self%nt=nint(time_window/self%dt)+1
+            dt = setup%get_real('CFL',o_default='0.9')/(sumcoef*cb%velmax*m%rev_cell_diagonal)
+            nt=nint(time_window/dt)+1
 
             call warn('CFL > 1 on '//shot%sindex//'!'//s_NL//&
-                'vmax, dt, 1/dx = '//num2str(cb%velmax)//', '//num2str(self%dt)//', '//num2str(m%rev_cell_diagonal) //s_NL//&
-                'Adjusted dt, nt = '//num2str(self%dt)//', '//num2str(self%nt))
+                'vmax, dt, 1/dx = '//num2str(cb%velmax)//', '//num2str(dt)//', '//num2str(m%rev_cell_diagonal) //s_NL//&
+                'Adjusted dt, nt = '//num2str(dt)//', '//num2str(nt))
 
         endif
 
-        self%dt2=self%dt*self%dt
+        inv_2dt=1./2/dt
+        dt2=dt*dt
         
     end subroutine
 
@@ -169,6 +171,9 @@ use m_cpml
 
         c1x=coef(1)/m%dx; c1y=coef(1)/m%dy; c1z=coef(1)/m%dz
         !c2x=coef(2)/m%dx; c2y=coef(2)/m%dy; c2z=coef(2)/m%dz
+
+        inv_2dz =1./2/m%dz
+        inv_2dx =1./2/m%dx
         
         if_hicks=shot%if_hicks
 
@@ -197,19 +202,23 @@ use m_cpml
             self%buoy(:,:,iy)=0.5/cb%rho(:,:,iy)+0.5/cb%rho(:,:,iy-1)
         enddo
 
-        self%invsqEref=setup%get_real('REF_ENVELOPE','RE0',o_default=num2str(1))**(-2)
+        !self%invsqEref=setup%get_real('REF_ENVELOPE','RE0',o_default=num2str(1))**(-2)
 
-        self%tDt_dt=cb%tDt*self%dt
+        call alloc(self%r2,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        self%r2 = (cb%vp*dt/m%dx)**2
+
+        call alloc(self%tilD_vp2,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        self%tilD_vp2=cb%tilD*cb%vp**2
 
         !initialize m_field
-        call field_init(.false.,self%nt,self%dt)
+        call field_init(.false.,nt,dt)
 
         !rectified interval for time integration
         !default to Nyquist, and must be a multiple of dt
         rdt=setup%get_real('REF_RECT_TIME_INTEVAL','RDT',o_default=num2str(0.5/shot%fmax))
-        irdt=floor(rdt/self%dt)
+        irdt=floor(rdt/dt)
         if(irdt==0) irdt=1
-        rdt=irdt*self%dt
+        rdt=irdt*dt
         call hud('rdt, irdt = '//num2str(rdt)//', '//num2str(irdt))
 
     end subroutine
@@ -344,11 +353,11 @@ use m_cpml
         real,parameter :: time_dir=1. !time direction
 
         !seismo
-        call alloc(fld_E0%seismo, shot%nrcv,self%nt)
+        call alloc(fld_E0%seismo, shot%nrcv,nt)
             
         tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.
 
-        ift=1; ilt=self%nt
+        ift=1; ilt=nt
 
         do it=ift,ilt
             if(mod(it,500)==0 .and. mpiworld%is_master) then
@@ -422,12 +431,12 @@ use m_cpml
         real,parameter :: time_dir=1. !time direction
 
         !seismo
-        call alloc(fld_dE%seismo,shot%nrcv,self%nt)
-        call alloc(fld_E0%seismo, shot%nrcv,self%nt)
+        call alloc(fld_dE%seismo,shot%nrcv,nt)
+        call alloc(fld_E0%seismo, shot%nrcv,nt)
             
         tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.
 
-        ift=1; ilt=self%nt
+        ift=1; ilt=nt
 
         do it=ift,ilt
             if(mod(it,500)==0 .and. mpiworld%is_master) then
@@ -440,7 +449,6 @@ use m_cpml
             !step 1: add pressure
             call cpu_time(tic)
             call self%inject_pressure(fld_E0,time_dir,it)
-            call self%inject_pressure_scattering(fld_dE,fld_E0,time_dir,it)
             call cpu_time(toc)
             tt1=tt1+toc-tic
 
@@ -448,7 +456,6 @@ use m_cpml
             ! if(fld_E0%if_will_reconstruct) then
                 call cpu_time(tic)
                 call fld_E0%boundary_transport_pressure('save',it)
-                call fld_dE%boundary_transport_pressure('save',it)
                 call cpu_time(toc)
                 tt2=tt2+toc-tic
             ! endif
@@ -462,29 +469,28 @@ use m_cpml
             !step 4: update pressure
             call cpu_time(tic)
             call self%update_pressure(fld_E0,time_dir,it)
-            call self%update_pressure(fld_dE,time_dir,it)
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
-                !     !step 1: add pressure
-                !     call cpu_time(tic)
-                !     call self%inject_pressure_scattering(fld_dE,fld_E0,time_dir,it)
-                !     call cpu_time(toc)
-                !     tt1=tt1+toc-tic
+            !step 1: add pressure
+            call cpu_time(tic)
+            call self%inject_pressure_scattering(fld_dE,fld_E0,time_dir,it)
+            call cpu_time(toc)
+            tt1=tt1+toc-tic
 
-                !     !step 2: save p^it+1 in boundary layers
-                !     ! if(fld_E0%if_will_reconstruct) then
-                !         call cpu_time(tic)
-                !         call fld_dE%boundary_transport_pressure('save',it)
-                !         call cpu_time(toc)
-                !         tt2=tt2+toc-tic
-                !     ! endif
+            !step 2: save p^it+1 in boundary layers
+            ! if(fld_E0%if_will_reconstruct) then
+                call cpu_time(tic)
+                call fld_dE%boundary_transport_pressure('save',it)
+                call cpu_time(toc)
+                tt2=tt2+toc-tic
+            ! endif
 
-                !     !step 4: update pressure
-                !     call cpu_time(tic)
-                !     call self%update_pressure(fld_dE,time_dir,it)
-                !     call cpu_time(toc)
-                ! tt4=tt4+toc-tic
+            !step 4: update pressure
+            call cpu_time(tic)
+            call self%update_pressure(fld_dE,time_dir,it)
+            call cpu_time(toc)
+            tt4=tt4+toc-tic
 
             !step 5: evolve pressure
             call cpu_time(tic)
@@ -539,7 +545,7 @@ use m_cpml
         tt7=0.; tt8=0.; tt9=0.
         tt10=0.;tt11=0.; tt12=0.; tt13=0.
         
-        ift=1; ilt=self%nt
+        ift=1; ilt=nt
 
         ! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
@@ -617,7 +623,7 @@ use m_cpml
             !if(if_compute_grad.and.mod(it,irdt)==0) then
             if(mod(it,irdt)==0) then
                 call cpu_time(tic)
-                call gradient_tilD(fld_F2,fld_E0,F2_star_E0,self%dt,it)
+                call gradient_tilD(fld_F2,fld_E0,F2_star_E0,dt,it)
                 call cpu_time(toc)
                 tt11=tt11+toc-tic
             endif
@@ -626,7 +632,8 @@ use m_cpml
             call fld_F2%write(it,o_suffix='_rev')
             call fld_E0%write(it,o_suffix='_rev')
             
-            call fld_E0%write_ext(it,'corr_F2_star_E0',F2_star_E0%sp_rp,size(F2_star_E0%sp_rp))
+            call fld_E0%write_ext(it,'corr_F2_star_E0_dt2', F2_star_E0%drp_dt_dsp_dt,m%n)
+            call fld_E0%write_ext(it,'corr_F2_star_E0_nab2',F2_star_E0%nab_rp_nab_sp,m%n)
             
         enddo
         
@@ -635,9 +642,11 @@ use m_cpml
         ! cb%corr = cb%corr*m%cell_volume*rdt
         ! !preparing for cb%project_back
         ! cb%corr(1,:,:,:) = cb%corr(2,:,:,:)
-        F2_star_E0%sp_rp = F2_star_E0%sp_rp*self%invsqEref
-        F2_star_E0%sp_rp = F2_star_E0%sp_rp*m%cell_volume*rdt
-        F2_star_E0%sp_rp(1,:,:,:) = F2_star_E0%sp_rp(2,:,:,:)
+        F2_star_E0%drp_dt_dsp_dt = F2_star_E0%drp_dt_dsp_dt*m%cell_volume*rdt !*self%invsqEref
+        F2_star_E0%drp_dt_dsp_dt(1,:,:,:) = F2_star_E0%drp_dt_dsp_dt(2,:,:,:)
+
+        F2_star_E0%nab_rp_nab_sp = F2_star_E0%nab_rp_nab_sp*m%cell_volume*rdt
+        F2_star_E0%nab_rp_nab_sp(1,:,:,:) = F2_star_E0%nab_rp_nab_sp(2,:,:,:)
 
         
         if(mpiworld%is_master) then
@@ -664,11 +673,11 @@ use m_cpml
         
     end subroutine
 
-    subroutine adjoint_vp2(self,fld_F1,fld_F2,fld_dE,fld_E0,F1_star_lapE0,F2_star_lapdE)
+    subroutine adjoint_vp2(self,fld_F1,fld_F2,fld_dE,fld_E0,F1_star_E0,F2_star_dE,F2_star_E0)
         class(t_propagator) :: self
         type(t_field) :: fld_F1,fld_F2,fld_dE,fld_E0
-        type(t_correlation) :: F1_star_lapE0,F2_star_lapdE
-        
+        type(t_correlation) :: F1_star_E0,F2_star_dE,F2_star_E0
+
         real,parameter :: time_dir=-1. !time direction
         
         call alloc(cb%grad,cb%mz,cb%mx,cb%my,3)
@@ -683,7 +692,7 @@ use m_cpml
         tt7=0.; tt8=0.; tt9=0.
         tt10=0.;tt11=0.; tt12=0.; tt13=0.
         
-        ift=1; ilt=self%nt
+        ift=1; ilt=nt
 
         ! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
@@ -771,8 +780,9 @@ use m_cpml
             !if(if_compute_grad.and.mod(it,irdt)==0) then
             if(mod(it,irdt)==0) then
                 call cpu_time(tic)
-                call gradient_vp2_oneterm(fld_F1,fld_E0,F1_star_lapE0,it)
-                call gradient_vp2_oneterm(fld_F2,fld_dE,F2_star_lapdE,it)
+                call gradient_vp2_oneterm(fld_F1,fld_E0,F1_star_E0,it)
+                call gradient_vp2_oneterm(fld_F2,fld_dE,F2_star_dE,it)
+                call gradient_vp2_3rdterm(fld_F2,fld_dE,F2_star_E0,it)
                 call cpu_time(toc)
                 tt11=tt11+toc-tic
             endif
@@ -783,8 +793,9 @@ use m_cpml
             call fld_E0%write(it,o_suffix='_rev')
             call fld_dE%write(it,o_suffix='_rev')
             
-            call fld_E0%write_ext(it,'corr_F1_star_lapE0',F1_star_lapE0%sp_rp,size(F1_star_lapE0%sp_rp))
-            call fld_E0%write_ext(it,'corr_F2_star_lapdE',F2_star_lapdE%sp_rp,size(F2_star_lapdE%sp_rp))
+            call fld_E0%write_ext(it,'corr_F1_star_E0',F1_star_E0%rp_lapsp,m%n)
+            call fld_E0%write_ext(it,'corr_F2_star_dE',F2_star_dE%rp_lapsp,m%n)
+            call fld_E0%write_ext(it,'corr_F2_star_E0',F2_star_E0%nab_rp_nab_sp,m%n)
             
         enddo
         
@@ -793,11 +804,14 @@ use m_cpml
         ! cb%corr = cb%corr*m%cell_volume*rdt
         ! !preparing for cb%project_back
         ! cb%corr(1,:,:,:) = cb%corr(2,:,:,:)
-        F1_star_lapE0%sp_rp = F1_star_lapE0%sp_rp*m%cell_volume*rdt
-        F1_star_lapE0%sp_rp(1,:,:,:) = F1_star_lapE0%sp_rp(2,:,:,:)
+        F1_star_E0%rp_lapsp = F1_star_E0%rp_lapsp*m%cell_volume*rdt
+        F1_star_E0%rp_lapsp(1,:,:,:) = F1_star_E0%rp_lapsp(2,:,:,:)
 
-        F2_star_lapdE%sp_rp = F2_star_lapdE%sp_rp*m%cell_volume*rdt
-        F2_star_lapdE%sp_rp(1,:,:,:) = F2_star_lapdE%sp_rp(2,:,:,:)
+        F2_star_dE%rp_lapsp = F2_star_dE%sp_rp*m%cell_volume*rdt
+        F2_star_dE%rp_lapsp(1,:,:,:) = F2_star_dE%rp_lapsp(2,:,:,:)
+
+        F2_star_E0%nab_rp_nab_sp = F2_star_E0%nab_rp_nab_sp*m%cell_volume*rdt
+        F2_star_E0%nab_rp_nab_sp(1,:,:,:) = F2_star_E0%nab_rp_nab_sp(2,:,:,:)
 
         
         if(mpiworld%is_master) then
@@ -887,19 +901,37 @@ use m_cpml
         ! endif
 
         if(m%is_cubic) then !1/3D
-            ! fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) = fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) +         self%tDt_dt2*fld%p(1:cb%mz,1:cb%mx,1:cb%my)
+            ! fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) = fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) +         self%tilD_dt2*fld%p(1:cb%mz,1:cb%mx,1:cb%my)
         else !2D
-            !fld_d%p = fld_d%p + self%tDt_dt*self%dt*fld%p
+            !fld_d%p = fld_d%p + self%tilD_dt*dt*fld%p
 
             !方案1 w/ backward FD
-            !fld_d%p(1:cb%mz,1:cb%mx,1:1) = fld_d%p(1:cb%mz,1:cb%mx,1:1) +   self%invsqEref*self%tDt_dt(1:cb%mz,1:cb%mx,1:1)*(fld%p(1:cb%mz,1:cb%mx,1:1)**2-fld%p_prev(1:cb%mz,1:cb%mx,1:1)**2)
-            fld_d%p = fld_d%p + self%invsqEref*self%tDt_dt*(fld%p**2-fld%p_prev**2)
+            !fld_d%p(1:cb%mz,1:cb%mx,1:1) = fld_d%p(1:cb%mz,1:cb%mx,1:1) +   self%invsqEref*self%tilD_dt(1:cb%mz,1:cb%mx,1:1)*(fld%p(1:cb%mz,1:cb%mx,1:1)**2-fld%p_prev(1:cb%mz,1:cb%mx,1:1)**2)
+            !fld_d%p = fld_d%p + self%invsqEref*self%tilD_dt*(fld%p**2-fld%p_prev**2)
 
             !方案1 w/ averaged FD, the forward_scattering subroutine should be updated
-            !fld_d%p = fld_d%p + self%invsqEref*self%tDt_dt*((fld%p**2-fld%p_prev**2)+(fld%p_next**2-fld%p**2))/2
+            !fld_d%p = fld_d%p + self%invsqEref*self%tilD_dt*((fld%p**2-fld%p_prev**2)+(fld%p_next**2-fld%p**2))/2
 
             !方案2, the forward_scattering subroutine should be updated
-            !fld_d%p = fld_d%p + self%invsqEref*self%tDt_dt*self%dt*(fld%p_next**2-2*fld%p**2+fld%p_prev**2)
+            !fld_d%p = fld_d%p + self%invsqEref*self%tilD_dt*dt*(fld%p_next**2-2*fld%p**2+fld%p_prev**2)
+
+            !方案1.2
+            fld_d%p = fld_d%p + dt2*cb%tilD*( abs(fld%p_next) -2*abs(fld%p) +abs(fld%p_prev) )
+
+            do ix=2,cb%mx-1
+            do iz=2,cb%mz-1
+                dp1=(self%tilD_vp2(iz+1,ix  ,1)+self%tilD_vp2(iz  ,ix  ,1)) * (abs(fld%p(iz+1,ix  ,1))-abs(fld%p(iz  ,ix  ,1)))
+                dm1=(self%tilD_vp2(iz  ,ix  ,1)+self%tilD_vp2(iz-1,ix  ,1)) * (abs(fld%p(iz  ,ix  ,1))-abs(fld%p(iz-1,ix  ,1)))
+                ddz=(dp1-dm1)
+
+                dp1=(self%tilD_vp2(iz  ,ix+1,1)+self%tilD_vp2(iz  ,ix  ,1)) * (abs(fld%p(iz  ,ix+1,1))-abs(fld%p(iz  ,ix  ,1)))
+                dm1=(self%tilD_vp2(iz  ,ix  ,1)+self%tilD_vp2(iz  ,ix-1,1)) * (abs(fld%p(iz  ,ix  ,1))-abs(fld%p(iz  ,ix-1,1)))
+                ddx=(dp1-dm1)
+
+                fld_d%p(iz,ix,1) = fld_d%p(iz,ix,1) -self%r2(iz,ix,1)/2*(ddz+ddx)
+
+            enddo; enddo
+
         endif
 
 
@@ -910,13 +942,58 @@ use m_cpml
         type(t_field) :: fld_F1,fld_F2,fld_E0
         real :: time_dir
 
-        if(m%is_cubic) then !1/3D
-            ! fld_F1%p(1:cb%mz,1:cb%mx,1:cb%my) = fld_F1%p(1:cb%mz,1:cb%mx,1:cb%my) +         self%tDt_dt2*fld_F1%p(1:cb%mz,1:cb%mx,1:cb%my)
-        else !2D
-            fld_F1%p(1:cb%mz,1:cb%mx,1:1) = fld_F1%p(1:cb%mz,1:cb%mx,1:1) -2*self%invsqEref*fld_E0%p(1:cb%mz,1:cb%mx,1:1)*self%tDt_dt(1:cb%mz,1:cb%mx,1:1)*(fld_F2%p(1:cb%mz,1:cb%mx,1:1)-fld_F2%p_prev(1:cb%mz,1:cb%mx,1:1))
-        endif
+        ! if(m%is_cubic) then !1/3D
+        !     ! fld_F1%p(1:cb%mz,1:cb%mx,1:cb%my) = fld_F1%p(1:cb%mz,1:cb%mx,1:cb%my) +         self%tilD_dt2*fld_F1%p(1:cb%mz,1:cb%mx,1:cb%my)
+        ! else !2D
+        !     fld_F1%p(1:cb%mz,1:cb%mx,1:1) = fld_F1%p(1:cb%mz,1:cb%mx,1:1) -2*self%invsqEref*fld_E0%p(1:cb%mz,1:cb%mx,1:1)*self%tilD_dt(1:cb%mz,1:cb%mx,1:1)*(fld_F2%p(1:cb%mz,1:cb%mx,1:1)-fld_F2%p_prev(1:cb%mz,1:cb%mx,1:1))
+        ! endif
+
+
+            !方案1.2
+            fld_F1%p = fld_F1%p + dt2*cb%tilD*( fld_F2%p_next -2*fld_F2%p +fld_F2%p_prev )*sgns(fld_E0%p)
+
+            do ix=2,cb%mx-1
+            do iz=2,cb%mz-1
+                dp1=(self%tilD_vp2(iz+1,ix  ,1)+self%tilD_vp2(iz  ,ix  ,1)) * (abs(fld_F2%p(iz+1,ix  ,1))-abs(fld_F2%p(iz  ,ix  ,1)))
+                dm1=(self%tilD_vp2(iz  ,ix  ,1)+self%tilD_vp2(iz-1,ix  ,1)) * (abs(fld_F2%p(iz  ,ix  ,1))-abs(fld_F2%p(iz-1,ix  ,1)))
+                ddz=(dp1-dm1)
+
+                dp1=(self%tilD_vp2(iz  ,ix+1,1)+self%tilD_vp2(iz  ,ix  ,1)) * (abs(fld_F2%p(iz  ,ix+1,1))-abs(fld_F2%p(iz  ,ix  ,1)))
+                dm1=(self%tilD_vp2(iz  ,ix  ,1)+self%tilD_vp2(iz  ,ix-1,1)) * (abs(fld_F2%p(iz  ,ix  ,1))-abs(fld_F2%p(iz  ,ix-1,1)))
+                ddx=(dp1-dm1)
+
+                fld_F1%p(iz,ix,1) = fld_F1%p(iz,ix,1) -self%r2(iz,ix,1)/2*(ddz+ddx)*sgn(fld_E0%p(iz,ix,1))
+
+            enddo; enddo
+
 
     end subroutine
+
+    pure function sgns(a) result(s)
+    use m_math, only: r_eps
+        real,dimension(:,:,:),intent(in) :: a
+        real,dimension(:,:,:),allocatable :: s
+        s=a
+        where (a>r_eps)
+            s=1.
+        elsewhere (a<-r_eps)
+            s=-1.
+        elsewhere
+            s=0.
+        endwhere
+    end function
+
+    pure function sgn(a) result(s)
+    use m_math, only: r_eps
+        real,intent(in) :: a
+        if (a>r_eps) then
+            s=1.
+        elseif (a<-r_eps) then
+            s=-1.
+        else
+            s=0.
+        endif
+    end function
 
     ! subroutine set_pressure(self,f,time_dir,it)
     !     class(t_propagator) :: self
@@ -990,12 +1067,12 @@ use m_cpml
         endif
 
         if(time_dir>0.) then !in forward time
-                f%p_next = 2*f%p -f%p_prev +self%dt2*self%kpa*(f%lapz + f%lapx)
+                f%p_next = 2*f%p -f%p_prev +dt2*self%kpa*(f%lapz + f%lapx)
         else !in reverse time
             if(.not.f%is_adjoint) then
-                f%p_prev = 2*f%p -f%p_next +self%dt2*self%kpa*(f%lapz + f%lapx)
+                f%p_prev = 2*f%p -f%p_next +dt2*self%kpa*(f%lapz + f%lapx)
             else
-                f%p_prev = 2*f%p -f%p_next +self%dt2*         (f%lapz + f%lapx) !kpa has been multiplied in fd2d_laplacian
+                f%p_prev = 2*f%p -f%p_next +dt2*         (f%lapz + f%lapx) !kpa has been multiplied in fd2d_laplacian
             endif
         endif
 
@@ -1170,10 +1247,9 @@ use m_cpml
         
     end subroutine
 
-    subroutine gradient_tilD(rf,sf,grad,dt,it)
+    subroutine gradient_vp2_3rdterm(rf,sf,grad,it)
         type(t_field), intent(in) :: rf, sf
         type(t_correlation) :: grad
-        real :: dt
 
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
@@ -1188,11 +1264,46 @@ use m_cpml
             !                    grad,                  &
             !                    ifz,ilz,ifx,ilx,ify,ily)
         else
-            call grad2d_tilD(rf%p_next,rf%p,sf%p,&
-                              grad%sp_rp,dt,     &
-                              ifz,ilz,ifx,ilx)
+            ! call grad2d_moduli(rf%p,sf%p,sf_p_save,&
+            !                    grad,            &
+            !                    ifz,ilz,ifx,ilx)
+            ! sf_p_save = sf%p
             
+            !inexact greadient
+            call grad2d_vp2_3rdterm(rf%p,sf%p,&
+                            grad%nab_rp_nab_sp,          &
+                            ifz,ilz,ifx,ilx)
         endif
+
+    end subroutine
+
+    subroutine gradient_tilD(rf,sf,grad,dt,it)
+        type(t_field), intent(in) :: rf, sf
+        type(t_correlation) :: grad
+        real :: dt
+
+        !nonzero only when sf touches rf
+        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
+        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
+        ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
+        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
+        ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
+        ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
+        
+        ! if(m%is_cubic) then
+        !     ! call grad3d_moduli(rf%p,sf%vz,sf%vx,sf%vy,&
+        !     !                    grad,                  &
+        !     !                    ifz,ilz,ifx,ilx,ify,ily)
+        ! else
+        !     call grad2d_tilD((rf%p_next-rf%p_prev)/2/dt,(sf%p_next-sf%p_prev)/2/dt,&
+        !                       grad%sp_rp,dt,     &
+        !                       ifz,ilz,ifx,ilx)
+            
+        ! endif
+
+        call grad2d_inverse_scattering(rf%p_next,rf%p,rf%p_prev,sf%p_next,sf%p,sf%p_prev,&
+                              grad%drp_dt_dsp_dt,grad%nab_rp_nab_sp,                     &
+                              ifz,ilz,ifx,ilx)
         
     end subroutine
     
@@ -1346,7 +1457,7 @@ use m_cpml
     end subroutine
 
     subroutine grad2d_tilD(rf_p_next,rf_p,sf_p,&
-                           grad,dt,            &
+                           grad,            &
                            ifz,ilz,ifx,ilx)
         real,dimension(*) :: rf_p_next,rf_p,sf_p
         real,dimension(*) :: grad
@@ -1365,6 +1476,55 @@ use m_cpml
                 j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
                 
                 grad(j)=grad(j) + (rf_p_next(i)-rf_p(i))/dt *sf_p(i)*sf_p(i)
+                                
+            end do
+            
+        end do
+        !$omp end do
+        !$omp end parallel
+
+    end subroutine
+
+    subroutine grad2d_inverse_scattering(rf_p_next,rf_p,rf_p_prev,sf_p_next,sf_p,sf_p_prev,&
+                      grad_drp_dt_dsp_dt,grad_nab_rp_nab_sp,&
+                      ifz,ilz,ifx,ilx)
+        real,dimension(*) :: rf_p_next,rf_p,rf_p_prev
+        real,dimension(*) :: sf_p_next,sf_p,sf_p_prev
+        real,dimension(*) :: grad_drp_dt_dsp_dt, grad_nab_rp_nab_sp
+        
+        nz=cb%nz
+        
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,j)
+        !$omp do schedule(dynamic)
+        do ix=ifx,ilx
+        
+            !dir$ simd
+            do iz=ifz,ilz
+                
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+
+                
+                izm1_ix=i-1  !iz-1,ix
+                iz_ix  =i    !iz,ix
+                izp1_ix=i+1  !iz+1,ix
+                
+                iz_ixm1=i    -nz  !iz,ix-1
+                iz_ixp1=i    +nz  !iz,ix+1
+                
+                drp_dt = (rf_p_next(i)-rf_p_prev(i))*inv_2dt
+                dsp_dt = (sf_p_next(i)-sf_p_prev(i))*inv_2dt
+
+                drp_dz = (rf_p(izp1_ix)-rf_p(izm1_ix)) *inv_2dz
+                dsp_dz = (sf_p(izp1_ix)-sf_p(izm1_ix)) *inv_2dz
+
+                drp_dx = (rf_p(iz_ixp1)-rf_p(iz_ixm1)) *inv_2dx
+                dsp_dx = (sf_p(iz_ixp1)-sf_p(iz_ixm1)) *inv_2dx
+
+                grad_drp_dt_dsp_dt(j)=grad_drp_dt_dsp_dt(j) + drp_dt*dsp_dt
+
+                grad_nab_rp_nab_sp(j)=grad_nab_rp_nab_sp(j) + drp_dz*dsp_dz + drp_dx*dsp_dx
                                 
             end do
             
@@ -1394,6 +1554,48 @@ use m_cpml
                 j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
                 
                 grad(j)=grad(j) + rf_p(i)*(sf_lapz(i)+sf_lapx(i))
+                
+            end do
+            
+        end do
+        !$omp end do
+        !$omp end parallel
+
+    end subroutine
+
+    subroutine grad2d_vp2_3rdterm(rf_p,sf_p,     &
+                                  grad,          &
+                                  ifz,ilz,ifx,ilx)
+        real,dimension(*) :: rf_p,sf_p
+        real,dimension(*) :: grad
+        
+        nz=cb%nz
+        
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,j)
+        !$omp do schedule(dynamic)
+        do ix=ifx,ilx
+        
+            !dir$ simd
+            do iz=ifz,ilz
+                
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                
+                izm1_ix=i-1  !iz-1,ix
+                iz_ix  =i    !iz,ix
+                izp1_ix=i+1  !iz+1,ix
+                
+                iz_ixm1=i    -nz  !iz,ix-1
+                iz_ixp1=i    +nz  !iz,ix+1
+                
+                drp_dz = (    rf_p(izp1_ix) -    rf_p(izm1_ix)) *inv_2dz
+                dsp_dz = (abs(sf_p(izp1_ix))-abs(sf_p(izm1_ix)))*inv_2dz
+
+                drp_dx = (    rf_p(iz_ixp1) -    rf_p(iz_ixm1)) *inv_2dx
+                dsp_dx = (abs(sf_p(iz_ixp1))-abs(sf_p(iz_ixm1)))*inv_2dx
+
+                grad(j)=grad(j) + drp_dz*dsp_dz + drp_dx*dsp_dx
                 
             end do
             

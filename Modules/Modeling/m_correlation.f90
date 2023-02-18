@@ -20,6 +20,9 @@ use m_computebox
         real,dimension(:,:,:,:),allocatable :: sp_rp
         !real,dimension(:,:,:,:),allocatable :: svz_rstress
 
+        real,dimension(:,:,:,:),allocatable :: drp_dt_dsp_dt, nab_rp_nab_sp
+        real,dimension(:,:,:,:),allocatable :: rp_lapsp
+
         contains
 
         procedure :: init
