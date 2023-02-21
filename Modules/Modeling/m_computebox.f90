@@ -204,6 +204,8 @@ use m_shot
                                     write(*,*)'ip' ,minval(self%vp*self%rho),maxval(self%vp*self%rho)
             if(allocated(self%eps)) write(*,*)'eps',minval(self%eps),maxval(self%eps)
             if(allocated(self%del)) write(*,*)'del',minval(self%del),maxval(self%del)
+
+            if(allocated(self%tilD)) write(*,*)'tilD',minval(self%tilD),maxval(self%tilD)
         end if
 
     end subroutine

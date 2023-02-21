@@ -6,7 +6,8 @@ use singleton
     contains
 
     subroutine hilbert_transform(datain, dataout, nt, ntr)
-        real,dimension(nt,ntr) :: datain, dataout
+        real,dimension(nt,ntr) :: datain
+        real,dimension(:,:),allocatable :: dataout
         !! return hilbert transform of real signal datain
         !! and the analytic signal = cmplx(datain, dataout)
 
@@ -48,7 +49,8 @@ use singleton
     end subroutine
 
     subroutine hilbert_envelope(datain,dataout,nt,ntr)
-        real,dimension(nt,ntr) :: datain, dataout
+        real,dimension(nt,ntr) :: datain
+        real,dimension(:,:),allocatable :: dataout
 
         call hilbert_transform(datain,dataout,nt,ntr)
         
@@ -57,7 +59,8 @@ use singleton
     end subroutine
 
     subroutine hilbert_phase(datain,dataout,nt,ntr)
-        real,dimension(nt,ntr) :: datain, dataout
+        real,dimension(nt,ntr) :: datain
+        real,dimension(:,:),allocatable :: dataout
         
         call hilbert_transform(datain,dataout,nt,ntr)
         

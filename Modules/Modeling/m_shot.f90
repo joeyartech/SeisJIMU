@@ -1,6 +1,7 @@
 module m_shot
 use m_System
 use m_hicks
+use m_hilbert
 use m_wavelet
 use m_resampler
 use m_matchfilter
@@ -237,6 +238,7 @@ use m_model
 
         character(:),allocatable :: file, str
         type(t_suformat) :: wavelet
+        real,dimension(:,:),allocatable :: tmp1,tmp2
 
         self%fpeak=setup%get_real('PEAK_FREQUENCY','FPEAK')
         self%fmax=setup%get_real('MAX_FREQUENCY','FMAX',o_default=num2str(self%fpeak*2.))
@@ -246,9 +248,18 @@ use m_model
         file=setup%get_file('FILE_SRC_TIME_FUNC','FILE_WAVELET')
 
         if(file=='') then !not given
-            if(setup%get_str('WAVELET_TYPE',o_default='sinexp')=='sinexp') then
+            str=setup%get_str('WAVELET_TYPE',o_default='sinexp')
+            if(str=='sinexp') then
                 call hud('Use filtered sinexp wavelet')
                 self%wavelet=wavelet_sinexp(self%nt,self%dt,self%fpeak)
+            elseif(str=='ricker envelope') then
+                call hud('Use Ricker envelope wavelet')
+                call alloc(tmp1,self%nt,1)
+                call alloc(tmp2,self%nt,1)
+                tmp1(:,1)=wavelet_ricker(self%nt,self%dt,self%fpeak)
+                call hilbert_envelope(tmp1,tmp2,self%nt,1)
+                self%wavelet=tmp2(:,1)
+                deallocate(tmp1,tmp2)
             else
                 call hud('Use Ricker wavelet')
                 self%wavelet=wavelet_ricker(self%nt,self%dt,self%fpeak)

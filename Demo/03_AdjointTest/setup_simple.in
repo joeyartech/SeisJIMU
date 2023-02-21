@@ -1,16 +1,18 @@
 MODEL_SIZE              '101 101 1'
 MODEL_SPACING           '20 20 1'
-FILE_MODEL              'simple'
-MODEL_ATTRIBUTES        'vp rho'
+#FILE_MODEL              'simple'
+#MODEL_ATTRIBUTES        'vp rho'
 
 IS_FREESURFACE          F
 
 ACQUI_GEOMETRY          spread
-FS                      '50 505 500'
-#FR                      '40 10  0'
-FR                      '40 1800  0'
+FS                      '40 500 500'
 DR                      '0  20 0'
+#FR                      '40 10  0'
+FR                      '40 1500  0'
 NR                      1
+#FR                      '40 500  0'
+#NR                      100
 
 SCOMP                   p
 RCOMP                   p #'p vz'

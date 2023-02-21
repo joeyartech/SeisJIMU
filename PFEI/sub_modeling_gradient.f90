@@ -55,9 +55,21 @@ use m_resampler
 
         if(setup%get_str('JOB')=='forward modeling') cycle
 
+        if(index(setup%get_str('JOB'),'estimate wavelet')>0) then
+            call hud('--------------------------------')
+            call hud('        Estimate wavelet        ')
+            call hud('--------------------------------')
+
+            call shot%update_wavelet !call gradient_matchfilter_data
+        
+            !write synthetic data
+            call shot%write('updated_RE0_',shot%dsyn)
+
+        endif
+
         if(index(setup%get_str('JOB'),'build tilD')>0) then
             call hud('--------------------------------')
-            call hud('        Build tilD model         ')
+            call hud('        Build tilD model        ')
             call hud('--------------------------------')
 
             call F2_star_E0%init('F2_star_E0',shape123_from='model') !F₂★E₀ for gtDt
@@ -65,8 +77,9 @@ use m_resampler
             call alloc(F2_star_E0%nab_rp_nab_sp,m%nz,m%nx,m%ny,1)
 
             call wei%update!('_4IMAGING')
+            artifical=setup%get_real('ARTIFICIAL_SCALER_ON_dE',o_default='1.') !DIRTY
             fobj%misfit = fobj%misfit &
-                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-(shot%dsyn+shot%dsyn_aux), shot%dt)
+                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-(shot%dsyn+artifical*shot%dsyn_aux), shot%dt)
             
             call alloc(shot%dadj,shot%nt,shot%nrcv)
             call kernel_L2sq(shot%dadj)
@@ -75,7 +88,7 @@ use m_resampler
             !adjoint modeling
             !AᴴF₂ = -RᴴN(E+δE)
             call ppg%init_field(fld_F2,name='fld_F2',ois_adjoint=.true.); call fld_F2%ignite
-            call ppg%adjoint_tilD(fld_F2,fld_E0,F2_star_E0)
+            call ppg%adjoint_tilD(fld_F2,fld_E0,o_F2_star_E0=F2_star_E0)
             call hud('---------------------------------')
 
             !call cb%project_back
@@ -139,11 +152,17 @@ use m_resampler
         call mpiworld%final
         stop
     endif
+    if(setup%get_str('JOB')=='estimate wavelet') then
+        call mpiworld%final
+        stop
+    endif
 
     !collect PFEI misfit values
     !no need to collect WPI misfit values
     call mpi_allreduce(mpi_in_place, [fobj%misfit], 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     call hud('Stacked PFEI_misfit '//num2str(fobj%misfit))
+
+    fobj%dnorms=fobj%misfit
 
     call fobj%print_dnorms('Stacked but not yet linesearch-scaled','')
     
@@ -159,7 +178,7 @@ use m_resampler
 
     !call alloc(m%gradient,m%nz,m%nx,m%ny,1)
 
-    call alloc(correlation_gradient,m%nz,m%nx,m%ny,1)
+    !call alloc(correlation_gradient,m%nz,m%nx,m%ny,1)
 
     if(index(setup%get_str('JOB'),'build tilD')>0) then
         if(mpiworld%is_master) then
@@ -167,7 +186,7 @@ use m_resampler
             call sysio_write('gtilD_nab2',F2_star_E0%nab_rp_nab_sp,m%n)
             call sysio_write('gtilD',gtilD,m%n)
         endif
-        correlation_gradient=correlation_gradient +gtilD
+        correlation_gradient=gtilD
     endif
 
     if(index(setup%get_str('JOB'),'update velocity')>0) then
@@ -177,7 +196,7 @@ use m_resampler
             call sysio_write('gvp2_F2_star_E0',F2_star_E0%nab_rp_nab_sp,m%n)
             call sysio_write('gvp2',gvp2,m%n)
         endif
-        correlation_gradient=correlation_gradient +gvp2
+        correlation_gradient=gvp2
     endif
 
     ! if(ppg%if_compute_engy) then
