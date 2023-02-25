@@ -165,7 +165,7 @@ use m_smoother_laplacian_sparse
 
             case ('tilD')
                 call alloc(self%tilD,self%nz,self%nx,self%ny)
-                read(12) m%tilD
+                read(12,rec=i) self%tilD
                 call hud('tilD model is read.')
 
             end select
@@ -273,11 +273,11 @@ use m_smoother_laplacian_sparse
             call hud('tilD model is built from -1e-10*∇²vp² where ∂z(vp)<0.')
             call sysio_write('derived_tilD',self%tilD,size(self%tilD))
 
-            call hud('smoothing the derived tilD model')
-            call smoother_Laplacian_init([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],setup%get_real('PEAK_FREQUENCY','FPEAK'))
-            call smoother_Laplacian_pseudo_nonstationary(self%tilD(:,:,:),m%vp)
+            ! call hud('smoothing the derived tilD model')
+            ! call smoother_Laplacian_init([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],setup%get_real('PEAK_FREQUENCY','FPEAK'))
+            ! call smoother_Laplacian_pseudo_nonstationary(self%tilD(:,:,:),m%vp)
 
-            call sysio_write('derived_tilD_smth',self%tilD,size(self%tilD))
+            ! call sysio_write('derived_tilD_smth',self%tilD,size(self%tilD))
 
         endif
 

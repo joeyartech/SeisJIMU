@@ -77,9 +77,8 @@ use m_resampler
             call alloc(F2_star_E0%nab_rp_nab_sp,m%nz,m%nx,m%ny,1)
 
             call wei%update!('_4IMAGING')
-            artifical=setup%get_real('ARTIFICIAL_SCALER_ON_dE',o_default='1.') !DIRTY
             fobj%misfit = fobj%misfit &
-                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-(shot%dsyn+artifical*shot%dsyn_aux), shot%dt)
+                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-(shot%dsyn+shot%dsyn_aux), shot%dt)
             
             call alloc(shot%dadj,shot%nt,shot%nrcv)
             call kernel_L2sq(shot%dadj)
@@ -113,8 +112,8 @@ use m_resampler
             call F1_star_E0%init('F1_star_E0',shape123_from='model') !F₁★∇²E₀ for gvp2 (one RE)
             call F2_star_dE%init('F2_star_dE',shape123_from='model') !F₂★∇²δE for gvp2 (the other RE)
             call F2_star_E0%init('F2_star_E0',shape123_from='model') !F₂★∇²E₀ for gvp2 (3rd RE?)
-            call alloc(F1_star_E0%rp_lapsp,m%nz,m%nx,m%ny,1)
-            call alloc(F2_star_dE%rp_lapsp,m%nz,m%nx,m%ny,1)
+            call alloc(F1_star_E0%nab_rp_nab_sp,m%nz,m%nx,m%ny,1)
+            call alloc(F2_star_dE%nab_rp_nab_sp,m%nz,m%nx,m%ny,1)
             call alloc(F2_star_E0%nab_rp_nab_sp,m%nz,m%nx,m%ny,1)
 
             call wei%update
@@ -130,7 +129,7 @@ use m_resampler
             !AᴴF₁ = -DF₂ +Rᴴ(d-(E₀+δE))
             call ppg%init_field(fld_F1,name='fld_F1',ois_adjoint=.true.); call fld_F1%ignite
             call ppg%init_field(fld_F2,name='fld_F2',ois_adjoint=.true.); call fld_F2%ignite
-            call ppg%adjoint_vp2(fld_F1,fld_F2,fld_dE,fld_E0,F1_star_E0,F2_star_dE,F2_star_E0)
+            call ppg%adjoint_vp2(fld_F1,fld_F2,fld_dE,fld_E0,o_F1_star_E0=F1_star_E0,o_F2_star_dE=F2_star_dE,o_F2_star_E0=F2_star_E0)
             call hud('---------------------------------')
     
             !project back    
@@ -139,8 +138,8 @@ use m_resampler
                  cb%ioy:cb%ioy+cb%my-1,1) = &
             gvp2(cb%ioz:cb%ioz+cb%mz-1,&
                  cb%iox:cb%iox+cb%mx-1,&
-                 cb%ioy:cb%ioy+cb%my-1,1) &
-                -F1_star_E0%rp_lapsp(:,:,:,1) -F2_star_dE%rp_lapsp(:,:,:,1) -m%tilD*F2_star_E0%nab_rp_nab_sp(:,:,:,1)
+                 cb%ioy:cb%ioy+cb%my-1,1) + &
+                F1_star_E0%nab_rp_nab_sp(:,:,:,1) +F2_star_dE%nab_rp_nab_sp(:,:,:,1) -m%tilD*F2_star_E0%nab_rp_nab_sp(:,:,:,1)
             
         endif
 
@@ -191,8 +190,8 @@ use m_resampler
 
     if(index(setup%get_str('JOB'),'update velocity')>0) then
         if(mpiworld%is_master) then
-            call sysio_write('gvp2_F1_star_E0',F1_star_E0%rp_lapsp,m%n)
-            call sysio_write('gvp2_F2_star_dE',F2_star_dE%rp_lapsp,m%n)
+            call sysio_write('gvp2_F1_star_E0',F1_star_E0%nab_rp_nab_sp,m%n)
+            call sysio_write('gvp2_F2_star_dE',F2_star_dE%nab_rp_nab_sp,m%n)
             call sysio_write('gvp2_F2_star_E0',F2_star_E0%nab_rp_nab_sp,m%n)
             call sysio_write('gvp2',gvp2,m%n)
         endif
