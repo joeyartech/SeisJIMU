@@ -673,14 +673,14 @@ use m_cpml
             endif            
 
 
-            !gkpa: rf%s^it+0.5 star tilD sf%s_dt^it+0.5
-            !if(if_compute_grad.and.mod(it,irdt)==0) then
-            if(mod(it,irdt)==0 .and. present(o_F2_star_E0)) then
-                call cpu_time(tic)
-                call gradient_tilD(fld_F2,fld_E0,o_F2_star_E0,self%dt,it)! 1st cond   1.00000005E-03   1.21089315      0.921757936       289.135193      -289.541931      -1.00140679     F
-                call cpu_time(toc)
-                tt11=tt11+toc-tic
-            endif
+! !gkpa: rf%s^it+0.5 star tilD sf%s_dt^it+0.5
+! !if(if_compute_grad.and.mod(it,irdt)==0) then
+! if(mod(it,irdt)==0 .and. present(o_F2_star_E0)) then
+!     call cpu_time(tic)
+!     call gradient_tilD(fld_F2,fld_E0,o_F2_star_E0,self%dt,it)! 1st cond   1.00000005E-03   1.21089315      0.921757936       289.135193      -289.541931      -1.00140679     F
+!     call cpu_time(toc)
+!     tt11=tt11+toc-tic
+! endif
 
             !do backward time stepping to reconstruct the source (incident) wavefield
             !and adjoint time stepping to compute the receiver (adjoint) field
@@ -718,14 +718,14 @@ use m_cpml
                 tt5=tt5+toc-tic
             ! endif
 
-! !gkpa: rf%s^it+0.5 star tilD sf%s_dt^it+0.5
-! !if(if_compute_grad.and.mod(it,irdt)==0) then
-! if(mod(it,irdt)==0 .and. present(o_F2_star_E0)) then
-!     call cpu_time(tic)
-!     call gradient_tilD(fld_F2,fld_E0,o_F2_star_E0,self%dt,it) ! 1st cond   1.00000005E-03   1.28531706      0.913123488       372.193542      -288.561340     -0.775299132     F
-!     call cpu_time(toc)
-!     tt11=tt11+toc-tic
-! endif
+            !gkpa: rf%s^it+0.5 star tilD sf%s_dt^it+0.5
+            !if(if_compute_grad.and.mod(it,irdt)==0) then
+            if(mod(it,irdt)==0 .and. present(o_F2_star_E0)) then
+                call cpu_time(tic)
+                call gradient_tilD(fld_F2,fld_E0,o_F2_star_E0,self%dt,it) ! 1st cond   1.00000005E-03   1.28531706      0.913123488       372.193542      -288.561340     -0.775299132     F
+                call cpu_time(toc)
+                tt11=tt11+toc-tic
+            endif
 
             !--------------------------------------------------------!
 
@@ -871,20 +871,6 @@ use m_cpml
                 call fld_dE%check_value
             endif
 
-            !gkpa: rf%s^it+0.5 star tilD sf%s_dt^it+0.5
-            !if(if_compute_grad.and.mod(it,irdt)==0) then
-            if(mod(it,irdt)==0 .and. if_corr) then
-                call cpu_time(tic)
-                ! call gradient_vp2_oneterm(fld_F1,fld_E0,o_F1_star_E0,it)
-                ! call gradient_vp2_oneterm(fld_F2,fld_dE,o_F2_star_dE,it)
-                ! call gradient_vp2_3rdterm(fld_F2,fld_dE,o_F2_star_E0,it)
-                call gradient_vp2_nab_rp_nab_sp(fld_F1,fld_E0,o_F1_star_E0,it)
-                call gradient_vp2_nab_rp_nab_sp(fld_F2,fld_dE,o_F2_star_dE,it)
-                call gradient_vp2_nab_rp_nab_sp(fld_F2,fld_dE,o_F2_star_E0,it)
-                call cpu_time(toc)
-                tt11=tt11+toc-tic
-            endif
-
             !do backward time stepping to reconstruct the source (incident) wavefield
             !and adjoint time stepping to compute the receiver (adjoint) field
             !step# conforms with forward time stepping
@@ -919,6 +905,20 @@ use m_cpml
                 tt5=tt5+toc-tic
 
             ! endif
+
+            !gkpa: rf%s^it+0.5 star tilD sf%s_dt^it+0.5
+            !if(if_compute_grad.and.mod(it,irdt)==0) then
+            if(mod(it,irdt)==0 .and. if_corr) then
+                call cpu_time(tic)
+                ! call gradient_vp2_oneterm(fld_F1,fld_E0,o_F1_star_E0,it)
+                ! call gradient_vp2_oneterm(fld_F2,fld_dE,o_F2_star_dE,it)
+                ! call gradient_vp2_3rdterm(fld_F2,fld_dE,o_F2_star_E0,it)
+                call gradient_vp2_nab_rp_nab_sp(fld_F1,fld_E0,o_F1_star_E0,it)
+                call gradient_vp2_nab_rp_nab_sp(fld_F2,fld_dE,o_F2_star_dE,it)
+                call gradient_vp2_nab_rp_nab_sp(fld_F2,fld_E0,o_F2_star_E0,it)
+                call cpu_time(toc)
+                tt11=tt11+toc-tic
+            endif
 
             !--------------------------------------------------------!
 
@@ -1117,7 +1117,7 @@ use m_cpml
                 dm1=(self%tilD_vp2(iz  ,ix  ,1)+self%tilD_vp2(iz  ,ixm1,1)) * ((fld%p(iz  ,ix  ,1))-(fld%p(iz  ,ixm1,1))) !(abs(fld%p(iz  ,ix  ,1))-abs(fld%p(iz  ,ixm1,1)))
                 ddx=(dp1-dm1)*0.5*inv_dx2
 
-                fld_d%p(iz,ix,1) = fld_d%p(iz,ix,1) -time_dir*(ddz+ddx)*dt2!self%r2(iz,ix,1)*(ddz+ddx)
+                fld_d%p(iz,ix,1) = fld_d%p(iz,ix,1) -time_dir*(ddz+ddx)*dt2
 
             enddo; enddo
 
@@ -1165,7 +1165,6 @@ use m_cpml
                 fld_F1%p(iz,ix,1) = fld_F1%p(iz,ix,1) -(ddz+ddx)*dt2!*sgn(fld_E0%p(iz,ix,1))
 
             enddo; enddo
-
 
     end subroutine
 
@@ -1756,29 +1755,28 @@ use m_cpml
                 iz_ixm1=i    -nz  !iz,ix-1
                 iz_ixp1=i    +nz  !iz,ix+1
                 
-                !for time diff, we have 3 choices:
-                !Choice I: dE will be earlier than expected
-                ! drp_dt = (rf_p_next(i)-rf_p_prev(i)) *inv_2dt
-                ! dsp_dt = (sf_p_next(i)-sf_p_prev(i)) *inv_2dt
+                !for time diff, we have 3 choices
+                !which choice is correct depends on where we form the crosscorrelation
+                !Choice I:
+                drp_dt = (rf_p_next(i)-rf_p_prev(i)) *inv_2dt
+                dsp_dt = (sf_p_next(i)-sf_p_prev(i)) *inv_2dt
+                grad_drp_dt_dsp_dt(j)=grad_drp_dt_dsp_dt(j) + drp_dt*dsp_dt
 
-                !!Choice II: dE will be earlier than expected
-                !but the amp of grad_drp_dt_dsp_dt will be stronger the above
+                !!Choice II:
                 ! drp_dt = -rf_p(i)
-                ! dsp_dt = (sf_p_next(i)-2*sf_p(i)+sf_p_prev(i)) /dt2
+                ! d2sp_dt2 = (sf_p_next(i)-2*sf_p(i)+sf_p_prev(i)) /dt2
+                ! grad_drp_dt_dsp_dt(j)=grad_drp_dt_dsp_dt(j) - rf_p(i)*d2sp_dt2
 
-                !!Choice III: dE will no earlier nor later than expected
-                !meaning the phase of grad_drp_dt_dsp_dt is good
-                !and the amp of grad_drp_dt_dsp_dt will be stronger the above two choices
-                drp_dt = (rf_p_next(i)-2*rf_p(i)+rf_p_prev(i)) /dt2
-                dsp_dt = -sf_p(i)
+                !!Choice III:
+                ! d2rp_dt2 = (rf_p_next(i)-2*rf_p(i)+rf_p_prev(i)) /dt2
+                ! grad_drp_dt_dsp_dt(j)=grad_drp_dt_dsp_dt(j) - d2rp_dt2*sf_p(i)
+
 
                 drp_dz = (rf_p(izp1_ix)-rf_p(izm1_ix)) *inv_2dz
                 dsp_dz = (sf_p(izp1_ix)-sf_p(izm1_ix)) *inv_2dz
 
                 drp_dx = (rf_p(iz_ixp1)-rf_p(iz_ixm1)) *inv_2dx
                 dsp_dx = (sf_p(iz_ixp1)-sf_p(iz_ixm1)) *inv_2dx
-
-                grad_drp_dt_dsp_dt(j)=grad_drp_dt_dsp_dt(j) + drp_dt*dsp_dt
 
                 grad_nab_rp_nab_sp(j)=grad_nab_rp_nab_sp(j) + drp_dz*dsp_dz + drp_dx*dsp_dx
 

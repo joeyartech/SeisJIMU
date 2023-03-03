@@ -1,7 +1,7 @@
 MODEL_SIZE              '101 101 1'
 MODEL_SPACING           '20 20 1'
 FILE_MODEL              'model'
-MODEL_ATTRIBUTES        vp #'vp rho'
+MODEL_ATTRIBUTES        'vp tilD'
 FILE_TOPO               'topo'
 
 TILD_FROM               'none'
@@ -35,17 +35,17 @@ T0                  0.35
 UPDATE_WAVELET		'no'
 RDT			0
 
-#PARAMETER           'vp2:2250000:4000000'
+PARAMETER           'vp2:2.25e6:4e6'
 #PARAMETER            'tilD:-500000:500000'
-PARAMETER            'tilD:-5:5'
+#PARAMETER            'tilD:-5:5'
 
 SMOOTHING     'none'
 #PRECO         'z^0'
 
 #JOB             'forward modeling'
 #JOB             'estimate wavelet'
-JOB             'build tilD gradient'
-#JOB             'update velocity gradient'
+#JOB             'build tilD gradient'
+JOB             'update velocity gradient'
 
 #DNORMALIZERS    '1 1'
 #MREF            '1 1'

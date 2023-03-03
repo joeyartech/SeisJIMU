@@ -83,7 +83,7 @@ use m_resampler
             call alloc(shot%dadj,shot%nt,shot%nrcv)
             call kernel_L2sq(shot%dadj)
             call shot%write('dadj_',shot%dadj)
-            
+
             !adjoint modeling
             !AᴴF₂ = -RᴴN(E+δE)
             call ppg%init_field(fld_F2,name='fld_F2',ois_adjoint=.true.); call fld_F2%ignite
