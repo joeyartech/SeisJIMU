@@ -147,12 +147,6 @@ use m_Kernel
             !if_1st_cond = (pert%f <= curr%f)
             if_2nd_cond = (abs(pert%g_dot_d) <= c2*abs(curr%g_dot_d)) !strong curvature condition
             !if_2nd_cond = (pert%g_dot_d >= c2*curr%g_dot_d) !weak curvature condition (note the diff of inequal sign..)
-            if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'max')>0) then
-                if(setup%get_bool('IF_FLIP_CURVATURE_CONDITION',o_default='T')) then
-                    call hud('flip curvature condition due to maximization')
-                    if_2nd_cond = .not.if_2nd_cond
-                endif
-            endif
 
             !occasionally optimizers on processors don't have same behavior
             !try to avoid this by broadcast controlling logicals.

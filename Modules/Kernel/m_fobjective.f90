@@ -361,14 +361,6 @@ use m_preconditioner
         ! else
             call modeling_gradient!(qp%is_fitting_data)
         ! endif
-
-        if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'max')>0) then
-            if(setup%get_bool('IF_FLIP_PROBLEM',o_default='T')) then
-                call hud('flip problem sign due to maximization')
-                self%dnorms=-self%dnorms
-                m%gradient =-m%gradient
-            endif
-        endif
         
         qp%f = sum(self%dnorm_weights*self%dnorms) ! + sum(self%xnorm_weights*self%xnorms)
 

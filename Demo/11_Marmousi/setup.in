@@ -1,0 +1,52 @@
+MODEL_SIZE              '281 1361 1'
+MODEL_SPACING           '12.5 12.5 1'
+FILE_MODEL              'true'
+MODEL_ATTRIBUTES        'vp rho'
+FILE_TOPO               'topo'
+
+IS_FREESURFACE          F
+
+ACQUI_GEOMETRY          spread
+FS                      '100  1000  0'
+DS			'  0   100  0'
+NS			144
+FR                      '200     0  0'
+DR                      '  0    25  0'
+NR                      600
+
+SCOMP                   p
+RCOMP                   p #'p vz'
+
+#IF_HICKS        F
+#IF_BLOOM        F
+
+NT           4600
+DT           0.0015
+
+WAVELET_TYPE	ricker
+UPDATE_WAVELET	no
+
+
+#############
+## for FWI ##
+#############
+FILE_DATA_PREFIX    './results_fwd/dsyn_Shot'
+WEIGHTING           'none'
+
+FPEAK        6.4
+
+PARAMETER           'vp:1028:4700'
+
+SMOOTHING     'none'
+#PRECO         'z^0'
+
+JOB             gradient
+
+#SNAPSHOT     'p vz'
+#NSNAPSHOT    50
+
+MAX_ITERATE     120
+MAX_MODELING    150
+
+
+IF_USE_CHECKPOINT   F
