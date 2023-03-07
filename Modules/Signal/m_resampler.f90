@@ -76,6 +76,8 @@ use m_math
             is_tabled=.true.
         endif
         
+        if(din<1e-8) call error("resampler: datain's sampling rate (din) < 1e-8.",'Check dt in the SU header.')
+
         do i=1,ntr
             !interpolate using tabulated coefficients
             call interp(fin,din,nin,      datain(:,i),&

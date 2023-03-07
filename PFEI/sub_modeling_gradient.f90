@@ -60,7 +60,9 @@ use m_resampler
             call hud('        Estimate wavelet        ')
             call hud('--------------------------------')
 
-            call shot%update_wavelet !call gradient_matchfilter_data
+            call wei%update
+
+            call shot%update_wavelet(wei%weight) !call gradient_matchfilter_data
         
             !write synthetic data
             call shot%write('updated_RE0_',shot%dsyn)

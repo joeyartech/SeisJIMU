@@ -254,24 +254,25 @@ use m_smoother_laplacian_sparse
         !     call sysio_write('starting_tilD',self%tilD,size(self%tilD))
 
         ! endif
-        if(setup%get_str('TILD_MODEL_FROM','TILD_FROM',o_default='conditional_lapvp2')=='conditional_lapvp2') then
-            call alloc(self%tilD,self%nz,self%nx,self%ny)
-            do ix=2,self%nx-1
-            do iz=2,self%nz-1
-                if(self%vp(iz+1,ix,1)<self%vp(iz,ix,1)) then
-                    self%tilD(iz,ix,1) = -1e-10*( &
-                        (self%vp(iz+1,ix,1)**2-2.*self%vp(iz,ix,1)**2+self%vp(iz-1,ix,1)**2)/self%dz**2 &
-                       +(self%vp(iz,ix+1,1)**2-2.*self%vp(iz,ix,1)**2+self%vp(iz,ix-1,1)**2)/self%dx**2 &
-                        )
-                endif
-            enddo; enddo
-            self%tilD(1 ,:,1)     =self%tilD(2   ,:,1)
-            self%tilD(self%nz,:,1)=self%tilD(self%nz-1,:,1)
-            self%tilD(:,1 ,1)     =self%tilD(:,2   ,1)
-            self%tilD(:,self%nx,1)=self%tilD(:,self%nx-1,1)
+        if(.not.allocated(self%tilD)) then
+            if(setup%get_str('TILD_MODEL_FROM','TILD_FROM',o_default='conditional_lapvp2')=='conditional_lapvp2') then
+                call alloc(self%tilD,self%nz,self%nx,self%ny)
+                do ix=2,self%nx-1
+                do iz=2,self%nz-1
+                    if(self%vp(iz+1,ix,1)<self%vp(iz,ix,1)) then
+                        self%tilD(iz,ix,1) = -1e-10*( &
+                            (self%vp(iz+1,ix,1)**2-2.*self%vp(iz,ix,1)**2+self%vp(iz-1,ix,1)**2)/self%dz**2 &
+                           +(self%vp(iz,ix+1,1)**2-2.*self%vp(iz,ix,1)**2+self%vp(iz,ix-1,1)**2)/self%dx**2 &
+                            )
+                    endif
+                enddo; enddo
+                self%tilD(1 ,:,1)     =self%tilD(2   ,:,1)
+                self%tilD(self%nz,:,1)=self%tilD(self%nz-1,:,1)
+                self%tilD(:,1 ,1)     =self%tilD(:,2   ,1)
+                self%tilD(:,self%nx,1)=self%tilD(:,self%nx-1,1)
 
-            call hud('tilD model is built from -1e-10*∇²vp² where ∂z(vp)<0.')
-            call sysio_write('derived_tilD',self%tilD,size(self%tilD))
+                call hud('tilD model is built from -1e-10*∇²vp² where ∂z(vp)<0.')
+                call sysio_write('derived_tilD',self%tilD,size(self%tilD))
 
             ! call hud('smoothing the derived tilD model')
             ! call smoother_Laplacian_init([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],setup%get_real('PEAK_FREQUENCY','FPEAK'))
@@ -280,6 +281,7 @@ use m_smoother_laplacian_sparse
             ! call sysio_write('derived_tilD_smth',self%tilD,size(self%tilD))
 
         endif
+    endif
 
     end subroutine
 

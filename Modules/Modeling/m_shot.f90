@@ -410,12 +410,13 @@ use m_model
 
     end subroutine
 
-    subroutine update_wavelet(self)
+    subroutine update_wavelet(self,weight)
         class(t_shot) :: self
+        real,dimension(self%nt,self%nrcv) :: weight
 
         type(t_suformat) :: sudata
 
-        call matchfilter_estimate(self%dsyn,self%dobs,self%nt,self%nrcv)!,self%index)
+        call matchfilter_estimate(self%dsyn*weight,self%dobs*weight,self%nt,self%nrcv)!,self%index)
         
         call matchfilter_apply_to_wavelet(self%wavelet)
         
