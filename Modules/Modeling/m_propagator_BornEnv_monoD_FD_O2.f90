@@ -70,6 +70,7 @@ use m_cpml
 
         procedure :: forward
         procedure :: forward_scattering
+        procedure :: adjoint
         procedure :: adjoint_tilD
         procedure :: adjoint_vp2
         
@@ -638,6 +639,167 @@ use m_cpml
 
     end subroutine
 
+    subroutine adjoint(self,fld_a,fld_u,oif_record_adjseismo,o_a_star_u)
+        class(t_propagator) :: self
+        type(t_field) :: fld_a,fld_u
+        logical,optional :: oif_record_adjseismo
+        type(t_correlation),optional :: o_a_star_u
+        
+        real,parameter :: time_dir=-1. !time direction
+        logical :: if_record_adjseismo
+
+        if_record_adjseismo =either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
+        if(if_record_adjseismo)  call alloc(fld_a%seismo,1,self%nt)
+
+        ! call alloc(cb%grad,cb%mz,cb%mx,cb%my,3)
+        
+        !reinitialize absorbing boundary for incident wavefield reconstruction
+        call fld_u%reinit
+                    
+        !timing
+        tt1=0.; tt2=0.; tt3=0.
+        tt4=0.; tt5=0.; tt6=0.
+        tt7=0.; tt8=0.; tt9=0.
+        tt10=0.;tt11=0.; tt12=0.; tt13=0.
+        
+        ift=1; ilt=self%nt
+
+        ! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        
+        do it=ilt,ift,int(time_dir)
+            if(mod(it,500)==0 .and. mpiworld%is_master) then
+                write(*,*) 'it----',it
+                call fld_a%check_value
+                call fld_u%check_value
+            endif            
+
+
+            !do backward time stepping to reconstruct the source (incident) wavefield
+            !and adjoint time stepping to compute the receiver (adjoint) field
+            !step# conforms with forward time stepping
+
+            ! if(present(o_sf)) then
+                !backward step 5:
+                call cpu_time(tic)
+                call self%evolve_pressure(fld_u,time_dir,it)
+                call cpu_time(toc)
+                tt1=tt1+toc-tic
+
+                !backward step 2: retrieve p^it+1 at boundary layers (BC)
+                call cpu_time(tic)
+                call fld_u%boundary_transport_pressure('load',it)
+                call cpu_time(toc)
+                tt2=tt2+toc-tic
+
+                ! !backward step 3: s^it+1.5 -> s^it+0.5
+                ! call cpu_time(tic)
+                ! call self%set_pressure(fld_u,time_dir,it)
+                ! call cpu_time(toc)
+                ! tt3=tt3+toc-tic
+
+                !backward step 4: s^it+1.5 -> s^it+0.5
+                call cpu_time(tic)
+                call self%update_pressure(fld_u,time_dir,it)
+                call cpu_time(toc)
+                tt4=tt4+toc-tic
+
+                !backward step 1: rm pressure from s^it+0.5
+                call cpu_time(tic)
+                call self%inject_pressure(fld_u,time_dir,it)
+                call cpu_time(toc)
+                tt5=tt5+toc-tic
+            ! endif
+
+            !gkpa: rf%s^it+0.5 star tilD sf%s_dt^it+0.5
+            !if(if_compute_grad.and.mod(it,irdt)==0) then
+            if(mod(it,irdt)==0 .and. present(o_a_star_u)) then
+                call cpu_time(tic)
+                call gradient_vp2_nab_rp_nab_sp(fld_a,fld_u,o_a_star_u,it)
+                call cpu_time(toc)
+                tt11=tt11+toc-tic
+            endif
+
+            !--------------------------------------------------------!
+
+            !adjoint step 6: inject to s^it+1.5 at receivers
+            call cpu_time(tic)
+            call self%inject_pressure(fld_a,time_dir,it)
+            call cpu_time(toc)
+            tt6=tt6+toc-tic
+
+            !adjoint step 4: s^it+1.5 -> s^it+0.5
+            call cpu_time(tic)
+            call self%update_pressure(fld_a,time_dir,it)
+            call cpu_time(toc)
+            tt8=tt8+toc-tic
+
+            !adjoint step 5
+            ! this step is moved to update_pressure for easier management
+            call cpu_time(tic)
+            call self%evolve_pressure(fld_a,time_dir,it)
+            call cpu_time(toc)
+            tt7=tt7+toc-tic
+
+            ! !adjoint step 5: inject to s^it+1.5 at receivers
+            ! call cpu_time(tic)
+            ! call self%set_pressure(fld_a,time_dir,it)
+            ! call cpu_time(toc)
+            ! tt9=tt9+toc-tic
+
+            !adjoint step 1: sample v^it or s^it+0.5 at source position
+            if(if_record_adjseismo) then
+                call cpu_time(tic)
+                call self%extract(fld_a,it)
+                call cpu_time(toc)
+                tt10=tt10+toc-tic
+            endif
+            
+            !snapshot
+            call fld_a%write(it,o_suffix='_rev')
+            call fld_u%write(it,o_suffix='_rev')
+            
+            if(present(o_a_star_u)) then
+                call fld_u%write_ext(it,'corr_a_star_u_nab2',o_a_star_u%nab_rp_nab_sp,m%n)
+            endif
+            
+        enddo
+        
+        if(present(o_a_star_u)) then
+            !call gradient_postprocess
+            ! !scale by m%cell_volume*rdt tobe a gradient in the discretized world
+            ! cb%corr = cb%corr*m%cell_volume*rdt
+            ! !preparing for cb%project_back
+            ! cb%corr(1,:,:,:) = cb%corr(2,:,:,:)
+            o_a_star_u%nab_rp_nab_sp = o_a_star_u%nab_rp_nab_sp*m%cell_volume*rdt
+            o_a_star_u%nab_rp_nab_sp(1,:,:,:) = o_a_star_u%nab_rp_nab_sp(2,:,:,:)
+        endif
+
+        
+        if(mpiworld%is_master) then
+            write(*,*) 'Elapsed time to evolve field        ',tt1/mpiworld%max_threads
+            write(*,*) 'Elapsed time to load boundary       ',tt2/mpiworld%max_threads
+            ! write(*,*) 'Elapsed time to set field           ',tt3/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update field        ',tt4/mpiworld%max_threads
+            write(*,*) 'Elapsed time to rm source           ',tt5/mpiworld%max_threads
+            write(*,*) 'Elapsed time -----------------------'
+            write(*,*) 'Elapsed time to add adj source      ',tt6/mpiworld%max_threads
+            write(*,*) 'Elapsed time to evolve adj field    ',tt7/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update adj field    ',tt8/mpiworld%max_threads
+            ! write(*,*) 'Elapsed time to set adj field       ',tt9/mpiworld%max_threads
+            write(*,*) 'Elapsed time to extract&write fields',tt10/mpiworld%max_threads
+            write(*,*) 'Elapsed time to correlate           ',tt11/mpiworld%max_threads
+
+        endif
+
+        call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
+        call hud('ximage < snap_rfield%*  n1='//num2str(cb%nz)//' perc=99')
+        call hud('xmovie < snap_rfield%*  n1='//num2str(cb%nz)//' n2='//num2str(cb%nx)//' clip=?e-?? loop=2 title=%g')
+        call hud('ximage < snap_*  n1='//num2str(cb%mz)//' perc=99')
+        call hud('xmovie < snap_*  n1='//num2str(cb%mz)//' n2='//num2str(cb%mx)//' clip=?e-?? loop=2 title=%g')
+        
+    end subroutine
+
+
     subroutine adjoint_tilD(self,fld_F2,fld_E0,oif_record_adjseismo,o_F2_star_E0)
         class(t_propagator) :: self
         type(t_field) :: fld_F2,fld_E0
@@ -954,11 +1116,11 @@ use m_cpml
                 tt10=tt10+toc-tic
             endif
 
-            !adjoint step 6: inject to s^it+1.5 at receivers
-            call cpu_time(tic)
+            ! !adjoint step 6: inject to s^it+1.5 at receivers
+            ! call cpu_time(tic)
             ! call self%inject_pressure_adjoint_scattering(fld_F1,fld_F2,fld_E0,time_dir,it)
-            call cpu_time(toc)
-            tt6=tt6+toc-tic
+            ! call cpu_time(toc)
+            ! tt6=tt6+toc-tic
             
             !snapshot
             call fld_F1%write(it,o_suffix='_rev')

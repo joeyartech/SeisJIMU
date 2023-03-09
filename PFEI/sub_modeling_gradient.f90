@@ -18,6 +18,8 @@ use m_resampler
     !real,dimension(:,:,:),allocatable :: Ddt2
     ! character(:),allocatable :: update_wavelet
     ! real,dimension(:,:),allocatable :: Rmu, Rdiff
+
+    character(:),allocatable :: dnorm
     
     call alloc(gtilD,m%nz,m%nx,m%ny,1)
     call alloc(gvp2 ,m%nz,m%nx,m%ny,1)
@@ -119,11 +121,29 @@ use m_resampler
             call alloc(F2_star_E0%nab_rp_nab_sp,m%nz,m%nx,m%ny,1)
 
             call wei%update
-            fobj%misfit = fobj%misfit &
-                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-(shot%dsyn+shot%dsyn_aux), shot%dt)
-
             call alloc(shot%dadj,shot%nt,shot%nrcv)
-            call kernel_L2sq(shot%dadj)
+
+            if(.not.allocated(dnorm)) dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2sq_sq')
+            select case (dnorm)
+                case ('L2sq')
+                fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-(shot%dsyn+shot%dsyn_aux), shot%dt)
+                call kernel_L2sq(shot%dadj)
+
+                case ('L2sq_abs')
+                fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, abs(shot%dobs)-abs(shot%dsyn+shot%dsyn_aux), shot%dt)
+                call kernel_L2sq(shot%dadj)
+                shot%dadj = shot%dadj*sgns(shot%dsyn+shot%dsyn_aux)
+
+                case default
+                fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, (shot%dobs)**2-(shot%dsyn+shot%dsyn_aux)**2, shot%dt)
+                call kernel_L2sq(shot%dadj)
+                shot%dadj = shot%dadj*2.*(shot%dsyn+shot%dsyn_aux)
+
+            end select
+
             call shot%write('dadj_',shot%dadj)
             
             !adjoint modeling
@@ -205,5 +225,21 @@ use m_resampler
     ! endif
         
     call mpiworld%barrier
+
+
+    contains
+    pure function sgns(a) result(s)
+    use m_math, only: r_eps
+        real,dimension(:,:),intent(in) :: a
+        real,dimension(:,:),allocatable :: s
+        s=a
+        where (a>r_eps)
+            s=1.
+        elsewhere (a<-r_eps)
+            s=-1.
+        elsewhere
+            s=0.
+        endwhere
+    end function
 
 end subroutine

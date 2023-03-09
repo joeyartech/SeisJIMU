@@ -14,8 +14,9 @@ obj = \
 ../Modules/Modeling/m_shotlist_$(ShotDec).o \
 ../Modules/Modeling/m_shot.o \
 ../Modules/Modeling/m_computebox.o \
+../Modules/Modeling/m_correlation.o \
 ../Modules/Modeling/m_field.o \
-../Modules/Modeling/m_cpml_$(Solver).o \
+../Modules/Modeling/m_cpml.o \
 ../Modules/Modeling/m_propagator_$(WaveEq)_$(Solver)_$(Order).o \
 ../Modules/Modeling/m_Modeling.o \
 ../Modules/Kernel/m_parametrizer_$(Param).o \
