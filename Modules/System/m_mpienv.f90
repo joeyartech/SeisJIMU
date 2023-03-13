@@ -114,10 +114,11 @@ use m_string
         str=string//s_NL
         disp=filesize+len(str)*self%iproc
 
-        call mpi_file_open(self%communicator, filename, mpi_mode_append+mpi_mode_wronly, mpi_info_null, fhandle, self%ierr)
-        call mpi_file_set_view(fhandle, disp, mpi_char, mpi_char, 'native', mpi_info_null, self%ierr)
-        call mpi_file_write(fhandle, str, len(str), mpi_char, mpi_status_ignore, self%ierr)        
-        call mpi_file_close(fhandle, self%ierr)
+!mpi_file hasn't been implemented in MPICH as of 8/25/2011
+!        call mpi_file_open(self%communicator, filename, mpi_mode_append+mpi_mode_wronly, mpi_info_null, fhandle, self%ierr)
+!        call mpi_file_set_view(fhandle, disp, mpi_char, mpi_char, 'native', mpi_info_null, self%ierr)
+!        call mpi_file_write(fhandle, str, len(str), mpi_char, mpi_status_ignore, self%ierr)        
+!        call mpi_file_close(fhandle, self%ierr)
 
     end subroutine
 
