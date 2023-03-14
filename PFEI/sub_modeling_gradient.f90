@@ -136,9 +136,8 @@ use m_resampler
                 call kernel_L2sq(shot%dadj)
                 shot%dadj = shot%dadj*sgns(shot%dsyn+shot%dsyn_aux)!,shot%dobs)
 
-		case default
-		call error('No DNORM specified!')
-                !case default
+                case default
+                call error('No DNORM specified!')
                 !fobj%misfit = fobj%misfit &
                 !    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, (shot%dobs)**2-(shot%dsyn+shot%dsyn_aux)**2, shot%dt)
                 !call kernel_L2sq(shot%dadj)
