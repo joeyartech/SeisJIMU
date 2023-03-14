@@ -52,7 +52,7 @@ exe : sub_modeling_gradient.o main.o
 	(cd ../exe; ln -sf $(app)_$(WaveEq)_$(Solver)_$(Order)_$(LineS)_$(Optim)_$(TAG) $(APP) )
 
 clean :
-	-rm main.o
+	-rm main.o sub_modeling_gradient.o
 
 cleanall :
 	#System
