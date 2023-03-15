@@ -134,7 +134,13 @@ use m_resampler
                 fobj%misfit = fobj%misfit &
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, abs(shot%dobs)-abs(shot%dsyn+shot%dsyn_aux), shot%dt)
                 call kernel_L2sq(shot%dadj)
-                shot%dadj = shot%dadj*sgns(shot%dsyn+shot%dsyn_aux)!,shot%dobs)
+                shot%dadj = shot%dadj*sgns(shot%dsyn+shot%dsyn_aux)
+
+                case ('L2sq_modabs')
+                fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, abs(shot%dobs)-abs(shot%dsyn+shot%dsyn_aux), shot%dt)
+                call kernel_L2sq(shot%dadj)
+                shot%dadj = shot%dadj*sgns2(shot%dsyn+shot%dsyn_aux,  shot%dobs-(shot%dsyn+shot%dsyn_aux)  )
 
                 case default
                 call error('No DNORM specified!')
@@ -230,22 +236,41 @@ use m_resampler
 
     contains
     pure function sgns(a) result(s)
-!    use m_math, only: r_eps
+    use m_math, only: r_eps
         real,dimension(:,:),intent(in) :: a
         real,dimension(:,:),allocatable :: s
         s=a
-        !where (a>r_eps)
-        !    s=1.
-        !elsewhere (a<-r_eps)
-        !    s=-1.
-        !elsewhere
-        !    s=0.
-        !endwhere
-        where (a>0.)
+        where (a>r_eps)
             s=1.
-        elsewhere
+        elsewhere (a<-r_eps)
             s=-1.
+        elsewhere
+            s=0.
         endwhere
+        !where (a>0.)
+        !    s=1.
+        !elsewhere
+        !    s=-1.
+        !endwhere
+    end function
+
+    pure function sgns2(a,b) result(s)
+        real,dimension(:,:),intent(in) :: a,b
+        real,dimension(:,:),allocatable :: s
+        s=a
+        where (a>r_eps)
+            s=1.
+        elsewhere (a<-r_eps)
+            s=-1.
+        elsewhere
+            where (b>r_eps)
+                s=1.
+            elsewhere (b<-r_eps)
+                s=-1.
+            elsewhere
+                s=0.
+            endwhere
+        endwhere      
     end function
 
 end subroutine
