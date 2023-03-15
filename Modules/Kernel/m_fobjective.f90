@@ -409,8 +409,8 @@ use m_preconditioner
         ! call sysio_write('gkpa',correlation_gradient(:,:,:,2),size(correlation_gradient(:,:,:,2)))
 
         !!transform to x-domain
-        !call param%transform(o_g=qp%g)
-        qp%g=correlation_gradient
+        call param%transform(o_g=qp%g)
+        !qp%g=correlation_gradient
 
         !Regularization in x-domain
         ! if(either(oif_approx,.false.,present(oif_approx))) then
