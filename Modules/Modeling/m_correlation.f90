@@ -17,7 +17,7 @@ use m_computebox
         integer :: ifz,ilz,ifx,ilx,ify,ily,ift,ilt
 
         !wavefield components in computation domain
-        real,dimension(:,:,:,:),allocatable :: sp_rp
+        real,dimension(:,:,:,:),allocatable :: rp_sp
         !real,dimension(:,:,:,:),allocatable :: svz_rstress
 
         real,dimension(:,:,:,:),allocatable :: drp_dt_dsp_dt, nab_rp_nab_sp
@@ -95,7 +95,7 @@ use m_computebox
             self%ift=1;         self%ilt=1;         self%nt=1
         endif
 
-        call alloc(self%sp_rp,[self%ifz,self%ilz],[self%ifx,self%ilx],[self%ify,self%ily],[self%ift,self%ilt],o_init=o_init)
+        call alloc(self%rp_sp,[self%ifz,self%ilz],[self%ifx,self%ilx],[self%ify,self%ily],[self%ift,self%ilt],o_init=o_init)
 
     end subroutine
 
@@ -138,9 +138,9 @@ use m_computebox
         suf=either(o_suffix,'',present(o_suffix))
 
         if(present(o_mode)) then
-            call sysio_write(prf//self%name//suf,self%sp_rp,size(self%sp_rp),o_mode=o_mode)
+            call sysio_write(prf//self%name//suf,self%rp_sp,size(self%rp_sp),o_mode=o_mode)
         else
-            call sysio_write(prf//self%name//suf,self%sp_rp,size(self%sp_rp))
+            call sysio_write(prf//self%name//suf,self%rp_sp,size(self%rp_sp))
         endif
 
     end subroutine
@@ -148,7 +148,7 @@ use m_computebox
     subroutine final(self)
         type(t_correlation) :: self
 
-        call dealloc(self%sp_rp)
+        call dealloc(self%rp_sp)
 
     end subroutine
 

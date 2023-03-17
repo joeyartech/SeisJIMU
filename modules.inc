@@ -4,14 +4,14 @@
 ############
 # Modeling #
 ############
-WaveEq=BornEnv_monoD
-#WaveEq=AC
+#WaveEq=BornEnv_monoD
+WaveEq=AC
 #WaveEq=AC_VTI
 # WaveEq=PSV
-Solver=FD
-#Solver=FDSG
-#Order=O4
-Order=O2
+#Solver=FD
+Solver=FDSG
+Order=O4
+#Order=O2
 ShotDec=batching
 
 ##########

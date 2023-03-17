@@ -58,6 +58,8 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:,:),allocatable :: dpzz_dz,dpxx_dx,dpyy_dy
         real,dimension(:,:,:),allocatable :: lapz,lapx,lapy
 
+        real,dimension(:,:,:),allocatable :: poynz,poynx
+
         !source time function
         ! real,dimension(:,:),allocatable :: fz,fx,fy !forces
         ! real,dimension(:,:),allocatable :: mzz,mzx,mzy !moments

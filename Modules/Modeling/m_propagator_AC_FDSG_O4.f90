@@ -6,6 +6,7 @@ use m_model
 use m_shot
 use m_computebox
 use m_field
+use m_correlation
 use m_cpml
 
     private
@@ -353,6 +354,7 @@ use m_cpml
         type(t_field) :: fld_u
 
         real,parameter :: time_dir=1. !time direction
+        character(:),allocatable :: s_poynting_def
 
         !seismo
         call alloc(fld_u%seismo,shot%nrcv,self%nt)
@@ -360,6 +362,8 @@ use m_cpml
         tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.
         
         ift=1; ilt=self%nt
+
+        s_poynting_def=setup%get_str('POYNTING_DEF',o_default='p_dotp_nabp')
 
         do it=ift,ilt
             if(mod(it,500)==0 .and. mpiworld%is_master) then
@@ -392,11 +396,16 @@ use m_cpml
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
+            call cpu_time(tic)
+            call poynting(s_poynting_def,fld_u,time_dir,it)
+            call cpu_time(toc)
+            tt5=tt5+toc-tic
+
             !step 5: sample v^it+1 or s^it+1.5 at receivers
             call cpu_time(tic)
             call self%extract(fld_u,it)
             call cpu_time(toc)
-            tt5=tt5+toc-tic
+            tt6=tt6+toc-tic
 
             !snapshot
             call fld_u%write(it)
@@ -406,7 +415,7 @@ use m_cpml
                 call cpu_time(tic)
                 call fld_u%boundary_transport('save',it)
                 call cpu_time(toc)
-                tt6=tt6+toc-tic
+                tt7=tt7+toc-tic
             ! endif
 
         enddo
@@ -416,8 +425,9 @@ use m_cpml
             write(*,*) 'Elapsed time to update velocities    ',tt2/mpiworld%max_threads
             write(*,*) 'Elapsed time to add source stresses  ',tt3/mpiworld%max_threads
             write(*,*) 'Elapsed time to update stresses      ',tt4/mpiworld%max_threads
-            write(*,*) 'Elapsed time to extract field        ',tt5/mpiworld%max_threads
-            write(*,*) 'Elapsed time to save boundary        ',tt6/mpiworld%max_threads
+            write(*,*) 'Elapsed time to Poynting vectors     ',tt5/mpiworld%max_threads
+            write(*,*) 'Elapsed time to extract field        ',tt6/mpiworld%max_threads
+            write(*,*) 'Elapsed time to save boundary        ',tt7/mpiworld%max_threads
         endif
 
         call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
@@ -426,24 +436,19 @@ use m_cpml
 
     end subroutine
 
-    subroutine adjoint(self,fld_a,fld_u,oif_record_adjseismo,oif_compute_imag,oif_compute_grad)
-    !adjoint_a_star_Du
+    subroutine adjoint(self,fld_a,fld_u,oif_record_adjseismo,o_a_star_u)
+    !adjoint_a_star_Du for imaging
         class(t_propagator) :: self
         type(t_field) :: fld_a,fld_u
-        logical,optional :: oif_record_adjseismo, oif_compute_imag, oif_compute_grad
+        logical,optional :: oif_record_adjseismo
+        type(t_correlation),optional :: o_a_star_u
         
         real,parameter :: time_dir=-1. !time direction
-        logical :: if_record_adjseismo, if_compute_imag, if_compute_grad
+        logical :: if_record_adjseismo
+        character(:),allocatable :: s_poynting_def
 
         if_record_adjseismo =either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
-        if_compute_imag     =either(oif_compute_imag,    .false.,present(oif_compute_imag))
-        if_compute_grad     =either(oif_compute_grad,    .false.,present(oif_compute_grad))
-        self%if_compute_engy=self%if_compute_engy.and.(if_compute_imag.or.if_compute_grad)
-        
         if(if_record_adjseismo)  call alloc(fld_a%seismo,1,self%nt)
-        if(if_compute_imag)      call alloc(cb%imag,cb%mz,cb%mx,cb%my,self%nimag)
-        if(if_compute_grad)      call alloc(cb%grad,cb%mz,cb%mx,cb%my,self%ngrad)
-        if(self%if_compute_engy) call alloc(cb%engy,cb%mz,cb%mx,cb%my,self%nengy)
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
         call fld_u%reinit
@@ -457,6 +462,8 @@ use m_cpml
         ift=1; ilt=self%nt
 
         ! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+
+        s_poynting_def=setup%get_str('POYNTING_DEF',o_default='p_dotp_nabp')
         
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
@@ -504,20 +511,20 @@ use m_cpml
             call cpu_time(toc)
             tt5=tt5+toc-tic
 
+            !compute Poynting vectors before imaging
+            call cpu_time(tic)
+            call poynting(s_poynting_def,fld_u,time_dir,it)
+            call poynting(s_poynting_def,fld_a,time_dir,it)
+            call cpu_time(toc)
+            tt6=tt6+toc-tic
+            
             !gkpa: rf%s^it+0.5 star D sf%s_dt^it+0.5
             !use sf%v^it+1 to compute sf%s_dt^it+0.5, as backward step 4
-            if(if_compute_grad.and.mod(it,irdt)==0) then
+            if(mod(it,irdt)==0 .and. present(o_a_star_u)) then
                 call cpu_time(tic)
-                call gradient_moduli(fld_a,fld_u,it,cb%grad(:,:,:,2))
+                call imaging(fld_a,fld_u,it,o_a_star_u%rp_sp)
                 call cpu_time(toc)
-                tt6=tt6+toc-tic
-            endif
-
-            if(if_compute_imag.and.mod(it,irdt)==0) then
-                call cpu_time(tic)
-                call imaging(fld_a,fld_u,it,cb%imag)
-                call cpu_time(toc)
-                tt6=tt6+toc-tic
+                tt7=tt7+toc-tic
             endif
 
             ! !energy term of sfield
@@ -535,13 +542,13 @@ use m_cpml
                 call cpu_time(tic)
                 call self%update_velocities(fld_u,time_dir,it)
                 call cpu_time(toc)
-                tt7=tt7+toc-tic
+                tt8=tt8+toc-tic
 
                 !backward step 1: rm forces from v^it
                 call cpu_time(tic)
                 call self%inject_velocities(fld_u,time_dir,it)
                 call cpu_time(toc)
-                tt8=tt8+toc-tic
+                tt9=tt9+toc-tic
             ! endif
 
             !--------------------------------------------------------!
@@ -550,65 +557,61 @@ use m_cpml
             call cpu_time(tic)
             call self%inject_velocities(fld_a,time_dir,it)
             call cpu_time(toc)
-            tt9=tt9+toc-tic
+            tt10=tt10+toc-tic
 
             !adjoint step 2: v^it+1 -> v^it by FD^T of s^it+0.5
             call cpu_time(tic)
             call self%update_velocities(fld_a,time_dir,it)
             call cpu_time(toc)
-            tt10=tt10+toc-tic
+            tt11=tt11+toc-tic
             
             !adjoint step 1: sample v^it or s^it+0.5 at source position
             if(if_record_adjseismo) then
                 call cpu_time(tic)
                 call self%extract(fld_a,it)
                 call cpu_time(toc)
-                tt11=tt11+toc-tic
+                tt12=tt12+toc-tic
             endif
             
-            !grho: sfield%v_dt^it \dot rfield%v^it
-            !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
-            if(if_compute_grad.and.mod(it,irdt)==0) then
-                call cpu_time(tic)
-                call gradient_density(fld_a,fld_u,it,cb%grad(:,:,:,1))
-                call cpu_time(toc)
-                tt6=tt6+toc-tic
-            endif
+            ! !grho: sfield%v_dt^it \dot rfield%v^it
+            ! !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
+            ! if(if_compute_grad.and.mod(it,irdt)==0) then
+            !     call cpu_time(tic)
+            !     call gradient_density(fld_a,fld_u,it,cb%grad(:,:,:,1))
+            !     call cpu_time(toc)
+            !     tt6=tt6+toc-tic
+            ! endif
             
             !snapshot
             call fld_a%write(it,o_suffix='_rev')
             call fld_u%write(it,o_suffix='_rev')
-            if(if_compute_imag) then
-                call fld_a%write_ext(it,'imag' ,cb%imag,size(cb%imag))
+            if(present(o_a_star_u)) then
+                call fld_a%write_ext(it,'corr_a_star_u',o_a_star_u%rp_sp,m%n)
             endif
-            if(if_compute_grad) then
-                ! call fld_a%write_ext(it,'grad_density',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
-                ! call fld_a%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
-                call fld_a%write_ext(it,'grad_a_star_Du' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
-            endif
-            if(self%if_compute_engy) then
-                call fld_a%write_ext(it,'engy',cb%engy(:,:,:,1),size(cb%engy(:,:,:,1)))
-            endif
+            ! if(self%if_compute_engy) then
+            !     call fld_a%write_ext(it,'engy',cb%engy(:,:,:,1),size(cb%engy(:,:,:,1)))
+            ! endif
 
         enddo
         
-        !postprocess
-        if(if_compute_imag) call imaging_postprocess
-        if(if_compute_grad) call gradient_postprocess
+        ! !postprocess
+        ! if(if_compute_imag) call imaging_postprocess
+        ! if(if_compute_grad) call gradient_postprocess
         
         if(mpiworld%is_master) then
             write(*,*) 'Elapsed time to load boundary            ',tt1/mpiworld%max_threads
             write(*,*) 'Elapsed time to update stresses          ',tt2/mpiworld%max_threads
             write(*,*) 'Elapsed time to rm source stresses       ',tt3/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update velocities        ',tt7/mpiworld%max_threads
-            write(*,*) 'Elapsed time to rm source velocities     ',tt8/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update velocities        ',tt8/mpiworld%max_threads
+            write(*,*) 'Elapsed time to rm source velocities     ',tt9/mpiworld%max_threads
             write(*,*) 'Elapsed time ----------------------------'
             write(*,*) 'Elapsed time to add adjsource stresses   ',tt4/mpiworld%max_threads
             write(*,*) 'Elapsed time to update adj stresses      ',tt5/mpiworld%max_threads
-            write(*,*) 'Elapsed time to add adjsource velocities ',tt9/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update adj velocities    ',tt10/mpiworld%max_threads
-            write(*,*) 'Elapsed time to extract&write fields     ',tt11/mpiworld%max_threads
-            write(*,*) 'Elapsed time to correlate                ',tt6/mpiworld%max_threads
+            write(*,*) 'Elapsed time to add adjsource velocities ',tt10/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update adj velocities    ',tt11/mpiworld%max_threads
+            write(*,*) 'Elapsed time to extract&write fields     ',tt12/mpiworld%max_threads
+            write(*,*) 'Elapsed time to Poynting vectors         ',tt6/mpiworld%max_threads
+            write(*,*) 'Elapsed time to correlate                ',tt7/mpiworld%max_threads
 
         endif
 
@@ -1013,6 +1016,43 @@ use m_cpml
 
     end subroutine
 
+    subroutine poynting(s_poynting_def,fld,time_dir,it)
+        character(:),allocatable :: s_poynting_def
+        type(t_field) :: fld
+
+        !nonzero only when sf touches rf
+        ifz=max(fld%bloom(1,it),2)
+        ilz=min(fld%bloom(2,it),cb%mz)
+        ifx=max(fld%bloom(3,it),1)
+        ilx=min(fld%bloom(4,it),cb%mx)
+        ify=max(fld%bloom(5,it),1)
+        ily=min(fld%bloom(6,it),cb%my)
+        
+        ! if(m%is_cubic) then
+        !     ! call grad3d_moduli(rf%p,sf%vz,sf%vx,sf%vy,&
+        !     !                    grad,                  &
+        !     !                    ifz,ilz,ifx,ilx,ify,ily)
+        ! else
+            select case(s_poynting_def)
+
+            case('p_dotp_nabp')! s:=p*dotp*nabp
+                call poyn_dotp_nabp(fld%p,fld%vz,fld%vx,ppg%kpa,fld%poynz,fld%poynx,ifz,ilz,ifx,ilx)
+                fld%poynz=fld%p*fld%poynz
+                fld%poynx=fld%p*fld%poynx
+
+            case('dotp_nabp')! s:=dotp*nabp
+                call poyn_dotp_nabp(fld%p,fld%vz,fld%vx,ppg%kpa,fld%poynz,fld%poynx,ifz,ilz,ifx,ilx)
+
+            case('p_v')! s:=p*v
+                !call poyn_p_v(fld%p,fld%v,fld%poynz,fld%poynx,ifz,ilz,ifx,ilx)
+                fld%poynz=fld%p*fld%vz
+                fld%poynx=fld%p*fld%vx
+
+            end select
+            
+        ! endif
+    end subroutine
+
     subroutine imaging(rf,sf,it,imag)
         type(t_field), intent(in) :: rf, sf
         real,dimension(cb%mz,cb%mx,cb%my) :: imag
@@ -1078,6 +1118,54 @@ use m_cpml
 
     !========= Finite-Difference on flattened arrays ==================
     
+    subroutine poyn_dotp_nabp(p,vz,vx,kpa,&
+                            poynz,poynx,   &
+                            ifz,ilz,ifx,ilx)
+        real,dimension(*) :: p,vz,vx,kpa,poynz,poynx
+        
+        nz=cb%nz
+        nx=cb%nx
+        
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,&
+        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,&
+        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,&
+        !$omp         dp_dz_,dp_dx_)
+        !$omp do schedule(dynamic)
+        do ix=ifx,ilx
+
+            !dir$ simd
+            do iz=ifz,ilz
+
+                i=(iz-cb%ifz)+(ix-cb%ifx)*nz+1
+                
+                izm2_ix=i-2  !iz-2,ix
+                izm1_ix=i-1  !iz-1,ix
+                iz_ix  =i    !iz,ix
+                izp1_ix=i+1  !iz+1,ix
+                
+                iz_ixm2=i  -2*nz  !iz,ix-2
+                iz_ixm1=i    -nz  !iz,ix-1
+                iz_ixp1=i    +nz  !iz,ix+1
+
+                dvz_dz_= c1z*(vz(izp1_ix)-vz(iz_ix))  +c2z*(vz(izp2_ix)-vz(izm1_ix))
+                dvx_dx_= c1x*(vx(iz_ixp1)-vx(iz_ix))  +c2x*(vx(iz_ixp2)-vx(iz_ixm1))
+
+                dp_dz_= c1z*(p(iz_ix)-p(izm1_ix)) +c2z*(p(izp1_ix)-p(izm2_ix))
+                dp_dx_= c1x*(p(iz_ix)-p(iz_ixm1)) +c2x*(p(iz_ixp1)-p(iz_ixm2))
+
+                !s := dotP*nabP = kpa*divv *nabP
+                poynz(iz_ix)= kpa(iz_ix)*(dvz_dz+dvx_dx) *dp_dz
+                poynx(iz_ix)= kpa(iz_ix)*(dvz_dz+dvx_dx) *dp_dx
+
+            enddo
+            
+        enddo
+        !$omp end do
+        !$omp end parallel
+        
+    end subroutine
+
     subroutine fd3d_velocities(vz,vx,vy,p,               &
                                dp_dz,dp_dx,dp_dy,        &
                                buoz,buox,buoy,           &
