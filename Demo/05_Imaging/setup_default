@@ -1,0 +1,35 @@
+MODEL_SIZE              '76 76 1'
+MODEL_SPACING           '20 20 1'
+FILE_MODEL              'model'
+MODEL_ATTRIBUTES         vp
+FILE_TOPO               'topo'
+
+IS_FREESURFACE          F
+
+ACQUI_GEOMETRY          spread
+FS                      '20 760 0'
+FR                      '20   0 0'
+DR                      '0   20  0'
+NR                      76
+
+SCOMP                   p
+RCOMP                   p #'p vz'
+
+NT               280
+DT               0.002
+
+## for RTM ##
+FILE_DATA_PREFIX    'results_fwd/dobs_Shot'
+
+FPEAK            10
+WAVELET_TYPE        'ricker'
+T0			0.15
+UPDATE_WAVELET		'no'
+RDT			0
+
+
+SNAPSHOT     'p poynz poynx'
+#NSNAPSHOT    50
+
+IF_USE_CHECKPOINT   F
+

@@ -331,6 +331,11 @@ use, intrinsic :: ieee_arithmetic
                         call sysio_write('snap_'//self%name//'%dp_dz'//suf,self%dp_dz,size(self%dp_dz),o_mode='append')
                     case ('lapz')
                         call sysio_write('snap_'//self%name//'%lapz'//suf,self%lapz,size(self%lapz),o_mode='append')
+
+                    case ('poynz')
+                        call sysio_write('snap_'//self%name//'%poynz'//suf,self%poynz,size(self%poynz),o_mode='append')
+                    case ('poynx')
+                        call sysio_write('snap_'//self%name//'%poynx'//suf,self%poynx,size(self%poynx),o_mode='append')
                     end select
                 enddo
             endif

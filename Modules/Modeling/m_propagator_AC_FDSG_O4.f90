@@ -221,6 +221,9 @@ use m_cpml
         call alloc(f%dp_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%dp_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%dp_dy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+
+        call alloc(f%poynz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%poynx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
                 
     end subroutine
 
@@ -1021,12 +1024,13 @@ use m_cpml
         type(t_field) :: fld
 
         !nonzero only when sf touches rf
-        ifz=max(fld%bloom(1,it),2)
-        ilz=min(fld%bloom(2,it),cb%mz)
-        ifx=max(fld%bloom(3,it),1)
-        ilx=min(fld%bloom(4,it),cb%mx)
-        ify=max(fld%bloom(5,it),1)
-        ily=min(fld%bloom(6,it),cb%my)
+        ifz=fld%bloom(1,it)+2
+        ilz=fld%bloom(2,it)-2
+        ifx=fld%bloom(3,it)+2
+        ilx=fld%bloom(4,it)-2
+
+        ! ify=max(fld%bloom(5,it),1)
+        ! ily=min(fld%bloom(6,it),cb%my)
         
         ! if(m%is_cubic) then
         !     ! call grad3d_moduli(rf%p,sf%vz,sf%vx,sf%vy,&
@@ -1147,12 +1151,13 @@ use m_cpml
                 iz_ixm2=i  -2*nz  !iz,ix-2
                 iz_ixm1=i    -nz  !iz,ix-1
                 iz_ixp1=i    +nz  !iz,ix+1
+                iz_ixp2=i  +2*nz  !iz,ix+2
 
-                dvz_dz_= c1z*(vz(izp1_ix)-vz(iz_ix))  +c2z*(vz(izp2_ix)-vz(izm1_ix))
-                dvx_dx_= c1x*(vx(iz_ixp1)-vx(iz_ix))  +c2x*(vx(iz_ixp2)-vx(iz_ixm1))
+                dvz_dz= c1z*(vz(izp1_ix)-vz(iz_ix))  +c2z*(vz(izp2_ix)-vz(izm1_ix))
+                dvx_dx= c1x*(vx(iz_ixp1)-vx(iz_ix))  +c2x*(vx(iz_ixp2)-vx(iz_ixm1))
 
-                dp_dz_= c1z*(p(iz_ix)-p(izm1_ix)) +c2z*(p(izp1_ix)-p(izm2_ix))
-                dp_dx_= c1x*(p(iz_ix)-p(iz_ixm1)) +c2x*(p(iz_ixp1)-p(iz_ixm2))
+                dp_dz= c1z*(p(iz_ix)-p(izm1_ix)) +c2z*(p(izp1_ix)-p(izm2_ix))
+                dp_dx= c1x*(p(iz_ix)-p(iz_ixm1)) +c2x*(p(iz_ixp1)-p(iz_ixm2))
 
                 !s := dotP*nabP = kpa*divv *nabP
                 poynz(iz_ix)= kpa(iz_ix)*(dvz_dz+dvx_dx) *dp_dz
