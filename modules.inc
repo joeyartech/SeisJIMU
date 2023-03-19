@@ -4,7 +4,8 @@
 ############
 # Modeling #
 ############
-WaveEq=BornEnv_monoD
+#WaveEq=BornEnv_monoD
+WaveEq=AC2nd
 #WaveEq=AC
 #WaveEq=AC_VTI
 # WaveEq=PSV
@@ -17,7 +18,8 @@ ShotDec=batching
 ##########
 # Kernel #
 ##########
-Param=vp2-tilD
+#Param=vp2-tilD
+Param=vp-rho
 #Param=velocities-density
 #Param=velocities-density_pseudotime
 #Param=velocities-impedance

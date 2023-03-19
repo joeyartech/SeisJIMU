@@ -44,7 +44,7 @@ mod :
 	(cd ../../Modules/Optimization; make m_linesearcher_$(LineS).o)
 
 
-exe : ../../PFEI/sub_modeling_gradient.o main.o sub_optimizer_init_loop.o
+exe : ../../FWI/sub_modeling_gradient.o main.o sub_optimizer_init_loop.o
 	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../../exe/gradienttest_$(WaveEq)_$(Solver)_$(Order)_$(Param)
 	(cd ../../exe; ln -sf gradienttest_$(WaveEq)_$(Solver)_$(Order)_$(Param) GradientTest )
 

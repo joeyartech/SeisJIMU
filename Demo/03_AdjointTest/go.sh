@@ -10,7 +10,7 @@ fi
 # rm c1 c2 tmp
 # 
 
-# makevel nx=201 nz=201 v000=2000 > model
+#makevel nx=201 nz=201 v000=2000 > simple
 
 ../../exe/AdjointTest  setup_simple.in
 

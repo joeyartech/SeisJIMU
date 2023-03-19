@@ -73,7 +73,7 @@ use m_linesearcher
 !         call qp0%register(chp_qp)
 !     endif
 
-    call sysio_write('correlation_gradient',correlation_gradient,m%n)
+    call sysio_write('correlation_gradient',correlation_gradient,m%n*ppg%ngrad)
     
     call sysio_write('qp0%g',qp0%g,size(qp0%g))
     call sysio_write('qp0%pg',qp0%pg,size(qp0%pg))

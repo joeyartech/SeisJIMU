@@ -2,16 +2,17 @@ MODEL_SIZE              '101 101 1'
 MODEL_SPACING           '20 20 1'
 FILE_MODEL              'model'
 MODEL_ATTRIBUTES        vp #'vp rho'
-FILE_TOPO               'topo'
+#FILE_TOPO               'topo'
 
 TILD_FROM               'none'
 
 IS_FREESURFACE          F
 
 ACQUI_GEOMETRY          spread
-FS                      '20 40 0'
-#FR                      '40 20  0'
-FR                      '40 1960 0'
+#FS                      '400 500 0'
+FS                      '20 500 0'
+#FR                      '400 1500 0'
+FR                      '20 1500 0'
 DR                      '0  20  0'
 #NR                      100
 NR                      1

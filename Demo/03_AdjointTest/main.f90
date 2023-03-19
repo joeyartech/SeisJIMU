@@ -51,7 +51,7 @@ use m_Modeling
 
     logical :: if_use_random
 
-    call alloc(m%gradient,m%nz,m%nx,m%ny,ppg%ngrad)
+    call alloc(m%gradient,m%nz,m%nx,m%ny,1) !ppg%ngrad)
             
     call hud('===== START LOOP OVER SHOTS =====')
     
@@ -115,7 +115,7 @@ use m_Modeling
         call rfield%ignite(o_wavelet=v)
 
         !adjoint modeling
-        call ppg%adjoint_tilD(rfield,sfield,oif_record_adjseismo=.true.)
+        call ppg%adjoint(rfield,sfield,oif_record_adjseismo=.true.)
 
         call rfield%acquire(o_seismo=Ladj_v)
         call suformat_write('Ladj_v',Ladj_v,ppg%nt,1,o_dt=ppg%dt)

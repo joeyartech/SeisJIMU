@@ -25,7 +25,7 @@ use m_resampler
     call alloc(gvp2 ,m%nz,m%nx,m%ny,1)
 
     !PFEI misfit
-    fobj%misfit=0.    
+    fobj%misfit=0.
     
     call hud('===== START LOOP OVER SHOTS =====')
     
@@ -179,7 +179,6 @@ use m_resampler
     endif
 
     !collect PFEI misfit values
-    !no need to collect WPI misfit values
     call mpi_allreduce(mpi_in_place, [fobj%misfit], 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     call hud('Stacked PFEI_misfit '//num2str(fobj%misfit))
 
