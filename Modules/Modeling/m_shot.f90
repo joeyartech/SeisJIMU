@@ -149,9 +149,10 @@ use m_model
         if(scalco<0.) scalco=-1./scalco
 
         !source & receiver geometry
-        self%src%z=sudata%hdrs(1)%sdepth*scalel !assume single shot
-        self%src%x=sudata%hdrs(1)%sx    *scalco
-        self%src%y=sudata%hdrs(1)%sy    *scalco
+        self%src%z=either(sudata%hdrs(1)%sdepth,-sudata%hdrs(1)%selev,sudata%hdrs(1)%sdepth/=0)
+        self%src%z=       self%src%z*scalel  !assume single shot
+        self%src%x=sudata%hdrs(1)%sx*scalco
+        self%src%y=sudata%hdrs(1)%sy*scalco
         
         self%src%comp='p' !don't know which su header tells this info..
         

@@ -48,7 +48,7 @@ exe : sub_modeling_gradient.o main.o
 	(cd ../exe; ln -sf fwi_$(WaveEq)_$(Solver)_$(Order)_$(Param)_$(LineS)_$(Optim) FWI )
 
 clean :
-	-rm main.o
+	-rm main.o sub_modeling_gradient.o
 
 cleanall :
 	#System
