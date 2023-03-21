@@ -9,7 +9,7 @@ m_shotlist_$(ShotDec).f90 \
 m_shot.f90 \
 m_computebox.f90 \
 m_field.f90 \
-m_correlation.f90 \
+m_correlate.f90 \
 m_cpml.f90 \
 m_propagator_$(WaveEq)_$(Solver)_$(Order).f90 \
 m_Modeling.f90
