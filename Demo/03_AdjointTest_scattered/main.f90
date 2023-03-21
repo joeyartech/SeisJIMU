@@ -46,8 +46,8 @@ use m_Modeling
 
     double precision :: LHS=0., RHS=0.
 
-    real,dimension(:,:),allocatable :: u,v,Lu,Ladj_v
-    type(t_field) :: sfield, rfield
+    real,dimension(:,:),allocatable :: u,v,Lu,Ladj_v, zeros
+    type(t_field) :: s0field, dsfield, r0field, drfield
 
     logical :: if_use_random
 
@@ -71,13 +71,14 @@ use m_Modeling
         call ppg%init
         call ppg%init_abslayer
         
-        call ppg%init_field(sfield,name='sfield')
+        call ppg%init_field(s0field,name='s0field')
+        call ppg%init_field(dsfield,name='dsfield')
         
         if_use_random=setup%get_bool('IF_USE_RANDOM',o_default='T')
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !variables for dotproduct test
-        call alloc(u     ,ppg%nt,1        )
-        call alloc(Lu    ,ppg%nt,shot%nrcv)
+        call alloc(u    ,ppg%nt,1        )
+        call alloc(Lu   ,ppg%nt,shot%nrcv)
 
         if(if_use_random) then
             call random_number(u)
@@ -88,17 +89,16 @@ use m_Modeling
         ! call suformat_write('v',v,ppg%nt,shot%nrcv,o_dt=ppg%dt)
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         
-        call sfield%ignite(o_wavelet=u)
+        call s0field%ignite(o_wavelet=u)
         
         !forward modeling
-        call ppg%forward(sfield)
+        call ppg%forward_scattering(dsfield,s0field)
         
-        call sfield%acquire(o_seismo=Lu)
-
-        !call shot%write('dsyn_')
+        call dsfield%acquire(o_seismo=Lu)
         call suformat_write('Lu',Lu,ppg%nt,shot%nrcv,o_dt=ppg%dt)
 
-        call ppg%init_field(rfield,name='rfield',ois_adjoint=.true.)
+        call ppg%init_field(r0field,name='r0field',ois_adjoint=.true.)
+        call ppg%init_field(drfield,name='drfield',ois_adjoint=.true.)
 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !variables for dotproduct test
@@ -112,14 +112,16 @@ use m_Modeling
         call suformat_write('v',v,ppg%nt,shot%nrcv,o_dt=ppg%dt)
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-        call rfield%ignite(o_wavelet=v)
+        call r0field%ignite(o_wavelet=v)
+        zeros=v; zeros=0.
+        call drfield%ignite(o_wavelet=zeros)
 
         !adjoint modeling
-        call ppg%adjoint(rfield,sfield,oif_record_adjseismo=.true.)
+        call ppg%adjoint_ikpa(drfield,r0field,dsfield,s0field,oif_record_adjseismo=.true.)
+        call drfield%acquire(o_seismo=Ladj_v)
 
-        call rfield%acquire(o_seismo=Ladj_v)
         call suformat_write('Ladj_v',Ladj_v,ppg%nt,1,o_dt=ppg%dt)
-        
+
 !         call cb%project_back
         
     enddo

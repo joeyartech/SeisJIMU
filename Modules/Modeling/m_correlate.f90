@@ -12,7 +12,7 @@ use m_computebox
     !correlate
     type,public :: t_correlate
 
-        character(:),allocatable :: name
+        character(:),allocatable :: name,purpose
 
         ! !dimension
         ! integer :: nz,nx,ny,nt
@@ -24,7 +24,7 @@ use m_computebox
         real,dimension(:,:,:),allocatable :: sp_sp
         real,dimension(:,:,:),allocatable :: rp_sp
         real,dimension(:,:,:),allocatable :: drp_dt_dsp_dt, nab_rp_nab_sp
-        real,dimension(:,:,:),allocatable :: rp_lap_sp
+        real,dimension(:,:,:),allocatable :: rp_lap_sp, rp_lapbuo_sp, lapbuo_rp_sp
 
         contains
 
@@ -144,6 +144,8 @@ use m_computebox
         if(allocated(self%drp_dt_dsp_dt)) call scale_copy(self%drp_dt_dsp_dt,scaler)
         if(allocated(self%nab_rp_nab_sp)) call scale_copy(self%nab_rp_nab_sp,scaler)
         if(allocated(self%rp_lap_sp))     call scale_copy(self%rp_lap_sp,    scaler)
+        if(allocated(self%rp_lapbuo_sp))  call scale_copy(self%rp_lapbuo_sp, scaler)
+        if(allocated(self%lapbuo_rp_sp))  call scale_copy(self%lapbuo_rp_sp, scaler)
 
         ! if(allocated(self%rp_sp)) then
         !     self%rp_sp        = self%rp_sp*scaler
@@ -227,6 +229,8 @@ use m_computebox
                 if(allocated(self%drp_dt_dsp_dt)) call sysio_write('snap_'//self%name//'%drp_dt_dsp_dt'//suf,self%drp_dt_dsp_dt,m%n,o_mode='append')
                 if(allocated(self%nab_rp_nab_sp)) call sysio_write('snap_'//self%name//'%nab_rp_nab_sp'//suf,self%nab_rp_nab_sp,m%n,o_mode='append')
                 if(allocated(self%rp_lap_sp))     call sysio_write('snap_'//self%name//'%rp_lap_sp'//suf,    self%rp_lap_sp,    m%n,o_mode='append')
+                if(allocated(self%rp_lapbuo_sp))  call sysio_write('snap_'//self%name//'%rp_lapbuo_sp'//suf, self%rp_lapbuo_sp, m%n,o_mode='append')
+                if(allocated(self%lapbuo_rp_sp))  call sysio_write('snap_'//self%name//'%lapbuo_rp_sp'//suf, self%lapbuo_rp_sp, m%n,o_mode='append')
 
             endif
 
@@ -260,6 +264,8 @@ use m_computebox
         call dealloc(self%drp_dt_dsp_dt)
         call dealloc(self%nab_rp_nab_sp)
         call dealloc(self%rp_lap_sp)
+        call dealloc(self%rp_lapbuo_sp)
+        call dealloc(self%lapbuo_rp_sp)
 
     end subroutine
 

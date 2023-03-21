@@ -34,6 +34,10 @@ fwi :
 	(cd FWI; make)
 	@printf "\n"
 
+pfei :
+	(cd PFEI; make)
+	@printf "\n"
+
 
 clean :
 	-rm FWD/*.o FWI/*.o WPI/*.o

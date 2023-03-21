@@ -36,7 +36,7 @@ use m_smoother_laplacian_sparse
         call ppg%init_abslayer
 
         call ppg%init_field(fld_u,name='fld_u');  call fld_u%ignite
-        call ppg%init_correlate(u_star_u,'energy')
+        call ppg%init_correlate(u_star_u,'u_star_u','energy')
                 
         !forward modeling
         call ppg%forward(fld_u,o_u_star_u=u_star_u); call fld_u%acquire
@@ -82,7 +82,7 @@ use m_smoother_laplacian_sparse
         if(update_wavelet/='no') call shot%update_adjsource
         
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite
-        call ppg%init_correlate(a_star_u,'gradient')
+        call ppg%init_correlate(a_star_u,'a_star_u','gradient')
         
         !adjoint modeling
         call ppg%adjoint(fld_a,fld_u,o_a_star_u=a_star_u)
@@ -91,7 +91,8 @@ use m_smoother_laplacian_sparse
     
     call hud('        END LOOP OVER SHOTS        ')
 
-    !collect global objective function value
+
+    !allreduce objective function value
     call mpi_allreduce(mpi_in_place, [fobj%misfit], 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     call hud('Stacked misfit '//num2str(fobj%misfit))
 
@@ -101,21 +102,24 @@ use m_smoother_laplacian_sparse
 
     !scale by shotlist
     call shls%scale(1,o_from_sampled=[fobj%misfit])
-    call shls%scale(m%n,o_from_sampled=correlate_gradient)
+    call shls%scale(fobj%n_dnorms,o_from_sampled=fobj%dnorms)
 
+
+    !write correlate
     if(mpiworld%is_master) then
-        call sysio_write('correlate_gradient',correlate_gradient,m%n*ppg%ngrad)
+        call u_star_u%write(ppg%nt)
+        call a_star_u%write(ppg%nt)
     endif
 
-    ! if(either(oif_gradient,.true.,present(oif_gradient))) then
-    !collect global gradient
+    !allreduce energy, gradient
+    ! call mpi_allreduce(mpi_in_place, correlate_energy  , m%n          , mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     call mpi_allreduce(mpi_in_place, correlate_gradient, m%n*ppg%ngrad, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     
-        ! if(ppg%if_compute_engy) then
-        !     call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-        ! endif
-    ! endif
+    !scale by shotlist
+    call shls%scale(m%n*ppg%ngrad,o_from_sampled=correlate_gradient)
 
+    if(mpiworld%is_master) call sysio_write('correlate_gradient',correlate_gradient,m%n*ppg%ngrad)
+    
     call mpiworld%barrier
 
 end subroutine
