@@ -37,13 +37,12 @@ use m_cpml
             'Required field components: p, p_prev, p_next'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
             'Imaging conditions: P-Pxcorr'//s_NL// &
-            'Energy terms: Σ_shot ∫ sfield%p² dt'!//s_NL// &
-            !'Basic gradients: gikpa, gbuo'
+            'Energy terms: Σ_shot ∫ sfield%p² dt'//s_NL// &
+            'Basic gradients: gikpa, gbuo'
 
         integer :: nbndlayer=max(1,hicks_r) !minimum absorbing layer thickness
-        integer :: ngrad=2
-        !integer :: ngrad=3 !number of basic gradients
         integer :: nimag=1 !number of basic images
+        integer :: ngrad=2 !number of basic gradients
         !integer :: nengy=1 !number of energy terms
 
         logical :: if_compute_engy=.false.
@@ -65,15 +64,13 @@ use m_cpml
         procedure :: check_discretization
         procedure :: init
         procedure :: init_field
+        procedure :: init_correlate
         procedure :: init_abslayer
 
         procedure :: forward
-        ! procedure :: forward_scattering
         procedure :: adjoint
         
         procedure :: inject_pressure
-        ! procedure :: inject_pressure_scattering
-        ! procedure :: inject_pressure_adjoint_scattering
         ! procedure :: set_pressure
         procedure :: update_pressure
         procedure :: evolve_pressure
@@ -90,13 +87,7 @@ use m_cpml
     integer :: irdt
     real :: rdt
 
-    !these procedures will be contained in an m_correlate module in future release
-    public :: gradient_density, gradient_moduli, imaging, energy, gradient_postprocess, imaging_postprocess
-
-    ! real,dimension(:,:,:),allocatable :: sf_p_save
-
     contains
-
 
    !========= for FDSG O(dx2,dt2) ===================  
 
@@ -211,6 +202,9 @@ use m_cpml
         !initialize m_field
         call field_init(.false.,self%nt,self%dt)
 
+        !initialize m_correlate
+        call correlate_init(ppg%nt,ppg%dt)
+
         !rectified interval for time integration
         !default to Nyquist, and must be a multiple of dt
         rdt=setup%get_real('REF_RECT_TIME_INTEVAL','RDT',o_default=num2str(0.5/shot%fmax))
@@ -255,6 +249,25 @@ use m_cpml
         call alloc(f%lapz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%lapx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%lapy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+
+    end subroutine
+
+    subroutine init_correlate(self,corr,name)
+        class(t_propagator) :: self
+        type(t_correlate) :: corr
+        character(*) :: name
+        
+        corr%name=name
+
+        select case (name)
+        case ('energy')
+            call alloc(corr%sp_sp,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        case ('image')
+            call alloc(corr%rp_sp,m%nz,m%nx,m%ny)
+        case ('gradient')
+            call alloc(corr%rp_lap_sp    ,m%nz,m%nx,m%ny)
+            call alloc(corr%nab_rp_nab_sp,m%nz,m%nx,m%ny)
+        end select
 
     end subroutine
 
@@ -335,124 +348,18 @@ use m_cpml
     !Step #1: pᵃ^n += adjsrc
     !Step #2: sample pᵃ^n at source
     !Step #4: pᵃ^n-1 = 2pᵃ^n -pᵃ^n+1 +laplacian of pᵃ^n
-    !Step #5: (pᵃ^n,pᵃ^n+1) = (pᵃ^n-1,pᵃ^n)
-    !
-    !
-    !to be updated..
-    ! !!!!!!!!!!!!!
-    ! ! ARCHIVED !!
-    ! !!!!!!!!!!!!!
-    ! Possibility I:
-    ! For adjoint test:
-    ! forward time marching:
-    ! [pprev]        [pprev]   [1 ][0 1][-1 2+κ∂ᵇb∂ᶠ][1 ][1 ][pprev]
-    ! [pcurr] = REGBA[pcurr] = [ R][1 0][ 0 1       ][ B][ A][pcurr]
-    ! A:inject source into field, B:boundary load, G:propagator, with
-    ! ∂ᶠ: forward FD, ∂ᵇ: backward FD, b:buoyancy, κ:bulk modulus, 
-    ! E:evolution, R:extract field at receivers.
-    ! While for adjoint marching (∂ᶠᵀBᵀ∂ᵇᵀKᵀ=∂ᵇBᵀ∂ᶠK):
-    ! [pᵃprev] [1  ][1  ][ -1        0][0 1][1  ][pᵃprev]
-    ! [pᵃcurr]=[ Aᵀ][ Bᵀ][2+∂ᵇbᵀ∂ᶠκ  1][1 0][ Rᵀ][pᵃcurr]
-    ! in reverse time:
-    ! [pᵃcurr]=[Aᵀ ][Bᵀ ][1 2+∂ᵇbᵀ∂ᶠκ][0 1][Rᵀ ][pᵃcurr]
-    ! [pᵃprev] [  1][  1][0 -1       ][1 0][  1][pᵃprev]
-    ! since
-    ! [1 2+∂ᵇbᵀ∂ᶠκ][0 1]=[0 1][ -1        0]
-    ! [0 -1       ][1 0] [1 0][2+∂ᵇbᵀ∂ᶠκ  1]
-    ! so
-    ! [pᵃcurr]=[Aᵀ ][Bᵀ ][0 1][ -1        0][Rᵀ ][pᵃcurr]
-    ! [pᵃprev] [  1][  1][1 0][2+∂ᵇbᵀ∂ᶠκ  1][  1][pᵃprev]
-    ! Aᵀ:extract adjoint fields, Bᵀ:boundary condition
+    !Step #5: (pᵃ^n,pᵃ^n+1) = (pᵃ^n-1,pᵃ^n)    
 
-    ! [ pprev]        [ pprev]   [1   ][0 1   ][-1 2+κ∂ᵇb∂ᶠ          ][1   ][1   ][ 1       ][ pprev]
-    ! [ pcurr] = REGBA[ pcurr] = [ R  ][1 0   ][ 0 1                 ][ B  ][ A  ][    1    ][ pcurr]
-    ! [δpprev]        [δpprev]   [  1 ][   0 1][          -1 2+κ∂ᵇb∂ᶠ][  1 ][  1 ][      1  ][δpprev]
-    ! [δpcurr]        [δpcurr]   [   R][   1 0][           0 1       ][   B][   1][Sp Sc 0 1][δpcurr]
-
-    ! [δpᵃprev]   [1  Spᵀ][1   ][1    ][1 2+∂ᵇbᵀ∂ᶠκ           ][0 1   ][1    ][δpᵃprev]
-    ! [δpᵃcurr] = [ 1 Scᵀ][ Aᵀ ][ Bᵀ  ][0 -1                  ][1 0   ][ Rᵀ  ][δpᵃcurr]
-    ! [ pᵃprev]   [  1 0 ][  1 ][  1  ][           1 2+∂ᵇbᵀ∂ᶠκ][   0 1][  1  ][ pᵃprev]
-    ! [ pᵃcurr]   [    1 ][   1][   Bᵀ][           0 -1       ][   1 0][   Rᵀ][ pᵃcurr]
-    ! in reverse time:
-    ! [ pᵃcurr]   [ 1    ][1   ][Bᵀ  ][0 1   ][ -1                  ][Rᵀ  ][ pᵃcurr]
-    ! [ pᵃprev]   [ 0 1  ][ 1  ][ 1  ][1 0   ][2+∂ᵇbᵀ∂ᶠκ            ][ 1  ][ pᵃprev]
-    ! [δpᵃcurr] = [Scᵀ 1 ][  Aᵀ][  Bᵀ][   0 1][          1 2+∂ᵇbᵀ∂ᶠκ][  Rᵀ][δpᵃcurr]
-    ! [δpᵃprev]   [Spᵀ  1][   1][   1][   1 0][          0 -1       ][   1][δpᵃprev]
-    
-    
-    ! Possibility II:
-    ! [pprev]      [pprev] [1  ] [0 1 0] [ 1           ] [1  ] [1  ] [pprev]
-    ! |pcurr|=REGBA|pcurr|=| R | |0 0 1| |      1      | | B | | A | |pcurr|
-    ! [pnext]      [pnext] [  1] [1 0 0] [-1 2+κ∂ᵇb∂ᶠ 0] [  1] [  1] [pnext]
-    ! [pᵃprev]           [pᵃprev] [1   ] [1   ] [1    -1        ] [0 0 1] [1   ] [pᵃprev]!
-    ! |pᵃcurr|=BᵀAᵀGᵀEᵀRᵀ|pᵃcurr|=| Bᵀ | | Aᵀ | |   1  2+∂ᵇbᵀ∂ᶠκ| |1 0 0| | Rᵀ | |pᵃcurr|
-    ! [pᵃnext]           [pᵃnext] [   1] [   1] [      0        ] [0 1 0] [   1] [pᵃnext]
-    ! in reverse time:
-    ! [pᵃnext] [1   ] [1   ] [             ] [0 1 0] [1   ] [pᵃnext]
-    ! |pᵃcurr|=| Bᵀ | | Aᵀ | |2+∂ᵇbᵀ∂ᶠκ 1 0| |0 0 1| | Rᵀ | |pᵃcurr|
-    ! [pᵃprev] [   1] [   1] [ -1       1  ] [1 0 0] [   1] [pᵃprev]
-    !                       [             ] [pᵃcurr]
-    !                      ~|2+∂ᵇbᵀ∂ᶠκ 1 0| |pᵃprev|
-    !                       [ -1       0 1] [pᵃnext]
-    
-    ! Possibility III:
-    ! For adjoint test:
-    ! forward time marching:
-    ! [pprev]      [pprev] [1  ] [0 1 0] [ 1           ] [1  ] [1  ] [pprev]
-    ! |pcurr|=REGBA|pcurr|=| R | |0 0 1| |      1      | | B | | A | |pcurr|
-    ! [pnext]      [pnext] [  1] [1 0 0] [-1 2+κ∂ᵇb∂ᶠ 0] [  1] [  1] [pnext]
-    ! A:inject source into field, B:boundary load, G:propagator, with
-    ! ∂ᶠ: forward FD, ∂ᵇ: backward FD, b:buoyancy, κ:bulk modulus, 
-    ! E:evolution, R:extract field at receivers.
-    ! While for adjoint marching (∂ᶠᵀBᵀ∂ᵇᵀKᵀ=∂ᵇBᵀ∂ᶠK):
-    ! [pᵃprev]           [pᵃprev] [1   ] [1   ] [1    -1        ] [0 0 1] [1   ] [pᵃprev]
-    ! |pᵃcurr|=BᵀAᵀGᵀEᵀRᵀ|pᵃcurr|=| Bᵀ | | Aᵀ | |   1  2+∂ᵇbᵀ∂ᶠκ| |1 0 0| | Rᵀ | |pᵃcurr|
-    ! [pᵃnext]           [pᵃnext] [   1] [   1] [      0        ] [0 1 0] [   1] [pᵃnext]
-    ! In reverse time:
-    ! [pᵃnext] [1   ] [1   ] [             ] [0 1 0] [1   ] [pᵃnext]
-    ! |pᵃcurr|=| Bᵀ | | Aᵀ | |2+∂ᵇbᵀ∂ᶠκ 1 0| |0 0 1| | Rᵀ | |pᵃcurr|
-    ! [pᵃprev] [   1] [   1] [-1        0 1] [1 0 0] [   1] [pᵃprev]
-    ! since
-    ! [  0       0 0][0 1 0]   [0   0       0]   [0 1 0][1  -1        0]
-    ! |2+∂ᵇbᵀ∂ᶠκ 1 0||0 0 1| = |0 2+∂ᵇbᵀ∂ᶠκ 1| = |0 0 1||0   0        0|
-    ! [ -1       0 1][1 0 0]   [1  -1       0]   [1 0 0][0  2+∂ᵇbᵀ∂ᶠκ 1]
-    ! [pᵃnext] [1   ] [1   ] [0 1 0] [1  -1        0] [1   ] [pᵃnext]
-    ! |pᵃcurr|=| Bᵀ | | Aᵀ | |0 0 1| |0   0        0| | Rᵀ | |pᵃcurr|
-    ! [pᵃprev] [   1] [   1] [1 0 0] [0  2+∂ᵇbᵀ∂ᶠκ 1] [   1] [pᵃprev]
-    ! Aᵀ:extract adjoint fields, Bᵀ:boundary condition
-    
-    ! [pprev] [0 1 0][ 1           ][pprev]
-    ! |pcurr|=|0 0 1||      1      ||pcurr|
-    ! [pnext] [1 0 0][-1 2+κ∂ᵇb∂ᶠ 0][pnext]
-    ! [pᵃprev] [1    -1        ][0 0 1][pᵃnext]
-    ! |pᵃcurr|=|   1  2+∂ᵇbᵀ∂ᶠκ||1 0 0||pᵃprev|
-    ! [pᵃnext] [      0        ][0 1 0][pᵃcurr]
-
-    ! [ pprev] [0 1 0      ][           ][ 1                         ][ pprev]
-    ! | pcurr|=|0 0 1      |[           ]|      1                    || pcurr|
-    ! [ pnext] [1 0 0      ][           ][-1 2+κ∂ᵇb∂ᶠ 0              ][ pnext]
-    ! [δpprev] [      0 1 0][0  0   0   ][               1           ][δpprev]
-    ! |δpcurr|=|      0 0 1||1 -2+D 1   ||                    1      ||δpcurr|
-    ! [δpnext] [      1 0 0][0  0   0   ][              -1 2+κ∂ᵇb∂ᶠ 0][δpnext]
-    
-    ! [ pᵃprev] [1    -1                        ][   0  1    0][0 0 1      ][ pᵃprev]
-    ! | pᵃcurr|=|   1  2+∂ᵇbᵀ∂ᶠκ                |[   0 -2+Dᵀ 0]|1 0 0      || pᵃcurr|
-    ! [ pᵃnext] [      0                        ][   0  1    0][0 1 0      ][ pᵃnext]
-    ! [δpᵃprev] [                1    -1        ][            ][      0 0 1][δpᵃprev]
-    ! |δpᵃcurr|=|                   1  2+∂ᵇbᵀ∂ᶠκ||            ||      1 0 0||δpᵃcurr|
-    ! [δpᵃnext] [                      0        ][            ][      0 1 0][δpᵃnext]
-
-    
-
-    subroutine forward(self,fld_u)
+    subroutine forward(self,fld_u,o_u_star_u)
         class(t_propagator) :: self
         type(t_field) :: fld_u
+        type(t_correlate),optional :: o_u_star_u
 
         real,parameter :: time_dir=1. !time direction
 
         !seismo
         call alloc(fld_u%seismo, shot%nrcv,self%nt)
-            
+                    
         tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.
 
         ift=1; ilt=self%nt
@@ -502,6 +409,13 @@ use m_cpml
             call cpu_time(toc)
             tt6=tt6+toc-tic
 
+            if(present(o_u_star_u)) then
+                call cpu_time(tic)
+                call auto_correlate(fld_u,o_u_star_u,it)
+                call cpu_time(toc)
+                tt7=tt7+toc-tic
+            endif
+
             !snapshot
             call fld_u%write(it)
 
@@ -514,11 +428,19 @@ use m_cpml
             write(*,*) 'Elapsed time to update field ',tt4/mpiworld%max_threads
             write(*,*) 'Elapsed time to evolve field ',tt5/mpiworld%max_threads
             write(*,*) 'Elapsed time to extract field',tt6/mpiworld%max_threads
+            write(*,*) 'Elapsed time to correlate    ',tt7/mpiworld%max_threads
         endif
 
         call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
         call hud('ximage < snap_sfield%*  n1='//num2str(cb%nz)//' perc=99')
         call hud('xmovie < snap_sfield%*  n1='//num2str(cb%nz)//' n2='//num2str(cb%nx)//' clip=?e-?? loop=2 title=%g')
+
+
+        !postprocess
+        if(present(o_u_star_u)) then
+            !scale by m%cell_volume*rdt tobe an energy distribution in the discretized world
+            call o_u_star_u%scale(m%cell_volume*rdt)
+        endif
 
     end subroutine
 
@@ -534,10 +456,6 @@ use m_cpml
         if_record_adjseismo =either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
         if(if_record_adjseismo)  call alloc(fld_a%seismo,1,self%nt)
 
-        if(present(o_a_star_u)) then
-            call o_a_star_u%init('a_star_u',shape123_from='model',o_comp='rp_lap_sp, nab_rp_nab_sp')
-        endif
-        
         !reinitialize absorbing boundary for incident wavefield reconstruction
         call fld_u%reinit
                     
@@ -556,17 +474,7 @@ use m_cpml
                 write(*,*) 'it----',it
                 call fld_a%check_value
                 call fld_u%check_value
-            endif            
-
-
-!            !gkpa: rf%s^it+0.5 star tilD sf%s_dt^it+0.5
-!            !if(if_compute_grad.and.mod(it,irdt)==0) then
-!            if(mod(it,irdt)==0 .and. present(o_a_star_u)) then
-!                call cpu_time(tic)
-!                call imaging(fld_a,fld_u,o_a_star_u,self%dt,it)
-!                call cpu_time(toc)
-!                tt11=tt11+toc-tic
-!            endif
+            endif
 
             !do backward time stepping to reconstruct the source (incident) wavefield
             !and adjoint time stepping to compute the receiver (adjoint) field
@@ -609,7 +517,7 @@ use m_cpml
             !gradient: rf%p^it star sf%p^it
             if(mod(it,irdt)==0 .and. present(o_a_star_u)) then
                 call cpu_time(tic)
-                call gradient(fld_a,fld_u,o_a_star_u,it)
+                call cross_correlate(fld_a,fld_u,o_a_star_u,it)
                 call cpu_time(toc)
                 tt11=tt11+toc-tic
             endif
@@ -653,23 +561,7 @@ use m_cpml
             if(present(o_a_star_u)) call o_a_star_u%write(it,o_suffix='_rev')
             
         enddo
-        
-        if(present(o_a_star_u)) then
-            !gradient postprocess
-            !scale by m%cell_volume*rdt tobe a gradient in the discretized world
-            !preparing for cb%project_back        
-            o_a_star_u%rp_lap_sp        = o_a_star_u%rp_lap_sp*m%cell_volume*rdt
-            o_a_star_u%rp_lap_sp(1,:,:) = o_a_star_u%rp_lap_sp(2,:,:)
 
-            o_a_star_u%nab_rp_nab_sp        = o_a_star_u%nab_rp_nab_sp*m%cell_volume*rdt
-            o_a_star_u%nab_rp_nab_sp(1,:,:) = o_a_star_u%nab_rp_nab_sp(2,:,:)
-
-            !stacking
-            call cb2m(m%vp**2*m%rho*o_a_star_u%rp_lap_sp, correlate_gradient(:,:,:,1)) !gikpa
-            call cb2m(          o_a_star_u%nab_rp_nab_sp, correlate_gradient(:,:,:,2)) !gbuo
-        endif
-
-        
         if(mpiworld%is_master) then
             write(*,*) 'Elapsed time to evolve field        ',tt1/mpiworld%max_threads
             write(*,*) 'Elapsed time to load boundary       ',tt2/mpiworld%max_threads
@@ -691,21 +583,26 @@ use m_cpml
         call hud('xmovie < snap_rfield%*  n1='//num2str(cb%nz)//' n2='//num2str(cb%nx)//' clip=?e-?? loop=2 title=%g')
         call hud('ximage < snap_*  n1='//num2str(cb%mz)//' perc=99')
         call hud('xmovie < snap_*  n1='//num2str(cb%mz)//' n2='//num2str(cb%mx)//' clip=?e-?? loop=2 title=%g')
-            
+
+
+        !postprocess
+        if(present(o_a_star_u)) then
+            !scale by m%cell_volume*rdt tobe an image or gradient in the discretized world
+            call o_a_star_u%scale(m%cell_volume*rdt)
+
+            if(o_a_star_u%name=='image') then
+                call correlate_stack(o_a_star_u%rp_sp, correlate_image(:,:,:,1))
+            endif
+
+            if(o_a_star_u%name=='gradient') then
+                call correlate_stack(m%vp**2*m%rho*o_a_star_u%rp_lap_sp,     correlate_gradient(:,:,:,1)) !gikpa
+                call correlate_stack(              o_a_star_u%nab_rp_nab_sp, correlate_gradient(:,:,:,2)) !gbuo
+            endif
+
+        endif
+        
     end subroutine
 
-    !this procedure should be somewhere else..
-    subroutine cb2m(small,big)
-        real,dimension(m%nz,m%nx,m%ny) :: small, big
-
-        big(cb%ioz:cb%ioz+cb%mz-1,&
-            cb%iox:cb%iox+cb%mx-1,&
-            cb%ioy:cb%ioy+cb%my-1  ) = &
-        big(cb%ioz:cb%ioz+cb%mz-1,&
-            cb%iox:cb%iox+cb%mx-1,&
-            cb%ioy:cb%ioy+cb%my-1  ) + small
-
-    end subroutine
 
     !forward: add RHS to s^it+0.5
     !adjoint: add RHS to s^it+1.5
@@ -977,33 +874,32 @@ use m_cpml
     !for b: Kₘ<a|Au> = -Kₘ<a|∇·b∇u> = ∫ ∇a·∇u dt
     !
 
-    subroutine imaging(rf,sf,imag,dt,it)
-        type(t_field), intent(in) :: rf, sf
-        type(t_correlate) :: imag
-        real :: dt
+    subroutine auto_correlate(f,corr,it)
+        type(t_field), intent(in) :: f
+        type(t_correlate) :: corr
 
         !nonzero only when sf touches rf
-        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
-        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
-        ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
-        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
-        ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
-        ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
+        ifz=f%bloom(1,it)
+        ilz=f%bloom(2,it)
+        ifx=f%bloom(3,it)
+        ilx=f%bloom(4,it)
+        ify=f%bloom(5,it)
+        ily=f%bloom(6,it)
         
         ! if(m%is_cubic) then
         ! else
             
-            call imag2d_inverse_scattering(rf%p_next,rf%p,rf%p_prev,sf%p_next,sf%p,sf%p_prev,&
-                                  imag%drp_dt_dsp_dt,imag%nab_rp_nab_sp,                     &
-                                  ifz,ilz,ifx,ilx)
+            ! call imag2d_inverse_scattering(rf%p_next,rf%p,rf%p_prev,sf%p_next,sf%p,sf%p_prev,&
+            !                       imag%drp_dt_dsp_dt,imag%nab_rp_nab_sp,                     &
+            !                       ifz,ilz,ifx,ilx)
         ! endif
 
 
     end subroutine
 
-    subroutine gradient(rf,sf,grad,it)
+    subroutine cross_correlate(rf,sf,corr,it)
         type(t_field), intent(in) :: rf, sf
-        type(t_correlate) :: grad
+        type(t_correlate) :: corr
 
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
@@ -1015,22 +911,24 @@ use m_cpml
         
         if(m%is_cubic) then
         else
-            call grad2d(rf%p,sf%p,sf%lapz,sf%lapx,&
-                        grad%rp_lap_sp,grad%nab_rp_nab_sp,&
-                        ifz,ilz,ifx,ilx)
+            if(corr%name=='gradient') then
+                call grad2d(rf%p,sf%p,sf%lapz,sf%lapx,&
+                            corr%rp_lap_sp,corr%nab_rp_nab_sp,&
+                            ifz,ilz,ifx,ilx)
+            endif
         endif
 
     end subroutine
 
     !========= Finite-Difference on flattened arrays ==================
     
-    subroutine fd2d_laplacian(p,                &
-                              dp_dz,dp_dx,dpzz_dz,dpxx_dx,&
-                              lapz,lapx,&
-                              buoz,buox,&
-                              ifz,ilz,ifx,ilx)
-        real,dimension(*) :: p
-        real,dimension(*) :: dp_dz,dp_dx,dpzz_dz,dpxx_dx
+    subroutine fd2d_laplacian(p,dp_dz,dp_dx,&
+                                dpzz_dz,dpxx_dx,&
+                                lapz,lapx,&
+                                buoz,buox,&
+                                ifz,ilz,ifx,ilx)
+        real,dimension(*) :: p,dp_dz,dp_dx
+        real,dimension(*) :: dpzz_dz,dpxx_dx
         real,dimension(*) :: lapz,lapx
         real,dimension(*) :: buoz,buox
 
@@ -1051,16 +949,16 @@ use m_cpml
             !dir$ simd
             do iz = ifz+1,ilz
 
-                ! izm1_ix=i-1  !iz-1,ix
-                ! iz_ix  =i    !iz,ix
+                izm1_ix=i-1  !iz-1,ix
+                iz_ix  =i    !iz,ix
 
-                ! dp_dz_ = c1z*(p(iz_ix) - p(izm1_ix))
+                dp_dz_ = c1z*(p(iz_ix) - p(izm1_ix))
 
-                ! dp_dz(iz_ix) = cpml%b_z_half(iz)*dp_dz(iz_ix) + cpml%a_z_half(iz)*dp_dz_
+                dp_dz(iz_ix) = cpml%b_z_half(iz)*dp_dz(iz_ix) + cpml%a_z_half(iz)*dp_dz_
 
-                ! dp_dz_ = dp_dz_/cpml%kpa_z_half(iz) + dp_dz(iz,ix)
+                dp_dz_ = dp_dz_/cpml%kpa_z_half(iz) + dp_dz(iz_ix)
 
-                ! pzz(iz_ix) =  buoz(iz_ix)*dp_dz_
+                pzz(iz_ix) =  buoz(iz_ix)*dp_dz_
             enddo
         enddo
         !$omp end do
@@ -1174,7 +1072,7 @@ use m_cpml
                 drp_dx = (rp(iz_ixp1)-rp(iz_ixm1)) *inv_2dx
                 dsp_dx = (sp(iz_ixp1)-sp(iz_ixm1)) *inv_2dx
                 
-                rp_lap_sp(j)=rp_lap_sp(j) + rp(i)*(slapz(i)+slapx(i))
+                    rp_lap_sp(j)=rp_lap_sp(j)     + rp(i)*(slapz(i)+slapx(i))
 
                 nab_rp_nab_sp(j)=nab_rp_nab_sp(j) + drp_dz*dsp_dz + drp_dx*dsp_dx
 

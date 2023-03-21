@@ -10,7 +10,7 @@ use m_smoother_laplacian_sparse
 
     logical,save :: is_first_in=.true.
     type(t_field) :: fld_u, fld_a
-    type(t_correlate) :: a_star_u
+    type(t_correlate) :: u_star_u,a_star_u
     character(:),allocatable :: update_wavelet
     
     fobj%misfit=0.
@@ -36,10 +36,10 @@ use m_smoother_laplacian_sparse
         call ppg%init_abslayer
 
         call ppg%init_field(fld_u,name='fld_u');  call fld_u%ignite
-        call correlate_init(ppg%nt,ppg%dt)
+        call ppg%init_correlate(u_star_u,'energy')
                 
         !forward modeling
-        call ppg%forward(fld_u);   call fld_u%acquire
+        call ppg%forward(fld_u,o_u_star_u=u_star_u); call fld_u%acquire
 
         if(mpiworld%is_master) call shot%write('draw_',shot%dsyn)
 
@@ -81,9 +81,8 @@ use m_smoother_laplacian_sparse
         !adjoint source
         if(update_wavelet/='no') call shot%update_adjsource
         
-        call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
-        
-        call fld_a%ignite
+        call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite
+        call ppg%init_correlate(a_star_u,'gradient')
         
         !adjoint modeling
         call ppg%adjoint(fld_a,fld_u,o_a_star_u=a_star_u)

@@ -5,30 +5,34 @@ use m_computebox
 
     private
 
-    public :: correlate_init, correlate_image, correlate_gradient
+    public :: correlate_init, correlate_stack
+
+    real,dimension(:,:,:,:),allocatable,public :: correlate_energy, correlate_image, correlate_gradient
 
     !correlate
     type,public :: t_correlate
 
         character(:),allocatable :: name
 
-        !dimension
-        integer :: nz,nx,ny,nt
+        ! !dimension
+        ! integer :: nz,nx,ny,nt
 
-        !index
-        integer :: ifz,ilz,ifx,ilx,ify,ily,ift,ilt
+        ! !index
+        ! integer :: ifz,ilz,ifx,ilx,ify,ily,ift,ilt
 
         !wavefield components in computation domain
+        real,dimension(:,:,:),allocatable :: sp_sp
         real,dimension(:,:,:),allocatable :: rp_sp
         real,dimension(:,:,:),allocatable :: drp_dt_dsp_dt, nab_rp_nab_sp
         real,dimension(:,:,:),allocatable :: rp_lap_sp
 
         contains
 
-        procedure :: init
+        ! procedure :: init
         ! procedure :: init_bounds
         ! procedure :: check_value
         ! procedure :: change_dim
+        procedure :: scale
         procedure :: write
         final :: final
         
@@ -45,16 +49,6 @@ use m_computebox
     logical :: if_snapshot
     type(t_string),dimension(:),allocatable :: snapshot
     integer :: i_snapshot, n_snapshot
-
-    real,dimension(:,:,:,:),allocatable :: correlate_image, correlate_gradient
-
-    ! !image, as a child of correlate
-    ! type,public :: t_image
-    ! end type
-
-    ! !gradient, as a child of correlate
-    ! type,public :: t_gradient
-    ! end type
 
     contains
 
@@ -99,45 +93,93 @@ use m_computebox
 
     end subroutine
 
-    subroutine init(self,name,shape123_from,o_comp)
+    ! subroutine init(self,name,shape123_from,o_comp)
+    !     class(t_correlate) :: self
+    !     character(*) :: name, shape123_from
+    !     character(*),optional :: o_comp
+
+    !     type(t_string),dimension(:),allocatable :: comp
+
+    !     self%name=name
+
+    !     select case (shape123_from)
+    !         case ('model')
+    !         self%ifz=1; self%ilz=m%nz; self%nz=m%nz
+    !         self%ifx=1; self%ilx=m%nx; self%nx=m%nx
+    !         self%ify=1; self%ily=m%ny; self%ny=m%ny
+
+    !         case ('computebox')
+    !         self%ifz=cb%ifz; self%ilz=cb%ilz; self%nz=cb%nz
+    !         self%ifx=cb%ifx; self%ilx=cb%ilx; self%nx=cb%nx
+    !         self%ify=cb%ify; self%ily=cb%ily; self%ny=cb%ny
+
+    !     end select
+
+    !     if(present(o_comp)) then
+    !         comp=split(o_comp,o_sep=',')
+    !         do i=1,size(comp)
+    !             select case (comp(i)%s)
+    !             case ('rp_sp')
+    !                 call alloc(self%rp_sp,        [self%ifz,self%ilz],[self%ifx,self%ilx],[self%ify,self%ily])
+    !             case ('drp_dt_dsp_dt')
+    !                 call alloc(self%drp_dt_dsp_dt,[self%ifz,self%ilz],[self%ifx,self%ilx],[self%ify,self%ily])
+    !             case ('nab_rp_nab_sp')
+    !                 call alloc(self%nab_rp_nab_sp,[self%ifz,self%ilz],[self%ifx,self%ilx],[self%ify,self%ily])
+    !             case ('rp_lap_sp')
+    !                 call alloc(self%rp_lap_sp,    [self%ifz,self%ilz],[self%ifx,self%ilx],[self%ify,self%ily])
+
+    !             end select
+
+    !         enddo
+    !     endif
+
+    ! end subroutine
+
+    subroutine scale(self,scaler)
         class(t_correlate) :: self
-        character(*) :: name, shape123_from
-        character(*),optional :: o_comp
 
-        type(t_string),dimension(:),allocatable :: comp
+        if(allocated(self%sp_sp)) call scale_copy(self%sp_sp,scaler)
+        if(allocated(self%rp_sp)) call scale_copy(self%rp_sp,scaler)
 
-        self%name=name
+        if(allocated(self%drp_dt_dsp_dt)) call scale_copy(self%drp_dt_dsp_dt,scaler)
+        if(allocated(self%nab_rp_nab_sp)) call scale_copy(self%nab_rp_nab_sp,scaler)
+        if(allocated(self%rp_lap_sp))     call scale_copy(self%rp_lap_sp,    scaler)
 
-        select case (shape123_from)
-            case ('model')
-            self%ifz=1; self%ilz=m%nz; self%nz=m%nz
-            self%ifx=1; self%ilx=m%nx; self%nx=m%nx
-            self%ify=1; self%ily=m%ny; self%ny=m%ny
+        ! if(allocated(self%rp_sp)) then
+        !     self%rp_sp        = self%rp_sp*scaler
+        !     self%rp_sp(1,:,:) = self%rp_sp(2,:,:)
+        ! endif
+        ! if(allocated(self%drp_dt_dsp_dt)) then
+        !     self%drp_dt_dsp_dt        = self%drp_dt_dsp_dt*scaler
+        !     self%drp_dt_dsp_dt(1,:,:) = self%drp_dt_dsp_dt(2,:,:)
+        ! endif
+        ! if(allocated(self%nab_rp_nab_sp)) then
+        !     self%nab_rp_nab_sp        = self%nab_rp_nab_sp*scaler
+        !     self%nab_rp_nab_sp(1,:,:) = self%nab_rp_nab_sp(2,:,:)
+        ! endif
+        ! if(allocated(self%rp_lap_sp)) then
+        !     self%rp_lap_sp        = self%rp_lap_sp*scaler
+        !     self%rp_lap_sp(1,:,:) = self%rp_lap_sp(2,:,:)
+        ! endif
 
-            case ('computebox')
-            self%ifz=cb%ifz; self%ilz=cb%ilz; self%nz=cb%nz
-            self%ifx=cb%ifx; self%ilx=cb%ilx; self%nx=cb%nx
-            self%ify=cb%ify; self%ily=cb%ily; self%ny=cb%ny
+    end subroutine
 
-        end select
+    subroutine scale_copy(array,scaler)
+        real,dimension(:,:,:) :: array
+        array=array*scaler
+        array(1,:,:)=array(2,:,:)
+    end subroutine
 
-        if(present(o_comp)) then
-            comp=split(o_comp,o_sep=',')
-            do i=1,size(comp)
-                select case (comp(i)%s)
-                case ('rp_sp')
-                    call alloc(self%rp_sp,        [self%ifz,self%ilz],[self%ifx,self%ilx],[self%ify,self%ily])
-                case ('drp_dt_dsp_dt')
-                    call alloc(self%drp_dt_dsp_dt,[self%ifz,self%ilz],[self%ifx,self%ilx],[self%ify,self%ily])
-                case ('nab_rp_nab_sp')
-                    call alloc(self%nab_rp_nab_sp,[self%ifz,self%ilz],[self%ifx,self%ilx],[self%ify,self%ily])
-                case ('rp_lap_sp')
-                    call alloc(self%rp_lap_sp,    [self%ifz,self%ilz],[self%ifx,self%ilx],[self%ify,self%ily])
 
-                end select
+    subroutine correlate_stack(small,big)
+        real,dimension(:,:,:) :: small, big
 
-            enddo
-        endif
+        big(cb%ioz:cb%ioz+cb%mz-1,&
+            cb%iox:cb%iox+cb%mx-1,&
+            cb%ioy:cb%ioy+cb%my-1  ) = &
+        big(cb%ioz:cb%ioz+cb%mz-1,&
+            cb%iox:cb%iox+cb%mx-1,&
+            cb%ioy:cb%ioy+cb%my-1  ) + small
 
     end subroutine
 
