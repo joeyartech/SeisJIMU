@@ -107,8 +107,8 @@ use m_smoother_laplacian_sparse
 
     !write correlate
     if(mpiworld%is_master) then
-        call u_star_u%write(ppg%nt)
-        call a_star_u%write(ppg%nt)
+        call u_star_u%write
+        call a_star_u%write
     endif
 
     !allreduce energy, gradient

@@ -97,14 +97,14 @@ use m_resampler
             call hud('     Update velocity model       ')
             call hud('---------------------------------')
 
-            call ppg%init_correlate(F1_star_E0,'F1_star_E0','gikpa') !F₁★∇²E₀ for gikpa (one RE)
-            call ppg%init_correlate(F2_star_dE,'F2_star_dE','gikpa') !F₂★∇²δE for gikpa (the other RE)
-            call ppg%init_correlate(F2_star_E0,'F2_star_E0','gikpa') !F₂★∇²E₀ for gikpa (3rd RE?)
+            call ppg%init_correlate(F1_star_E0,'F1_star_E0','gikpa_gbuo')    !F₁★∇²E₀
+            call ppg%init_correlate(F2_star_dE,'F2_star_dE','gikpa_gbuo')    !F₂★∇²δE
+            call ppg%init_correlate(F2_star_E0,'F2_star_E0','gikpa_gbuo_MI') !F₂★∇²E₀
             
             call wei%update
             call alloc(shot%dadj,shot%nt,shot%nrcv)
 
-            if(.not.allocated(dnorm)) dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2sq_sq')
+            if(.not.allocated(dnorm)) dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2sq')
             select case (dnorm)
                 case ('L2sq')
                 fobj%misfit = fobj%misfit &
@@ -132,7 +132,7 @@ use m_resampler
             !AᴴF₁ = -DF₂ +Rᴴ(d-(E₀+δE))
             call ppg%init_field(fld_F1,name='fld_F1',ois_adjoint=.true.); call fld_F1%ignite
             call ppg%init_field(fld_F2,name='fld_F2',ois_adjoint=.true.); call fld_F2%ignite
-            call ppg%adjoint_ikpa(fld_F1,fld_F2,fld_dE,fld_E0,o_F1_star_E0=F1_star_E0,o_F2_star_dE=F2_star_dE,o_F2_star_E0=F2_star_E0)
+            call ppg%adjoint(fld_F1,fld_F2,fld_dE,fld_E0,o_F1_star_E0=F1_star_E0,o_F2_star_dE=F2_star_dE,o_F2_star_E0=F2_star_E0)
             call hud('---------------------------------')
             
         endif
@@ -166,9 +166,9 @@ use m_resampler
 
     !write correlate
     if(mpiworld%is_master) then
-        call F2_star_E0%write(ppg%nt)
-        call F1_star_E0%write(ppg%nt)
-        call F2_star_dE%write(ppg%nt)
+        call F2_star_E0%write
+        call F1_star_E0%write
+        call F2_star_dE%write
     endif
 
     !allreduce energy, gradient

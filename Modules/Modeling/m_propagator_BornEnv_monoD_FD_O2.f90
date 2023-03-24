@@ -18,8 +18,7 @@ use m_cpml
     real :: c2x, c2y, c2z
 
     !local const
-    real :: inv_dt
-    real :: dt2, inv_2dz, inv_2dx, inv_2dt, inv_dz2,inv_dx2
+    real :: dt2, inv_2dz, inv_2dx
 
     !scaling source wavelet
     real :: wavelet_scaler
@@ -69,8 +68,8 @@ use m_cpml
 
         procedure :: forward
         procedure :: forward_scattering
+        procedure :: adjoint
         procedure :: adjoint_tilD
-        procedure :: adjoint_ikpa
         
         procedure :: inject_pressure
         procedure :: inject_pressure_scattering
@@ -168,15 +167,9 @@ use m_cpml
         c1x=coef(1)/m%dx; c1y=coef(1)/m%dy; c1z=coef(1)/m%dz
         !c2x=coef(2)/m%dx; c2y=coef(2)/m%dy; c2z=coef(2)/m%dz
 
+        dt2=self%dt**2
         inv_2dz =1./2/m%dz
         inv_2dx =1./2/m%dx
-
-        inv_dz2 =1./m%dz/m%dz
-        inv_dx2 =1./m%dx/m%dx
-
-        inv_dt=1./self%dt
-        inv_2dt=1./2/self%dt
-        dt2=self%dt**2
         
         wavelet_scaler=dt2/m%cell_volume
 
@@ -274,15 +267,17 @@ use m_cpml
         corr%purpose=purpose
 
         select case (purpose)
-        case ('ISIC')
-            call alloc(corr%drp_dt_dsp_dt,m%nz,m%nx,m%ny)
-            call alloc(corr%nab_rp_nab_sp,m%nz,m%nx,m%ny)
-        case ('rp_lapbuo_sp')
-            call alloc(corr%rp_lapbuo_sp,m%nz,m%nx,m%ny)
-        case ('lapbuo_rp_sp')
-            call alloc(corr%lapbuo_rp_sp,m%nz,m%nx,m%ny)
-        ! case ('grho')
-        !     call alloc(corr%nab_rp_nab_sp,m%nz,m%nx,m%ny)
+        case ('gikpa_gbuo')
+            call alloc(corr%lap_rp_sp,m%nz,m%nx,m%ny) !actually not needed
+            call alloc(corr%rp_lap_sp,m%nz,m%nx,m%ny)
+            call alloc(corr%div_rp_div_sp,m%nz,m%nx,m%ny)
+        case ('gikpa_gbuo_MI')
+            call alloc(corr%lap_rp_sp,m%nz,m%nx,m%ny)
+            call alloc(corr%rp_lap_sp,m%nz,m%nx,m%ny) !actually not needed
+            call alloc(corr%div_rp_div_sp,m%nz,m%nx,m%ny) !actually not needed
+        case ('gtilD')
+            call alloc(corr%lap_rp_sp,m%nz,m%nx,m%ny)
+            call alloc(corr%div_rp_div_sp,m%nz,m%nx,m%ny)
         end select
 
     end subroutine
@@ -753,7 +748,7 @@ use m_cpml
             !gradient: rf%p^it star sf%p^it
             if(mod(it,irdt)==0 .and. present(o_F2_star_E0)) then
                 call cpu_time(tic)
-                call cross_correlate(fld_F2,fld_E0,o_F2_star_E0,'ISIC',it) ! 1st cond   1.00000005E-03   1.28531706      0.913123488       372.193542      -288.561340     -0.775299132     F
+                call cross_correlate(fld_F2,fld_E0,o_F2_star_E0,it) ! 1st cond   1.00000005E-03   1.28531706      0.913123488       372.193542      -288.561340     -0.775299132     F
                 call cpu_time(toc)
                 tt11=tt11+toc-tic
             endif
@@ -845,14 +840,14 @@ use m_cpml
             !scale by m%cell_volume*rdt tobe an image or gradient in the discretized world
             call o_F2_star_E0%scale(m%cell_volume*rdt)
 
-            call correlate_stack(m%vp**(-2)*o_F2_star_E0%drp_dt_dsp_dt - o_F2_star_E0%nab_rp_nab_sp, &
+            call correlate_stack(-m%rho*o_F2_star_E0%lap_rp_sp -o_F2_star_E0%div_rp_div_sp, &
                 correlate_gradient(:,:,:,3)) !gtilD
 
         endif
 
     end subroutine
 
-    subroutine adjoint_ikpa(self,fld_F1,fld_F2,fld_dE,fld_E0,oif_record_adjseismo,o_F1_star_E0,o_F2_star_dE,o_F2_star_E0)
+    subroutine adjoint(self,fld_F1,fld_F2,fld_dE,fld_E0,oif_record_adjseismo,o_F1_star_E0,o_F2_star_dE,o_F2_star_E0)
         class(t_propagator) :: self
         type(t_field) :: fld_F1,fld_F2,fld_dE,fld_E0
         logical,optional :: oif_record_adjseismo
@@ -930,9 +925,9 @@ use m_cpml
             !gradient: rf%p^it star sf%p^it
             if(mod(it,irdt)==0 .and. if_corr) then
                 call cpu_time(tic)
-                call cross_correlate(fld_F1,fld_E0,o_F1_star_E0,'rp_lapbuo_sp',it)
-                call cross_correlate(fld_F2,fld_dE,o_F2_star_dE,'rp_lapbuo_sp',it)
-                call cross_correlate(fld_F2,fld_E0,o_F2_star_E0,'lapbuo_rp_sp',it)
+                call cross_correlate(fld_F1,fld_E0,o_F1_star_E0,it)
+                call cross_correlate(fld_F2,fld_dE,o_F2_star_dE,it)
+                call cross_correlate(fld_F2,fld_E0,o_F2_star_E0,it)
                 call cpu_time(toc)
                 tt11=tt11+toc-tic
             endif
@@ -1028,11 +1023,11 @@ use m_cpml
             call o_F2_star_dE%scale(m%cell_volume*rdt)
             call o_F2_star_E0%scale(m%cell_volume*rdt)
 
-            call correlate_stack(self%kpa*( o_F1_star_E0%rp_lapbuo_sp +o_F2_star_dE%rp_lapbuo_sp -m%rho*m%tilD*o_F2_star_E0%lapbuo_rp_sp ),&
+            call correlate_stack(self%kpa(1:m%nz,1:m%nx,1:m%ny)*( o_F1_star_E0%rp_lap_sp +o_F2_star_dE%rp_lap_sp -m%rho*m%tilD*o_F2_star_E0%lap_rp_sp ),&
                 correlate_gradient(:,:,:,1)) !gikpa
 
-            ! call correlate_stack(-o_F1_star_E0%rp_lap_sp -o_F2_star_dE%rp_lap_sp +m%rho**2*m%tilD*o_F2_star_E0%lap_rp_sp, &
-            !     correlate_gradient(:,:,:,2)) !gbuo
+            call correlate_stack(o_F1_star_E0%div_rp_div_sp +o_F2_star_dE%div_rp_div_sp +m%rho**2*m%tilD*o_F2_star_E0%lap_rp_sp, &
+                correlate_gradient(:,:,:,2)) !gbuo
         endif
 
     end subroutine
@@ -1128,8 +1123,8 @@ use m_cpml
             ! fld_d%p = fld_d%p + time_dir*(cb%rho*cb%tilD*(           fld%p-fld%p_prev) )
             fld_d%p = fld_d%p + time_dir*(cb%rho*cb%tilD*(fld%p_next-2*fld%p+fld%p_prev) )
 
-            call fd2d_secondary_source(self%kpa,cb%tilD,cb%tilD,fld%p, fld%lap, ifz,ilz,ifx,ilx)
-            !call fd2d_secondary_source(self%kpa,cb%tilD,cb%tilD,abs(fld_F2%p),fld%lap, ifz,ilz,ifx,ilx))
+            call fd2d_secondary_source(self%kpa,cb%tilD,fld%p, fld%lap, ifz,ilz,ifx,ilx)
+            !call fd2d_secondary_source(self%kpa,cb%tilD,abs(fld_F2%p),fld%lap, ifz,ilz,ifx,ilx))
             fld_d%p = fld_d%p + time_dir*( -dt2*fld%lap )
 
         endif
@@ -1165,7 +1160,7 @@ use m_cpml
         ! fld_F1%p = fld_F1%p + (cb%rho*cb%tilD*(              fld_F2%p-fld_F2%p_next) )
         fld_F1%p = fld_F1%p + (cb%rho*cb%tilD*(fld_F2%p_prev-2*fld_F2%p+fld_F2%p_next))
 
-        call fd2d_secondary_source(self%kpa,cb%tilD,cb%tilD,fld_F2%p,fld_F2%lap, ifz,ilz,ifx,ilx)
+        call fd2d_secondary_source(self%kpa,cb%tilD,fld_F2%p,fld_F2%lap, ifz,ilz,ifx,ilx)
 
         fld_F1%p = fld_F1%p - dt2*fld_F2%lap !-dt2*tmp*sgns(fld_E0%p)
 
@@ -1432,12 +1427,9 @@ use m_cpml
 
     end subroutine
 
-    subroutine cross_correlate(rf,sf,corr,task,it)
+    subroutine cross_correlate(rf,sf,corr,it)
         type(t_field), intent(in) :: rf, sf
         type(t_correlate) :: corr
-        character(*) :: task
-
-        real,dimension(:,:,:),allocatable :: tmp
 
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
@@ -1458,30 +1450,19 @@ use m_cpml
             
         ! endif
 
-        call alloc(tmp,m%nz,m%nx,m%ny)
-
         if(m%is_cubic) then
         else
-            select case (task)
-            case ('ISIC') !for gtilD
-                call grad2d_ISIC(rf%p_next,rf%p,rf%p_prev,sf%p_next,sf%p,sf%p_prev,&
-                                corr%drp_dt_dsp_dt,corr%nab_rp_nab_sp,&
-                                ifz,ilz,ifx,ilx)
-
-            case ('rp_lapbuo_sp') !for gikpa
-                call grad2d_rp_lapbuo_sp(rf%p,sf%p,&
-                            corr%rp_lapbuo_sp,&
-                            ppg%buoz,ppg%buox,&
-                            ifz,ilz,ifx,ilx)
-            case ('lapbuo_rp_sp') !for gikpa, lapbuo_ro_sp /= rp_lapbuo_sp in case |sp| is involved
-                call grad2d_lapbuo_rp_sp(rf%p,sf%p,&
-                            corr%lapbuo_rp_sp,&
-                            ppg%buoz,ppg%buox,&
-                            ifz,ilz,ifx,ilx)
-
-            case ('rp_lap_sp') !for gbuo, not yet..
-
-            end select
+            if(corr%purpose=='gtilD') then
+                call grad2d_gtilD(rf%p,sf%p,&
+                        corr%lap_rp_sp,corr%div_rp_div_sp,&
+                        ppg%buoz,ppg%buox,&
+                        ifz,ilz,ifx,ilx)
+            else
+                call grad2d(corr%purpose,rf%p,sf%p,&
+                        corr%rp_lap_sp,corr%lap_rp_sp,corr%div_rp_div_sp,&
+                        ppg%buoz,ppg%buox,&
+                        ifz,ilz,ifx,ilx)
+            endif
         endif
 
     end subroutine
@@ -1649,9 +1630,9 @@ use m_cpml
 
     end subroutine
 
-    subroutine fd2d_secondary_source(p,kpa,buoz,buox,lap,&
+    subroutine fd2d_secondary_source(p,kpa,tilD,lap,&
                                     ifz,ilz,ifx,ilx)
-        real,dimension(*) :: p,kpa,buoz,buox,lap
+        real,dimension(*) :: p,kpa,tilD,lap
 
         real,dimension(:),allocatable :: pzz,pxx
         call alloc(pzz,cb%n)
@@ -1679,8 +1660,8 @@ use m_cpml
                 dp_dz_ = c1z*(p(iz_ix) - p(izm1_ix))
                 dp_dx_ = c1x*(p(iz_ix) - p(iz_ixm1))
 
-                pzz(iz_ix) = buoz(iz_ix)*dp_dz_
-                pxx(iz_ix) = buox(iz_ix)*dp_dx_
+                pzz(iz_ix) = tilD(iz_ix)*dp_dz_
+                pxx(iz_ix) = tilD(iz_ix)*dp_dx_
 
             enddo
         enddo
@@ -1744,273 +1725,19 @@ use m_cpml
 
     ! end subroutine
 
-    subroutine grad2d_ISIC(rf_p_next,rf_p,rf_p_prev,sf_p_next,sf_p,sf_p_prev,&
-                      drp_dt_dsp_dt,nab_rp_nab_sp,&
-                      ifz,ilz,ifx,ilx)
-        real,dimension(*) :: rf_p_next,rf_p,rf_p_prev
-        real,dimension(*) :: sf_p_next,sf_p,sf_p_prev
-        real,dimension(*) :: drp_dt_dsp_dt, nab_rp_nab_sp
-
-        !double precision :: drp_dt, dsp_dt, drp_dz, dsp_dz, drp_dx, dsp_dx
-
-        nz=cb%nz
-
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,j,&
-        !$omp         izm1_ix,iz_ix,izp1_ix,iz_ixm1,iz_ixp1,&
-        !$omp         drp_dt,dsp_dt,drp_dz,dsp_dz,drp_dx,dsp_dx)
-        !$omp do schedule(dynamic)
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-                
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !corr has no boundary layers
-
-                
-                izm1_ix=i-1  !iz-1,ix
-                iz_ix  =i    !iz,ix
-                izp1_ix=i+1  !iz+1,ix
-                
-                iz_ixm1=i    -nz  !iz,ix-1
-                iz_ixp1=i    +nz  !iz,ix+1
-                
-                !for time diff, we have 3 choices
-                !which choice is correct depends on where we form the crosscorrelation
-                !Choice I:
-                drp_dt = (rf_p_next(i)-rf_p_prev(i)) *inv_2dt
-                dsp_dt = (sf_p_next(i)-sf_p_prev(i)) *inv_2dt
-                drp_dt_dsp_dt(j)=drp_dt_dsp_dt(j) + drp_dt*dsp_dt
-
-                !!Choice II:
-                ! drp_dt = -rf_p(i)
-                ! d2sp_dt2 = (sf_p_next(i)-2*sf_p(i)+sf_p_prev(i)) /dt2
-                ! drp_dt_dsp_dt(j)=drp_dt_dsp_dt(j) - rf_p(i)*d2sp_dt2
-
-                !!Choice III:
-                ! d2rp_dt2 = (rf_p_next(i)-2*rf_p(i)+rf_p_prev(i)) /dt2
-                ! drp_dt_dsp_dt(j)=drp_dt_dsp_dt(j) - d2rp_dt2*sf_p(i)
-
-
-                drp_dz = (rf_p(izp1_ix)-rf_p(izm1_ix)) *inv_2dz
-                dsp_dz = (sf_p(izp1_ix)-sf_p(izm1_ix)) *inv_2dz
-
-                drp_dx = (rf_p(iz_ixp1)-rf_p(iz_ixm1)) *inv_2dx
-                dsp_dx = (sf_p(iz_ixp1)-sf_p(iz_ixm1)) *inv_2dx
-
-                nab_rp_nab_sp(j)=nab_rp_nab_sp(j) + drp_dz*dsp_dz + drp_dx*dsp_dx
-
-            end do
-            
-        end do
-        !$omp end do
-        !$omp end parallel
-
-    end subroutine
-
-    subroutine grad2d_rp_lapbuo_sp(rp,sp,&
-                        rp_lapbuo_sp,&
-                        buoz,buox, &
-                        ifz,ilz,ifx,ilx)
-        real,dimension(*) :: rp, sp
-        real,dimension(*) :: rp_lapbuo_sp
-        real,dimension(*) :: buoz,buox
-
-        real,dimension(:),allocatable :: buo_pzz,pzz
-        real,dimension(:),allocatable :: buo_pxx,pxx
-        call alloc(buo_pzz,cb%n); call alloc(pzz,cb%n)
-        call alloc(buo_pxx,cb%n); call alloc(pxx,cb%n)
-
-        nz=cb%nz
-        nx=cb%nx
-        
-        !flux: b∇u ~= ( bz*∂zᵇp , bx*∂ₓᵇp )
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,&
-        !$omp         izm1_ix,iz_ix,iz_ixm1,&
-        !$omp         dp_dz_,dp_dx_)
-        !$omp do schedule(dynamic)
-        do ix = ifx+1,ilx
-            !dir$ simd
-            do iz = ifz+1,ilz
-
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
-
-                izm1_ix=i-1       !iz-1,ix
-                iz_ix  =i         !iz,ix
-                iz_ixm1=i    -nz  !iz,ix-1
-
-                dp_dz_ = c1z*(sp(iz_ix) - sp(izm1_ix))
-                dp_dx_ = c1x*(sp(iz_ix) - sp(iz_ixm1))
-
-                buo_pzz(iz_ix) = buoz(iz_ix)*dp_dz_
-                buo_pxx(iz_ix) = buox(iz_ix)*dp_dx_
-
-                ! pzz(iz_ix) = dp_dz_
-                ! pxx(iz_ix) = dp_dx_
-
-            enddo
-        enddo
-        !$omp end do
-        !$omp end parallel
-        
-        !laplacian: ∇·b∇u ~= ∂zᶠ(bz*∂zᵇp) + ∂ₓᶠ(bx*∂ₓᵇp)
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,&
-        !$omp         iz_ix,izp1_ix,iz_ixp1,&
-        !$omp         buo_dpzz_dz_,buo_dpxx_dx_,&
-        !$omp             dpzz_dz_,    dpxx_dx_)
-        !$omp do schedule(dynamic)
-        do ix = ifx,ilx-1
-            !dir$ simd
-            do iz = ifz,ilz-1
-
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
-
-                iz_ix  =i
-                izp1_ix=i+1       !iz+1,ix
-                iz_ixp1=i    +nz  !iz,ix+1
-
-                buo_dpzz_dz_ = c1z*(buo_pzz(izp1_ix) - buo_pzz(iz_ix))
-                buo_dpxx_dx_ = c1x*(buo_pxx(iz_ixp1) - buo_pxx(iz_ix))
-
-                    ! dpzz_dz_ = c1z*(    pzz(izp1_ix) -     pzz(iz_ix))
-                    ! dpxx_dx_ = c1x*(    pxx(iz_ixp1) -     pxx(iz_ix))
-
-                rp_lapbuo_sp(j)=rp_lapbuo_sp(j) + rp(i)*(buo_dpzz_dz_ + buo_dpxx_dx_)
-                   !rp_lap_sp(j)=   rp_lap_sp(j) + rp(i)*(    dpzz_dz_ +     dpxx_dx_)
-
-
-            enddo
-        enddo
-        !$omp end do
-        !$omp end parallel
-
-    end subroutine
-
-    subroutine grad2d_lapbuo_rp_sp(rp,sp,&
-                        lapbuo_rp_sp,&
-                        buoz,buox, &
-                        ifz,ilz,ifx,ilx)
-        real,dimension(*) :: rp, sp
-        real,dimension(*) :: lapbuo_rp_sp
-        real,dimension(*) :: buoz,buox
-
-        real,dimension(:),allocatable :: buo_pzz,pzz
-        real,dimension(:),allocatable :: buo_pxx,pxx
-        call alloc(buo_pzz,cb%n); call alloc(pzz,cb%n)
-        call alloc(buo_pxx,cb%n); call alloc(pxx,cb%n)
-
-        nz=cb%nz
-        nx=cb%nx
-        
-        !flux: b∇u ~= ( bz*∂zᵇp , bx*∂ₓᵇp )
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,&
-        !$omp         izm1_ix,iz_ix,iz_ixm1,&
-        !$omp         dp_dz_,dp_dx_)
-        !$omp do schedule(dynamic)
-        do ix = ifx+1,ilx
-            !dir$ simd
-            do iz = ifz+1,ilz
-
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
-
-                izm1_ix=i-1       !iz-1,ix
-                iz_ix  =i         !iz,ix
-                iz_ixm1=i    -nz  !iz,ix-1
-
-                dp_dz_ = c1z*(rp(iz_ix) - rp(izm1_ix))
-                dp_dx_ = c1x*(rp(iz_ix) - rp(iz_ixm1))
-
-                buo_pzz(iz_ix) = buoz(iz_ix)*dp_dz_
-                buo_pxx(iz_ix) = buox(iz_ix)*dp_dx_
-
-                ! pzz(iz_ix) = dp_dz_
-                ! pxx(iz_ix) = dp_dx_
-
-            enddo
-        enddo
-        !$omp end do
-        !$omp end parallel
-        
-        !laplacian: ∇·b∇u ~= ∂zᶠ(bz*∂zᵇp) + ∂ₓᶠ(bx*∂ₓᵇp)
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,&
-        !$omp         iz_ix,izp1_ix,iz_ixp1,&
-        !$omp         buo_dpzz_dz_,buo_dpxx_dx_,&
-        !$omp             dpzz_dz_,    dpxx_dx_)
-        !$omp do schedule(dynamic)
-        do ix = ifx,ilx-1
-            !dir$ simd
-            do iz = ifz,ilz-1
-
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
-
-                iz_ix  =i
-                izp1_ix=i+1       !iz+1,ix
-                iz_ixp1=i    +nz  !iz,ix+1
-
-                buo_dpzz_dz_ = c1z*(buo_pzz(izp1_ix) - buo_pzz(iz_ix))
-                buo_dpxx_dx_ = c1x*(buo_pxx(iz_ixp1) - buo_pxx(iz_ix))
-
-                    ! dpzz_dz_ = c1z*(    pzz(izp1_ix) -     pzz(iz_ix))
-                    ! dpxx_dx_ = c1x*(    pxx(iz_ixp1) -     pxx(iz_ix))
-
-                lapbuo_rp_sp(j)=lapbuo_rp_sp(j) + (buo_dpzz_dz_ + buo_dpxx_dx_)*sp(i)
-                   !rp_lap_sp(j)=   rp_lap_sp(j) + rp(i)*(    dpzz_dz_ +     dpxx_dx_)
-
-
-            enddo
-        enddo
-        !$omp end do
-        !$omp end parallel
-
-    end subroutine
-
-
-    ! subroutine grad2d_vp2_oneterm(rf_p,sf_lapz,sf_lapx,&
-    !                               grad,          &
-    !                               ifz,ilz,ifx,ilx)
-    !     real,dimension(*) :: rf_p,sf_lapz,sf_lapx
-    !     real,dimension(*) :: grad
-
-    !     nz=cb%nz
-        
-    !     !$omp parallel default (shared)&
-    !     !$omp private(iz,ix,i,j)
-    !     !$omp do schedule(dynamic)
-    !     do ix=ifx,ilx
-        
-    !         !dir$ simd
-    !         do iz=ifz,ilz
-                
-    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-    !             j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
-                
-    !             grad(j)=grad(j) + rf_p(i)*(sf_lapz(i)+sf_lapx(i))
-                
-    !         end do
-            
-    !     end do
-    !     !$omp end do
-    !     !$omp end parallel
-
-    ! end subroutine
-
-    ! subroutine grad2d_vp2_3rdterm(rf_p,sf_p,     &
-    !                               grad,          &
-    !                               ifz,ilz,ifx,ilx)
+    ! subroutine grad2d_inverse_scattering(rf_p,sf_p,&
+    !                           drp_dt_dsp_dt,nab_rp_nab_sp,&
+    !                           buoz,buox, &
+    !                           ifz,ilz,ifx,ilx)
     !     real,dimension(*) :: rf_p,sf_p
-    !     real,dimension(*) :: grad
-        
-    !     ! double precision :: drp_dz, dsp_dz, drp_dx, dsp_dx
+    !     real,dimension(*) :: drp_dt_dsp_dt, nab_rp_nab_sp
 
     !     nz=cb%nz
-        
+
     !     !$omp parallel default (shared)&
-    !     !$omp private(iz,ix,i,j)
+    !     !$omp private(iz,ix,i,j,&
+    !     !$omp         izm1_ix,iz_ix,izp1_ix,iz_ixm1,iz_ixp1,&
+    !     !$omp         drp_dt,dsp_dt,drp_dz,dsp_dz,drp_dx,dsp_dx)
     !     !$omp do schedule(dynamic)
     !     do ix=ifx,ilx
         
@@ -2018,7 +1745,8 @@ use m_cpml
     !         do iz=ifz,ilz
                 
     !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-    !             j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+    !             j=(iz-1)     +(ix-1)     *cb%mz !corr has no boundary layers
+
                 
     !             izm1_ix=i-1  !iz-1,ix
     !             iz_ix  =i    !iz,ix
@@ -2027,14 +1755,31 @@ use m_cpml
     !             iz_ixm1=i    -nz  !iz,ix-1
     !             iz_ixp1=i    +nz  !iz,ix+1
                 
-    !             drp_dz = (    rf_p(izp1_ix) -    rf_p(izm1_ix)) !*inv_2dz
-    !             dsp_dz = (abs(sf_p(izp1_ix))-abs(sf_p(izm1_ix)))!*inv_2dz
+    !             !for time diff, we have 3 choices
+    !             !which choice is correct depends on where we form the crosscorrelation
+    !             !Choice I:
+    !             drp_dt = (rf_p_next(i)-rf_p_prev(i)) *inv_2dt
+    !             dsp_dt = (sf_p_next(i)-sf_p_prev(i)) *inv_2dt
+    !             drp_dt_dsp_dt(j)=drp_dt_dsp_dt(j) + drp_dt*dsp_dt
 
-    !             drp_dx = (    rf_p(iz_ixp1) -    rf_p(iz_ixm1)) !*inv_2dx
-    !             dsp_dx = (abs(sf_p(iz_ixp1))-abs(sf_p(iz_ixm1)))!*inv_2dx
+    !             !!Choice II:
+    !             ! drp_dt = -rf_p(i)
+    !             ! d2sp_dt2 = (sf_p_next(i)-2*sf_p(i)+sf_p_prev(i)) /dt2
+    !             ! drp_dt_dsp_dt(j)=drp_dt_dsp_dt(j) - rf_p(i)*d2sp_dt2
 
-    !             grad(j)=grad(j) + drp_dz*dsp_dz + drp_dx*dsp_dx
-                
+    !             !!Choice III:
+    !             ! d2rp_dt2 = (rf_p_next(i)-2*rf_p(i)+rf_p_prev(i)) /dt2
+    !             ! drp_dt_dsp_dt(j)=drp_dt_dsp_dt(j) - d2rp_dt2*sf_p(i)
+
+
+    !             drp_dz = (rf_p(izp1_ix)-rf_p(izm1_ix)) *inv_2dz
+    !             dsp_dz = (sf_p(izp1_ix)-sf_p(izm1_ix)) *inv_2dz
+
+    !             drp_dx = (rf_p(iz_ixp1)-rf_p(iz_ixm1)) *inv_2dx
+    !             dsp_dx = (sf_p(iz_ixp1)-sf_p(iz_ixm1)) *inv_2dx
+
+    !             nab_rp_nab_sp(j)=nab_rp_nab_sp(j) + drp_dz*dsp_dz + drp_dx*dsp_dx
+
     !         end do
             
     !     end do
@@ -2043,62 +1788,178 @@ use m_cpml
 
     ! end subroutine
 
-    ! subroutine grad2d_moduli(rf_p,sf_lapz,sf_lapx,&
-    !                          grad,          &
-    !                          ifz,ilz,ifx,ilx)
-    !     real,dimension(*) :: rf_p,sf_lapz,sf_lapx
-    !     real,dimension(*) :: grad
-        
-    !     nz=cb%nz
-        
-    !     !$omp parallel default (shared)&
-    !     !$omp private(iz,ix,i,j)
-    !     !$omp do schedule(dynamic)
-    !     do ix=ifx,ilx
-        
-    !         !dir$ simd
-    !         do iz=ifz,ilz
-                
-    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-    !             j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
-                
-    !             grad(j)=grad(j) + rf_p(i)*(sf_lapz(i)+sf_lapx(i))
-                
-    !         end do
-            
-    !     end do
-    !     !$omp end do
-    !     !$omp end parallel
 
-    ! end subroutine
+    subroutine grad2d_gtilD(rp,sp,&
+                            lap_rp_sp,div_rp_div_sp,&
+                            buoz,buox, &
+                            ifz,ilz,ifx,ilx)
+        real,dimension(*) :: rp, sp
+        real,dimension(*) :: lap_rp_sp, div_rp_div_sp
+        real,dimension(*) :: buoz,buox
 
-    ! subroutine grad2d_D(rf_p,sf_p,&
-    !                          grad,          &
-    !                          ifz,ilz,ifx,ilx)
-    !     real,dimension(*) :: rf_p,sf_p
-    !     real,dimension(*) :: grad
-        
-    !     nz=cb%nz
-        
-    !     !$omp parallel default (shared)&
-    !     !$omp private(iz,ix,i,j)
-    !     !$omp do schedule(dynamic)
-    !     do ix=ifx,ilx
-        
-    !         !dir$ simd
-    !         do iz=ifz,ilz
-                
-    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-    !             j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
-                
-    !             grad(j)=grad(j) + rf_p(i)*sf_p(i)
-                
-    !         end do
-            
-    !     end do
-    !     !$omp end do
-    !     !$omp end parallel
+        real,dimension(:),allocatable :: pzz
+        real,dimension(:),allocatable :: pxx
+        call alloc(pzz,cb%n)
+        call alloc(pxx,cb%n)
 
-    ! end subroutine
+        nz=cb%nz
+        nx=cb%nx
+        
+        !flux: b∇u ~= ( bz*∂zᵇp , bx*∂ₓᵇp )
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,&
+        !$omp         izm1_ix,iz_ix,iz_ixm1,&
+        !$omp         dp_dz_,dp_dx_)
+        !$omp do schedule(dynamic)
+        do ix = ifx+1,ilx
+            !dir$ simd
+            do iz = ifz+1,ilz
+
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+
+                izm1_ix=i-1       !iz-1,ix
+                iz_ix  =i         !iz,ix
+                iz_ixm1=i    -nz  !iz,ix-1
+
+                dp_dz_ = c1z*(rp(iz_ix) - rp(izm1_ix))
+                dp_dx_ = c1x*(rp(iz_ix) - rp(iz_ixm1))
+
+                pzz(iz_ix) = buoz(iz_ix)*dp_dz_
+                pxx(iz_ix) = buox(iz_ix)*dp_dx_
+
+            enddo
+        enddo
+        !$omp end do
+        !$omp end parallel
+        
+        !laplacian: ∇·b∇u ~= ∂zᶠ(bz*∂zᵇp) + ∂ₓᶠ(bx*∂ₓᵇp)
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,&
+        !$omp         iz_ixm1,izm1_ix,iz_ix,izp1_ix,iz_ixp1,&
+        !$omp         dpzz_dz_,dpxx_dx_)
+        !$omp do schedule(dynamic)
+        do ix = ifx,ilx-1
+            !dir$ simd
+            do iz = ifz,ilz-1
+
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
+
+                iz_ixm1=i    -nz  !iz,ix-1
+                izm1_ix=i-1       !iz-1,ix
+                iz_ix  =i
+                izp1_ix=i+1       !iz+1,ix
+                iz_ixp1=i    +nz  !iz,ix+1
+
+                dpzz_dz_ = c1z*(pzz(izp1_ix) - pzz(iz_ix))
+                dpxx_dx_ = c1x*(pxx(iz_ixp1) - pxx(iz_ix))
+
+                div_rp_div_sp(j) = div_rp_div_sp(j) &
+                    + (rp(izp1_ix)-rp(izm1_ix))*(sp(izp1_ix)-sp(izm1_ix))*inv_2dz*inv_2dz &
+                    + (rp(iz_ixp1)-rp(iz_ixm1))*(sp(iz_ixp1)-sp(iz_ixm1))*inv_2dx*inv_2dx
+
+                lap_rp_sp(j) = lap_rp_sp(j) + (dpzz_dz_ + dpxx_dx_)*sp(i)
+
+            enddo
+        enddo
+        !$omp end do
+        !$omp end parallel
+
+    end subroutine
+
+    subroutine grad2d(purpose,rp,sp,&
+                        rp_lap_sp, lap_rp_sp, div_rp_div_sp,&
+                        buoz,buox, &
+                        ifz,ilz,ifx,ilx)
+        character(*) :: purpose
+        real,dimension(*) :: rp, sp
+        real,dimension(*) :: rp_lap_sp, lap_rp_sp, div_rp_div_sp
+        real,dimension(*) :: buoz,buox
+
+        real,dimension(:),allocatable :: rpzz, rpxx
+        real,dimension(:),allocatable :: spzz, spxx
+        call alloc(rpzz,cb%n); call alloc(rpxx,cb%n)
+        call alloc(spzz,cb%n); call alloc(spxx,cb%n)
+
+        nz=cb%nz
+        nx=cb%nx
+        
+        !flux: b∇u ~= ( bz*∂zᵇp , bx*∂ₓᵇp )
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,&
+        !$omp         izm1_ix,iz_ix,iz_ixm1,&
+        !$omp         drp_dz_,drp_dx_,dsp_dz_,dsp_dx_)
+        !$omp do schedule(dynamic)
+        do ix = ifx+1,ilx
+            !dir$ simd
+            do iz = ifz+1,ilz
+
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+
+                izm1_ix=i-1       !iz-1,ix
+                iz_ix  =i         !iz,ix
+                iz_ixm1=i    -nz  !iz,ix-1
+
+                drp_dz_ = c1z*(rp(iz_ix) - rp(izm1_ix))
+                drp_dx_ = c1x*(rp(iz_ix) - rp(iz_ixm1))
+
+                dsp_dz_ = c1z*(sp(iz_ix) - sp(izm1_ix))
+                dsp_dx_ = c1x*(sp(iz_ix) - sp(iz_ixm1))
+
+                rpzz(iz_ix) = buoz(iz_ix)*drp_dz_
+                rpxx(iz_ix) = buox(iz_ix)*drp_dx_
+
+                spzz(iz_ix) = buoz(iz_ix)*dsp_dz_
+                spxx(iz_ix) = buox(iz_ix)*dsp_dx_
+
+            enddo
+        enddo
+        !$omp end do
+        !$omp end parallel
+        
+        !laplacian: ∇·b∇u ~= ∂zᶠ(bz*∂zᵇp) + ∂ₓᶠ(bx*∂ₓᵇp)
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,&
+        !$omp         iz_ixm1,izm1_ix,iz_ix,izp1_ix,iz_ixp1,&
+        !$omp         drpzz_dz_,drpxx_dx_,dspzz_dz_,dspxx_dx_)
+        !$omp do schedule(dynamic)
+        do ix = ifx,ilx-1
+            !dir$ simd
+            do iz = ifz,ilz-1
+
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
+
+                iz_ixm1=i    -nz  !iz,ix-1
+                izm1_ix=i-1       !iz-1,ix
+                iz_ix  =i
+                izp1_ix=i+1       !iz+1,ix
+                iz_ixp1=i    +nz  !iz,ix+1
+
+                drpzz_dz_ = c1z*(rpzz(izp1_ix) - rpzz(iz_ix))
+                drpxx_dx_ = c1x*(rpxx(iz_ixp1) - rpxx(iz_ix))
+
+                dspzz_dz_ = c1z*(spzz(izp1_ix) - spzz(iz_ix))
+                dspxx_dx_ = c1x*(spxx(iz_ixp1) - spxx(iz_ix))
+
+                if(purpose=='gikpa_gbuo') then
+                    rp_lap_sp(j) = rp_lap_sp(j) + rp(i)*(dspzz_dz_ + dspxx_dx_)
+
+                    div_rp_div_sp(j) = div_rp_div_sp(j) &
+                        + (rp(izp1_ix)-rp(izm1_ix))*(sp(izp1_ix)-sp(izm1_ix))*inv_2dz*inv_2dz &
+                        + (rp(iz_ixp1)-rp(iz_ixm1))*(sp(iz_ixp1)-sp(iz_ixm1))*inv_2dx*inv_2dx
+
+                else
+                    lap_rp_sp(j) = lap_rp_sp(j) + (drpzz_dz_ + drpxx_dx_)*sp(i)
+
+                endif
+
+
+            enddo
+        enddo
+        !$omp end do
+        !$omp end parallel
+
+    end subroutine
 
 end

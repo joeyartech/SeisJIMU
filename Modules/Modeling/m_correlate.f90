@@ -23,8 +23,8 @@ use m_computebox
         !wavefield components in computation domain
         real,dimension(:,:,:),allocatable :: sp_sp
         real,dimension(:,:,:),allocatable :: rp_sp
-        real,dimension(:,:,:),allocatable :: drp_dt_dsp_dt, nab_rp_nab_sp
-        real,dimension(:,:,:),allocatable :: rp_lap_sp, rp_lapbuo_sp, lapbuo_rp_sp
+        real,dimension(:,:,:),allocatable :: drp_dt_dsp_dt, div_rp_div_sp
+        real,dimension(:,:,:),allocatable :: rp_lap_sp, lap_rp_sp
 
         contains
 
@@ -142,10 +142,9 @@ use m_computebox
         if(allocated(self%rp_sp)) call scale_copy(self%rp_sp,scaler)
 
         if(allocated(self%drp_dt_dsp_dt)) call scale_copy(self%drp_dt_dsp_dt,scaler)
-        if(allocated(self%nab_rp_nab_sp)) call scale_copy(self%nab_rp_nab_sp,scaler)
+        if(allocated(self%div_rp_div_sp)) call scale_copy(self%div_rp_div_sp,scaler)
         if(allocated(self%rp_lap_sp))     call scale_copy(self%rp_lap_sp,    scaler)
-        if(allocated(self%rp_lapbuo_sp))  call scale_copy(self%rp_lapbuo_sp, scaler)
-        if(allocated(self%lapbuo_rp_sp))  call scale_copy(self%lapbuo_rp_sp, scaler)
+        if(allocated(self%lap_rp_sp))     call scale_copy(self%lap_rp_sp,    scaler)
 
         ! if(allocated(self%rp_sp)) then
         !     self%rp_sp        = self%rp_sp*scaler
@@ -214,23 +213,36 @@ use m_computebox
 
     ! end subroutine
 
-    subroutine write(self,it,o_suffix)
+    subroutine write(self,o_it,o_suffix)
         class(t_correlate) :: self
+        integer,optional :: o_it
         character(*),optional :: o_suffix
 
         character(:),allocatable :: suf
 
-        suf=either(o_suffix,'',present(o_suffix))
+        if(.not.present(o_it)) then !just write
+            if(allocated(self%sp_sp))         call sysio_write(self%name//'%sp_sp'        ,self%sp_sp,        m%n)
+            if(allocated(self%rp_sp))         call sysio_write(self%name//'%rp_sp'        ,self%rp_sp,        m%n)
+            if(allocated(self%drp_dt_dsp_dt)) call sysio_write(self%name//'%drp_dt_dsp_dt',self%drp_dt_dsp_dt,m%n)
+            if(allocated(self%div_rp_div_sp)) call sysio_write(self%name//'%div_rp_div_sp',self%div_rp_div_sp,m%n)
+            if(allocated(self%rp_lap_sp))     call sysio_write(self%name//'%rp_lap_sp'    ,self%rp_lap_sp,    m%n)
+            if(allocated(self%lap_rp_sp))     call sysio_write(self%name//'%lap_rp_sp'    ,self%lap_rp_sp,    m%n)
 
-        if(if_snapshot) then
+            return
 
-            if(it==1 .or. mod(it,i_snapshot)==0 .or. it==nt) then
+        endif
+
+        if(if_snapshot) then !write snapshots
+
+            suf=either(o_suffix,'',present(o_suffix))
+
+            if(o_it==1 .or. mod(o_it,i_snapshot)==0 .or. o_it==nt) then
+                if(allocated(self%sp_sp))         call sysio_write('snap_'//self%name//'%sp_sp'//suf,        self%sp_sp,        m%n,o_mode='append')
                 if(allocated(self%rp_sp))         call sysio_write('snap_'//self%name//'%rp_sp'//suf,        self%rp_sp,        m%n,o_mode='append')
                 if(allocated(self%drp_dt_dsp_dt)) call sysio_write('snap_'//self%name//'%drp_dt_dsp_dt'//suf,self%drp_dt_dsp_dt,m%n,o_mode='append')
-                if(allocated(self%nab_rp_nab_sp)) call sysio_write('snap_'//self%name//'%nab_rp_nab_sp'//suf,self%nab_rp_nab_sp,m%n,o_mode='append')
+                if(allocated(self%div_rp_div_sp)) call sysio_write('snap_'//self%name//'%div_rp_div_sp'//suf,self%div_rp_div_sp,m%n,o_mode='append')
                 if(allocated(self%rp_lap_sp))     call sysio_write('snap_'//self%name//'%rp_lap_sp'//suf,    self%rp_lap_sp,    m%n,o_mode='append')
-                if(allocated(self%rp_lapbuo_sp))  call sysio_write('snap_'//self%name//'%rp_lapbuo_sp'//suf, self%rp_lapbuo_sp, m%n,o_mode='append')
-                if(allocated(self%lapbuo_rp_sp))  call sysio_write('snap_'//self%name//'%lapbuo_rp_sp'//suf, self%lapbuo_rp_sp, m%n,o_mode='append')
+                if(allocated(self%lap_rp_sp))     call sysio_write('snap_'//self%name//'%lap_rp_sp'//suf,    self%lap_rp_sp,    m%n,o_mode='append')
 
             endif
 
@@ -260,12 +272,10 @@ use m_computebox
     subroutine final(self)
         type(t_correlate) :: self
 
-        call dealloc(self%rp_sp)
+        call dealloc(self%sp_sp,self%rp_sp)
         call dealloc(self%drp_dt_dsp_dt)
-        call dealloc(self%nab_rp_nab_sp)
-        call dealloc(self%rp_lap_sp)
-        call dealloc(self%rp_lapbuo_sp)
-        call dealloc(self%lapbuo_rp_sp)
+        call dealloc(self%div_rp_div_sp)
+        call dealloc(self%rp_lap_sp,self%lap_rp_sp)
 
     end subroutine
 
