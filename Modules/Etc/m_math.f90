@@ -32,7 +32,10 @@ module m_math
     !p    - +
     !m    - -
     !d    - ∂
-    !nbla, nabla - ∇
+    !grad - ∇
+    !div  - ∇·
+    !curv - ∇x
+    !lap  - ∇·∇, ∇·b∇
     !inv  - inverse
     !_    - subscript, inverse, division, duplicate etc.
 

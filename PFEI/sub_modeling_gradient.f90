@@ -12,8 +12,7 @@ use m_resampler
     logical,save :: is_first_in=.true.
 
     type(t_field) :: fld_E0, fld_dE, fld_F1, fld_F2
-    type(t_correlation) :: F2_star_E0, F1_star_E0, F2_star_dE
-    real,dimension(:,:,:,:),allocatable :: gtilD, gvp2
+    type(t_correlate) :: F2_star_E0, F1_star_E0, F2_star_dE
     ! real,dimension(:,:),allocatable :: Wdres
     !real,dimension(:,:,:),allocatable :: Ddt2
     ! character(:),allocatable :: update_wavelet
@@ -21,11 +20,10 @@ use m_resampler
 
     character(:),allocatable :: dnorm
     
-    call alloc(gtilD,m%nz,m%nx,m%ny,1)
-    call alloc(gvp2 ,m%nz,m%nx,m%ny,1)
-
     !PFEI misfit
-    fobj%misfit=0.    
+    fobj%misfit=0.
+
+    call alloc(correlate_gradient,m%nz,m%nx,m%ny,ppg%ngrad)
     
     call hud('===== START LOOP OVER SHOTS =====')
     
@@ -76,10 +74,8 @@ use m_resampler
             call hud('        Build tilD model        ')
             call hud('--------------------------------')
 
-            call F2_star_E0%init('F2_star_E0',shape123_from='model') !F₂★E₀ for gtDt
-            call alloc(F2_star_E0%drp_dt_dsp_dt,m%nz,m%nx,m%ny,1)
-            call alloc(F2_star_E0%nab_rp_nab_sp,m%nz,m%nx,m%ny,1)
-
+            call ppg%init_correlate(F2_star_E0,'F2_star_E0','gtilD') !F₂★E₀ for gtDt
+            
             call wei%update!('_4IMAGING')
             fobj%misfit = fobj%misfit &
                 + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-(shot%dsyn+shot%dsyn_aux), shot%dt)
@@ -94,18 +90,6 @@ use m_resampler
             call ppg%adjoint_tilD(fld_F2,fld_E0,o_F2_star_E0=F2_star_E0)
             call hud('---------------------------------')
 
-            !call cb%project_back
-            gtilD(cb%ioz:cb%ioz+cb%mz-1,&
-                  cb%iox:cb%iox+cb%mx-1,&
-                  cb%ioy:cb%ioy+cb%my-1,1) = &
-            gtilD(cb%ioz:cb%ioz+cb%mz-1,&
-                  cb%iox:cb%iox+cb%mx-1,&
-                  cb%ioy:cb%ioy+cb%my-1,1) + &
-                F2_star_E0%drp_dt_dsp_dt(:,:,:,1) - m%vp**2*F2_star_E0%nab_rp_nab_sp(:,:,:,1) !inverse scattering imaging condition
-            ! gtDs%sp_rp(cb%ioz:cb%ioz+cb%mz-1,&
-            !            cb%iox:cb%iox+cb%mx-1,&
-            !            cb%ioy:cb%ioy+cb%my-1,shot%index) = F2_star_E0%sp_rp(:,:,:,1)
-
         endif
         
         if(index(setup%get_str('JOB'),'update velocity')>0) then
@@ -113,17 +97,14 @@ use m_resampler
             call hud('     Update velocity model       ')
             call hud('---------------------------------')
 
-            call F1_star_E0%init('F1_star_E0',shape123_from='model') !F₁★∇²E₀ for gvp2 (one RE)
-            call F2_star_dE%init('F2_star_dE',shape123_from='model') !F₂★∇²δE for gvp2 (the other RE)
-            call F2_star_E0%init('F2_star_E0',shape123_from='model') !F₂★∇²E₀ for gvp2 (3rd RE?)
-            call alloc(F1_star_E0%nab_rp_nab_sp,m%nz,m%nx,m%ny,1)
-            call alloc(F2_star_dE%nab_rp_nab_sp,m%nz,m%nx,m%ny,1)
-            call alloc(F2_star_E0%nab_rp_nab_sp,m%nz,m%nx,m%ny,1)
-
+            call ppg%init_correlate(F1_star_E0,'F1_star_E0','gikpa_gbuo')    !F₁★∇²E₀
+            call ppg%init_correlate(F2_star_dE,'F2_star_dE','gikpa_gbuo')    !F₂★∇²δE
+            call ppg%init_correlate(F2_star_E0,'F2_star_E0','gikpa_gbuo_MI') !F₂★∇²E₀
+            
             call wei%update
             call alloc(shot%dadj,shot%nt,shot%nrcv)
 
-            if(.not.allocated(dnorm)) dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2sq_sq')
+            if(.not.allocated(dnorm)) dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2sq')
             select case (dnorm)
                 case ('L2sq')
                 fobj%misfit = fobj%misfit &
@@ -158,17 +139,8 @@ use m_resampler
             !AᴴF₁ = -DF₂ +Rᴴ(d-(E₀+δE))
             call ppg%init_field(fld_F1,name='fld_F1',ois_adjoint=.true.); call fld_F1%ignite
             call ppg%init_field(fld_F2,name='fld_F2',ois_adjoint=.true.); call fld_F2%ignite
-            call ppg%adjoint_vp2(fld_F1,fld_F2,fld_dE,fld_E0,o_F1_star_E0=F1_star_E0,o_F2_star_dE=F2_star_dE,o_F2_star_E0=F2_star_E0)
+            call ppg%adjoint(fld_F1,fld_F2,fld_dE,fld_E0,o_F1_star_E0=F1_star_E0,o_F2_star_dE=F2_star_dE,o_F2_star_E0=F2_star_E0)
             call hud('---------------------------------')
-    
-            !project back    
-            gvp2(cb%ioz:cb%ioz+cb%mz-1,&
-                 cb%iox:cb%iox+cb%mx-1,&
-                 cb%ioy:cb%ioy+cb%my-1,1) = &
-            gvp2(cb%ioz:cb%ioz+cb%mz-1,&
-                 cb%iox:cb%iox+cb%mx-1,&
-                 cb%ioy:cb%ioy+cb%my-1,1) + &
-                F1_star_E0%nab_rp_nab_sp(:,:,:,1) +F2_star_dE%nab_rp_nab_sp(:,:,:,1) -m%tilD*F2_star_E0%nab_rp_nab_sp(:,:,:,1)
             
         endif
 
@@ -185,8 +157,8 @@ use m_resampler
         stop
     endif
 
-    !collect PFEI misfit values
-    !no need to collect WPI misfit values
+
+    !allreduce PFEI misfit values
     call mpi_allreduce(mpi_in_place, [fobj%misfit], 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     call hud('Stacked PFEI_misfit '//num2str(fobj%misfit))
 
@@ -194,43 +166,27 @@ use m_resampler
 
     call fobj%print_dnorms('Stacked but not yet linesearch-scaled','')
     
-    !collect global correlations
-    call mpi_allreduce(mpi_in_place, gtilD, m%n, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-    call mpi_allreduce(mpi_in_place,  gvp2, m%n, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-    
-    !scale
+    !scale by shotlist
     call shls%scale(1,o_from_sampled=[fobj%misfit])
     call shls%scale(fobj%n_dnorms,o_from_sampled=fobj%dnorms)
-    call shls%scale(m%n*3,o_from_sampled=m%correlate)
 
 
-    !call alloc(m%gradient,m%nz,m%nx,m%ny,1)
-
-    !call alloc(correlation_gradient,m%nz,m%nx,m%ny,1)
-
-    if(index(setup%get_str('JOB'),'build tilD')>0) then
-        if(mpiworld%is_master) then
-            call sysio_write('gtilD_dt2' ,F2_star_E0%drp_dt_dsp_dt,m%n)
-            call sysio_write('gtilD_nab2',F2_star_E0%nab_rp_nab_sp,m%n)
-            call sysio_write('gtilD',gtilD,m%n)
-        endif
-        correlation_gradient=gtilD
+    !write correlate
+    if(mpiworld%is_master) then
+        call F2_star_E0%write
+        call F1_star_E0%write
+        call F2_star_dE%write
     endif
 
-    if(index(setup%get_str('JOB'),'update velocity')>0) then
-        if(mpiworld%is_master) then
-            call sysio_write('gvp2_F1_star_E0',F1_star_E0%nab_rp_nab_sp,m%n)
-            call sysio_write('gvp2_F2_star_dE',F2_star_dE%nab_rp_nab_sp,m%n)
-            call sysio_write('gvp2_F2_star_E0',F2_star_E0%nab_rp_nab_sp,m%n)
-            call sysio_write('gvp2',gvp2,m%n)
-        endif
-        correlation_gradient=gvp2
-    endif
+    !allreduce energy, gradient
+    ! call mpi_allreduce(mpi_in_place, correlate_energy  , m%n          , mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    call mpi_allreduce(mpi_in_place, correlate_gradient, m%n*ppg%ngrad, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    
+    !scale by shotlist
+    call shls%scale(m%n*ppg%ngrad,o_from_sampled=correlate_gradient)
 
-    ! if(ppg%if_compute_engy) then
-    !     call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-    ! endif
-        
+    if(mpiworld%is_master) call sysio_write('correlate_gradient',correlate_gradient,m%n*ppg%ngrad)
+
     call mpiworld%barrier
 
 

@@ -1504,8 +1504,8 @@ use m_cpml
             !dir$ simd
             do iz=ifz,ilz
                 
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
                 izm1_ix=i-1  !iz-1,ix
                 iz_ix  =i    !iz,ix
@@ -1751,8 +1751,8 @@ use m_cpml
             !dir$ simd
             do iz=ifz,ilz
                 
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
                 rp = rf_p(i)
                 sp = sf_p(i)
@@ -1823,8 +1823,8 @@ use m_cpml
             !dir$ simd
             do iz=ifz,ilz
                 
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
                 sp = sf_p(i)
                 

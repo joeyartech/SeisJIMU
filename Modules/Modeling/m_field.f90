@@ -56,6 +56,7 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:,:),allocatable :: dshh_dz,dshh_dx,dshh_dy
         real,dimension(:,:,:),allocatable :: dp_dz,dp_dx,dp_dy
         real,dimension(:,:,:),allocatable :: dpzz_dz,dpxx_dx,dpyy_dy
+        real,dimension(:,:,:),allocatable :: lap
         real,dimension(:,:,:),allocatable :: lapz,lapx,lapy
 
         !source time function
@@ -277,6 +278,8 @@ use, intrinsic :: ieee_arithmetic
         if(allocated(self%dpxx_dx))   self%dpxx_dx=0.
         if(allocated(self%dpyy_dy))   self%dpyy_dy=0.
 
+        if(allocated(self%lap)) self%lap=0.
+
         if(allocated(self%lapz)) self%lapz=0.
         if(allocated(self%lapx)) self%lapx=0.
         if(allocated(self%lapy)) self%lapy=0.
@@ -327,8 +330,8 @@ use, intrinsic :: ieee_arithmetic
                     !     call sysio_write('snap_'//self%name//'%szx'//suf,self%szx,size(self%szx),o_mode='append')
                     case ('dp_dz')
                         call sysio_write('snap_'//self%name//'%dp_dz'//suf,self%dp_dz,size(self%dp_dz),o_mode='append')
-                    case ('lapz')
-                        call sysio_write('snap_'//self%name//'%lapz'//suf,self%lapz,size(self%lapz),o_mode='append')
+                    case ('lap')
+                        call sysio_write('snap_'//self%name//'%lap'//suf,self%lap,size(self%lapz),o_mode='append')
                     end select
                 enddo
             endif
@@ -585,6 +588,8 @@ use, intrinsic :: ieee_arithmetic
         call dealloc(self%dszx_dx,self%dsxx_dx)
         call dealloc(self%dshh_dz,self%dshh_dx,self%dshh_dy)
         call dealloc(self%dp_dz,self%dp_dx,self%dp_dy)
+
+        call dealloc(self%lap)
 
         call dealloc(self%wavelet)
 

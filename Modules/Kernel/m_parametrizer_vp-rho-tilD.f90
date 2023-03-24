@@ -2,8 +2,15 @@ module m_parametrizer
 use m_System
 use m_Modeling
 
-    !PARAMETERIZATION     -- ALLOWED PARAMETERS
-    !velocities-tilde D   -- vp tilD
+    !PARAMETERIZATION         -- ALLOWED PARAMETERS
+    !velocities-rho-tilde D   -- vp rho tilD
+
+    !acoustic:
+    !ikpa= 1/kpa = 1/rho/vp^2
+    !buo = 1/rho
+    !gvp = gikpa*(-2/rho/vp^3)
+    !grho= -1/rho^2*( gikpa/vp^2 + gbuo )
+
 
     private
 
@@ -15,8 +22,8 @@ use m_Modeling
     type,public :: t_parametrizer
         !info
         character(i_str_xxlen) :: info = &
-            'Parameterization: vp2-tilD'//s_NL// &
-            'Allowed pars: vp2, vp, tilD'!//s_NL// &
+            'Parameterization: vp-rho-tilD'//s_NL// &
+            'Allowed pars: vp, rho, tilD'!//s_NL// &
             !'Available empirical law: Gardner, Castagna'
 
         type(t_parameter),dimension(:),allocatable :: pars
@@ -106,7 +113,8 @@ use m_Modeling
         ! is_EL = index(ppg%info,'EL')>0
 
         !read in active parameters and their allowed ranges
-        list=setup%get_strs('PARAMETER',o_default='vp2:2250000:11560000')
+        ! list=setup%get_strs('PARAMETER',o_default='vp2:2250000:11560000')
+        list=setup%get_strs('PARAMETER',o_default='vp:1500:3400')
         
         self%npars=size(list)
         allocate(self%pars(self%npars))
@@ -117,37 +125,25 @@ use m_Modeling
             sublist=split(list(i)%s,o_sep=':') !=[name, min, max]
 
             select case (sublist(1)%s)
-            case ('vp2' )
-                self%pars(i)%name='vp2'
-                self%npars=self%npars+1
+            ! case ('vp2' )
+            !     self%pars(i)%name='vp2'
+            !     self%npars=self%npars+1
 
             case ('vp' )
                 self%pars(i)%name='vp'
                 self%npars=self%npars+1
 
+            case ('rho')
+                ! if(is_gardner) then
+                !     call hud('rho in PARAMETER is neglected and becomes passive as Gardner law is used')
+                !     cycle loop
+                ! endif
+                self%pars(i)%name='rho'
+                self%npars=self%npars+1
+
             case ('tilD')
                 self%pars(i)%name='tilD'
                 self%npars=self%npars+1
-
-            ! case ('vs' )
-            !     if(is_AC) then
-            !         call hud('vs in PARAMETER is neglected as the PDE is ACoustic.')
-            !         cycle loop
-            !     endif
-            !     if(is_castagna) then
-            !         call hud('vs in PARAMETER is neglected and becomes passive as Castagna law is used.')
-            !         cycle loop
-            !     endif
-            !     self%pars(i)%name='vs'
-            !     self%npars=self%npars+1
-
-            ! case ('rho')
-            !     if(is_gardner) then
-            !         call hud('rho in PARAMETER is neglected and becomes passive as Gardner law is used')
-            !         cycle loop
-            !     endif
-            !     self%pars(i)%name='rho'
-            !     self%npars=self%npars+1
                 
             end select
 
@@ -196,22 +192,20 @@ use m_Modeling
             if(either(o_dir,'m->x',present(o_dir))=='m->x') then
                 do i=1,self%npars
                         select case (self%pars(i)%name)
-                        case ('vp2' ); o_x(:,:,:,i) = (m%vp**2 -self%pars(i)%min)/self%pars(i)%range
-                        case ('vp'  ); o_x(:,:,:,i) = (m%vp    -self%pars(i)%min)/self%pars(i)%range
-                        case ('tilD'); o_x(:,:,:,i) = (m%tilD  -self%pars(i)%min)/self%pars(i)%range
-                        ! case ('vs' ); o_x(:,:,:,i) = (m%vs -self%pars(i)%min)/self%pars(i)%range
-                        ! case ('rho'); o_x(:,:,:,i) = (m%rho-self%pars(i)%min)/self%pars(i)%range
+                        ! case ('vp2' ); o_x(:,:,:,i) = (m%vp**2 -self%pars(i)%min)/self%pars(i)%range
+                        case ('vp'  ); o_x(:,:,:,i) = (m%vp  -self%pars(i)%min)/self%pars(i)%range
+                        case ('rho');  o_x(:,:,:,i) = (m%rho -self%pars(i)%min)/self%pars(i)%range
+                        case ('tilD'); o_x(:,:,:,i) = (m%tilD-self%pars(i)%min)/self%pars(i)%range
                         end select
                 enddo
 
             else !x->m
                 do i=1,self%npars
                     select case (self%pars(i)%name)
-                    case ('vp2' ); m%vp = sqrt(o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min)
-                    case ('vp'  ); m%vp   = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
-                    case ('tilD'); m%tilD = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
-                    !case ('vs' ); m%vs = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
-                    !case ('rho'); m%rho= o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
+                    ! case ('vp2' ); m%vp = sqrt(o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min)
+                    case ('vp'  ); m%vp  = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
+                    case ('rho');  m%rho = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
+                    case ('tilD'); m%tilD= o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
                     end select
                 enddo
                 ! ! + gardner
@@ -241,9 +235,13 @@ use m_Modeling
 
                 do i=1,param%npars
                     select case (param%pars(i)%name)
-                    case ('vp2' ); o_g(:,:,:,i) = correlation_gradient(:,:,:,i)
-                    case ('vp'  ); o_g(:,:,:,i) = correlation_gradient(:,:,:,i)*2.*m%vp
-                    case ('tilD'); o_g(:,:,:,i) = correlation_gradient(:,:,:,i)
+                    !correlate_gradient(:,:,:,1) = gikpa
+                    !correlate_gradient(:,:,:,2) = gbuo
+                    !correlate_gradient(:,:,:,2) = gtilD
+                    case ('vp' ); o_g(:,:,:,i) = correlate_gradient(:,:,:,1)*(-2.)/m%rho/(m%vp**3)
+                    case ('rho'); o_g(:,:,:,i) = -m%rho**(-2)*( &
+                        correlate_gradient(:,:,:,1)/(m%vp**2) + correlate_gradient(:,:,:,2) )
+                    case ('tilD'); o_g(:,:,:,i) = correlate_gradient(:,:,:,3)
                     end select
                 enddo
 
