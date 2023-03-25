@@ -98,10 +98,7 @@ use m_linesearcher
                 call param%transform('x->m',o_x=curr%x)
                 call m%write(o_suffix='_Iter'//siterate)
                 call sysio_write('descent_Iter'//siterate,curr%d,size(curr%d))
-                if(allocated(m%correlate)) then
-                    call sysio_write('correlate_Iter'//siterate,m%correlate,size(m%correlate))
-                endif
-
+                
                 call sysio_mv('updated_wavelet.su','updated_wavelet_Iter'//siterate//'.su')
 
                 tmp=split(shls%all)
@@ -111,6 +108,8 @@ use m_linesearcher
                 do i=1,size(list)
                     sindex=num2str(list(i),o_format='(i0.4)')
                     call sysio_mv('dsyn_Shot'//sindex//'.su','dsyn_Iter'//siterate//'_Shot'//sindex//'.su')
+                    call sysio_mv( 'RE0_Shot'//sindex//'.su', 'RE0_Iter'//siterate//'_Shot'//sindex//'.su')
+                    call sysio_mv( 'RdE_Shot'//sindex//'.su', 'RdE_Iter'//siterate//'_Shot'//sindex//'.su')
                     call sysio_mv('dadj_Shot'//sindex//'.su','dadj_Iter'//siterate//'_Shot'//sindex//'.su')
                 enddo
 
@@ -159,6 +158,8 @@ use m_linesearcher
                 do i=1,size(list)
                     sindex=num2str(list(i),o_format='(i0.4)')
                     call sysio_mv('dsyn_Shot'//sindex//'.su','dsyn_Iter'//siterate//'_Shot'//sindex//'.su')
+                    call sysio_mv( 'RE0_Shot'//sindex//'.su', 'RE0_Iter'//siterate//'_Shot'//sindex//'.su')
+                    call sysio_mv( 'RdE_Shot'//sindex//'.su', 'RdE_Iter'//siterate//'_Shot'//sindex//'.su')
                     call sysio_mv('dadj_Shot'//sindex//'.su','dadj_Iter'//siterate//'_Shot'//sindex//'.su')
                 enddo
 
