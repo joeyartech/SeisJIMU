@@ -91,7 +91,7 @@ use m_resampler
             call hud('---------------------------------')
 
         endif
-        
+
         if(index(setup%get_str('JOB'),'update velocity')>0) then
             call hud('---------------------------------')
             call hud('     Update velocity model       ')
@@ -105,6 +105,7 @@ use m_resampler
             call alloc(shot%dadj,shot%nt,shot%nrcv)
 
             if(.not.allocated(dnorm)) dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2sq')
+
             select case (dnorm)
                 case ('L2sq')
                 fobj%misfit = fobj%misfit &

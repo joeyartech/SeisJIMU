@@ -40,7 +40,7 @@ pfei :
 
 
 clean :
-	-rm FWD/*.o FWI/*.o WPI/*.o
+	-rm FWD/*.o FWI/*.o WPI/*.o PFEI/*.o
 
 cleanmod :
 	(cd Modules/System; make clean)
