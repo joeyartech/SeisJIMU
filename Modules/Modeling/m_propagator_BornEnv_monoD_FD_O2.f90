@@ -861,8 +861,6 @@ use m_cpml
         endif
         if_corr = present(o_F1_star_E0).and.present(o_F2_star_dE).and.present(o_F2_star_E0)
 
-        ! call alloc(cb%grad,cb%mz,cb%mx,cb%my,3)
-
         !reinitialize absorbing boundary for incident wavefield reconstruction
         call fld_E0%reinit
         call fld_dE%reinit
@@ -972,12 +970,6 @@ use m_cpml
                 tt10=tt10+toc-tic
             endif
 
-            ! !adjoint step 6: inject to s^it+1.5 at receivers
-            ! call cpu_time(tic)
-            ! call self%inject_pressure_adjoint_scattering(fld_F1,fld_F2,fld_E0,time_dir,it)
-            ! call cpu_time(toc)
-            ! tt6=tt6+toc-tic
-            
             !snapshot
             call fld_F1%write(it,o_suffix='_rev')
             call fld_F2%write(it,o_suffix='_rev')
@@ -1120,9 +1112,9 @@ use m_cpml
             ! fld_d%p = fld_d%p + time_dir*(cb%rho*cb%tilD*(           fld%p-fld%p_prev) )
             fld_d%p = fld_d%p + time_dir*(cb%rho*cb%tilD*(fld%p_next-2*fld%p+fld%p_prev) )
 
-            call fd2d_secondary_source(self%kpa,cb%tilD,fld%p, fld%lap, ifz,ilz,ifx,ilx)
+            call fd2d_inject_virtual_source(fld_d%p,-time_dir*dt2,  self%kpa,cb%tilD,fld%p, ifz,ilz,ifx,ilx)
             !call fd2d_secondary_source(self%kpa,cb%tilD,abs(fld_F2%p),fld%lap, ifz,ilz,ifx,ilx))
-            fld_d%p = fld_d%p + time_dir*( -dt2*fld%lap )
+            !fld_d%p = fld_d%p + time_dir*( -dt2*fld%lap )
 
         endif
 
@@ -1157,9 +1149,8 @@ use m_cpml
         ! fld_F1%p = fld_F1%p + (cb%rho*cb%tilD*(              fld_F2%p-fld_F2%p_next) )
         fld_F1%p = fld_F1%p + (cb%rho*cb%tilD*(fld_F2%p_prev-2*fld_F2%p+fld_F2%p_next))
 
-        call fd2d_secondary_source(self%kpa,cb%tilD,fld_F2%p,fld_F2%lap, ifz,ilz,ifx,ilx)
-
-        fld_F1%p = fld_F1%p - dt2*fld_F2%lap !-dt2*tmp*sgns(fld_E0%p)
+        call fd2d_inject_virtual_source(fld_F1%p,-dt2,  self%kpa,cb%tilD,fld_F2%p, ifz,ilz,ifx,ilx)
+        !fld_F1%p = fld_F1%p - dt2*fld_F2%lap !-dt2*tmp*sgns(fld_E0%p)
 
     end subroutine
 
@@ -1243,10 +1234,14 @@ use m_cpml
         class(t_propagator) :: self
         type(t_field) :: f
 
-        real,dimension(:,:,:),allocatable :: tmp_p
+        ! !necessary after computing the secondary source
+        ! f%lap=0.
 
         ifz=f%bloom(1,it)
         if(m%is_freesurface) ifz=max(ifz,1)
+        ilz=f%bloom(2,it)
+        ifx=f%bloom(3,it)
+        ilx=f%bloom(4,it)
 
         if(m%is_cubic) then
             ! call fd3d_pressure(f%p,                                      &
@@ -1258,14 +1253,16 @@ use m_cpml
                                 f%dp_dz,f%dp_dx,f%dpzz_dz,f%dpxx_dx,&
                                 f%lap,&
                                 self%buoz,self%buox,            &
-                                ifz,f%bloom(2,it),f%bloom(3,it),f%bloom(4,it))
+                                ifz,ilz,ifx,ilx)
         endif
 
 
         if(time_dir>0.) then !in forward time
-            f%p_next = 2*f%p -f%p_prev +dt2*self%kpa*f%lap
+            f%p_next(ifz:ilz,ifx:ilx,:) = 2*f%p(ifz:ilz,ifx:ilx,:) -f%p_prev(ifz:ilz,ifx:ilx,:) & 
+                +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*f%lap(ifz:ilz,ifx:ilx,:)
         else !in reverse time
-            f%p_prev = 2*f%p -f%p_next +dt2*self%kpa*f%lap
+            f%p_prev(ifz:ilz,ifx:ilx,:) = 2*f%p(ifz:ilz,ifx:ilx,:) -f%p_next(ifz:ilz,ifx:ilx,:) &
+                +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*f%lap(ifz:ilz,ifx:ilx,:)
         endif
 
         ! !apply free surface boundary condition if needed
@@ -1634,9 +1631,11 @@ use m_cpml
 
     end subroutine
 
-    subroutine fd2d_secondary_source(p,kpa,tilD,lap,&
-                                    ifz,ilz,ifx,ilx)
-        real,dimension(*) :: p,kpa,tilD,lap
+    subroutine fd2d_inject_virtual_source(fld_d_p,neg_dt2,&
+                                            kpa,tilD,fld_p,&
+                                            ifz,ilz,ifx,ilx)
+        real,dimension(*) :: fld_d_p,kpa,tilD,fld_p
+        real neg_dt2
 
         real,dimension(:),allocatable :: pzz,pxx
         call alloc(pzz,cb%n)
@@ -1661,8 +1660,8 @@ use m_cpml
                 iz_ix  =i         !iz,ix
                 iz_ixm1=i    -nz  !iz,ix-1
 
-                dp_dz_ = c1z*(p(iz_ix) - p(izm1_ix))
-                dp_dx_ = c1x*(p(iz_ix) - p(iz_ixm1))
+                dp_dz_ = c1z*(fld_p(iz_ix) - fld_p(izm1_ix))
+                dp_dx_ = c1x*(fld_p(iz_ix) - fld_p(iz_ixm1))
 
                 pzz(iz_ix) = tilD(iz_ix)*dp_dz_
                 pxx(iz_ix) = tilD(iz_ix)*dp_dx_
@@ -1691,7 +1690,7 @@ use m_cpml
                 dpzz_dz_ = c1z*(pzz(izp1_ix) - pzz(iz_ix))
                 dpxx_dx_ = c1x*(pxx(iz_ixp1) - pxx(iz_ix))
 
-                lap(iz_ix) = kpa(iz_ix)*(dpzz_dz_ + dpxx_dx_)
+                fld_d_p(iz_ix) = fld_d_p(iz_ix) + neg_dt2* kpa(iz_ix)*(dpzz_dz_ + dpxx_dx_)
 
             enddo
         enddo
