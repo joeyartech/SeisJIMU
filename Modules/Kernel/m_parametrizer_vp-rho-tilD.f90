@@ -23,7 +23,7 @@ use m_Modeling
         !info
         character(i_str_xxlen) :: info = &
             'Parameterization: vp-rho-tilD'//s_NL// &
-            'Allowed pars: vp, rho, tilD'!//s_NL// &
+            'Allowed pars: vp, rho, tilD, tilrho'!//s_NL// &
             !'Available empirical law: Gardner, Castagna'
 
         type(t_parameter),dimension(:),allocatable :: pars
@@ -115,7 +115,9 @@ use m_Modeling
         !read in active parameters and their allowed ranges
         ! list=setup%get_strs('PARAMETER',o_default='vp2:2250000:11560000')
         list=setup%get_strs('PARAMETER',o_default='vp:1500:3400')
-        
+        !list=setup%get_strs('PARAMETER',o_default='tilD:-0.001:0.001')
+        !list=setup%get_strs('PARAMETER',o_default='tilrho:-1000:1000')
+                
         self%npars=size(list)
         allocate(self%pars(self%npars))
 
@@ -143,6 +145,10 @@ use m_Modeling
 
             case ('tilD')
                 self%pars(i)%name='tilD'
+                self%npars=self%npars+1
+
+            case ('tilrho')
+                self%pars(i)%name='tilrho'
                 self%npars=self%npars+1
                 
             end select
@@ -196,6 +202,7 @@ use m_Modeling
                         case ('vp'  ); o_x(:,:,:,i) = (m%vp  -self%pars(i)%min)/self%pars(i)%range
                         case ('rho');  o_x(:,:,:,i) = (m%rho -self%pars(i)%min)/self%pars(i)%range
                         case ('tilD'); o_x(:,:,:,i) = (m%tilD-self%pars(i)%min)/self%pars(i)%range
+                        case ('tilrho'); o_x(:,:,:,i) = (m%tilD-self%pars(i)%min)/self%pars(i)%range; m%tilD=1./m%tilD
                         end select
                 enddo
 
@@ -206,6 +213,7 @@ use m_Modeling
                     case ('vp'  ); m%vp  = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
                     case ('rho');  m%rho = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
                     case ('tilD'); m%tilD= o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
+                    case ('tilrho'); m%tilD= o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min; m%tilD=1./m%tilD
                     end select
                 enddo
                 ! ! + gardner
@@ -242,6 +250,7 @@ use m_Modeling
                     case ('rho'); o_g(:,:,:,i) = -m%rho**(-2)*( &
                         correlate_gradient(:,:,:,1)/(m%vp**2) + correlate_gradient(:,:,:,2) )
                     case ('tilD'); o_g(:,:,:,i) = correlate_gradient(:,:,:,3)
+                    case ('tilrho'); o_g(:,:,:,i) = -m%tilD**(-2)*correlate_gradient(:,:,:,3)
                     end select
                 enddo
 
