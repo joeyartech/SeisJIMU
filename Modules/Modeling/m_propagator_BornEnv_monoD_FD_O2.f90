@@ -90,6 +90,8 @@ use m_cpml
     integer :: irdt
     real :: rdt
 
+    logical :: is_absolute_virtual
+
     contains
 
    !========= for FDSG O(dx2,dt2) ===================  
@@ -221,6 +223,8 @@ use m_cpml
         rdt=irdt*self%dt
         call hud('rdt, irdt = '//num2str(rdt)//', '//num2str(irdt))
 
+        is_absolute_virtual=setup%get_bool('IS_ABSOLUTE_VIRTUAL','IS_ABS_VIRT',o_default='F')
+
     end subroutine
 
     subroutine init_field(self,f,name,ois_adjoint,oif_will_reconstruct)
@@ -271,7 +275,7 @@ use m_cpml
             call alloc(corr%rp_lap_sp,m%nz,m%nx,m%ny)
             call alloc(corr%div_rp_div_sp,m%nz,m%nx,m%ny)
         case ('gikpa_gbuo_MI')
-            call alloc(corr%lap_rp_sp,m%nz,m%nx,m%ny)
+            call alloc(corr%lap_rp_sp,m%nz,m%nx,m%ny) !this term turns out tobe very weak compared to the above two..
         case ('gtilD')
             call alloc(corr%lap_rp_sp,m%nz,m%nx,m%ny)
             call alloc(corr%div_rp_div_sp,m%nz,m%nx,m%ny)
@@ -605,7 +609,6 @@ use m_cpml
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
-
             !do forward time stepping (step# conforms with backward & adjoint time stepping)
             !step 1: add pressure
             call cpu_time(tic)
@@ -626,8 +629,6 @@ use m_cpml
             call self%update_pressure(fld_dE,time_dir,it)
             call cpu_time(toc)
             tt4=tt4+toc-tic
-
-
 
             !step 5: evolve pressure
             call cpu_time(tic)
@@ -1107,14 +1108,22 @@ use m_cpml
             !fld_d%p = fld_d%p + self%invsqEref*self%tilD_dt*dt*(fld%p_next**2-2*fld%p**2+fld%p_prev**2)
 
             !方案1.2
+            if(is_absolute_virtual) then
+                fld_d%p = fld_d%p + time_dir*cb%rho*cb%tilD*(abs(fld%p_next)-2*abs(fld%p)+abs(fld%p_prev))
 
-            ! fld_d%p = fld_d%p + time_dir*(cb%rho*cb%tilD*(           fld%p           ) )
-            ! fld_d%p = fld_d%p + time_dir*(cb%rho*cb%tilD*(           fld%p-fld%p_prev) )
-            fld_d%p = fld_d%p + time_dir*(cb%rho*cb%tilD*(fld%p_next-2*fld%p+fld%p_prev) )
+                call fd2d_inject_virtual_source(fld_d%p,-time_dir*dt2,  self%kpa,cb%tilD,abs(fld%p), ifz,ilz,ifx,ilx)
+                !fld_d%p = fld_d%p + time_dir*( -dt2*fld%lap )
 
-            call fd2d_inject_virtual_source(fld_d%p,-time_dir*dt2,  self%kpa,cb%tilD,fld%p, ifz,ilz,ifx,ilx)
-            !call fd2d_secondary_source(self%kpa,cb%tilD,abs(fld_F2%p),fld%lap, ifz,ilz,ifx,ilx))
-            !fld_d%p = fld_d%p + time_dir*( -dt2*fld%lap )
+            else
+                ! fld_d%p = fld_d%p + time_dir*cb%rho*cb%tilD*(           fld%p           )
+                ! fld_d%p = fld_d%p + time_dir*cb%rho*cb%tilD*(           fld%p-fld%p_prev)
+                fld_d%p = fld_d%p + time_dir*cb%rho*cb%tilD*(fld%p_next-2*fld%p+fld%p_prev)
+
+                call fd2d_inject_virtual_source(fld_d%p,-time_dir*dt2,  self%kpa,cb%tilD,    fld%p, ifz,ilz,ifx,ilx)
+                !fld_d%p = fld_d%p + time_dir*( -dt2*fld%lap )
+
+
+            endif
 
         endif
 
@@ -1143,14 +1152,19 @@ use m_cpml
 
 
         !方案1.2
-        
+        if(is_absolute_virtual) then
+            fld_F1%p = fld_F1%p + cb%rho*cb%tilD*(fld_F2%p_prev-2*fld_F2%p+fld_F2%p_next)*sgns(fld_E0%p)
 
-        ! fld_F1%p = fld_F1%p + (cb%rho*cb%tilD*(              fld_F2%p              ) )
-        ! fld_F1%p = fld_F1%p + (cb%rho*cb%tilD*(              fld_F2%p-fld_F2%p_next) )
-        fld_F1%p = fld_F1%p + (cb%rho*cb%tilD*(fld_F2%p_prev-2*fld_F2%p+fld_F2%p_next))
+            call fd2d_inject_virtual_source(fld_F1%p,-dt2, sgns(fld_E0%p)*self%kpa,cb%tilD,fld_F2%p, ifz,ilz,ifx,ilx)
 
-        call fd2d_inject_virtual_source(fld_F1%p,-dt2,  self%kpa,cb%tilD,fld_F2%p, ifz,ilz,ifx,ilx)
-        !fld_F1%p = fld_F1%p - dt2*fld_F2%lap !-dt2*tmp*sgns(fld_E0%p)
+        else
+            ! fld_F1%p = fld_F1%p + cb%rho*cb%tilD*(              fld_F2%p              )
+            ! fld_F1%p = fld_F1%p + cb%rho*cb%tilD*(              fld_F2%p-fld_F2%p_next)
+            fld_F1%p = fld_F1%p + cb%rho*cb%tilD*(fld_F2%p_prev-2*fld_F2%p+fld_F2%p_next)
+
+            call fd2d_inject_virtual_source(fld_F1%p,-dt2,                self%kpa,cb%tilD,fld_F2%p, ifz,ilz,ifx,ilx)
+            
+        endif
 
     end subroutine
 
@@ -1425,6 +1439,8 @@ use m_cpml
         type(t_field), intent(in) :: rf, sf
         type(t_correlate) :: corr
 
+        real,dimension(:,:,:),allocatable :: tmp_sf_p
+
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
         ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
@@ -1444,10 +1460,16 @@ use m_cpml
             
         ! endif
 
+        if(is_absolute_virtual) then
+            tmp_sf_p=abs(sf%p)
+        else
+            tmp_sf_p=    sf%p
+        endif
+
         if(m%is_cubic) then
         else
             if(corr%purpose=='gtilD') then
-                call grad2d_gtilD(rf%p,sf%p,&
+                call grad2d_gtilD(rf%p,tmp_sf_p,&
                         corr%lap_rp_sp,corr%div_rp_div_sp,&
                         ppg%buoz,ppg%buox,&
                         ifz,ilz,ifx,ilx)
@@ -1459,7 +1481,7 @@ use m_cpml
                         ifz,ilz,ifx,ilx)
 
             else if(corr%purpose=='gikpa_gbuo_MI') then
-                call grad2d_MI(rf%p,sf%p,&
+                call grad2d_MI(rf%p,tmp_sf_p,&
                         corr%lap_rp_sp,&
                         ppg%buoz,ppg%buox,&
                         ifz,ilz,ifx,ilx)
