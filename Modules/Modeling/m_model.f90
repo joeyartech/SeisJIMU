@@ -108,7 +108,7 @@ use m_smoother_laplacian_sparse
         class(t_model) :: self
 
         real,dimension(:,:,:),allocatable :: tmp
-        character(:),allocatable :: file
+        character(:),allocatable :: file, str
 
         if(self%file=='') then !no read
             !freesurface
@@ -255,7 +255,8 @@ use m_smoother_laplacian_sparse
 
         ! endif
         if(.not.allocated(self%tilD)) then
-            if(setup%get_str('TILD_MODEL_FROM','TILD_FROM',o_default='conditional_lapvp2')=='conditional_lapvp2') then
+            str=setup%get_str('TILD_MODEL_FROM','TILD_FROM',o_default='conditional_lapvp2')
+            if(str=='conditional_lapvp2') then
                 call alloc(self%tilD,self%nz,self%nx,self%ny)
                 do ix=2,self%nx-1
                 do iz=2,self%nz-1
@@ -280,8 +281,20 @@ use m_smoother_laplacian_sparse
 
             ! call sysio_write('derived_tilD_smth',self%tilD,size(self%tilD))
 
+            elseif(str=='inverse_rho') then
+                call alloc(self%tilD,self%nz,self%nx,self%ny)
+                if(allocated(self%rho)) then
+                    self%tilD=1./self%rho
+                else
+                    self%tilD=1./1000.
+                endif
+
+                call hud('tilD model is built from 1/rho.')
+                call sysio_write('derived_tilD',self%tilD,size(self%tilD))
+
+            endif
+
         endif
-    endif
 
     end subroutine
 
