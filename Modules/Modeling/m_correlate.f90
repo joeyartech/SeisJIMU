@@ -169,6 +169,7 @@ use m_computebox
         real,dimension(:,:,:) :: array
         array=array*scaler
         array(1,:,:)=array(2,:,:)
+        array(:,1,:)=array(:,2,:)
     end subroutine
 
 
