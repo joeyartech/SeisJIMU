@@ -1,0 +1,30 @@
+MODEL_SIZE              '101   101   1'
+MODEL_SPACING           '20    20    1'
+MODEL_ORIGIN            '0     0     0'
+#FILE_MODEL              'model'
+#MODEL_ATTRIBUTES        rho
+
+IS_FREESURFACE          F
+
+#IF_HICKS		F
+
+ACQUI_GEOMETRY          spread
+
+NT           500
+DT           0.004
+FPEAK        7
+
+#DATA_FORMAT 'bin'
+
+#SNAPSHOT     'p vz vx'
+
+IF_USE_CHECKPOINT   F
+NR                      1
+FS                      '26 505 500'
+FR                      '46 10  0'
+SCOMP                   vz 
+RCOMP                   vx 
+FR                      '26 505 500'
+FS                      '46 10  0'
+RCOMP                   vz 
+SCOMP                   vx 

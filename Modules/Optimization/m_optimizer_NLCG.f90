@@ -1,13 +1,8 @@
 module m_optimizer
-use m_arrayop
-use m_sysio
-use m_gradient
-use m_parameterization
-use m_preconditioner
-use m_linesearcher
+use m_optimizer_common
 
     private
-    public init_optimizer, optimizer, current
+    public :: optimizer_loop
 
     !Method: Nonlinear Conjugate Gradient
     !                                                     !
@@ -33,139 +28,92 @@ use m_linesearcher
     ! SIAM Journal on Optimization, 10 (1999), pp. 177-182!
     !                                                     !
     ! See also Nocedal, Numerical optimization,           !
-    ! 2nd edition p.132                                   !
-    
-    
-    real f0 !initial fobjective
-    real g0norm !initial gradient norm
-    
-    !counter
-    integer :: iterate=0, max_iterate
-    
-    real min_update !minimum par update allowed
-    
-    type(t_forwardmap) :: current
-    type(t_forwardmap) :: perturb
-    type(t_forwardmap) :: previous
-    
+    ! 2nd edition p.132                                   !   
+
+    character(*),parameter :: info='Optimization: NonLinear Conjugate Gradient'//s_NL// &
+                                   'with Dai-Yuan formula'
+
     !history of computed gradients
-    real,dimension(:,:),allocatable :: gradient_history
+    real,dimension(:,:,:,:,:),allocatable :: gradient_history
     integer,parameter :: l=1 !save one previous gradient in history
-    
-    logical :: debug
-    
+        
     contains
     
-    subroutine init_optimizer(nproblem)
-    
-        !problem size
-        n=nproblem
-        
-        !read setup
-        min_update=get_setup_real('MIN_UPDATE',default=1e-8)
-        max_iterate=get_setup_int('MAX_ITERATE',default=30)
-        max_modeling=get_setup_int('MAX_MODELING',default=60)
-        
-        !initialize current point
-        call alloc(current%x, n,initialize=.false.) !quiry point
-        current%f=fobjective
-        call alloc(current%g, n,initialize=.false.) !gradient
-        call alloc(current%pg,n,initialize=.false.) !preconditioned gradient
-        call alloc(current%d, n,initialize=.false.) !descent direction
-        
-        !transform by parameterization
-        call parameterization_transform('m2x',current%x,current%g)
-        
-        !scale problem
-        if(if_scaling) call linesearch_scaling(current)
-        f0=current%f
-        
-        !reinitialize alpha in each iterate
-        if_reinitialize_alpha=get_setup_logical('IF_REINITIALIZE_ALPHA',default=.false.)
-        
-        !initialize preconditioner and apply
-        call init_preconditioner
-        call preconditioner_apply(current%g,current%pg)
-        g0norm=norm2(current%g)
-        
-        !current descent direction
-        current%d=-current%pg
-        current%gdotd=sum(current%g*current%d)
-        
-        !gradient history
-        call alloc(gradient_history,n,l,initialize=.false.)
-        gradient_history(:,1)=current%g
-        
-        !initialize perturb point
-        call alloc(perturb%x, n,initialize=.false.)
-        call alloc(perturb%g, n,initialize=.false.)
-        call alloc(perturb%pg,n,initialize=.false.)
-        call alloc(perturb%d, n,initialize=.false.)
-        
-        !initialize previous point
-        call alloc(previous%d,n,initialize=.false.)
-        previous%d=current%d
-        
-    end subroutine
-    
-    subroutine optimizer
-        character(7) :: result
+    subroutine optimizer_loop
+        type(t_checkpoint),save :: chp
         
         real nom, denom
+
+        !gradient history
+        call alloc(gradient_history,param%n1,param%n2,param%n3,param%npars,l)
+        gradient_history(:,:,:,:,l)=curr%g
+
+
+        call hud(info)
+
         
-        
-        call optimizer_print_info('start')
         call hud('============ START OPTIMIZATON ============')
-        
+        call chp%init('FWI_shotlist_optimizer','Iterate#',oif_fuse=.true.)
+
+        call optimizer_write('start','NONLINEAR CONJUGATE GRADIENT ALGORITHM')
+
         !iteration loop
         loop: do iterate=1,max_iterate
-        
-            if (norm2(current%d) < min_update) then
-                call hud('Maximum iteration number reached or convergence criteria met')
-                call optimizer_print_info('criteria')
+            call chp%count
+
+            if(.not.shls%is_registered(chp,'sampled_shots')) then
+                call shls%sample
+                call shls%register(chp,'sampled_shots')
+            endif
+            call shls%assign
+
+            if (maxval(abs(curr%d)) < min_descent) then
+                call hud('Minimum descent is met')
+                call optimizer_write('criteria')
                 exit loop
             endif
-            
+
+            !reinitialize linesearch
+            ! ls%alphaL=0.
+            ! ls%alphaR=huge(1.)
+            !ls%alpha=ls%alpha0 !reinitialize alpha in each iterate may help convergence for LBFGS method..
             !linesearcher finds steplength
-            call linesearcher(iterate,current,perturb,gradient_history,result=result)
+            call ls%search(.false.,iterate,curr,pert,gradient_history)
             
-            select case(result)
+            select case(ls%result)
                 case('success')
-                !update point
-                current%x=perturb%x
-                current%f=perturb%f
-                current%g=perturb%g
+
+                !previous descent direction
+                prev_d=curr%d
                 
-                previous%d=current%d
-                
+                call switch_curr_pert
+
                 
                 !!!!!!!!!!!!!!!!!!!!!!!!!!!
                 !! NLCG, Dai-Yuan's beta !!
                 !!!!!!!!!!!!!!!!!!!!!!!!!!!
                 !compute beta
-                nom=sum(perturb%g*perturb%pg)
-                denom=sum((perturb%g-gradient_history(:,1))*previous%d)
+                nom=sum(curr%g*curr%pg)
+                denom=sum((curr%g-gradient_history(:,:,:,:,l))*prev_d)
                 beta=nom/denom
                 
                 !Safeguard 
-                if((beta.ge.1e5).or.(beta.le.-1e5)) then     
-                    beta=0.
-                endif
+                if((beta >= 1e5).or.(beta <= -1e5)) beta=0.
                 
                 !new descent direction
-                current%d=-perturb%pg+beta*previous%d
+                curr%d=-curr%pg+beta*prev_d
                 
                 !inner product of g and d for Wolfe condition
-                current%gdotd=sum(current%g*current%d)
-                
-                call optimizer_print_info('update')
-                
+                curr%g_dot_d = sum(curr%g*curr%d)
+
+                call optimizer_write('update')
+
                 case('failure')
-                call optimizer_print_info('failure')
+                call optimizer_write('failure')
                 exit loop
                 
                 case('maximum')
-                call optimizer_print_info('maximum')
+                call optimizer_write('maximum')
                 exit loop
                 
             end select
@@ -173,70 +121,8 @@ use m_linesearcher
         end do loop
         
         call hud('-------- FINALIZE OPTIMIZATON --------')
-        call optimizer_print_info('finalize')
+        call optimizer_write('finalize')
         
     end subroutine
 
-    subroutine optimizer_print_info(task)
-        character(*) :: task
-        
-        if(mpiworld%is_master) then
-        
-            select case (task)
-                case('start')
-                    open(16,file='iterate.log')
-                    write(16,'(a)'      ) ' **********************************************************************'
-                    write(16,'(a)'      ) '                 NONLINEAR CONJUGATE GRADIENT ALGORITHM                '
-                    write(16,'(a)'      ) ' **********************************************************************'
-                    write(16,'(a,es8.2)') '     Min update allowed        : ',  min_update
-                    write(16,'(a,i5)'   ) '     Max iteration allowed     : ',  max_iterate
-                    write(16,'(a,i5)'   ) '     Max linesearch allowed    : ',  max_search
-                    write(16,'(a,i5)'   ) '     Max modeling allowed      : ',  max_modeling
-                    write(16,'(a,es8.2)') '     Initial fobjective (f0)         : ',  f0
-                    write(16,'(a,es8.2)') '     Initial gradient norm (||g0||)  : ',  g0norm
-                    write(16,'(a)'      ) ' **********************************************************************'
-                    write(16,'(a)'      ) '  Iter#      f         f/f0    ||g||/||g0||    alpha     nls  Modeling#'
-                                   !e.g.  !    0    1.00E+00    1.00E+00    1.00E+00    1.00E+00      0       1
-                    write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, current%f, current%f/f0, norm2(current%g)/g0norm, alpha, isearch, imodeling
-                    open(18,file='model_update',access='stream')
-                case('update')
-                    write(16,'(i5,4(4x,es8.2),2x,i5,3x,i5)')  iterate, current%f, current%f/f0, norm2(current%g)/g0norm, alpha, isearch, imodeling
-                    
-                    call parameterization_transform('x2m',current%x)
-                    if(if_write_vp)  write(18) m%vp
-                    if(if_write_vs)  write(18) m%vs
-                    if(if_write_rho) write(18) m%rho
-                case('maximum')
-                    write(16,'(a)'      ) ' **********************************************************************'
-                    write(16,'(a)'      ) '     STOP: MAXIMUM MODELING NUMBER REACHED                             '
-                    write(16,'(a)'      ) ' **********************************************************************'
-                case('criteria')
-                    write(16,'(a)'      ) ' **********************************************************************'
-                    write(16,'(a)'      ) '     STOP: CONVERGENCE CRITERIA SATISFIED                              '
-                    write(16,'(a)'      ) ' **********************************************************************'
-                case('failure')
-                    write(16,'(a)'      ) ' **********************************************************************'
-                    write(16,'(a)'      ) '     STOP: LINE SEARCH FAILURE                                         '
-                    write(16,'(a)'      ) ' **********************************************************************'
-                case('finalize')
-                    close(16)
-                    
-                    call parameterization_transform('x2m',perturb%x)
-                    if(if_write_vp)  write(18) m%vp
-                    if(if_write_vs)  write(18) m%vs
-                    if(if_write_rho) write(18) m%rho
-                    close(18)
-                    
-                    open(18,file='model_final',access='stream')
-                    call parameterization_transform('x2m',current%x)
-                    if(if_write_vp)  write(18) m%vp
-                    if(if_write_vs)  write(18) m%vs
-                    if(if_write_rho) write(18) m%rho
-                    close(18)
-                    
-                    write(*,'(a,i0.4)') 'ximage < model_final n1=',m%nz
-                    write(*,'(a,i0.4,a,i0.4)') 'xmovie < model_update loop=1 title=%g n1=',m%nz,' n2=',m%nx
-                end select
-        endif
-    end subroutine
 end
