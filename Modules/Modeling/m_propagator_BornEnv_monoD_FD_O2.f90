@@ -1028,6 +1028,9 @@ use m_cpml
         type(t_field) :: f
 
         if(.not. f%is_adjoint) then
+!this loop takes more time when nthreads>1.
+!e.g. 0.1s vs 0.046s from Elapased time to rm source (tt5)
+!tobe fixed..
 
             if(if_hicks) then
                 ifz=shot%src%ifz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
@@ -1052,6 +1055,9 @@ use m_cpml
 
         endif
 
+!this loop takes more time when nthreads>1.
+!e.g. 38s vs 8.7s from Elapased time to add adj source  (tt6)
+!tobe fixed..
         do i=1,shot%nrcv
 
             if(if_hicks) then
