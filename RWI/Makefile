@@ -2,7 +2,6 @@ mod_dir=../mod/
 include ../compiler.inc
 include ../modules.inc
 
-Param=velocities-impedance
 
 APP = RWI
 app = $(shell echo $(APP) | tr A-Z a-z)

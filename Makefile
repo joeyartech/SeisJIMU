@@ -36,6 +36,7 @@ fwi :
 
 rwi :
 	(cd RWI; make)
+
 	@printf "\n"
 
 

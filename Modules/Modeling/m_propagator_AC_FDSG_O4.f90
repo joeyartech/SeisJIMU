@@ -88,7 +88,7 @@ use m_cpml
         class(t_propagator) :: self
 
         call hud('Invoked field & propagator modules info : '//s_NL//self%info)
-        call hud('FDSG Coef : 1') !//num2str(coef(1))//', '//num2str(coef(2)))
+        call hud('FDSG Coef : '//num2str(coef(1))//', '//num2str(coef(2)))
         
     end subroutine
     
@@ -128,7 +128,7 @@ use m_cpml
 
         sumcoef=sum(abs(coef))
 
-        CFL = sumcoef*cb%velmax*self%dt*m%rev_cell_diagonal
+        CFL = sumcoef*cb%velmax*self%dt*m%rev_cell_diagonal !R. Courant, K. O. Friedrichs & H. Lewy (1928)
 
         call hud('CFL value: '//num2str(CFL))
         
@@ -1470,8 +1470,8 @@ use m_cpml
             !dir$ simd
             do iz=ifz,ilz
                 
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
                 izm1_ix=i-1  !iz-1,ix
                 iz_ix  =i    !iz,ix
@@ -1717,8 +1717,8 @@ use m_cpml
             !dir$ simd
             do iz=ifz,ilz
                 
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
                 rp = rf_p(i)
                 sp = sf_p(i)
@@ -1789,8 +1789,8 @@ use m_cpml
             !dir$ simd
             do iz=ifz,ilz
                 
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
                 sp = sf_p(i)
                 

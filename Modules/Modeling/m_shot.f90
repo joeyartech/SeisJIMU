@@ -1,6 +1,7 @@
 module m_shot
 use m_System
 use m_hicks
+use m_hilbert
 use m_wavelet
 use m_resampler
 use m_matchfilter
@@ -237,6 +238,7 @@ use m_model
 
         character(:),allocatable :: file, str
         type(t_suformat) :: wavelet
+        real,dimension(:,:),allocatable :: tmp1,tmp2
 
         self%fpeak=setup%get_real('PEAK_FREQUENCY','FPEAK')
         self%fmax=setup%get_real('MAX_FREQUENCY','FMAX',o_default=num2str(self%fpeak*2.))
@@ -246,9 +248,18 @@ use m_model
         file=setup%get_file('FILE_SRC_TIME_FUNC','FILE_WAVELET')
 
         if(file=='') then !not given
-            if(setup%get_str('WAVELET_TYPE',o_default='sinexp')=='sinexp') then
+            str=setup%get_str('WAVELET_TYPE',o_default='sinexp')
+            if(str=='sinexp') then
                 call hud('Use filtered sinexp wavelet')
                 self%wavelet=wavelet_sinexp(self%nt,self%dt,self%fpeak)
+            elseif(str=='ricker envelope') then
+                call hud('Use Ricker envelope wavelet')
+                call alloc(tmp1,self%nt,1)
+                call alloc(tmp2,self%nt,1)
+                tmp1(:,1)=wavelet_ricker(self%nt,self%dt,self%fpeak)
+                call hilbert_envelope(tmp1,tmp2,self%nt,1)
+                self%wavelet=tmp2(:,1)
+                deallocate(tmp1,tmp2)
             else
                 call hud('Use Ricker wavelet')
                 self%wavelet=wavelet_ricker(self%nt,self%dt,self%fpeak)
@@ -307,14 +318,14 @@ use m_model
 
         !source
         select case (self%src%comp)
-        case('p') !explosive source or non-vertical force
+        case('p','pbnd') !explosive source or non-vertical force
             call hicks_put_position(self%src%z,       self%src%x,       self%src%y)
-        case('vz') !vertical force
-            call hicks_put_position(self%src%z+halfz, self%src%x,       self%src%y)
-        case('vx')
-            call hicks_put_position(self%src%z,       self%src%x+halfx, self%src%y)
-        case('vy')
-            call hicks_put_position(self%src%z,       self%src%x,       self%src%y+halfy)
+        ! case('vz') !vertical force
+        !     call hicks_put_position(self%src%z+halfz, self%src%x,       self%src%y)
+        ! case('vx')
+        !     call hicks_put_position(self%src%z,       self%src%x+halfx, self%src%y)
+        ! case('vy')
+        !     call hicks_put_position(self%src%z,       self%src%x,       self%src%y+halfy)
         end select
 
         call hicks_get_position(self%src%ifz, self%src%ifx, self%src%ify,&
@@ -322,12 +333,12 @@ use m_model
                                 self%src%ilz, self%src%ilx, self%src%ily )
 
         select case (self%src%comp)
-        case('p') !explosive source or non-vertical force
+        case('p','pbnd') !explosive source or non-vertical force
             call hicks_get_coefficient('antisymm', self%src%interp_coef)
-        case('vz') !vertical force
-            call hicks_get_coefficient('symmetric',self%src%interp_coef)
-        case default
-            call hicks_get_coefficient('truncate', self%src%interp_coef)
+        ! case('vz') !vertical force
+        !     call hicks_get_coefficient('symmetric',self%src%interp_coef)
+        ! case default
+        !     call hicks_get_coefficient('truncate', self%src%interp_coef)
         end select
 
         !set reference to balance pressure vs velocities data
@@ -339,14 +350,14 @@ use m_model
         do i=1,self%nrcv
 
             select case (self%rcv(i)%comp)
-            case('p') !explosive source or non-vertical force
+            case('p','pbnd') !explosive source or non-vertical force
                 call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y)
-            case('vz') !vertical force
-                call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x,       self%rcv(i)%y)
-            case('vx')
-                call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x+halfx, self%rcv(i)%y)
-            case('vy')
-                call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y+halfy)
+            ! case('vz') !vertical force
+            !     call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x,       self%rcv(i)%y)
+            ! case('vx')
+            !     call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x+halfx, self%rcv(i)%y)
+            ! case('vy')
+            !     call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y+halfy)
             end select
 
             call hicks_get_position(self%rcv(i)%ifz, self%rcv(i)%ifx, self%rcv(i)%ify,&
@@ -354,12 +365,12 @@ use m_model
                                     self%rcv(i)%ilz, self%rcv(i)%ilx, self%rcv(i)%ily )
 
             select case (self%rcv(i)%comp)
-            case('p') !explosive source or non-vertical force
+            case('p','pbnd') !explosive source or non-vertical force
                 call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)
-            case('vz') !vertical force
-                call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef)
-            case default
-                call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
+            ! case('vz') !vertical force
+            !     call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef)
+            ! case default
+            !     call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
             end select
 
         enddo
@@ -399,12 +410,13 @@ use m_model
 
     end subroutine
 
-    subroutine update_wavelet(self)
+    subroutine update_wavelet(self,weight)
         class(t_shot) :: self
+        real,dimension(self%nt,self%nrcv) :: weight
 
         type(t_suformat) :: sudata
 
-        call matchfilter_estimate(self%dsyn,self%dobs,self%nt,self%nrcv)!,self%index)
+        call matchfilter_estimate(self%dsyn*weight,self%dobs*weight,self%nt,self%nrcv)!,self%index)
         
         call matchfilter_apply_to_wavelet(self%wavelet)
         

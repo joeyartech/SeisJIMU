@@ -1,3 +1,69 @@
+!CPML implementation from Komatitsch & Martin, 2007, Geophysics
+!code from Geodynamics or Komatitsch's GitHub site:
+!https://github.com/geodynamics/seismic_cpml
+!!
+! Dimitri Komatitsch, CNRS, Marseille, July 2018.
+!
+! The C-PML implementation is based in part on formulas given in Roden and Gedney (2000).
+! If you use this code for your own research, please cite some (or all) of these
+! articles:
+!
+! @ARTICLE{MaKoEz08,
+! author = {Roland Martin and Dimitri Komatitsch and Abdela\^aziz Ezziani},
+! title = {An unsplit convolutional perfectly matched layer improved at grazing
+! incidence for seismic wave equation in poroelastic media},
+! journal = {Geophysics},
+! year = {2008},
+! volume = {73},
+! pages = {T51-T61},
+! number = {4},
+! doi = {10.1190/1.2939484}}
+!
+! @ARTICLE{MaKo09,
+! author = {Roland Martin and Dimitri Komatitsch},
+! title = {An unsplit convolutional perfectly matched layer technique improved
+! at grazing incidence for the viscoelastic wave equation},
+! journal = {Geophysical Journal International},
+! year = {2009},
+! volume = {179},
+! pages = {333-344},
+! number = {1},
+! doi = {10.1111/j.1365-246X.2009.04278.x}}
+!
+! @ARTICLE{MaKoGe08,
+! author = {Roland Martin and Dimitri Komatitsch and Stephen D. Gedney},
+! title = {A variational formulation of a stabilized unsplit convolutional perfectly
+! matched layer for the isotropic or anisotropic seismic wave equation},
+! journal = {Computer Modeling in Engineering and Sciences},
+! year = {2008},
+! volume = {37},
+! pages = {274-304},
+! number = {3}}
+!
+! @ARTICLE{KoMa07,
+! author = {Dimitri Komatitsch and Roland Martin},
+! title = {An unsplit convolutional {P}erfectly {M}atched {L}ayer improved
+!          at grazing incidence for the seismic wave equation},
+! journal = {Geophysics},
+! year = {2007},
+! volume = {72},
+! number = {5},
+! pages = {SM155-SM167},
+! doi = {10.1190/1.2757586}}
+!
+! The original CPML technique for Maxwell's equations is described in:
+!
+! @ARTICLE{RoGe00,
+! author = {J. A. Roden and S. D. Gedney},
+! title = {Convolution {PML} ({CPML}): {A}n Efficient {FDTD} Implementation
+!          of the {CFS}-{PML} for Arbitrary Media},
+! journal = {Microwave and Optical Technology Letters},
+! year = {2000},
+! volume = {27},
+! number = {5},
+! pages = {334-339},
+! doi = {10.1002/1098-2760(20001205)27:5 < 334::AID-MOP14>3.0.CO;2-A}}
+
 module m_cpml
 use m_System
 use m_math, only: r_pi
@@ -9,11 +75,12 @@ use m_computebox
     private
 
     !CPML parameter
-    real,parameter :: npower = 2.
+    real,parameter :: npower = 2. !must be >1
     real,parameter :: logR = log(0.001)
     real,parameter :: kpa_max=1.
     !Comments by Komatitsch:
-    !increase kpa_max (eg. =7) if absorbing is not satisfactory at grazing incident angle
+    !from stephen gedney's unpublished class notes for class ee699, lecture 8, slide 8-11
+    !and increase kpa_max (eg. =7) if absorbing is not satisfactory at grazing incident angle
     !(making in/outside PML reflection more separate..)
     !decrease this number if grid dispersion is not satisfactory
     real,parameter :: kpa_max_m1=kpa_max-1.
@@ -38,9 +105,6 @@ use m_computebox
 
     contains
     
-    !CPML implementation from Komatitsch & Martin, 2007, Geophysics
-    !code from Geodynamics or Komatitsch's GitHub site:
-    !https://github.com/geodynamics/seismic_cpml
     subroutine init(self)
         class(t_cpml) :: self
         
@@ -54,12 +118,13 @@ use m_computebox
         !self%nlayer=setup%get_int('CPML_SIZE','NCPML',o_default='20')+add_thickness
         self%nlayer=cb%nabslayer
 
-        alfa_max = r_pi*shot%fpeak
+        alfa_max = r_pi*shot%fpeak  !Komatitsch: from festa and vilotte
 
         thickness_pml_z = self%nlayer * m%dz
         thickness_pml_x = self%nlayer * m%dx
         thickness_pml_y = self%nlayer * m%dy
         
+        !Komatitsch: compute d0 from inria report section 6.1 http://hal.inria.fr/docs/00/07/32/19/pdf/rr-3471.pdf
         d0_z = -(npower+1)/(2.*thickness_pml_z) * cb%velmax * logR
         d0_x = -(npower+1)/(2.*thickness_pml_x) * cb%velmax * logR
         d0_y = -(npower+1)/(2.*thickness_pml_y) * cb%velmax * logR
@@ -91,7 +156,7 @@ use m_computebox
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_z
                 d_z(i)          = d0_z * abscissa_normalized**npower
-                self%kpa_z(i)   = 1. + kpa_max_m1*abscissa_normalized**npower
+                self%kpa_z(i)   = 1. + kpa_max_m1*abscissa_normalized**npower ! from stephen gedney's unpublished class notes for class ee699, lecture 8, slide 8-2
                 alfa_z(i)        = alfa_max * (1. - abscissa_normalized)
             endif
 

@@ -273,7 +273,7 @@ use m_cpml
         select case (purpose)
         case ('gikpa_gbuo')
             call alloc(corr%rp_lap_sp,m%nz,m%nx,m%ny)
-            call alloc(corr%grad_rp_grad_sp,m%nz,m%nx,m%ny)
+            call alloc(corr%div_rp_div_sp,m%nz,m%nx,m%ny)
         case ('gikpa_gbuo_MI')
             call alloc(corr%lap_rp_sp,m%nz,m%nx,m%ny) !this term turns out tobe very weak compared to the above two..
         case ('gtilD')

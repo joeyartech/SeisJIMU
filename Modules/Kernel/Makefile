@@ -28,6 +28,7 @@ endif
 
 
 all : $(src:.f90=.o)
+	@echo $(src)
 	@printf "\n"
 
 clean :

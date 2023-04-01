@@ -8,7 +8,7 @@ F77=mpif77
 FLAGF77= -Ofast -fopenmp                         -fbacktrace  #-flto
 FLAGF90= -Ofast -fopenmp -ffree-line-length-none -fbacktrace  -fno-unsafe-math-optimizations -frounding-math -fsignaling-nans
 #FLAGF77= -g -Wall -fopenmp -fcheck=all                         -fbacktrace
-#FLAGF90= -g -Wall -fopenmp -fcheck=all -ffree-line-length-none -fbacktrace
+#FLAGF90= -g -Wall -fopenmp -fcheck=all -ffree-line-length-none -fbacktrace -fno-strict-aliasing
 
 FPP=-cpp -Dgfortran -D"git_commit='$(GIT_COMMIT)'" -D"git_branch='$(GIT_BRANCH)'"
 

@@ -14,6 +14,8 @@ use m_resampler
 
     type(t_field) :: fld_u0, fld_u, fld_a0, fld_a
     type(t_correlate) :: a0_star_u0, a_star_u
+
+    character(:),allocatable :: s_job
     ! real,dimension(:,:),allocatable :: Wdres
     !real,dimension(:,:,:),allocatable :: Ddt2
     ! character(:),allocatable :: update_wavelet
@@ -164,7 +166,7 @@ use m_resampler
 
     !allreduce PFEI misfit values
     call mpi_allreduce(mpi_in_place, [fobj%reflection,fobj%diving,fobj%misfit], 3, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-    call hud('Stacked RWI_misfit '//nums2strs([fobj%reflection,fobj%diving,fobj%misfit]))
+    call hud('Stacked RWI reflection/diving/total misfit = '//num2str(fobj%reflection)//'/'//num2str(fobj%diving)//'/'//num2str(fobj%misfit))
 
     fobj%dnorms=fobj%misfit
 

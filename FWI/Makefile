@@ -3,6 +3,9 @@ include ../compiler.inc
 include ../modules.inc
 
 
+APP = FWI
+app = $(shell echo $(APP) | tr A-Z a-z)
+
 obj = \
 ../Modules/System/*.o \
 ../Modules/Etc/*.o \
@@ -11,8 +14,9 @@ obj = \
 ../Modules/Modeling/m_shotlist_$(ShotDec).o \
 ../Modules/Modeling/m_shot.o \
 ../Modules/Modeling/m_computebox.o \
+../Modules/Modeling/m_correlate.o \
 ../Modules/Modeling/m_field.o \
-../Modules/Modeling/m_cpml_$(Solver).o \
+../Modules/Modeling/m_cpml.o \
 ../Modules/Modeling/m_propagator_$(WaveEq)_$(Solver)_$(Order).o \
 ../Modules/Modeling/m_Modeling.o \
 ../Modules/Kernel/m_parametrizer_$(Param).o \
@@ -39,16 +43,16 @@ mod :
 	#Modeling
 	(cd ../Modules/Modeling; make)
 	#Kernel
-	(cd ../Modules/Kernel; make App=FWI)
+	(cd ../Modules/Kernel; make App=$(APP))
 	#Optimization
-	(cd ../Modules/Optimization; make App=FWI)
+	(cd ../Modules/Optimization; make App=$(APP))
 
 exe : sub_modeling_gradient.o main.o
-	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/fwi_$(WaveEq)_$(Solver)_$(Order)_$(Param)_$(LineS)_$(Optim)
-	(cd ../exe; ln -sf fwi_$(WaveEq)_$(Solver)_$(Order)_$(Param)_$(LineS)_$(Optim) FWI )
+	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/$(app)_$(WaveEq)_$(Solver)_$(Order)_$(Param)_$(LineS)_$(Optim)
+	(cd ../exe; ln -sf $(app)_$(WaveEq)_$(Solver)_$(Order)_$(Param)_$(LineS)_$(Optim) $(APP) )
 
 clean :
-	-rm main.o
+	-rm main.o sub_modeling_gradient.o
 
 cleanall :
 	#System
@@ -63,5 +67,5 @@ cleanall :
 	(cd ../Modules/Kernel; make clean)
 	#Optimization
 	(cd ../Modules/Optimization; make clean)
-	#FWI
+	#$(APP)
 	make clean

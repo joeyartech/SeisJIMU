@@ -46,6 +46,7 @@ use m_shot
         real,dimension(:,:,:),allocatable :: qp,qs
         
         real,dimension(:,:,:,:),allocatable :: grad, imag, engy, corr
+        real,dimension(:,:,:),allocatable :: tilD
         
         contains
         procedure :: init
@@ -188,6 +189,8 @@ use m_shot
         call m2cb(m%qp ,self%qp )
         call m2cb(m%qs ,self%qs )
 
+        call m2cb(m%tilD,self%tilD)
+
         self%velmin=minval(self%vp)
         if(allocated(self%vs)) then
             self%velmin=min( self%velmin, minval(self%vs,self%vs>0.) )
@@ -206,6 +209,8 @@ use m_shot
                                     write(*,*)'ip' ,minval(self%vp*self%rho),maxval(self%vp*self%rho)
             if(allocated(self%eps)) write(*,*)'eps',minval(self%eps),maxval(self%eps)
             if(allocated(self%del)) write(*,*)'del',minval(self%del),maxval(self%del)
+
+            if(allocated(self%tilD)) write(*,*)'tilD',minval(self%tilD),maxval(self%tilD)
         end if
 
     end subroutine
@@ -243,10 +248,10 @@ use m_shot
     subroutine project_back(self)
         class(t_computebox) :: self
         
-        call cb2m(m%gradient,cb%grad)
-        call cb2m(m%image   ,cb%imag)
-        call cb2m(m%energy  ,cb%engy)
-        call cb2m(m%correlate,cb%corr)
+        ! call cb2m(correlation_gradient,cb%grad)
+        ! !call cb2m(m%image   ,cb%imag)
+        ! call cb2m(m%energy  ,cb%engy)
+        ! call cb2m(m%correlate,cb%corr)
 
         call final(self)
 
@@ -256,6 +261,7 @@ use m_shot
         real,dimension(:,:,:,:),allocatable :: big, small
 
         if(.not. allocated(small)) return
+        if(.not. allocated(big  )) return
 
         call alloc(big,m%nz,m%nx,m%ny,size(small,4),oif_protect=.true.)
 

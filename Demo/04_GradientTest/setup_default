@@ -1,0 +1,69 @@
+MODEL_SIZE              '101 101 1'
+MODEL_SPACING           '20 20 1'
+FILE_MODEL              'model'
+MODEL_ATTRIBUTES        vp #'vp rho'
+#FILE_TOPO               'topo'
+
+TILD_FROM               'none'
+
+IS_FREESURFACE          F
+
+ACQUI_GEOMETRY          spread
+#FS                      '400 500 0'
+FS                      '20 500 0'
+#FR                      '400 1500 0'
+FR                      '20 1500 0'
+DR                      '0  20  0'
+#NR                      100
+NR                      1
+
+SCOMP                   p
+RCOMP                   p #'p vz'
+
+#IF_HICKS        F
+#IF_BLOOM        F
+
+NT           500
+DT           0.006
+
+## for PFEI ##
+#FILE_DATA_PREFIX    'results_fwd/dsyn_Shot'
+FILE_DATA_PREFIX    'results_fwd/denv_Shot'
+WEIGHTING           'none'
+
+FPEAK        6.4
+WAVELET_TYPE        'ricker'
+T0                  0.35
+UPDATE_WAVELET		'no'
+RDT			0
+
+PARAMETER           'vp:1500:2000'
+PARAMETER           'tilD:-0.001:0.001'
+
+SMOOTHING     'none'
+#PRECO         'z^0'
+
+#JOB             'forward modeling'
+#JOB             'estimate wavelet'
+JOB             'build tilD gradient'
+#JOB             'update velocity gradient'
+
+#DNORMALIZERS    '1 1'
+#MREF            '1 1'
+
+#DESCENT_DIR     'random'  #'-curr%pg'
+#ALPHAS          '1e-5 1e-3 1e-1 1 1e1'
+#ALPHAS          '1e-3 5e-3 1e-2 5e-2 1e-1 5e-1 1'
+#ALPHAS          '0.'
+#ALPHAS          '-1e-3 -1e-2 -1e-1 -1 -1e1'
+#ALPHAS          '1 1e1 1e2 1e3 1e4'
+#ALPHAS          '0.125 0.25 0.5 1. 2. 4. 8.'
+
+#LS_SCALING  'none'
+
+
+SNAPSHOT     p
+#NSNAPSHOT    50
+
+IF_USE_CHECKPOINT   F
+

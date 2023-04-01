@@ -4,19 +4,24 @@
 ############
 # Modeling #
 ############
+#WaveEq=BornEnv_monoD
+#WaveEq=AC2nd
 WaveEq=AC
-# WaveEq=AC_VTI
-# WaveEq=PSV
+#WaveEq=AC_VTI
+#WaveEq=PSV
+#Solver=FD
 Solver=FDSG
 Order=O4
+#Order=O2
 ShotDec=batching
 
 ##########
 # Kernel #
 ##########
-Param=velocities-density
+#Param=vp-rho-tilD
+#Param=velocities-density
 #Param=velocities-density_pseudotime
-#Param=velocities-impedance
+Param=velocities-impedance
 #Param=slowness-density
 App=FWI
 
