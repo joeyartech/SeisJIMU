@@ -6,6 +6,7 @@ use m_model
 use m_shot
 use m_computebox
 use m_field
+use m_correlate
 use m_cpml
 
     private
@@ -15,6 +16,9 @@ use m_cpml
     
     real :: c1x, c1y, c1z
     real :: c2x, c2y, c2z
+
+    !scaling source wavelet
+    real :: wavelet_scaler
 
     type,public :: t_propagator
         !info
@@ -30,7 +34,7 @@ use m_cpml
             'Required boundary layer thickness: 2'//s_NL// &
             'Imaging conditions: P-Pxcorr'//s_NL// &
             'Energy terms: Σ_shot ∫ sfield%p² dt'//s_NL// &
-            'Basic gradients: grho gkpa'
+            'Basic gradients: gkpa grho'
 
         integer :: nbndlayer=max(2,hicks_r) !minimum absorbing layer thickness
         integer :: ngrad=2 !number of basic gradients
@@ -53,6 +57,7 @@ use m_cpml
         procedure :: check_discretization
         procedure :: init
         procedure :: init_field
+        procedure :: init_correlate
         procedure :: init_abslayer
 
         procedure :: forward
@@ -75,11 +80,6 @@ use m_cpml
     integer :: irdt
     real :: rdt
 
-    !these procedures will be contained in an m_correlate module in future release
-    public :: gradient_density, gradient_moduli, imaging, energy, gradient_postprocess, imaging_postprocess
-
-    ! real,dimension(:,:,:),allocatable :: sf_p_save
-
     contains
     
     !========= for FDSG O(dx4,dt2) ===================  
@@ -88,7 +88,7 @@ use m_cpml
         class(t_propagator) :: self
 
         call hud('Invoked field & propagator modules info : '//s_NL//self%info)
-        call hud('FDGS Coef : '//num2str(coef(1))//', '//num2str(coef(2)))
+        call hud('FDSG Coef : 1') !//num2str(coef(1))//', '//num2str(coef(2)))
         
     end subroutine
     
@@ -111,7 +111,7 @@ use m_cpml
         endif
                 
     end subroutine
-    
+
     subroutine check_discretization(self)
         class(t_propagator) :: self
 
@@ -140,8 +140,8 @@ use m_cpml
                 'vmax, dt, 1/dx = '//num2str(cb%velmax)//', '//num2str(self%dt)//', '//num2str(m%rev_cell_diagonal) //s_NL//&
                 'Adjusted dt, nt = '//num2str(self%dt)//', '//num2str(self%nt))
 
-        endif       
-        
+        endif
+
     end subroutine
 
     subroutine init(self)
@@ -179,6 +179,9 @@ use m_cpml
 
         !initialize m_field
         call field_init(.false.,self%nt,self%dt)
+
+        !initialize m_correlate
+        call correlate_init(ppg%nt,ppg%dt)
 
         !rectified interval for time integration
         !default to Nyquist, and must be a multiple of dt
@@ -221,6 +224,22 @@ use m_cpml
         call alloc(f%dp_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%dp_dy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
                 
+    end subroutine
+
+    subroutine init_correlate(self,corr,name,purpose)
+        class(t_propagator) :: self
+        type(t_correlate) :: corr
+        character(*) :: name,purpose
+        
+        corr%name=name
+        corr%purpose=purpose
+
+        select case (purpose)
+        case ('gradient')
+            call alloc(corr%rp_div_sv, m%nz,m%nx,m%ny)
+            call alloc(corr%rv_grad_sp,m%nz,m%nx,m%ny)
+        end select
+
     end subroutine
 
     subroutine init_abslayer(self)
@@ -426,24 +445,17 @@ use m_cpml
 
     end subroutine
 
-    subroutine adjoint(self,fld_a,fld_u,oif_record_adjseismo,oif_compute_imag,oif_compute_grad)
-    !adjoint_a_star_Du
+    subroutine adjoint(self,fld_a,fld_u,oif_record_adjseismo,o_a_star_u)
         class(t_propagator) :: self
         type(t_field) :: fld_a,fld_u
-        logical,optional :: oif_record_adjseismo, oif_compute_imag, oif_compute_grad
+        logical,optional :: oif_record_adjseismo
+        type(t_correlate),optional :: o_a_star_u
         
         real,parameter :: time_dir=-1. !time direction
-        logical :: if_record_adjseismo, if_compute_imag, if_compute_grad
+        logical :: if_record_adjseismo
 
         if_record_adjseismo =either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
-        if_compute_imag     =either(oif_compute_imag,    .false.,present(oif_compute_imag))
-        if_compute_grad     =either(oif_compute_grad,    .false.,present(oif_compute_grad))
-        self%if_compute_engy=self%if_compute_engy.and.(if_compute_imag.or.if_compute_grad)
-        
         if(if_record_adjseismo)  call alloc(fld_a%seismo,1,self%nt)
-        if(if_compute_imag)      call alloc(cb%imag,cb%mz,cb%mx,cb%my,self%nimag)
-        if(if_compute_grad)      call alloc(cb%grad,cb%mz,cb%mx,cb%my,self%ngrad)
-        if(self%if_compute_engy) call alloc(cb%engy,cb%mz,cb%mx,cb%my,self%nengy)
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
         call fld_u%reinit
@@ -456,8 +468,6 @@ use m_cpml
         
         ift=1; ilt=self%nt
 
-        ! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
@@ -506,28 +516,12 @@ use m_cpml
 
             !gkpa: rf%s^it+0.5 star D sf%s_dt^it+0.5
             !use sf%v^it+1 to compute sf%s_dt^it+0.5, as backward step 4
-            if(if_compute_grad.and.mod(it,irdt)==0) then
+            if(mod(it,irdt)==0.and.present(o_a_star_u)) then
                 call cpu_time(tic)
-                call gradient_moduli(fld_a,fld_u,it,cb%grad(:,:,:,2))
+                call cross_correlate(fld_a,fld_u,o_a_star_u,'gkpa',it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             endif
-
-            if(if_compute_imag.and.mod(it,irdt)==0) then
-                call cpu_time(tic)
-                call imaging(fld_a,fld_u,it,cb%imag)
-                call cpu_time(toc)
-                tt6=tt6+toc-tic
-            endif
-
-            ! !energy term of sfield
-            ! if(self%if_compute_engy.and.mod(it,irdt)==0) then
-            !     call cpu_time(tic)
-            !     call energy(fld_u,it,cb%engy)
-            !     call cpu_time(toc)
-            !     tt6=tt6+toc-tic
-            ! endif
-                
             !========================================================!
 
             ! if(present(o_sf)) then
@@ -568,9 +562,9 @@ use m_cpml
             
             !grho: sfield%v_dt^it \dot rfield%v^it
             !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
-            if(if_compute_grad.and.mod(it,irdt)==0) then
+            if(mod(it,irdt)==0.and.present(o_a_star_u)) then
                 call cpu_time(tic)
-                call gradient_density(fld_a,fld_u,it,cb%grad(:,:,:,1))
+                call cross_correlate(fld_a,fld_u,o_a_star_u,'grho',it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             endif
@@ -578,23 +572,9 @@ use m_cpml
             !snapshot
             call fld_a%write(it,o_suffix='_rev')
             call fld_u%write(it,o_suffix='_rev')
-            if(if_compute_imag) then
-                call fld_a%write_ext(it,'imag' ,cb%imag,size(cb%imag))
-            endif
-            if(if_compute_grad) then
-                ! call fld_a%write_ext(it,'grad_density',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
-                ! call fld_a%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
-                call fld_a%write_ext(it,'grad_a_star_Du' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
-            endif
-            if(self%if_compute_engy) then
-                call fld_a%write_ext(it,'engy',cb%engy(:,:,:,1),size(cb%engy(:,:,:,1)))
-            endif
+            if(present(o_a_star_u)) call o_a_star_u%write(it,o_suffix='_rev')
 
         enddo
-        
-        !postprocess
-        if(if_compute_imag) call imaging_postprocess
-        if(if_compute_grad) call gradient_postprocess
         
         if(mpiworld%is_master) then
             write(*,*) 'Elapsed time to load boundary            ',tt1/mpiworld%max_threads
@@ -618,6 +598,17 @@ use m_cpml
         call hud('ximage < snap_*  n1='//num2str(cb%mz)//' perc=99')
         call hud('xmovie < snap_*  n1='//num2str(cb%mz)//' n2='//num2str(cb%mx)//' clip=?e-?? loop=2 title=%g')
         
+
+        if(present(o_a_star_u)) then
+            call o_a_star_u%scale(m%cell_volume*rdt)
+
+            call correlate_stack(-self%inv_kpa(1:m%nz,1:m%nx,1:m%ny)*o_a_star_u%rp_div_sv,&
+                correlate_gradient(:,:,:,1)) !gkpa
+                
+            call correlate_stack( o_a_star_u%rv_grad_sp / cb%rho(1:cb%mz,1:cb%mx,1:cb%my),&
+                correlate_gradient(:,:,:,2)) !grho
+        endif
+
     end subroutine
 
 
@@ -938,39 +929,16 @@ use m_cpml
     !a★Du = [vzᵃ vxᵃ pᵃ] Kₘln(M) | 0   0   ∂zᵇ| |vx|
     !                            [∂ₓᶠ  ∂zᶠ  0 ] [p ]
     !In particular, we compute
+    !  gkpa = pᵃ (-κ⁻²) ∂ₜp = pᵃ (-κ⁻¹) ∇·v
     !  grho = vᵃ ∂ₜv = vᵃ b∇p
-    !  gkpa = pᵃ (-κ⁻²) ∂ₜp = = pᵃ (-κ⁻¹) ∇·v
     !
     !For imaging:
     !I = ∫ a u dt =: a★u
 
-    subroutine gradient_density(rf,sf,it,grad)
+    subroutine cross_correlate(rf,sf,corr,task,it)
         type(t_field), intent(in) :: rf, sf
-        real,dimension(cb%mz,cb%mx,cb%my) :: grad
-        
-        !nonzero only when sf touches rf
-        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
-        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
-        ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
-        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
-        ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
-        ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
-        
-        if(m%is_cubic) then
-            call grad3d_density(rf%vz,rf%vx,rf%vy,sf%p,&
-                                grad,                  &
-                                ifz,ilz,ifx,ilx,ify,ily)
-        else
-            call grad2d_density(rf%vz,rf%vx,sf%p,&
-                                grad,            &
-                                ifz,ilz,ifx,ilx)
-        endif
-        
-    end subroutine
-
-    subroutine gradient_moduli(rf,sf,it,grad)
-        type(t_field), intent(in) :: rf, sf
-        real,dimension(cb%mz,cb%mx,cb%my) :: grad
+        type(t_correlate) :: corr
+        character(*) :: task
 
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
@@ -981,100 +949,98 @@ use m_cpml
         ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
         
         if(m%is_cubic) then
-            call grad3d_moduli(rf%p,sf%vz,sf%vx,sf%vy,&
-                               grad,                  &
-                               ifz,ilz,ifx,ilx,ify,ily)
-        else
-            ! call grad2d_moduli(rf%p,sf%p,sf_p_save,&
-            !                    grad,            &
-            !                    ifz,ilz,ifx,ilx)
-            ! sf_p_save = sf%p
-            
-            !inexact greadient
-            call grad2d_moduli(rf%p,sf%vz,sf%vx,&
-                               grad,            &
-                               ifz,ilz,ifx,ilx)
-        endif
-        
-    end subroutine
-    
-    subroutine gradient_postprocess
-
-        !scale the kernel tobe a gradient in the discretized world
-        cb%grad = cb%grad*m%cell_volume*rdt
-        
-        !grho
-        cb%grad(:,:,:,1) = cb%grad(:,:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
-        !gkpa
-        cb%grad(:,:,:,2) = cb%grad(:,:,:,2) * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my))
+            if(task=='gkpa') then
+                call gkpa3d(rf%p,sf%vz,sf%vx,sf%vy,&
+                            corr%rp_div_sv,&
+                            ifz,ilz,ifx,ilx,ify,ily)
                 
-        !preparing for cb%project_back
-        cb%grad(1,:,:,:) = cb%grad(2,:,:,:)
+            else if(task=='grho') then
+                call grho3d(rf%vz,rf%vx,rf%vy,sf%p,&
+                            corr%rv_grad_sp,       &
+                            ifz,ilz,ifx,ilx,ify,ily)
 
-    end subroutine
+            endif
 
-    subroutine imaging(rf,sf,it,imag)
-        type(t_field), intent(in) :: rf, sf
-        real,dimension(cb%mz,cb%mx,cb%my) :: imag
-        
-        !nonzero only when sf touches rf
-        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
-        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
-        ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
-        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
-        ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
-        ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
-        
-        ! if(m%is_cubic) then
-        !     call imag3d_xcorr(rf%p,sf%p,&
-        !                       imag,                  &
-        !                       ifz,ilz,ifx,ilx,ify,ily)
-        ! else
-            call imag2d_xcorr(rf%p,sf%p,&
-                              imag,            &
-                              ifz,ilz,ifx,ilx)
-        ! endif
-
-        ! call imag2d_xcorr(rf%p,rf%vz,rf%vx,&
-        !                   sf%p,sf%vz,sf%vx,&
-        !                   imag,            &
-        !                   ifz,ilz,ifx,ilx)
-
-    end subroutine
-
-    subroutine imaging_postprocess
-
-        !scale by rdt tobe an image in the discretized world
-        cb%imag = cb%imag*rdt
-
-        !for cb%project_back
-        cb%imag(1,:,:,:) = cb%imag(2,:,:,:)
-
-    end subroutine
-
-    subroutine energy(sf,it,engy)
-        type(t_field),intent(in) :: sf
-        real,dimension(cb%mz,cb%mx,cb%my) :: engy
-
-        !nonzero only when sf touches rf
-        ifz=max(sf%bloom(1,it),2)
-        ilz=min(sf%bloom(2,it),cb%mz)
-        ifx=max(sf%bloom(3,it),1)
-        ilx=min(sf%bloom(4,it),cb%mx)
-        ify=max(sf%bloom(5,it),1)
-        ily=min(sf%bloom(6,it),cb%my)
-        
-        if(m%is_cubic) then
-            call engy3d_xcorr(sf%p,&
-                              engy,                  &
-                              ifz,ilz,ifx,ilx,ify,ily)
         else
-            call engy2d_xcorr(sf%p,&
-                              engy,            &
-                              ifz,ilz,ifx,ilx)
+            if(task=='gkpa') then
+                call gkpa2d(rf%p,sf%vz,sf%vx,&
+                            corr%rp_div_sv,&
+                            ifz,ilz,ifx,ilx)
+                
+            else if(task=='grho') then
+                call grho2d(rf%vz,rf%vx,sf%p,&
+                            corr%rv_grad_sp, &
+                            ifz,ilz,ifx,ilx)
+
+            endif
+
         endif
 
     end subroutine
+
+    
+    ! subroutine imaging(rf,sf,it,imag)
+    !     type(t_field), intent(in) :: rf, sf
+    !     real,dimension(cb%mz,cb%mx,cb%my) :: imag
+        
+    !     !nonzero only when sf touches rf
+    !     ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
+    !     ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
+    !     ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
+    !     ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
+    !     ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
+    !     ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
+        
+    !     ! if(m%is_cubic) then
+    !     !     call imag3d_xcorr(rf%p,sf%p,&
+    !     !                       imag,                  &
+    !     !                       ifz,ilz,ifx,ilx,ify,ily)
+    !     ! else
+    !         call imag2d_xcorr(rf%p,sf%p,&
+    !                           imag,            &
+    !                           ifz,ilz,ifx,ilx)
+    !     ! endif
+
+    !     ! call imag2d_xcorr(rf%p,rf%vz,rf%vx,&
+    !     !                   sf%p,sf%vz,sf%vx,&
+    !     !                   imag,            &
+    !     !                   ifz,ilz,ifx,ilx)
+
+    ! end subroutine
+
+    ! subroutine imaging_postprocess
+
+    !     !scale by rdt tobe an image in the discretized world
+    !     cb%imag = cb%imag*rdt
+
+    !     !for cb%project_back
+    !     cb%imag(1,:,:,:) = cb%imag(2,:,:,:)
+
+    ! end subroutine
+
+    ! subroutine energy(sf,it,engy)
+    !     type(t_field),intent(in) :: sf
+    !     real,dimension(cb%mz,cb%mx,cb%my) :: engy
+
+    !     !nonzero only when sf touches rf
+    !     ifz=max(sf%bloom(1,it),2)
+    !     ilz=min(sf%bloom(2,it),cb%mz)
+    !     ifx=max(sf%bloom(3,it),1)
+    !     ilx=min(sf%bloom(4,it),cb%mx)
+    !     ify=max(sf%bloom(5,it),1)
+    !     ily=min(sf%bloom(6,it),cb%my)
+        
+    !     if(m%is_cubic) then
+    !         call engy3d_xcorr(sf%p,&
+    !                           engy,                  &
+    !                           ifz,ilz,ifx,ilx,ify,ily)
+    !     else
+    !         call engy2d_xcorr(sf%p,&
+    !                           engy,            &
+    !                           ifz,ilz,ifx,ilx)
+    !     endif
+
+    ! end subroutine
 
     !========= Finite-Difference on flattened arrays ==================
     
@@ -1375,9 +1341,9 @@ use m_cpml
     end subroutine
 
     
-    subroutine grad3d_moduli(rf_p,sf_vz,sf_vx,sf_vy,&
-                             grad,                  &
-                             ifz,ilz,ifx,ilx,ify,ily)
+    subroutine gkpa3d(rf_p,sf_vz,sf_vx,sf_vy,&
+                        grad,                  &
+                        ifz,ilz,ifx,ilx,ify,ily)
         real,dimension(*) :: rf_p,sf_vz,sf_vx,sf_vy
         real,dimension(*) :: grad
         
@@ -1478,9 +1444,9 @@ use m_cpml
 
     ! end subroutine
 
-    subroutine grad2d_moduli(rf_p,sf_vz,sf_vx,&
-                             grad,            &
-                             ifz,ilz,ifx,ilx)
+    subroutine gkpa2d(rf_p,sf_vz,sf_vx,&
+                        grad,            &
+                        ifz,ilz,ifx,ilx)
         real,dimension(*) :: rf_p,sf_vz,sf_vx
         real,dimension(*) :: grad
         
@@ -1532,9 +1498,9 @@ use m_cpml
 
     end subroutine
     
-    subroutine grad3d_density(rf_vz,rf_vx,rf_vy,sf_p,&
-                              grad,                  &
-                              ifz,ilz,ifx,ilx,ify,ily)
+    subroutine grho3d(rf_vz,rf_vx,rf_vy,sf_p,&
+                        grad,                  &
+                        ifz,ilz,ifx,ilx,ify,ily)
         real,dimension(*) :: rf_vz,rf_vx,rf_vy,sf_p
         real,dimension(*) :: grad
         
@@ -1602,9 +1568,9 @@ use m_cpml
         
     end subroutine
     
-    subroutine grad2d_density(rf_vz,rf_vx,sf_p,&
-                              grad,            &
-                              ifz,ilz,ifx,ilx)
+    subroutine grho2d(rf_vz,rf_vx,sf_p,&
+                        grad,            &
+                        ifz,ilz,ifx,ilx)
         real,dimension(*) :: rf_vz,rf_vx,sf_p
         real,dimension(*) :: grad
         

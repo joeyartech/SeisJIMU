@@ -3,28 +3,84 @@
 
 module m_separator
 use m_System
+use m_shot
+
+    private
+
+    type,public :: t_separator
+
+        integer nt,ntr
+        real dt
+        real,dimension(:,:),allocatable :: nearoffset, reflection, diving
+
+        contains
+
+        procedure :: update
+        procedure :: by_aoffset
+        procedure :: by_polygon
+
+    end type
+
+    type(t_separator),public :: sepa
 
     contains
     
-    subroutine build_separater(nt,dt,ntr,aoffset,sepa_div,sepa_rfl)
-        real    dt,aoffset(ntr)
-        real,dimension(nt,ntr) :: sepa_div,sepa_rfl
-        
-        character(:),allocatable :: file_sepa
-        character(80) :: text
+    subroutine update(self)
+        class(t_separator) :: self
+
+        character(:),allocatable :: suf
+        type(t_string),dimension(:),allocatable :: list,sublist
+        character(:),allocatable :: file
+
+        call alloc(self%nearoffset,shot%nt,shot%nrcv,o_init=0.)
+        call alloc(self%reflection,shot%nt,shot%nrcv,o_init=0.)
+        call alloc(self%diving    ,shot%nt,shot%nrcv,o_init=0.)
+
+        list=setup%get_strs('SEPARATING','SEPA',o_mandatory=2)
+
+        do i=1,size(list)
+            
+            if (index(list(i)%s,'aoffset')>0) then !use aoffset for either Ip or Vp inversion, but not for both
+                sublist=split(list(i)%s,o_sep=':')
+                call hud('Will separate data by aoffset:'//sublist(2)%s)
+                call self%by_aoffset(str2real(sublist(2)%s))
+            endif
+            
+            if (index(list(i)%s,'polygon')>0) then !use polygon to separate diving vs reflections
+                sublist=split(list(i)%s,o_sep=':')
+                if(size(sublist)==1) then !filename is not attached, ask for it
+                    file=setup%get_file('FILE_SEPARATOR_POLYGON','FILE_SEPA',o_mandatory=1)
+                else !filename is attached
+                    file=sublist(2)%s
+                endif
+                
+                call hud('Will separate data with polygons defined in '//file)
+                call self%by_polygon(file)
+            endif
+
+        enddo
+
+    end subroutine
+
+    subroutine by_aoffset(self,aoffset)
+        class(t_separator) :: self
+        real :: aoffset
+
+        do i=1,shot%nrcv    
+            if (shot%rcv(i)%aoffset<=aoffset) self%nearoffset(:,i)=1.
+        enddo
+
+    end subroutine
+
+    subroutine by_polygon(self,file)
+        class(t_separator) :: self
+        character(*) :: file
+
+        character(i_str_slen) :: text
         integer,parameter :: max_sepa_length=20 !maximum number of points
         real,dimension(max_sepa_length) :: xsepa,tsepa
         
-
-        file_sepa=get%setup_file('FILE_SEPARATER')
-        if(file_sepa=='') then
-            call error('ERROR: FILE_SEPARATER does NOT exist!')
-        endif
-
-
-        open(10,file=file_sepa,action='read')
-
-        sepa_div=0.; sepa_rfl=0.
+        open(10,file=file,action='read')
 
         !initialize
         xsepa=-99999.
@@ -38,10 +94,9 @@ use m_System
             i=index(text,"!"); if(i>0) text=text(1:i-1) !remove comments after !
 
             if (msg < 0) then !end of file
-                call error('ERROR: FILE_SEPARATER is missing xsepa points.'//s_NL &
-                    'Code stop now!')
+                call error(file//' is missing tsepa points.')
             endif
-            if (msg > 0) stop 'Check FILE_SEPARATER.  Something is wrong..'
+            if (msg > 0) call error('Check '//file//'.  Something is wrong..')
             if (text=='') then !blank line
                 cycle
             else
@@ -56,8 +111,7 @@ use m_System
         !xsepa should be increasing
         do i=1,mx-1
             if(xsepa(i+1)<xsepa(i)) then
-                call error('ERROR: xsepa from FILE_SEPARATER is NOT increasing!'//s_NL &
-                    'Code stop now!')
+                call error('xsepa from '//file//' is NOT increasing!')
             end if
         end do
 
@@ -70,10 +124,9 @@ use m_System
             i=index(text,"!"); if(i>0) text=text(1:i-1) !remove comments after !
 
             if (msg < 0) then !end of file
-                call error('ERROR: FILE_SEPARATER is missing tsepa points.'//s_NL &
-                    'Code stop now!')
+                call error(file//' is missing tsepa points.')
             endif
-            if (msg > 0) stop 'Check FILE_SEPARATER.  Something is wrong..'
+            if (msg > 0) call error('Check '//file//'.  Something is wrong..')
             if (text=='') then !blank line
                 cycle
             else 
@@ -85,8 +138,7 @@ use m_System
         read(text,*,iostat=msg) tsepa(1:mx)
 
         if (any(tsepa(1:mx)<0.)) then
-            call error('ERROR: FILE_SEPARATER has unequal tsepa & xsepa pairs.'//s_NL &
-                'Code stop now!')
+            call error(file//' has unequal tsepa & xsepa pairs.')
         endif
 
 
@@ -117,8 +169,8 @@ use m_System
             itime = nint(time/dt)+1  !assume all receivers have same dt ...
             itime = min(max(itime,1),nt)
 
-            sepa_div(1:itime,itr)=1.
-            sepa_rfl(itime+1:nt,itr)=1.
+            self%diving(1:itime,itr)=1.
+            self%reflection(itime+1:nt,itr)=1.
 
         end do
             

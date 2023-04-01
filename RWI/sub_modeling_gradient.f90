@@ -1,238 +1,194 @@
-module m_gradient
-use m_model
-use m_shotlist
-use m_shot
-use m_computebox
-use m_propagator
-use m_field
-use m_objectivefunc
+subroutine modeling_gradient
+use mpi
+use m_System
+use m_Modeling
+use m_separator
+use m_weighter
+use m_Lpnorm
+use m_fobjective
 use m_matchfilter
 use m_smoother_laplacian_sparse
+use m_resampler
 
-    
-    public
-    
-    character(:),allocatable :: update_wavelet
-    
-    real fobjective !objective function value
-    real,dimension(:,:,:,:),allocatable :: gradient
+    logical,save :: is_first_in=.true.
 
-    logical :: if_rwi_gradient=.false.
+    type(t_field) :: fld_u0, fld_u, fld_a0, fld_a
+    type(t_correlate) :: a0_star_u0, a_star_u
+    ! real,dimension(:,:),allocatable :: Wdres
+    !real,dimension(:,:,:),allocatable :: Ddt2
+    ! character(:),allocatable :: update_wavelet
+    ! real,dimension(:,:),allocatable :: Rmu, Rdiff
     
-    contains
+    !RWI misfit
+    fobj%misfit=0.
+
+    call alloc(correlate_gradient,m%nz,m%nx,m%ny,ppg%ngrad)
     
-    subroutine gradient_modeling(if_gradient)
-        logical,optional :: if_gradient
-        real,dimension(:,:,:),allocatable :: tmp_grad_mask
-        logical :: alive
+    call hud('===== START LOOP OVER SHOTS =====')
         
+    do i=1,nshot_per_processor
+    
+        call shot%init(shls%yield(i))
+        call shot%read_from_data
+        call shot%set_var_time
+        call shot%set_var_space(index(ppg%info,'FDSG')>0)
 
-        !assign shots to processors
-        if(.not. allocated(shotlist)) call build_shotlist
+        call hud('Modeling Shot# '//shot%sindex)
         
-        fobjective=0.
+        call cb%init(ppg%nbndlayer)
 
-        call alloc(gradient,m%nz,m%nx,m%ny,ncorr)
-       
+        !forward modeling
+        !A(m )u = s
+        call cb%project
         
-        call hud('      START LOOP OVER SHOTS          ')
-        
-        do i=1,nshot_per_processor
-        
-            call init_shot(i,'data')
-            
-            call hud('Modeling shot# '//shot%cindex)
-            
-            call build_computebox
-            
-            call check_model
-            call check_discretization !CFL condition, dispersion etc.
-            
-            !init propagator and wavefield
-            call init_propagator(if_will_do_rfield=.true.)
-            
-            !*******************************
-            !intensive computation
-            call propagator_forward(if_will_backpropagate=.true.)
-            !*******************************
+        call ppg%check_discretization
+        call ppg%init
+        call ppg%init_abslayer
 
-!write synthetic data
-if(mpiworld%is_master) then
-open(12,file='synth_raw_'//shot%cindex,access='stream')
-write(12) dsyn
-close(12)
-endif
-            
-            !update shot%src%wavelet
-            !while wavelet in m_propagator is un-touched
-            update_wavelet=get_setup_char('UPDATE_WAVELET',default='per shot')
-            if(update_wavelet/='no') then
-                call gradient_matchfilter_data
-                
-                !write wavelet updates for QC
-                if(mpiworld%is_master) then
-                    open(12,file='wavelet_update',access='stream',position='append')
-                    write(12) shot%src%wavelet /shot%src%dt*m%cell_volume !scale to be dt, dx independent, see m_shot.f90 ..
-                    close(12)
-                endif
-            endif
-            
+        call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
+        call ppg%forward(fld_u)
+        call fld_u%acquire;  call shot%write('Ru_',shot%dsyn)
+
+        !A(m₀)u₀= s
+        call cb%project(ois_background=.true.)
+        call ppg%init
+        call ppg%init_field(fld_u0,name='fld_u0');    call fld_u0%ignite
+        call ppg%forward(fld_u0)
+        shot%dsyn_aux=shot%dsyn; call fld_u0%acquire(o_seismo=shot%dsyn_aux);  call shot%write('Ru0_',shot%dsyn_aux)
+
+
+        s_job=setup%get_str('JOB',o_default='forward modeling')
+
+        if(s_job=='forward modeling') cycle
+
+        if(index(s_job,'estimate wavelet')>0) then
+            call hud('--------------------------------')
+            call hud('        Estimate wavelet        ')
+            call hud('--------------------------------')
+
+            call wei%update
+
+            call shot%update_wavelet(wei%weight)
+            call matchfilter_apply_to_data(shot%dsyn_aux)
+
             !write synthetic data
-            open(12,file='synth_data_'//shot%cindex,access='stream')
-            write(12) dsyn
-            close(12)
+            call shot%write('updated_Ru',shot%dsyn)
+            call shot%write('updated_Ru0',shot%dsyn_aux)
+            call hud('---------------------------------')
 
-            !fobjective and data residual
-            call alloc(dres,shot%rcv(1)%nt,shot%nrcv)
-            if(.not. if_rwi_gradient) then
-                call objectivefunc_data_norm_residual
-            else
-                call objectivefunc_data_norm_residual(o_residual='rfl')
-            endif
-
-! !write synthetic data
-! if(mpiworld%is_master) then
-! open(12,file='residual_'//shot%cindex,access='stream')
-! write(12) dres
-! close(12)
-! endif
-
-            if(mpiworld%is_master) write(*,*) 'Shot# 0001: Data misfit norm', dnorm
-            
-            fobjective=fobjective+dnorm
-                    
-            !adjoint source
-            if(update_wavelet/='no') then
-                call matchfilter_correlate_filter_residual(shot%src%nt,shot%nrcv,dres)
-            endif
-            
-            call alloc(cb%gradient,cb%mz,cb%mx,cb%my,ncorr) !(:,:,:,1) is glda, (:,:,:,2) is gmu, (:,:,:,3) is grho0
-            !*******************************
-            !intensive computation
-            call propagator_adjoint(gradient=cb%gradient)
-            !*******************************
-            
-
-            if(if_rwi_gradient) then
-                !2nd gradient for background model
-                call build_computebox(if_background=.true.)
-
-                !call check_model
-                !call check_discretization
-
-                call init_propagator(if_will_do_rfield=.true.)
-
-                call propagator_forward(if_will_backpropagate=.true.)
-
-                !write synthetic data
-                open(12,file='synth_data_bckg_'//shot%cindex,access='stream')
-                write(12) dsyn
-                close(12)
-
-                !fobjective and data residual
-                call alloc(dres,shot%rcv(1)%nt,shot%nrcv)
-                call objectivefunc_data_norm_residual(o_residual='div-rfl')
-
-
-!write synthetic data
-if(mpiworld%is_master) then
-open(12,file='residual2_'//shot%cindex,access='stream')
-write(12) dres
-close(12)
-endif
-
-                !adjoint source
-                call alloc(cb%gradient_bckg,cb%mz,cb%mx,cb%my,ncorr) !(:,:,:,1) is glda, (:,:,:,2) is gmu, (:,:,:,3) is grho0
-                !*******************************
-                !intensive computation
-                call propagator_adjoint(gradient=cb%gradient_bckg)
-                !*******************************
-
-if(mpiworld%is_master) then          
-open(12,file='cb%gradient',action='write',access='stream')
-write(12) cb%gradient
-write(12) cb%gradient_bckg
-write(12) cb%gradient+cb%gradient_bckg
-close(12)
-endif
-
-                cb%gradient=cb%gradient+cb%gradient_bckg
-
-            endif
-            
-
-            !put cb%gradient into global gradient
-            gradient(cb%ioz:cb%ioz+cb%mz-1,&
-                     cb%iox:cb%iox+cb%mx-1,&
-                     cb%ioy:cb%ioy+cb%my-1,:) = &
-            gradient(cb%ioz:cb%ioz+cb%mz-1,&
-                     cb%iox:cb%iox+cb%mx-1,&
-                     cb%ioy:cb%ioy+cb%my-1,:) + cb%gradient(:,:,:,:)
-        
-            
-        enddo
-        
-        call hud('        END LOOP OVER SHOTS        ')
-        
-        !call objectivefunc_model_norm ...
-        fobjective=fobjective!+lambda*mnorm
-        
-        !collect global objective function value
-        call mpi_barrier(mpiworld%communicator, mpiworld%ierr)
-        call mpi_allreduce(MPI_IN_PLACE, fobjective, 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-        
-        !collect global gradient
-        call mpi_barrier(mpiworld%communicator, mpiworld%ierr)
-        call mpi_allreduce(MPI_IN_PLACE, gradient, m%n*ncorr, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-
-        !smoothing
-        if(get_setup_logical('IF_SMOOTHING',default=.true.)) then
-            call hud('Initialize Laplacian smoothing')
-            call init_smoother_laplacian([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%src%fpeak)
-            do icorr=1,ncorr
-                call smoother_laplacian_extend_mirror(gradient(:,:,:,icorr),m%itopo)
-                call smoother_laplacian_pseudo_nonstationary(gradient(:,:,:,icorr),m%vp)
-            enddo
         endif
-        
-        !mask gradient
-        do iy=1,m%ny
-        do ix=1,m%nx
-            gradient(1:m%itopo(ix,iy)-1,ix,iy,:) =0.
-        enddo
-        enddo
 
-!secondary mask gradient
-inquire(file='grad_mask', exist=alive)
-if(alive) then
-    call alloc(tmp_grad_mask,m%nz,m%nx,m%ny)
-    open(12,file='grad_mask',access='direct',recl=4*m%n,action='read',status='old')
-    read(12,rec=1) tmp_grad_mask
-    close(12)
-    call hud('grad_mask is read. gradient is masked in addition to topo.')
-    
-    do i=1,size(gradient,4)
-        gradient(:,:,:,i)=gradient(:,:,:,i)*tmp_grad_mask
+        if(index(s_job,'build Ip')>0) then
+            call hud('------------------------')
+            call hud('     Build Ip model     ')
+            call hud('------------------------')
+
+
+            call sepa%update
+            call wei%update!('_4IMAGING')
+            
+            fobj%misfit = fobj%misfit &
+                + L2sq(0.5, shot%nrcv*shot%nt, sepa%nearoffset*wei%weight, shot%dobs-shot%dsyn, shot%dt)
+
+            call alloc(shot%dadj,shot%nt,shot%nrcv)
+            call kernel_L2sq(shot%dadj)
+            call shot%write('dadj_',shot%dadj)
+
+            call ppg%init_correlate(a_star_u,'a_star_u','gradient') !a★u
+
+            !adjoint modeling
+            !A(m)ᴴa = Rʳ(d-u)
+            call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite
+            call ppg%adjoint(fld_a,fld_u,o_a_star_u=a_star_u)
+            call hud('---------------------------------')
+
+        endif
+
+        if(index(s_job,'update Vp')>0) then
+            call hud('-------------------------')
+            call hud('     Update Vp model     ')
+            call hud('-------------------------')
+
+            call sepa%update
+            call wei%update!('_4IMAGING')
+            
+
+            !reflection data
+            fobj%reflection = fobj%reflection &
+                + L2sq(0.5, shot%nrcv*shot%nt, sepa%reflection*wei%weight, shot%dobs-shot%dsyn, shot%dt)        
+            call kernel_L2sq(shot%dadj)
+            call ppg%init_field(fld_a ,name='fld_a' ,ois_adjoint=.true.); call fld_a%ignite
+
+            call shot%write('dadj_refl_',shot%dadj)
+            
+            call ppg%init_correlate(a_star_u,'a_star_u','gradient') !a★u
+
+            !adjoint modeling
+            !A(m )ᴴa  = Rʳ(d-u)
+            call cb%project
+            call ppg%init
+            call ppg%adjoint(fld_a,fld_u,o_a_star_u=a_star_u)
+
+            !diving waves
+            fobj%diving = fobj%diving &
+                + L2sq(0.5, shot%nrcv*shot%nt, sepa%diving*wei%weight, shot%dobs-shot%dsyn, shot%dt)
+            shot%dadj=-shot%dadj; call kernel_L2sq(shot%dadj,oif_stack=.true.) !diving minus reflection residuals
+            call ppg%init_field(fld_a0,name='fld_a0',ois_adjoint=.true.); call fld_a0%ignite
+            
+            call shot%write('dadj_div-refl_',shot%dadj)
+                        
+            call ppg%init_correlate(a0_star_u0,'a0_star_u0','gradient') !a₀★u₀
+
+            !adjoint modeling
+            !A(m₀)ᴴa₀ = Rᵈ(d-u)-Rʳ(d-u)
+            call cb%project(ois_background=.true.)
+            call ppg%init
+            call ppg%adjoint(fld_a0,fld_u0,o_a_star_u=a0_star_u0)
+
+            !produce final misfit
+            fobj%misfit = fobj%reflection+fobj%diving
+
+            call hud('---------------------------------')
+            
+        endif
+
     enddo
-endif
 
+    call hud('        END LOOP OVER SHOTS        ')
+
+    if(s_job=='forward modeling'.or.s_job=='estimate wavelet') then
+        call mpiworld%final
+        stop
+    endif
     
-    end subroutine
+
+    !allreduce PFEI misfit values
+    call mpi_allreduce(mpi_in_place, [fobj%reflection,fobj%diving,fobj%misfit], 3, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    call hud('Stacked RWI_misfit '//nums2strs([fobj%reflection,fobj%diving,fobj%misfit]))
+
+    fobj%dnorms=fobj%misfit
+
+    call fobj%print_dnorms('Stacked but not yet linesearch-scaled','')
     
-    subroutine gradient_matchfilter_data
+    !scale by shotlist
+    call shls%scale(1,o_from_sampled=[fobj%misfit])
+    call shls%scale(fobj%n_dnorms,o_from_sampled=fobj%dnorms)
+
+    !write correlate
+    if(mpiworld%is_master) then
+        call a_star_u%write
+        call a0_star_u0%write
+    endif
+
+    !allreduce energy, gradient
+    ! call mpi_allreduce(mpi_in_place, correlate_energy  , m%n          , mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    call mpi_allreduce(mpi_in_place, correlate_gradient, m%n*ppg%ngrad, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     
-        if(update_wavelet=='stack') then
-            !average wavelet across all processors
-            !note: if more shots than processors, non-assigned shots will not contribute to this averaging
-            call matchfilter_estimate(shot%src%nt,shot%nrcv,dsyn,dobs,shot%index,if_stack=.true.)
-        else
-            call matchfilter_estimate(shot%src%nt,shot%nrcv,dsyn,dobs,shot%index,if_stack=.false.)
-        endif
-        
-        call matchfilter_apply_to_wavelet(shot%src%nt,shot%src%wavelet)
-        
-        call matchfilter_apply_to_data(shot%src%nt,shot%nrcv,dsyn)
-        
-    end subroutine
+    !scale by shotlist
+    call shls%scale(m%n*ppg%ngrad,o_from_sampled=correlate_gradient)
+
+    if(mpiworld%is_master) call sysio_write('correlate_gradient',correlate_gradient,m%n*ppg%ngrad)
+
+    call mpiworld%barrier
     
-end
+end subroutine

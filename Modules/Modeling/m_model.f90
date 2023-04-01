@@ -15,7 +15,7 @@ use m_System
 
         logical :: is_cubic, is_freesurface, if_has_prior
         
-        real,dimension(:,:,:),allocatable :: vp,vs,rho
+        real,dimension(:,:,:),allocatable :: vp,vs,rho,rho0
         real,dimension(:,:,:),allocatable :: eps,del,eta
         real,dimension(:,:,:),allocatable :: qp,qs
 
@@ -133,6 +133,11 @@ use m_System
                 call alloc(self%rho,self%nz,self%nx,self%ny)
                 read(12,rec=i) self%rho
                 call hud('rho model is read.')
+
+            case ('rho0')
+                call alloc(self%rho0,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%rho
+                call hud('rho0 model is read.')
 
             case ('eps')
                 call alloc(self%eps,self%nz,self%nx,self%ny)
@@ -318,6 +323,10 @@ use m_System
                 read(12,rec=i) tmp
                 where(self%is_freeze_zone) self%rho=tmp
 
+            case ('rho0')
+                read(12,rec=i) tmp
+                where(self%is_freeze_zone) self%rho0=tmp
+
             case ('eps')
                 read(12,rec=i) tmp
                 where(self%is_freeze_zone) self%eps=tmp
@@ -375,6 +384,12 @@ use m_System
             case ('rho')
                 if(allocated(self%rho)) then
                     write(13,rec=i) self%rho
+                    ! call hud('rho model is written.')
+                endif
+
+            case ('rho0')
+                if(allocated(self%rho0)) then
+                    write(13,rec=i) self%rho0
                     ! call hud('rho model is written.')
                 endif
 
