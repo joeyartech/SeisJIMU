@@ -90,6 +90,7 @@ use m_cpml
     integer :: irdt
     real :: rdt
 
+    character(:),allocatable :: s_D_def
     logical :: is_absolute_virtual
 
     contains
@@ -223,6 +224,7 @@ use m_cpml
         rdt=irdt*self%dt
         call hud('rdt, irdt = '//num2str(rdt)//', '//num2str(irdt))
 
+	s_D_def=setup%get_str('DEFINING_D','D_DEF',o_default='ISIC')
         is_absolute_virtual=setup%get_bool('IS_ABSOLUTE_VIRTUAL','IS_ABS_VIRT',o_default='F')
 
     end subroutine
@@ -838,8 +840,16 @@ use m_cpml
             !scale by m%cell_volume*rdt tobe an image or gradient in the discretized world
             call o_F2_star_E0%scale(m%cell_volume*rdt)
 
-            call correlate_stack(-m%rho*o_F2_star_E0%lap_rp_sp -o_F2_star_E0%div_rp_div_sp, &
-                correlate_gradient(:,:,:,3)) !gtilD
+	    select case (s_D_def) !definition of D
+		case ('tilD_ddotE0') !方案1
+	            call correlate_stack(-m%rho*o_F2_star_E0%lap_rp_sp, &
+        	        correlate_gradient(:,:,:,3)) !gtilD
+
+	    	case ('ISIC') !方案2
+        	    call correlate_stack(-m%rho*o_F2_star_E0%lap_rp_sp -o_F2_star_E0%div_rp_div_sp, &
+        	        correlate_gradient(:,:,:,3)) !gtilD
+
+	    end select
 
         endif
 
@@ -1093,37 +1103,31 @@ use m_cpml
         ! endif
 
         if(m%is_cubic) then !1/3D
-            ! fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) = fld_d%p(1:cb%mz,1:cb%mx,1:cb%my) +         self%tilD_dt2*fld%p(1:cb%mz,1:cb%mx,1:cb%my)
+
         else !2D
-            !fld_d%p = fld_d%p + self%tilD_dt*dt*fld%p
+        ! fld_d%p = fld_d%p + time_dir*cb%rho*cb%tilD*(           fld%p           )
+        ! fld_d%p = fld_d%p + time_dir*cb%rho*cb%tilD*(           fld%p-fld%p_prev)
+        ! fld_d%p = fld_d%p + time_dir*cb%rho*cb%tilD*(fld%p_next-2*fld%p+fld%p_prev)
 
-            !方案1 w/ backward FD
-            !fld_d%p(1:cb%mz,1:cb%mx,1:1) = fld_d%p(1:cb%mz,1:cb%mx,1:1) +   self%invsqEref*self%tilD_dt(1:cb%mz,1:cb%mx,1:1)*(fld%p(1:cb%mz,1:cb%mx,1:1)**2-fld%p_prev(1:cb%mz,1:cb%mx,1:1)**2)
-            !fld_d%p = fld_d%p + self%invsqEref*self%tilD_dt*(fld%p**2-fld%p_prev**2)
+	    select case (s_D_def) !definition of D
 
-            !方案1 w/ averaged FD, the forward_scattering subroutine should be updated
-            !fld_d%p = fld_d%p + self%invsqEref*self%tilD_dt*((fld%p**2-fld%p_prev**2)+(fld%p_next**2-fld%p**2))/2
+		case ('tilD_ddotE0') !方案1
+		    if(is_absolute_virtual) then
+			fld_d%p = fld_d%p + time_dir*cb%rho*cb%tilD*(abs(fld%p_next)-2*abs(fld%p)+abs(fld%p_prev))
+		    else
+		        fld_d%p = fld_d%p + time_dir*cb%rho*cb%tilD*(fld%p_next-2*fld%p+fld%p_prev)
+                    endif
 
-            !方案2, the forward_scattering subroutine should be updated
-            !fld_d%p = fld_d%p + self%invsqEref*self%tilD_dt*dt*(fld%p_next**2-2*fld%p**2+fld%p_prev**2)
+	    	case ('ISIC') !方案2
+		    if(is_absolute_virtual) then
+		        fld_d%p = fld_d%p + time_dir*cb%rho*cb%tilD*(abs(fld%p_next)-2*abs(fld%p)+abs(fld%p_prev))	        
+		        call fd2d_inject_virtual_source(fld_d%p,-time_dir*dt2,  self%kpa,cb%tilD,abs(fld%p), ifz,ilz,ifx,ilx)
+		    else
+		        fld_d%p = fld_d%p + time_dir*cb%rho*cb%tilD*(fld%p_next-2*fld%p+fld%p_prev)
+		        call fd2d_inject_virtual_source(fld_d%p,-time_dir*dt2,  self%kpa,cb%tilD,fld%p, ifz,ilz,ifx,ilx)
+                    endif
 
-            !方案1.2
-            if(is_absolute_virtual) then
-                fld_d%p = fld_d%p + time_dir*cb%rho*cb%tilD*(abs(fld%p_next)-2*abs(fld%p)+abs(fld%p_prev))
-
-                call fd2d_inject_virtual_source(fld_d%p,-time_dir*dt2,  self%kpa,cb%tilD,abs(fld%p), ifz,ilz,ifx,ilx)
-                !fld_d%p = fld_d%p + time_dir*( -dt2*fld%lap )
-
-            else
-                ! fld_d%p = fld_d%p + time_dir*cb%rho*cb%tilD*(           fld%p           )
-                ! fld_d%p = fld_d%p + time_dir*cb%rho*cb%tilD*(           fld%p-fld%p_prev)
-                fld_d%p = fld_d%p + time_dir*cb%rho*cb%tilD*(fld%p_next-2*fld%p+fld%p_prev)
-
-                call fd2d_inject_virtual_source(fld_d%p,-time_dir*dt2,  self%kpa,cb%tilD,    fld%p, ifz,ilz,ifx,ilx)
-                !fld_d%p = fld_d%p + time_dir*( -dt2*fld%lap )
-
-
-            endif
+	    end select
 
         endif
 
@@ -1144,27 +1148,29 @@ use m_cpml
         ifx=fld_F2%bloom(3,it)
         ilx=fld_F2%bloom(4,it)
 
-        ! if(m%is_cubic) then !1/3D
-        !     ! fld_F1%p(1:cb%mz,1:cb%mx,1:cb%my) = fld_F1%p(1:cb%mz,1:cb%mx,1:cb%my) +         self%tilD_dt2*fld_F1%p(1:cb%mz,1:cb%mx,1:cb%my)
-        ! else !2D
-        !     fld_F1%p(1:cb%mz,1:cb%mx,1:1) = fld_F1%p(1:cb%mz,1:cb%mx,1:1) -2*self%invsqEref*fld_E0%p(1:cb%mz,1:cb%mx,1:1)*self%tilD_dt(1:cb%mz,1:cb%mx,1:1)*(fld_F2%p(1:cb%mz,1:cb%mx,1:1)-fld_F2%p_prev(1:cb%mz,1:cb%mx,1:1))
-        ! endif
-
-
-        !方案1.2
-        if(is_absolute_virtual) then
-            fld_F1%p = fld_F1%p + cb%rho*cb%tilD*(fld_F2%p_prev-2*fld_F2%p+fld_F2%p_next)*sgns(fld_E0%p)
-
-            call fd2d_inject_virtual_source(fld_F1%p,-dt2, sgns(fld_E0%p)*self%kpa,cb%tilD,fld_F2%p, ifz,ilz,ifx,ilx)
-
-        else
             ! fld_F1%p = fld_F1%p + cb%rho*cb%tilD*(              fld_F2%p              )
             ! fld_F1%p = fld_F1%p + cb%rho*cb%tilD*(              fld_F2%p-fld_F2%p_next)
-            fld_F1%p = fld_F1%p + cb%rho*cb%tilD*(fld_F2%p_prev-2*fld_F2%p+fld_F2%p_next)
+            ! fld_F1%p = fld_F1%p + cb%rho*cb%tilD*(fld_F2%p_prev-2*fld_F2%p+fld_F2%p_next)
 
-            call fd2d_inject_virtual_source(fld_F1%p,-dt2,                self%kpa,cb%tilD,fld_F2%p, ifz,ilz,ifx,ilx)
-            
-        endif
+	    select case (s_D_def) !definition of D
+
+		case ('tilD_ddotE0') !方案1
+		    if(is_absolute_virtual) then
+		    	fld_F1%p = fld_F1%p + cb%rho*cb%tilD*(fld_F2%p_prev-2*fld_F2%p+fld_F2%p_next)*sgns(fld_E0%p)
+		    else
+		        fld_F1%p = fld_F1%p + cb%rho*cb%tilD*(fld_F2%p_prev-2*fld_F2%p+fld_F2%p_next)
+		    endif
+
+	    	case ('ISIC') !方案2
+		    if(is_absolute_virtual) then
+		    	fld_F1%p = fld_F1%p + cb%rho*cb%tilD*(fld_F2%p_prev-2*fld_F2%p+fld_F2%p_next)*sgns(fld_E0%p)
+            		call fd2d_inject_virtual_source(fld_F1%p,-dt2, sgns(fld_E0%p)*self%kpa,cb%tilD,fld_F2%p, ifz,ilz,ifx,ilx)
+	            else
+		        fld_F1%p = fld_F1%p + cb%rho*cb%tilD*(fld_F2%p_prev-2*fld_F2%p+fld_F2%p_next)
+            		call fd2d_inject_virtual_source(fld_F1%p,-dt2,                self%kpa,cb%tilD,fld_F2%p, ifz,ilz,ifx,ilx)
+		    endif
+
+	    end select
 
     end subroutine
 
@@ -1806,7 +1812,7 @@ use m_cpml
     !             nab_rp_nab_sp(j)=nab_rp_nab_sp(j) + drp_dz*dsp_dz + drp_dx*dsp_dx
 
     !         end do
-            
+
     !     end do
     !     !$omp end do
     !     !$omp end parallel

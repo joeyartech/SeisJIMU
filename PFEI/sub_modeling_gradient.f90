@@ -19,6 +19,8 @@ use m_resampler
     ! real,dimension(:,:),allocatable :: Rmu, Rdiff
 
     character(:),allocatable :: dnorm
+
+    real,dimension(:,:),allocatable :: tmp_dobs
     
     !PFEI misfit
     fobj%misfit=0.
@@ -77,11 +79,69 @@ use m_resampler
             call ppg%init_correlate(F2_star_E0,'F2_star_E0','gtilD') !F₂★E₀ for gtDt
             
             call wei%update!('_4IMAGING')
-            fobj%misfit = fobj%misfit &
-                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-(shot%dsyn+shot%dsyn_aux), shot%dt)
-            
-            call alloc(shot%dadj,shot%nt,shot%nrcv)
-            call kernel_L2sq(shot%dadj)
+!            fobj%misfit = fobj%misfit &
+!                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-(shot%dsyn+shot%dsyn_aux), shot%dt)
+!            
+!            call alloc(shot%dadj,shot%nt,shot%nrcv)
+!            call kernel_L2sq(shot%dadj)
+!            call shot%write('dadj_',shot%dadj)
+
+
+	    call alloc(shot%dadj,shot%nt,shot%nrcv)
+            if(.not.allocated(dnorm)) dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2sq')
+
+            select case (dnorm)
+            	case ('L2sq')
+            	fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-(shot%dsyn+shot%dsyn_aux), shot%dt)
+            	call kernel_L2sq(shot%dadj)
+
+	        case ('L2sq_abs')
+            	fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, abs(shot%dobs)-abs(shot%dsyn+shot%dsyn_aux), shot%dt)
+            	call kernel_L2sq(shot%dadj)
+            	shot%dadj = shot%dadj*sgns(shot%dsyn+shot%dsyn_aux)
+
+	        case ('L2sq_composite_abs')
+            	fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, (shot%dobs-shot%dsyn)-abs(shot%dsyn_aux), shot%dt)
+            	call kernel_L2sq(shot%dadj)
+            	shot%dadj = shot%dadj*sgns(shot%dsyn_aux)
+		!shot%dadj = shot%dadj*sgns2(shot%dsyn_aux, shot%dsyn+shot%dsyn_aux)
+
+		case ('L2sq_shifted')
+	        tmp_dobs = wei%weight*(shot%dobs-shot%dsyn)
+		do itr=1,shot%nrcv
+			ss=sum(tmp_dobs(:,itr))
+			tmp_dobs(:,itr) = tmp_dobs(:,itr) - ss
+			if(is_first_in) print*,shot%sindex//' Trace'//num2str(itr)//' : sum = '//num2str(ss)
+		enddo
+          	fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, tmp_dobs-shot%dsyn_aux, shot%dt)
+            	call kernel_L2sq(shot%dadj)
+
+		!case ('L2sq_derivative')
+		case ('L2sq_difference')
+	        tmp_dobs = difference(shot%dobs-shot%dsyn) !shot%dt
+            	fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, tmp_dobs-shot%dsyn_aux, shot%dt)
+            	call kernel_L2sq(shot%dadj)
+
+		case ('L2sq_modabs')
+            	fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, abs(shot%dobs)-abs(shot%dsyn+shot%dsyn_aux), shot%dt)
+            	call kernel_L2sq(shot%dadj)
+            	shot%dadj = shot%dadj*sgns2(shot%dsyn+shot%dsyn_aux,  shot%dobs-(shot%dsyn+shot%dsyn_aux)  )
+
+            	case default
+            	call error('No DNORM specified!')
+            	!fobj%misfit = fobj%misfit &
+            	!    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, (shot%dobs)**2-(shot%dsyn+shot%dsyn_aux)**2, shot%dt)
+            	!call kernel_L2sq(shot%dadj)
+	        !shot%dadj = shot%dadj*2.*(shot%dsyn+shot%dsyn_aux)
+
+            end select
+
             call shot%write('dadj_',shot%dadj)
 
             !adjoint modeling
@@ -148,6 +208,8 @@ use m_resampler
     enddo
     
     call hud('        END LOOP OVER SHOTS        ')
+
+is_first_in=.false.
 
     if(setup%get_str('JOB')=='forward modeling') then
         call mpiworld%final
@@ -228,6 +290,20 @@ use m_resampler
                 s=0.
             endwhere
         endwhere      
+    end function
+
+    function difference(data) result(diff)
+        real,dimension(shot%nt,shot%nrcv) :: data
+        real,dimension(:,:),allocatable :: diff
+        call alloc(diff,shot%nt,shot%nrcv)
+
+        do ir=1,shot%nrcv
+            do it=2,shot%nt-1
+                diff(it,ir) = (data(it+1,ir)-data(it-1,ir))/2.!/shot%dt
+            enddo
+            diff(shot%nt,ir)=diff(shot%nt-1,ir)
+            diff(1,ir)=diff(2,ir)
+        enddo
     end function
 
 end subroutine

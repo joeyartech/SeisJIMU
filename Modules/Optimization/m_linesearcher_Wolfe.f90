@@ -19,7 +19,8 @@ use m_Kernel
                                    'Steplength (alpha) judged by Wolfe conditions'
 
     !Wolfe conditions parameters (Nocedal value)
-    real,parameter :: c1=1e-4, c2=0.9 !c2=0.9 for (quasi-)Newton method, 0.1 for NLCG
+    real,parameter :: c1=1e-4 !, c2=0.9 !c2=0.9 for (quasi-)Newton method, 0.1 for NLCG
+real :: c2=0.9
     !Bracketting parameter (Gilbert value)
     real,parameter :: multiplier=10.
     
@@ -68,6 +69,8 @@ use m_Kernel
 
         !read setup        
         self%max_search=setup%get_int('MAX_SEARCH',o_default='12')
+
+c2=setup%get_real('WOLFE_C2',o_default='0.9')
 
     end subroutine
     

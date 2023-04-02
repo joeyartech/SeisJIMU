@@ -3,7 +3,7 @@ use m_System
 use m_Modeling
 
     !PARAMETERIZATION         -- ALLOWED PARAMETERS
-    !velocities-rho-tilde D   -- vp rho tilD
+    !velocities-rho-tilde D   -- vp rho tilD tilrho
 
     !acoustic:
     !ikpa= 1/kpa = 1/rho/vp^2
@@ -148,7 +148,7 @@ use m_Modeling
                 self%npars=self%npars+1
 
             case ('tilrho')
-                self%pars(i)%name='tilrho'
+                self%pars(i)%name='tilrho' !tilrho:=tilD/buo^2=rho^2*tilD, ranging -1000:1000, in [kg/m3]
                 self%npars=self%npars+1
                 
             end select
@@ -202,7 +202,7 @@ use m_Modeling
                         case ('vp'  ); o_x(:,:,:,i) = (m%vp  -self%pars(i)%min)/self%pars(i)%range
                         case ('rho');  o_x(:,:,:,i) = (m%rho -self%pars(i)%min)/self%pars(i)%range
                         case ('tilD'); o_x(:,:,:,i) = (m%tilD-self%pars(i)%min)/self%pars(i)%range
-                        case ('tilrho'); o_x(:,:,:,i) = (m%tilD-self%pars(i)%min)/self%pars(i)%range; m%tilD=1./m%tilD
+                        case ('tilrho'); o_x(:,:,:,i) = (m%tilD*m%rho**2-self%pars(i)%min)/self%pars(i)%range
                         end select
                 enddo
 
@@ -213,7 +213,7 @@ use m_Modeling
                     case ('vp'  ); m%vp  = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
                     case ('rho');  m%rho = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
                     case ('tilD'); m%tilD= o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
-                    case ('tilrho'); m%tilD= o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min; m%tilD=1./m%tilD
+                    case ('tilrho'); m%tilD= o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min; m%tilD=m%tilD/m%rho**2
                     end select
                 enddo
                 ! ! + gardner
@@ -250,7 +250,7 @@ use m_Modeling
                     case ('rho'); o_g(:,:,:,i) = -m%rho**(-2)*( &
                         correlate_gradient(:,:,:,1)/(m%vp**2) + correlate_gradient(:,:,:,2) )
                     case ('tilD'); o_g(:,:,:,i) = correlate_gradient(:,:,:,3)
-                    case ('tilrho'); o_g(:,:,:,i) = -m%tilD**(-2)*correlate_gradient(:,:,:,3)
+                    case ('tilrho'); o_g(:,:,:,i) = correlate_gradient(:,:,:,3)/m%rho**2
                     end select
                 enddo
 

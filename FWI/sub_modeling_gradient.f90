@@ -12,6 +12,8 @@ use m_smoother_laplacian_sparse
     type(t_field) :: fld_u, fld_a
     type(t_correlate) :: u_star_u,a_star_u
     character(:),allocatable :: update_wavelet
+
+    character(:),allocatable :: dnorm
     
     fobj%misfit=0.
     
@@ -66,20 +68,52 @@ use m_smoother_laplacian_sparse
         ! !objective function and adjoint source
         ! call fobj%stack_dnorms
         ! shot%dadj=-shot%dadj
-        call wei%update!('_4IMAGING')
-        fobj%misfit = fobj%misfit &
-            + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
+        ! call wei%update
+        ! fobj%misfit = fobj%misfit &
+        !     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
 
+        ! call alloc(shot%dadj,shot%nt,shot%nrcv)
+        ! call kernel_L2sq(shot%dadj)
+        ! call shot%write('dadj_',shot%dadj)
+
+        call wei%update
         call alloc(shot%dadj,shot%nt,shot%nrcv)
-        call kernel_L2sq(shot%dadj)
-        call shot%write('dadj_',shot%dadj)
+        if(.not.allocated(dnorm)) dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2sq')
 
+        select case (dnorm)
+            case ('L2sq')
+            fobj%misfit = fobj%misfit &
+                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
+            call kernel_L2sq(shot%dadj)
+
+            case ('L2sq_abs')
+            fobj%misfit = fobj%misfit &
+                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, abs(shot%dobs)-abs(shot%dsyn), shot%dt)
+            call kernel_L2sq(shot%dadj)
+            shot%dadj = shot%dadj*sgns(shot%dsyn)
+
+            case ('L2sq_modabs')
+            fobj%misfit = fobj%misfit &
+                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, abs(shot%dobs)-abs(shot%dsyn), shot%dt)
+            call kernel_L2sq(shot%dadj)
+            shot%dadj = shot%dadj*sgns2(shot%dsyn,  shot%dobs-(shot%dsyn)  )
+
+            case default
+            call error('No DNORM specified!')
+            !fobj%misfit = fobj%misfit &
+            !    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, (shot%dobs)**2-(shot%dsyn+shot%dsyn_aux)**2, shot%dt)
+            !call kernel_L2sq(shot%dadj)
+            !shot%dadj = shot%dadj*2.*(shot%dsyn+shot%dsyn_aux)
+
+        end select
         
         if(mpiworld%is_master) call fobj%print_dnorms('Shotloop-stacked','upto '//shot%sindex)
         ! if(either(oif_gradient,.true.,present(oif_gradient))) then
         
         !adjoint source
         if(update_wavelet/='no') call shot%update_adjsource
+        
+        call shot%write('dadj_',shot%dadj)
         
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite
         call ppg%init_correlate(a_star_u,'a_star_u','gradient')
@@ -121,5 +155,45 @@ use m_smoother_laplacian_sparse
     if(mpiworld%is_master) call sysio_write('correlate_gradient',correlate_gradient,m%n*ppg%ngrad)
     
     call mpiworld%barrier
+
+
+    contains
+    pure function sgns(a) result(s)
+    use m_math, only: r_eps
+        real,dimension(:,:),intent(in) :: a
+        real,dimension(:,:),allocatable :: s
+        s=a
+        where (a>r_eps)
+            s=1.
+        elsewhere (a<-r_eps)
+            s=-1.
+        elsewhere
+            s=0.
+        endwhere
+        !where (a>0.)
+        !    s=1.
+        !elsewhere
+        !    s=-1.
+        !endwhere
+    end function
+
+    pure function sgns2(a,b) result(s)
+        real,dimension(:,:),intent(in) :: a,b
+        real,dimension(:,:),allocatable :: s
+        s=a
+        where (a>r_eps)
+            s=1.
+        elsewhere (a<-r_eps)
+            s=-1.
+        elsewhere
+            where (b>r_eps)
+                s=1.
+            elsewhere (b<-r_eps)
+                s=-1.
+            elsewhere
+                s=0.
+            endwhere
+        endwhere
+    end function
 
 end subroutine
