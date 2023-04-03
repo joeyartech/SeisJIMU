@@ -29,7 +29,7 @@ use m_cpml
             'Cartesian O(x⁴,t²) stencil'//s_NL// &
             'CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal'//s_NL// &
             '   -> dt ≤ 0.606(for 2D) or 0.494(3D) *Vmax/dx'//s_NL// &
-            'Required model attributes: vp, rho'//s_NL// &
+            'Required model attributes: vp, rho, rho0'//s_NL// &
             'Required field components: vz, vx, vy(3D), p'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
             'Imaging conditions: P-Pxcorr'//s_NL// &
@@ -109,6 +109,11 @@ use m_cpml
             call alloc(m%rho,m%nz,m%nx,m%ny,o_init=1000.)
             call warn('Constant rho model (1000 kg/m³) is allocated by propagator.')
         endif
+
+        if(index(self%info,'rho0')>0 .and. .not. allocated(m%rho0)) then
+            call alloc(m%rho0,m%nz,m%nx,m%ny,o_init=1000.)
+            call warn('Constant rho0 model (1000 kg/m³) is allocated by propagator.')
+        endif
                 
     end subroutine
 
@@ -149,6 +154,8 @@ use m_cpml
 
         c1x=coef(1)/m%dx; c1y=coef(1)/m%dy; c1z=coef(1)/m%dz
         c2x=coef(2)/m%dx; c2y=coef(2)/m%dy; c2z=coef(2)/m%dz
+
+        wavelet_scaler=self%dt/m%cell_volume
         
         if_hicks=shot%if_hicks
 
@@ -564,7 +571,7 @@ use m_cpml
             !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
             if(mod(it,irdt)==0.and.present(o_a_star_u)) then
                 call cpu_time(tic)
-                call cross_correlate(fld_a,fld_u,o_a_star_u,'grho',it)
+                call cross_correlate(fld_a,fld_u,o_a_star_u,'grho0',it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             endif
@@ -606,7 +613,7 @@ use m_cpml
                 correlate_gradient(:,:,:,1)) !gkpa
                 
             call correlate_stack( o_a_star_u%rv_grad_sp / cb%rho(1:cb%mz,1:cb%mx,1:cb%my),&
-                correlate_gradient(:,:,:,2)) !grho
+                correlate_gradient(:,:,:,2)) !grho0
         endif
 
     end subroutine
@@ -624,7 +631,7 @@ use m_cpml
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
             ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
             
-            wl=time_dir*f%wavelet(1,it)
+            wl=time_dir*f%wavelet(1,it)*wavelet_scaler
             
             if(if_hicks) then
                 select case (shot%src%comp)
@@ -664,7 +671,7 @@ use m_cpml
                 ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
                 ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
                 
-                wl=f%wavelet(i,it)
+                wl=f%wavelet(i,it)*wavelet_scaler
                 
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
@@ -747,7 +754,7 @@ use m_cpml
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
             ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
             
-            wl=time_dir*f%wavelet(1,it)
+            wl=time_dir*f%wavelet(1,it)*wavelet_scaler
             
             if(if_hicks) then
                 if(shot%src%comp=='p') then
@@ -775,7 +782,7 @@ use m_cpml
                     ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
                     
                     !adjsource for pressure
-                    wl=f%wavelet(i,it)
+                    wl=f%wavelet(i,it)*wavelet_scaler
                     
                     if(if_hicks) then 
 
@@ -930,7 +937,7 @@ use m_cpml
     !                            [∂ₓᶠ  ∂zᶠ  0 ] [p ]
     !In particular, we compute
     !  gkpa = pᵃ (-κ⁻²) ∂ₜp = pᵃ (-κ⁻¹) ∇·v
-    !  grho = vᵃ ∂ₜv = vᵃ b∇p
+    !  grho0= vᵃ ∂ₜv = vᵃ b∇p
     !
     !For imaging:
     !I = ∫ a u dt =: a★u
@@ -954,7 +961,7 @@ use m_cpml
                             corr%rp_div_sv,&
                             ifz,ilz,ifx,ilx,ify,ily)
                 
-            else if(task=='grho') then
+            else if(task=='grho0') then
                 call grho3d(rf%vz,rf%vx,rf%vy,sf%p,&
                             corr%rv_grad_sp,       &
                             ifz,ilz,ifx,ilx,ify,ily)
@@ -967,7 +974,7 @@ use m_cpml
                             corr%rp_div_sv,&
                             ifz,ilz,ifx,ilx)
                 
-            else if(task=='grho') then
+            else if(task=='grho0') then
                 call grho2d(rf%vz,rf%vx,sf%p,&
                             corr%rv_grad_sp, &
                             ifz,ilz,ifx,ilx)

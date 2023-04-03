@@ -65,7 +65,7 @@ use m_Modeling
         call hud('Modeling Shot# '//shot%sindex)
         
         call cb%init(ppg%nbndlayer)
-        call cb%project
+        call cb%project(ois_background=.true.)
 
         call ppg%check_discretization
         call ppg%init

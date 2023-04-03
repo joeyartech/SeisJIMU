@@ -148,6 +148,9 @@ use m_computebox
         if(allocated(self%rp_lap_sp))     call scale_copy(self%rp_lap_sp,    scaler)
         if(allocated(self%lap_rp_sp))     call scale_copy(self%lap_rp_sp,    scaler)
 
+        if(allocated(self%rp_div_sv )) call scale_copy(self%rp_div_sv ,scaler)
+        if(allocated(self%rv_grad_sp)) call scale_copy(self%rv_grad_sp,scaler)
+
         ! if(allocated(self%rp_sp)) then
         !     self%rp_sp        = self%rp_sp*scaler
         !     self%rp_sp(1,:,:) = self%rp_sp(2,:,:)
@@ -231,6 +234,9 @@ use m_computebox
             if(allocated(self%rp_lap_sp))     call sysio_write(self%name//'%rp_lap_sp'    ,self%rp_lap_sp,    m%n)
             if(allocated(self%lap_rp_sp))     call sysio_write(self%name//'%lap_rp_sp'    ,self%lap_rp_sp,    m%n)
 
+            if(allocated(self%rp_div_sv )) call sysio_write(self%name//'%rp_div_sv' ,self%rp_div_sv ,m%n)
+            if(allocated(self%rv_grad_sp)) call sysio_write(self%name//'%rv_grad_sp',self%rv_grad_sp,m%n)
+
             return
 
         endif
@@ -246,6 +252,9 @@ use m_computebox
                 if(allocated(self%div_rp_div_sp)) call sysio_write('snap_'//self%name//'%div_rp_div_sp'//suf,self%div_rp_div_sp,m%n,o_mode='append')
                 if(allocated(self%rp_lap_sp))     call sysio_write('snap_'//self%name//'%rp_lap_sp'//suf,    self%rp_lap_sp,    m%n,o_mode='append')
                 if(allocated(self%lap_rp_sp))     call sysio_write('snap_'//self%name//'%lap_rp_sp'//suf,    self%lap_rp_sp,    m%n,o_mode='append')
+
+                if(allocated(self%rp_div_sv )) call sysio_write('snap_'//self%name//'%rp_div_sv' ,self%rp_div_sv ,m%n,o_mode='append')
+                if(allocated(self%rv_grad_sp)) call sysio_write('snap_'//self%name//'%rv_grad_sp',self%rv_grad_sp,m%n,o_mode='append')
 
             endif
 
@@ -279,6 +288,8 @@ use m_computebox
         call dealloc(self%drp_dt_dsp_dt)
         call dealloc(self%div_rp_div_sp)
         call dealloc(self%rp_lap_sp,self%lap_rp_sp)
+
+        call dealloc(self%rp_div_sv,self%rv_grad_sp)
 
     end subroutine
 

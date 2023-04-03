@@ -99,7 +99,7 @@ use m_smoother_laplacian_sparse
 
         self%file=setup%get_file('FILE_MODEL') 
 
-        self%attributes_read =setup%get_strs('MODEL_ATTRIBUTES',o_default='vp rho')
+        self%attributes_read =setup%get_strs('MODEL_ATTRIBUTES',o_default='vp rho rho0')
         self%attributes_write=setup%get_strs('MODEL_ATTRIBUTES_WRITE',o_default=strcat(self%attributes_read))
         
     end subroutine
@@ -139,7 +139,7 @@ use m_smoother_laplacian_sparse
 
             case ('rho0')
                 call alloc(self%rho0,self%nz,self%nx,self%ny)
-                read(12,rec=i) self%rho
+                read(12,rec=i) self%rho0
                 call hud('rho0 model is read.')
 
             case ('eps')
@@ -259,47 +259,47 @@ use m_smoother_laplacian_sparse
         !     call sysio_write('starting_tilD',self%tilD,size(self%tilD))
 
         ! endif
-        if(.not.allocated(self%tilD)) then
-            str=setup%get_str('TILD_MODEL_FROM','TILD_FROM',o_default='conditional_lapvp2')
-            if(str=='conditional_lapvp2') then
-                call alloc(self%tilD,self%nz,self%nx,self%ny)
-                do ix=2,self%nx-1
-                do iz=2,self%nz-1
-                    if(self%vp(iz+1,ix,1)<self%vp(iz,ix,1)) then
-                        self%tilD(iz,ix,1) = -1e-10*( &
-                            (self%vp(iz+1,ix,1)**2-2.*self%vp(iz,ix,1)**2+self%vp(iz-1,ix,1)**2)/self%dz**2 &
-                           +(self%vp(iz,ix+1,1)**2-2.*self%vp(iz,ix,1)**2+self%vp(iz,ix-1,1)**2)/self%dx**2 &
-                            )
-                    endif
-                enddo; enddo
-                self%tilD(1 ,:,1)     =self%tilD(2   ,:,1)
-                self%tilD(self%nz,:,1)=self%tilD(self%nz-1,:,1)
-                self%tilD(:,1 ,1)     =self%tilD(:,2   ,1)
-                self%tilD(:,self%nx,1)=self%tilD(:,self%nx-1,1)
+        ! if(.not.allocated(self%tilD)) then
+        !     str=setup%get_str('TILD_MODEL_FROM','TILD_FROM',o_default='conditional_lapvp2')
+        !     if(str=='conditional_lapvp2') then
+        !         call alloc(self%tilD,self%nz,self%nx,self%ny)
+        !         do ix=2,self%nx-1
+        !         do iz=2,self%nz-1
+        !             if(self%vp(iz+1,ix,1)<self%vp(iz,ix,1)) then
+        !                 self%tilD(iz,ix,1) = -1e-10*( &
+        !                     (self%vp(iz+1,ix,1)**2-2.*self%vp(iz,ix,1)**2+self%vp(iz-1,ix,1)**2)/self%dz**2 &
+        !                    +(self%vp(iz,ix+1,1)**2-2.*self%vp(iz,ix,1)**2+self%vp(iz,ix-1,1)**2)/self%dx**2 &
+        !                     )
+        !             endif
+        !         enddo; enddo
+        !         self%tilD(1 ,:,1)     =self%tilD(2   ,:,1)
+        !         self%tilD(self%nz,:,1)=self%tilD(self%nz-1,:,1)
+        !         self%tilD(:,1 ,1)     =self%tilD(:,2   ,1)
+        !         self%tilD(:,self%nx,1)=self%tilD(:,self%nx-1,1)
 
-                call hud('tilD model is built from -1e-10*∇²vp² where ∂z(vp)<0.')
-                call sysio_write('derived_tilD',self%tilD,size(self%tilD))
+        !         call hud('tilD model is built from -1e-10*∇²vp² where ∂z(vp)<0.')
+        !         call sysio_write('derived_tilD',self%tilD,size(self%tilD))
 
-            ! call hud('smoothing the derived tilD model')
-            ! call smoother_Laplacian_init([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],setup%get_real('PEAK_FREQUENCY','FPEAK'))
-            ! call smoother_Laplacian_pseudo_nonstationary(self%tilD(:,:,:),m%vp)
+        !     ! call hud('smoothing the derived tilD model')
+        !     ! call smoother_Laplacian_init([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],setup%get_real('PEAK_FREQUENCY','FPEAK'))
+        !     ! call smoother_Laplacian_pseudo_nonstationary(self%tilD(:,:,:),m%vp)
 
-            ! call sysio_write('derived_tilD_smth',self%tilD,size(self%tilD))
+        !     ! call sysio_write('derived_tilD_smth',self%tilD,size(self%tilD))
 
-            elseif(str=='inverse_rho') then
-                call alloc(self%tilD,self%nz,self%nx,self%ny)
-                if(allocated(self%rho)) then
-                    self%tilD=1./self%rho
-                else
-                    self%tilD=1./1000.
-                endif
+        !     elseif(str=='inverse_rho') then
+        !         call alloc(self%tilD,self%nz,self%nx,self%ny)
+        !         if(allocated(self%rho)) then
+        !             self%tilD=1./self%rho
+        !         else
+        !             self%tilD=1./1000.
+        !         endif
 
-                call hud('tilD model is built from 1/rho.')
-                call sysio_write('derived_tilD',self%tilD,size(self%tilD))
+        !         call hud('tilD model is built from 1/rho.')
+        !         call sysio_write('derived_tilD',self%tilD,size(self%tilD))
 
-            endif
+        !     endif
 
-        endif
+        ! endif
 
     end subroutine
 

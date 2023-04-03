@@ -9,8 +9,6 @@ use m_shot
 
     type,public :: t_separator
 
-        integer nt,ntr
-        real dt
         real,dimension(:,:),allocatable :: nearoffset, reflection, diving
 
         contains
@@ -29,7 +27,7 @@ use m_shot
         class(t_separator) :: self
 
         character(:),allocatable :: suf
-        type(t_string),dimension(:),allocatable :: list,sublist
+        type(t_string),dimension(:),allocatable :: list,sublist,subsublist
         character(:),allocatable :: file
 
         call alloc(self%nearoffset,shot%nt,shot%nrcv,o_init=0.)
@@ -58,8 +56,26 @@ use m_shot
                 call self%by_polygon(file)
             endif
 
+            if (index(list(i)%s,'d/r')>0) then !weighting on diving vs reflections
+                sublist=split(list(i)%s,o_sep=':')
+                call hud('Will separate data with weight diving/reflection= '//sublist(2)%s)
+                subsublist = split(sublist(2)%s,o_sep='/')
+                self%diving    =self%diving    *str2real(subsublist(1)%s)
+                self%reflection=self%reflection*str2real(subsublist(2)%s)
+            endif
+
         enddo
 
+        !reflection & diving windows are for mid/far offsets
+        self%reflection=self%reflection*(1.-self%nearoffset)
+        self%diving    =self%diving    *(1.-self%nearoffset)
+
+        if(mpiworld%is_master) then
+            call suformat_write('sepa%nearoffset',self%nearoffset,shot%nt,shot%nrcv,o_dt=shot%dt)
+            call suformat_write('sepa%reflection',self%reflection,shot%nt,shot%nrcv,o_dt=shot%dt)
+            call suformat_write('sepa%diving'    ,self%diving    ,shot%nt,shot%nrcv,o_dt=shot%dt)
+        endif
+        
     end subroutine
 
     subroutine by_aoffset(self,aoffset)
@@ -143,34 +159,34 @@ use m_shot
 
 
         !loop of offset
-        do itr=1,ntr
+        do itr=1,shot%nrcv
             
             !find the two xsepa's closest to aoffset
-            if(aoffset(itr)<=xsepa(1)) then
+            if(shot%rcv(itr)%aoffset<=xsepa(1)) then
                 jx1=1
                 jx2=1
                 dx1=0.
                 dx2=1.
-            elseif(aoffset(itr)>=xsepa(mx)) then
+            elseif(shot%rcv(itr)%aoffset>=xsepa(mx)) then
                 jx1=mx
                 jx2=mx
                 dx1=1.
                 dx2=0.
             else
-                jx1=maxloc(xsepa(1:mx), dim=1, mask=xsepa(1:mx)<aoffset(itr))
+                jx1=maxloc(xsepa(1:mx), dim=1, mask=xsepa(1:mx)<shot%rcv(itr)%aoffset)
                 jx2=jx1+1
-                dx1=(aoffset(itr)-xsepa(jx1)) / (xsepa(jx2)-xsepa(jx1))  !reduced distance from aoffset to xsepa(jx1)
-                dx2=(xsepa(jx2)-aoffset(itr)) / (xsepa(jx2)-xsepa(jx1))  !reduced distance from aoffset to xsepa(jx2)
+                dx1=(shot%rcv(itr)%aoffset-xsepa(jx1)) / (xsepa(jx2)-xsepa(jx1))  !reduced distance from aoffset to xsepa(jx1)
+                dx2=(xsepa(jx2)-shot%rcv(itr)%aoffset) / (xsepa(jx2)-xsepa(jx1))  !reduced distance from aoffset to xsepa(jx2)
             endif
             
             !interp time by the two tsepa & xsepa pairs
             time = tsepa(jx1)*dx2 + tsepa(jx2)*dx1
 
-            itime = nint(time/dt)+1  !assume all receivers have same dt ...
-            itime = min(max(itime,1),nt)
+            itime = nint(time/shot%dt)+1  !assume all receivers have same shot%dt ...
+            itime = min(max(itime,1),shot%nt)
 
             self%diving(1:itime,itr)=1.
-            self%reflection(itime+1:nt,itr)=1.
+            self%reflection(itime+1:shot%nt,itr)=1.
 
         end do
             

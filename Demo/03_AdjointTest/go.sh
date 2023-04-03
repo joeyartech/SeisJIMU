@@ -4,10 +4,15 @@ if [ "$1" == "compile" ]; then
     make cleanall ; (cd ../../ ; make fwd ) ; make
 fi
 # 
-makevel nz=50 nx=101 v000=1500 > c1
-makevel nz=1  nx=101 v000=2000 > c2
-cat c1 c2 c1 > tmp && transp < tmp n1=101 > simple
-rm c1 c2 tmp
+makevel nz=101 nx=101 v000=1500 > rho0
+
+makevel nz=50 nx=101 v000=1500 > r1
+makevel nz=1  nx=101 v000=3000 > r2
+cat r1 r2 r1 > tmp && transp < tmp n1=101 > rho
+
+cat rho0 rho > simple
+
+rm r1 r2 tmp rho0 rho
 # 
 
 # makevel nx=201 nz=201 v000=2000 > model

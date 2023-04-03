@@ -8,8 +8,8 @@ use m_Modeling
     !acoustic:
     !kpa = rho*vp^2 = vp*ip
     !rho0= rho      = ip/vp
-    !gvp = (gkpa - grho0)*vp*rho
-    !gip = gkpa*vp + grho0/vp
+    !gvp = (gkpa*vp - grho0/vp)*rho
+    !gip =  gkpa*vp + grho0/vp
 
     !P-SV:
     !lda = rho(vp^2-2vs^2) = vp*ip - 2vs^2*ip/vp
@@ -130,13 +130,13 @@ use m_Modeling
                 self%pars(i)%name='vp'
                 self%npars=self%npars+1
 
-            case ('vs' )
-                if(is_AC) then
-                    call hud('vs in PARAMETER is neglected as the PDE is ACoustic.')
-                    cycle loop
-                endif
-                self%pars(i)%name='vs'
-                self%npars=self%npars+1
+            ! case ('vs' )
+            !     if(is_AC) then
+            !         call hud('vs in PARAMETER is neglected as the PDE is ACoustic.')
+            !         cycle loop
+            !     endif
+            !     self%pars(i)%name='vs'
+            !     self%npars=self%npars+1
 
             case ('ip')
                 if(is_empirical) then
@@ -185,7 +185,7 @@ use m_Modeling
                 do i=1,self%npars
                         select case (self%pars(i)%name)
                         case ('vp'); o_x(:,:,:,i) = (m%vp      -self%pars(i)%min)/self%pars(i)%range
-                        case ('vs'); o_x(:,:,:,i) = (m%vs      -self%pars(i)%min)/self%pars(i)%range
+                        ! case ('vs'); o_x(:,:,:,i) = (m%vs      -self%pars(i)%min)/self%pars(i)%range
                         case ('ip'); o_x(:,:,:,i) = (m%vp*m%rho-self%pars(i)%min)/self%pars(i)%range
                         end select
                 enddo
@@ -196,9 +196,10 @@ use m_Modeling
                     case ('vp')
                         tmp_vp = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min  !implicit allocation
                         m%rho = m%vp*m%rho / tmp_vp
+                        m%rho0= m%vp*m%rho0/ tmp_vp
                         m%vp  = tmp_vp
                         deallocate(tmp_vp)
-                    case ('vs'); m%vs = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
+                    ! case ('vs'); m%vs = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
                     case ('ip'); m%rho = (o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min)/m%vp
                     end select
                 enddo
@@ -211,57 +212,56 @@ use m_Modeling
 
         endif
 
-        if(present(o_xprior)) then
-            call alloc(o_xprior,self%n1,self%n2,self%n3,self%npars)
+        ! if(present(o_xprior)) then
+        !     call alloc(o_xprior,self%n1,self%n2,self%n3,self%npars)
 
-            do i=1,self%npars
-                select case (self%pars(i)%name)
-                case ('vp'); o_x(:,:,:,i) = (m%vp_prior            -self%pars(i)%min)/self%pars(i)%range
-                case ('vs'); o_x(:,:,:,i) = (m%vs_prior            -self%pars(i)%min)/self%pars(i)%range
-                case ('ip'); o_x(:,:,:,i) = (m%vp_prior*m%rho_prior-self%pars(i)%min)/self%pars(i)%range
-                end select
-            enddo
+        !     do i=1,self%npars
+        !         select case (self%pars(i)%name)
+        !         case ('vp'); o_x(:,:,:,i) = (m%vp_prior            -self%pars(i)%min)/self%pars(i)%range
+        !         ! case ('vs'); o_x(:,:,:,i) = (m%vs_prior            -self%pars(i)%min)/self%pars(i)%range
+        !         case ('ip'); o_x(:,:,:,i) = (m%vp_prior*m%rho_prior-self%pars(i)%min)/self%pars(i)%range
+        !         end select
+        !     enddo
 
-        endif
+        ! endif
 
         if(present(o_g)) then
             call alloc(o_g,self%n1,self%n2,self%n3,self%npars)
-            !m%gradient(:,:,:,1) = grho
-            !m%gradient(:,:,:,2) = gkpa or glda
-            !m%gradient(:,:,:,3) = gmu
+            !correlate_gradient(:,:,:,1) = gkpa
+            !correlate_gradient(:,:,:,2) = grho0
 
             !acoustic
             if(is_AC .and. .not. is_empirical) then
                 do i=1,param%npars
                     select case (param%pars(i)%name)
-                    case ('vp'); o_g(:,:,:,i) = (m%gradient(:,:,:,1)*m%vp -m%gradient(:,:,:,2)/m%vp)*m%rho
-                    case ('ip'); o_g(:,:,:,i) = m%gradient(:,:,:,1)*m%vp + m%gradient(:,:,:,2)/m%vp
+                    case ('vp'); o_g(:,:,:,i) = (correlate_gradient(:,:,:,1)*m%vp - correlate_gradient(:,:,:,2)/m%vp)*m%rho
+                    case ('ip'); o_g(:,:,:,i) =  correlate_gradient(:,:,:,1)*m%vp + correlate_gradient(:,:,:,2)/m%vp
                     end select
                 enddo
             endif
 
             ! !acoustic + gardner
             ! if(is_AC .and. is_gardner) then
-            !     o_g(:,:,:,1) =(m%gradient(:,:,:,2)*(b+2)/b*m%vp**2 + m%gradient(:,:,:,1))*a*b*m%vp**(b-1)
+            !     o_g(:,:,:,1) =(correlate_gradient(:,:,:,2)*(b+2)/b*m%vp**2 + correlate_gradient(:,:,:,1))*a*b*m%vp**(b-1)
             ! endif
 
-            !elastic
-            if(is_EL .and. .not. is_empirical) then
-                do i=1,param%npars
-                    select case (param%pars(i)%name)
-                    case ('vp' ); o_g(:,:,:,i) =(m%gradient(:,:,:,1)*m%vp**2 + (2*m%gradient(:,:,:,1)-m%gradient(:,:,:,2))*m%vs**2 - m%gradient(:,:,:,3))*m%rho/m%vp
-                    case ('vs' ); o_g(:,:,:,i) =(-2*m%gradient(:,:,:,1) + m%gradient(:,:,:,2))*2*m%rho*m%vs
-                    case ('ip' ); o_g(:,:,:,i) =(m%gradient(:,:,:,1)*m%vp**2 + (-2*m%gradient(:,:,:,1)+m%gradient(:,:,:,2))*m%vs**2 + m%gradient(:,:,:,3))/m%vp
-                    end select
-                enddo
-            endif
+            ! !elastic
+            ! if(is_EL .and. .not. is_empirical) then
+            !     do i=1,param%npars
+            !         select case (param%pars(i)%name)
+            !         case ('vp' ); o_g(:,:,:,i) =(correlate_gradient(:,:,:,1)*m%vp**2 + (2*correlate_gradient(:,:,:,1)-correlate_gradient(:,:,:,2))*m%vs**2 - correlate_gradient(:,:,:,3))*m%rho/m%vp
+            !         case ('vs' ); o_g(:,:,:,i) =(-2*correlate_gradient(:,:,:,1) + correlate_gradient(:,:,:,2))*2*m%rho*m%vs
+            !         case ('ip' ); o_g(:,:,:,i) =(correlate_gradient(:,:,:,1)*m%vp**2 + (-2*correlate_gradient(:,:,:,1)+correlate_gradient(:,:,:,2))*m%vs**2 + correlate_gradient(:,:,:,3))/m%vp
+            !         end select
+            !     enddo
+            ! endif
 
             ! !elastic + gardner
             ! if(is_EL .and. is_gardner) then
             !     do i=1,param%npars
             !         select case (param%pars(i)%name)
-            !         case ('vp' ); o_g(:,:,:,i) =(m%gradient(:,:,:,2)*(b+2)/b*m%vp + (-2*m%gradient(:,:,:,2)+m%gradient(:,:,:,3))*m%vs**2 + m%gradient(:,:,:,1))*a*b*m%vp**(b-1)
-            !         case ('vs' ); o_g(:,:,:,i) =(m%gradient(:,:,:,2)*(-2) + m%gradient(:,:,:,3))*2*a*m%vp**b*m%vs
+            !         case ('vp' ); o_g(:,:,:,i) =(correlate_gradient(:,:,:,2)*(b+2)/b*m%vp + (-2*correlate_gradient(:,:,:,2)+correlate_gradient(:,:,:,3))*m%vs**2 + correlate_gradient(:,:,:,1))*a*b*m%vp**(b-1)
+            !         case ('vs' ); o_g(:,:,:,i) =(correlate_gradient(:,:,:,2)*(-2) + correlate_gradient(:,:,:,3))*2*a*m%vp**b*m%vs
             !         end select
             !     enddo
             ! endif

@@ -179,9 +179,9 @@ use m_shot
         call m2cb(m%vp ,self%vp )
         call m2cb(m%vs ,self%vs )
         if(either(ois_background,.false.,present(ois_background))) then
-            call m2cb(m%rho, self%rho)
+            call m2cb(m%rho0, self%rho)
         else
-            call m2cb(m%rho0,self%rho)
+            call m2cb(m%rho,self%rho)
         endif
         call m2cb(m%eps,self%eps)
         call m2cb(m%del,self%del)

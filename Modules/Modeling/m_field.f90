@@ -381,8 +381,6 @@ use, intrinsic :: ieee_arithmetic
                 
             endif
 
-            !self%wavelet=self%wavelet*dt/m%cell_volume
-
             return
 
         endif
@@ -403,8 +401,6 @@ use, intrinsic :: ieee_arithmetic
                                 din=shot%dt,nin=shot%nt,&
                                 dout=dt,nout=nt)
             endif
-
-            !self%wavelet=self%wavelet*dt/m%cell_volume
 
     end subroutine
 

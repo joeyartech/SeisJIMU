@@ -20,6 +20,7 @@ obj = \
 ../../Modules/Modeling/m_Modeling.o \
 ../../Modules/Kernel/m_parametrizer_$(Param).o \
 ../../Modules/Kernel/m_querypoint.o \
+../../Modules/Kernel/m_separator.o \
 ../../Modules/Kernel/m_weighter.o \
 ../../Modules/Kernel/m_preconditioner.o \
 ../../Modules/Kernel/m_fobjective.o \
