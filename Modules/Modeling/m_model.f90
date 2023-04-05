@@ -142,6 +142,18 @@ use m_smoother_laplacian_sparse
                 read(12,rec=i) self%rho0
                 call hud('rho0 model is read.')
 
+            case ('ip')
+                if(.not.allocated(self%vp)) call error('vp model has NOT been read!')
+                call alloc(self%rho,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%rho; self%rho=self%rho/self%vp
+                call hud('ip model is read and rho model is updated.')
+
+            case ('ip0')
+                if(.not.allocated(self%vp)) call error('vp model has NOT been read!')
+                call alloc(self%rho0,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%rho0; self%rho0=self%rho0/self%vp
+                call hud('ip0 model is read and rho0 model is updated')
+
             case ('eps')
                 call alloc(self%eps,self%nz,self%nx,self%ny)
                 read(12,rec=i) self%eps
@@ -445,7 +457,7 @@ use m_smoother_laplacian_sparse
             case ('vp')
                 if(allocated(self%vp)) then
                     write(13,rec=i) self%vp
-                    ! call hud('vp model is written.')
+                    call hud('vp model is written.')
                 endif
 
             case ('vs')
@@ -457,19 +469,25 @@ use m_smoother_laplacian_sparse
             case ('rho')
                 if(allocated(self%rho)) then
                     write(13,rec=i) self%rho
-                    ! call hud('rho model is written.')
+                    call hud('rho model is written.')
                 endif
 
             case ('rho0')
                 if(allocated(self%rho0)) then
                     write(13,rec=i) self%rho0
-                    ! call hud('rho model is written.')
+                    call hud('rho0 model is written.')
                 endif
 
             case ('ip')
                 if(allocated(self%vp).and.allocated(self%rho)) then
                     write(13,rec=i) self%vp*self%rho
-                    ! call hud('ip model is written.')
+                    call hud('ip model is written.')
+                endif
+
+            case ('ip0')
+                if(allocated(self%vp).and.allocated(self%rho0)) then
+                    write(13,rec=i) self%vp*self%rho0
+                    call hud('ip0 model is written.')
                 endif
 
             case ('is')
