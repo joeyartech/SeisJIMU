@@ -108,8 +108,8 @@ use m_linesearcher
                 do i=1,size(list)
                     sindex=num2str(list(i),o_format='(i0.4)')
                     call sysio_mv('dsyn_Shot'//sindex//'.su','dsyn_Iter'//siterate//'_Shot'//sindex//'.su')
-                    call sysio_mv( 'RE0_Shot'//sindex//'.su', 'RE0_Iter'//siterate//'_Shot'//sindex//'.su')
-                    call sysio_mv( 'RdE_Shot'//sindex//'.su', 'RdE_Iter'//siterate//'_Shot'//sindex//'.su')
+                    call sysio_mv( 'updated_RE0_Shot'//sindex//'.su', 'updated_RE0_Iter'//siterate//'_Shot'//sindex//'.su')
+                    call sysio_mv( 'updated_RdE_Shot'//sindex//'.su', 'updated_RdE_Iter'//siterate//'_Shot'//sindex//'.su')
                     call sysio_mv('dadj_Shot'//sindex//'.su','dadj_Iter'//siterate//'_Shot'//sindex//'.su')
                 enddo
 
