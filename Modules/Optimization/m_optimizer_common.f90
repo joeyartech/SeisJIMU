@@ -148,8 +148,8 @@ use m_linesearcher
 
                 write(*,'(a,i0.4)') 'ximage < model_Iter* n1=',m%nz
 
-
                 call sysio_mv('updated_wavelet.su','updated_wavelet_Iter'//siterate//'.su')
+                call execute_command_line('(cd '//dir_out//' ; ln -sf updated_wavelet_Iter'//int2str(iterate)//'.su updated_wavelet_final.su )')
 
                 tmp=split(shls%all)
                 list=setup%get_ints('ITERATE_KEEP_SHOT',&
