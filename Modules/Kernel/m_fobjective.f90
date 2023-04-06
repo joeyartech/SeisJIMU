@@ -344,6 +344,8 @@ use m_preconditioner
         type(t_querypoint) :: qp
         logical,optional :: oif_update_m,oif_approx,oif_gradient
 
+        character(:),allocatable :: s_job
+
         type(t_string),dimension(:),allocatable :: smoothings
         character(:),allocatable :: smask
         real,dimension(:,:,:),allocatable :: mask
@@ -359,7 +361,12 @@ use m_preconditioner
         ! if(either(oif_approx,.false.,present(oif_approx))) then
         !     call modeling_gradient_approximate(fobj)
         ! else
-            call modeling_gradient!(qp%is_fitting_data)
+        s_job=setup%get_str('JOB',o_mandatory=1)
+        if(index(s_job,'build Ip')>0) then
+            call modeling_gradient_ip!(qp%is_fitting_data)
+        else
+            call modeling_gradient_vp!(qp%is_fitting_data)
+        endif
         ! endif
 
         ! if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'max')>0) then
