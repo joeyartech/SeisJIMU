@@ -66,10 +66,6 @@ use m_shot
 
         enddo
 
-        !reflection & diving windows are for mid/far offsets
-        self%reflection=self%reflection*(1.-self%nearoffset)
-        self%diving    =self%diving    *(1.-self%nearoffset)
-
         if(mpiworld%is_master) then
             call suformat_write('sepa%nearoffset',self%nearoffset,shot%nt,shot%nrcv,o_dt=shot%dt)
             call suformat_write('sepa%reflection',self%reflection,shot%nt,shot%nrcv,o_dt=shot%dt)

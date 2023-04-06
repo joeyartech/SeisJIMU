@@ -67,14 +67,14 @@ use m_resampler
             call fld_u0%acquire(o_seismo=shot%dsyn_aux);  call shot%write('Ru0_',shot%dsyn_aux)
         endif
 
-        ! !estimate wavelet
-        ! call wei%update
-        ! call shot%update_wavelet(wei%weight)
-        ! call matchfilter_apply_to_data(shot%dsyn)
+        !estimate wavelet
+        call wei%update
+        call shot%update_wavelet(wei%weight)
+        call matchfilter_apply_to_data(shot%dsyn)
 
         !write synthetic data
-        ! call shot%write('updated_Ru',shot%dsyn)
-        ! call shot%write('updated_Ru0',shot%dsyn_aux)
+        call shot%write('updated_Ru',shot%dsyn)
+        call shot%write('updated_Ru0',shot%dsyn_aux)
 
         call hud('---------------------------------')
         if(s_job=='forward modeling') cycle
@@ -90,7 +90,7 @@ use m_resampler
             call hud('------------------------')
             
             fobj%misfit = fobj%misfit &
-                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight*sepa%nearoffset, shot%dobs-shot%dsyn, shot%dt)
+                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight*sepa%nearoffset*sepa%reflection, shot%dobs-shot%dsyn, shot%dt)
 
             call kernel_L2sq(shot%dadj)
             call shot%write('dadj_',shot%dadj)
@@ -113,7 +113,7 @@ use m_resampler
 
             !reflection data
             fobj%reflection = fobj%reflection &
-                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight*sepa%reflection, shot%dobs-shot%dsyn, shot%dt)
+                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight*(1.-sepa%nearoffset)*sepa%reflection, shot%dobs-shot%dsyn, shot%dt)
 
             call kernel_L2sq(shot%dadj)
             call shot%write('dadj_refl_',shot%dadj)
@@ -128,7 +128,7 @@ use m_resampler
 
             !diving waves
             fobj%diving = fobj%diving &
-                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight*sepa%diving, shot%dobs-shot%dsyn, shot%dt)
+                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight*(1.-sepa%nearoffset)*sepa%diving, shot%dobs-shot%dsyn, shot%dt)
             
             shot%dadj=-shot%dadj; call kernel_L2sq(shot%dadj,oif_stack=.true.) !diving minus reflection residuals
             call shot%write('dadj_div-refl_',shot%dadj)    
