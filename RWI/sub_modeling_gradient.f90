@@ -67,14 +67,17 @@ use m_resampler
             call fld_u0%acquire(o_seismo=shot%dsyn_aux);  call shot%write('Ru0_',shot%dsyn_aux)
         endif
 
-        !estimate wavelet
-        call wei%update
-        call shot%update_wavelet(wei%weight)
-        call matchfilter_apply_to_data(shot%dsyn)
+        !update wavelet
+        if(setup%get_str('UPDATE_WAVELET')/='no') then
+            call wei%update
+            call shot%update_wavelet(wei%weight)
+            call matchfilter_apply_to_data(shot%dsyn)
+            call matchfilter_apply_to_data(shot%dsyn_aux)
 
-        !write synthetic data
-        call shot%write('updated_Ru',shot%dsyn)
-        call shot%write('updated_Ru0',shot%dsyn_aux)
+            !write synthetic data
+            call shot%write('updated_Ru',shot%dsyn)
+            if(allocated(shot%dsyn_aux)) call shot%write('updated_Ru0',shot%dsyn_aux)
+        endif
 
         call hud('---------------------------------')
         if(s_job=='forward modeling') cycle
