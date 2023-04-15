@@ -129,6 +129,9 @@ use m_model
     subroutine read_from_data(self)
         class(t_shot) :: self
 
+        logical,save :: is_first_in=.true.
+        type(t_string),dimension(:),allocatable :: scomp
+
         type(t_suformat) :: sudata
         character(:),allocatable :: str, zerophase, locut, hicut
         character(:),allocatable :: fstoplo,fpasslo,fpasshi,fstophi
@@ -154,22 +157,32 @@ use m_model
         self%src%x=sudata%hdrs(1)%sx    *scalco
         self%src%y=sudata%hdrs(1)%sy    *scalco
         
-        self%src%comp='p' !don't know which su header tells this info..
-        
+        ! self%src%comp='p' !don't know which su header tells this info..
+        if(is_first_in) then
+            scomp=setup%get_strs('SOURCE_COMPONENT','SCOMP',o_default='p')
+            if(size(scomp)>1) call hud('SeisJIMU only considers the 1st component from SOURCE_COMPONENT: '//scomp(1)%s)
+            self%src%comp=scomp(1)%s
+
+            is_first_in=.false.
+
+        endif
+
+        scomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',o_default='p')
         do i=1,shot%nrcv
             self%rcv(i)%z=-sudata%hdrs(i)%gelev*scalel
             self%rcv(i)%x= sudata%hdrs(i)%gx   *scalco
             self%rcv(i)%y= sudata%hdrs(i)%gy   *scalco
 
-            self%rcv(i)%is_badtrace = sudata%hdrs(i)%trid==2 .or. sudata%hdrs(i)%trid==3  !dead or dummy trace
-            
             select case (sudata%hdrs(i)%trid)
+            case (2,3)
+                self%rcv(i)%is_badtrace=.true.!dead or dummy trace
+                self%rcv(i)%comp=scomp(1)%s
             case (11); self%rcv(i)%comp='p'  !pressure
             case (12); self%rcv(i)%comp='vz' !vertical velocity
             case (14); self%rcv(i)%comp='vx' !horizontal velocity in in-line
             case (13); self%rcv(i)%comp='vy' !horizontal velocity in cross-line
             case default
-                self%rcv(i)%comp='p'
+                self%rcv(i)%comp=scomp(1)%s
             end select
             
         enddo
@@ -318,14 +331,14 @@ use m_model
 
         !source
         select case (self%src%comp)
-        case('p','pbnd') !explosive source or non-vertical force
+        case('p') !explosive source or non-vertical force
             call hicks_put_position(self%src%z,       self%src%x,       self%src%y)
-        ! case('vz') !vertical force
-        !     call hicks_put_position(self%src%z+halfz, self%src%x,       self%src%y)
-        ! case('vx')
-        !     call hicks_put_position(self%src%z,       self%src%x+halfx, self%src%y)
-        ! case('vy')
-        !     call hicks_put_position(self%src%z,       self%src%x,       self%src%y+halfy)
+        case('vz') !vertical force
+            call hicks_put_position(self%src%z+halfz, self%src%x,       self%src%y)
+        case('vx')
+            call hicks_put_position(self%src%z,       self%src%x+halfx, self%src%y)
+        case('vy')
+            call hicks_put_position(self%src%z,       self%src%x,       self%src%y+halfy)
         end select
 
         call hicks_get_position(self%src%ifz, self%src%ifx, self%src%ify,&
@@ -333,12 +346,12 @@ use m_model
                                 self%src%ilz, self%src%ilx, self%src%ily )
 
         select case (self%src%comp)
-        case('p','pbnd') !explosive source or non-vertical force
+        case('p') !explosive source or non-vertical force
             call hicks_get_coefficient('antisymm', self%src%interp_coef)
-        ! case('vz') !vertical force
-        !     call hicks_get_coefficient('symmetric',self%src%interp_coef)
-        ! case default
-        !     call hicks_get_coefficient('truncate', self%src%interp_coef)
+        case('vz') !vertical force
+            call hicks_get_coefficient('symmetric',self%src%interp_coef)
+        case default
+            call hicks_get_coefficient('truncate', self%src%interp_coef)
         end select
 
         !set reference to balance pressure vs velocities data
@@ -350,14 +363,14 @@ use m_model
         do i=1,self%nrcv
 
             select case (self%rcv(i)%comp)
-            case('p','pbnd') !explosive source or non-vertical force
+            case('p') !explosive source or non-vertical force
                 call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y)
-            ! case('vz') !vertical force
-            !     call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x,       self%rcv(i)%y)
-            ! case('vx')
-            !     call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x+halfx, self%rcv(i)%y)
-            ! case('vy')
-            !     call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y+halfy)
+            case('vz') !vertical force
+                call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x,       self%rcv(i)%y)
+            case('vx')
+                call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x+halfx, self%rcv(i)%y)
+            case('vy')
+                call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y+halfy)
             end select
 
             call hicks_get_position(self%rcv(i)%ifz, self%rcv(i)%ifx, self%rcv(i)%ify,&
@@ -365,12 +378,12 @@ use m_model
                                     self%rcv(i)%ilz, self%rcv(i)%ilx, self%rcv(i)%ily )
 
             select case (self%rcv(i)%comp)
-            case('p','pbnd') !explosive source or non-vertical force
+            case('p') !explosive source or non-vertical force
                 call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)
-            ! case('vz') !vertical force
-            !     call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef)
-            ! case default
-            !     call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
+            case('vz') !vertical force
+                call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef)
+            case default
+                call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
             end select
 
         enddo
@@ -410,19 +423,17 @@ use m_model
 
     end subroutine
 
-    subroutine update_wavelet(self)
+    subroutine update_wavelet(self,weight)
         class(t_shot) :: self
-        type(t_weighter) :: wei
+	real,dimension(:,:) :: weight
 
         type(t_suformat) :: sudata
 
-        call wei%update('_4WAVELET')
-
         if(setup%get_str('UPDATE_WAVELET')=='per shot') then
-            call matchfilter_estimate(wei%weight*self%dsyn,wei%weight*self%dobs,self%nt,self%nrcv)
+            call matchfilter_estimate(weight*self%dsyn,weight*self%dobs,self%nt,self%nrcv)
         else
             call hud('Will average wavelet over diff shots. If some MPI processors are idle, then MPI communication will be stuck.')
-            call matchfilter_estimate(wei%weight*self%dsyn,wei%weight*self%dobs,self%nt,self%nrcv,oif_stack=.true.)
+            call matchfilter_estimate(weight*self%dsyn,weight*self%dobs,self%nt,self%nrcv,oif_stack=.true.)
         endif
 
         call matchfilter_apply_to_wavelet(self%wavelet)

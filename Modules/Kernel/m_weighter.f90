@@ -124,6 +124,10 @@ use m_Modeling
 
         deallocate(weight)
 
+        do ir=1,shot%nrcv
+            if (shot%rcv(ir)%is_badtrace) self%weight(:,ir)=0. !bad trace
+        enddo
+
         if(mpiworld%is_master) call suformat_write('weights'//suf,self%weight,nt,ntr,o_dt=dt)
         
     end subroutine
@@ -518,10 +522,10 @@ use m_Modeling
 
         integer :: file_size
 
-        inquire(file=file//shot%sindex,size=file_size)
-        if(file_size<4*nt*ntr) call warn('weight per shot file '//file//shot%sindex//' has size '//num2str(file_size/4)//' < nt*ntr. Some traces will not be weighted.',mpiworld%iproc)
+        inquire(file=file//shot%sindex(5:8),size=file_size)
+        if(file_size<4*nt*ntr) call warn('weight per shot file '//file//shot%sindex(5:8)//' has size '//num2str(file_size/4)//' < nt*ntr. Some traces will not be weighted.',mpiworld%iproc)
 
-        call sysio_read(file,weight,size(weight))
+        call sysio_read(file//shot%sindex(5:8),weight,size(weight))
 
     end subroutine
 

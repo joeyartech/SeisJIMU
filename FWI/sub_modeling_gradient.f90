@@ -13,9 +13,10 @@ use m_matchfilter
 use m_smoother_laplacian_sparse
 
     logical,save :: is_first_in=.true.
+    character(:),allocatable :: update_wavelet
+    type(t_weighter) :: wei_wl
     type(t_field) :: fld_u, fld_a
     type(t_correlate) :: u_star_u,a_star_u
-    character(:),allocatable :: update_wavelet
     
     fobj%misfit=0.
     
@@ -49,10 +50,10 @@ use m_smoother_laplacian_sparse
         if(mpiworld%is_master) call shot%write('draw_',shot%dsyn)
 
         !update wavelet
-        if(setup%get_str('UPDATE_WAVELET')/='no') then
-!            call wei%update
-            call shot%update_wavelet!(wei%weight)
-            call matchfilter_apply_to_data(shot%dsyn)
+	    update_wavelet=setup%get_str('UPDATE_WAVELET',o_default='per shot')
+        if(update_wavelet/='no') then
+            call wei_wl%update('_4WAVELET')
+            call shot%update_wavelet(wei_wl%weight)
 
             !write synthetic data
             call shot%write('updated_Ru_',shot%dsyn)
@@ -70,9 +71,6 @@ use m_smoother_laplacian_sparse
         ! call fobj%stack_dnorms
         ! shot%dadj=-shot%dadj
         call wei%update
-do i=1,shot%nrcv
-    if (shot%rcv(i)%trid<9) wei%weight(:,i)=0. !bad trace
-enddo
 
         fobj%misfit = fobj%misfit &
             + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
@@ -82,9 +80,8 @@ enddo
         call shot%write('dadj_',shot%dadj)
 
         
-        if(mpiworld%is_master) call fobj%print_dnorms('Shotloop-stacked','upto '//shot%sindex)
-        ! if(either(oif_gradient,.true.,present(oif_gradient))) then
-        
+        ! if(mpiworld%is_master) call fobj%print_dnorms('Shotloop-stacked','upto '//shot%sindex)
+                
         !adjoint source
         if(update_wavelet/='no') call shot%update_adjsource
         
