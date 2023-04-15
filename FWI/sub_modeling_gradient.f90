@@ -40,25 +40,24 @@ use m_smoother_laplacian_sparse
         call ppg%init_abslayer
 
         call ppg%init_field(fld_u,name='fld_u');  call fld_u%ignite
-        call ppg%init_correlate(u_star_u,'u_star_u','energy')
+        !call ppg%init_correlate(u_star_u,'u_star_u','energy')
                 
         !forward modeling
+        !call ppg%forward(fld_u,u_star_u); call fld_u%acquire
         call ppg%forward(fld_u); call fld_u%acquire
 
         if(mpiworld%is_master) call shot%write('draw_',shot%dsyn)
 
-        update_wavelet=setup%get_str('UPDATE_WAVELET',o_default='per shot')
+        !update wavelet
+        if(setup%get_str('UPDATE_WAVELET')/='no') then
+!            call wei%update
+            call shot%update_wavelet!(wei%weight)
+            call matchfilter_apply_to_data(shot%dsyn)
 
-        call wei%update
-        
-        if(update_wavelet/='no') call shot%update_wavelet!(wei%weight) !call gradient_matchfilter_data
-        
-        !write synthetic data
-        call shot%write('dsyn_',shot%dsyn)
+            !write synthetic data
+            call shot%write('updated_Ru_',shot%dsyn)
+        endif
 
-        !data weighting
-        call wei%update
-        
         !Adjoint state method with Lagrangian formulation
         !to compute the gradient (L2 norm example)
         !C = ½║u║² = ½∫ (u-d)² δ(x-xr) dtdx³
@@ -70,7 +69,11 @@ use m_smoother_laplacian_sparse
         ! !objective function and adjoint source
         ! call fobj%stack_dnorms
         ! shot%dadj=-shot%dadj
-        call wei%update!('_4IMAGING')
+        call wei%update
+do i=1,shot%nrcv
+    if (shot%rcv(i)%trid<9) wei%weight(:,i)=0. !bad trace
+enddo
+
         fobj%misfit = fobj%misfit &
             + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
 
