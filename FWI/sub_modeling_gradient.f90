@@ -1,4 +1,8 @@
-subroutine modeling_gradient
+subroutine modeling_gradient_ip
+end subroutine
+
+
+subroutine modeling_gradient_vp
 use mpi
 use m_System
 use m_Modeling
@@ -39,7 +43,7 @@ use m_smoother_laplacian_sparse
         call ppg%init_correlate(u_star_u,'u_star_u','energy')
                 
         !forward modeling
-        call ppg%forward(fld_u,o_u_star_u=u_star_u); call fld_u%acquire
+        call ppg%forward(fld_u); call fld_u%acquire
 
         if(mpiworld%is_master) call shot%write('draw_',shot%dsyn)
 
@@ -47,7 +51,7 @@ use m_smoother_laplacian_sparse
 
         call wei%update
         
-        if(update_wavelet/='no') call shot%update_wavelet(wei%weight) !call gradient_matchfilter_data
+        if(update_wavelet/='no') call shot%update_wavelet!(wei%weight) !call gradient_matchfilter_data
         
         !write synthetic data
         call shot%write('dsyn_',shot%dsyn)
@@ -107,7 +111,7 @@ use m_smoother_laplacian_sparse
 
     !write correlate
     if(mpiworld%is_master) then
-        call u_star_u%write
+!        call u_star_u%write
         call a_star_u%write
     endif
 

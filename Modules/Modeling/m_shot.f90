@@ -410,19 +410,20 @@ use m_model
 
     end subroutine
 
-    subroutine update_wavelet(self,weight)
-    use mpi
+    subroutine update_wavelet(self)!,weight)
         class(t_shot) :: self
-        real,dimension(self%nt,self%nrcv) :: weight
+!        real,dimension(self%nt,self%nrcv) :: weight
 
         type(t_suformat) :: sudata
 
-        call matchfilter_estimate(self%dsyn*weight,self%dobs*weight,self%nt,self%nrcv)!,self%index)
+!        call matchfilter_estimate(self%dsyn*weight,self%dobs*weight,self%nt,self%nrcv)!,self%index)
+!        call matchfilter_estimate(self%dsyn,self%dobs,self%nt,self%nrcv)!,self%index)
         
-        if(setup%get_str('UPDATE_WAVELET')/='per shot') then
+        if(setup%get_str('UPDATE_WAVELET')=='per shot') then
+            call matchfilter_estimate(self%dsyn,self%dobs,self%nt,self%nrcv)
+        else
             call hud('Will average wavelet over diff shots. If some MPI processors are idle, then MPI communication will be stuck.')
-            call mpi_allreduce(mpi_in_place, self%wavelet, self%nt, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-            self%wavelet=self%wavelet/mpiworld%nproc
+            call matchfilter_estimate(self%dsyn,self%dobs,self%nt,self%nrcv,oif_stack=.true.)
         endif
 
         call matchfilter_apply_to_wavelet(self%wavelet)

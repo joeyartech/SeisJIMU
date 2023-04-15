@@ -13,6 +13,7 @@ use singleton
     contains
     
     subroutine matchfilter_estimate(dsyn,dobs,nt_,ntr_,o_index,oif_stack,o_filter_time)
+    use mpi
         real,dimension(nt_,ntr_) :: dsyn,dobs
         integer,optional :: o_index
         logical,optional :: oif_stack

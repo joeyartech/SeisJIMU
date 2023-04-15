@@ -56,8 +56,8 @@ use m_resampler
 
         !update wavelet
         if(setup%get_str('UPDATE_WAVELET')/='no') then
-            call wei%update
-            call shot%update_wavelet(wei%weight)
+!            call wei%update
+            call shot%update_wavelet!(wei%weight)
             call matchfilter_apply_to_data(shot%dsyn)
 
             !write synthetic data
@@ -77,15 +77,14 @@ use m_resampler
         call hud('------------------------')
         
         fobj%misfit = fobj%misfit &
-            + L2sq(0.5, shot%nrcv*shot%nt, wei%weight*sepa%nearoffset*sepa%reflection, shot%dobs-shot%dsyn, shot%dt)
+            + L2sq(0.5, shot%nrcv*shot%nt, wei%weight*sepa%nearoffset*sepa%reflection,shot%dobs-shot%dsyn, shot%dt)
+!            + L2sq(0.5, shot%nrcv*shot%nt, wei%weight*sepa%nearoffset, shot%dobs-shot%dsyn, shot%dt)
 
         call kernel_L2sq(shot%dadj)
         call shot%write('dadj_',shot%dadj)
 
         !adjoint modeling
         !A(m)ᴴa = Rʳ(d-u)
-        call cb%project
-        call ppg%init
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite
         call ppg%init_correlate(a_star_u,'a_star_u','gradient') !a★u
         call ppg%adjoint(fld_a,fld_u,o_a_star_u=a_star_u)
@@ -199,7 +198,7 @@ use m_resampler
         !update wavelet
         if(setup%get_str('UPDATE_WAVELET')/='no') then
             call wei%update
-            call shot%update_wavelet(wei%weight)
+            call shot%update_wavelet!(wei%weight)
             call matchfilter_apply_to_data(shot%dsyn)
             call matchfilter_apply_to_data(shot%dsyn_aux)
 

@@ -199,6 +199,10 @@ use m_Modeling
         character(i_str_slen) :: text
         integer,parameter :: max_gain_length=20 !maximum number of points
         real,dimension(max_gain_length) :: xgain,tgain
+
+        real,dimension(:,:),allocatable :: weight
+
+        call alloc(weight,self%nt,self%ntr)
         
         open(10,file=file,action='read')
 
@@ -327,13 +331,14 @@ use m_Modeling
                     
                     k=it-itime_start-1
 
-                    self%weight(it,itr) = self%weight(it,itr)* ( gain_old*(ntaper-k) + gain*k ) / ntaper
+                    !self%weight(it,itr) = self%weight(it,itr)* ( gain_old*(ntaper-k) + gain*k ) / ntaper
+		    weight(it,itr) = weight(it,itr)* ( gain_old*(ntaper-k) + gain*k ) / ntaper
                 end do               
 
                 !apply constant gain from itime+1 to nt
                 it = min(max(itime+1,1),self%nt)
                 !self%weight(it:self%nt,itr) = self%weight(it:self%nt,itr)* gain
-                self%weight(it:self%nt,itr) = gain
+                weight(it:self%nt,itr) = gain
                 
             end do
             
@@ -342,6 +347,9 @@ use m_Modeling
         end do loopfile
 
         close(10)
+
+        self%weight = self%weight * weight
+	deallocate(weight)
 
     end subroutine
 
@@ -354,6 +362,10 @@ use m_Modeling
         integer,parameter :: max_gain_length=20 !maximum number of points per line
         real,dimension(max_gain_length) :: xgain, tgain, gain
         real,dimension(:,:),allocatable :: table, tmp_table
+
+        real,dimension(:,:),allocatable :: weight
+
+        call alloc(weight,self%nt,self%ntr)
 
         open(10,file=file,action='read')
 
@@ -494,7 +506,10 @@ use m_Modeling
                 ! self%weight(it,itr) = self%weight(it,itr) * ( &
                 !       ( table(jt1,jx1)*dt2 + table(jt2,jx1)*dt1 ) *dx2  &
                 !     + ( table(jt1,jx2)*dt2 + table(jt2,jx2)*dt1 ) *dx1  )
-                self%weight(it,itr) = 1.* ( &
+                !self%weight(it,itr) = 1.* ( &
+                !      ( table(jt1,jx1)*dt2 + table(jt2,jx1)*dt1 ) *dx2  &
+                !    + ( table(jt1,jx2)*dt2 + table(jt2,jx2)*dt1 ) *dx1  )
+		weight(it,itr) = 1.* ( &
                       ( table(jt1,jx1)*dt2 + table(jt2,jx1)*dt1 ) *dx2  &
                     + ( table(jt1,jx2)*dt2 + table(jt2,jx2)*dt1 ) *dx1  )
 
@@ -503,6 +518,9 @@ use m_Modeling
         enddo
 
         deallocate(table)
+
+        self%weight = self%weight * weight
+	deallocate(weight)
 
     end subroutine
 
