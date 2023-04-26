@@ -17,6 +17,15 @@ use m_smoother_laplacian_sparse
     type(t_weighter) :: wei_wl
     type(t_field) :: fld_u, fld_a
     type(t_correlate) :: u_star_u,a_star_u
+
+    type :: t_S
+        real,dimension(:),allocatable :: scale
+    end type
+    type(t_S),dimension(:),allocatable :: S
+    real,dimension(:,:),allocatable :: tmp_dsyn
+    
+    if(is_first_in) allocate(S(shls%nshots_per_processor)) !then can NOT randomly sample shots..
+
     
     fobj%misfit=0.
     
@@ -25,12 +34,12 @@ use m_smoother_laplacian_sparse
     call hud('===== START LOOP OVER SHOTS =====')
     
     do i=1,shls%nshots_per_processor
-
+    
         call shot%init(shls%yield(i))
         call shot%read_from_data
         call shot%set_var_time
         call shot%set_var_space(index(ppg%info,'FDSG')>0)
-
+        
         call hud('Modeling '//shot%sindex)
         
         call cb%init(ppg%nbndlayer)
@@ -71,9 +80,24 @@ use m_smoother_laplacian_sparse
         ! call fobj%stack_dnorms
         ! shot%dadj=-shot%dadj
         call wei%update
+        
+        select case(setup%get_str('DNORM',o_default='L2'))
+        case('L2')
+            fobj%misfit = fobj%misfit &
+                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
 
-        fobj%misfit = fobj%misfit &
-            + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
+        case('L2_scaled')
+	    if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
+            tmp_dsyn=shot%dsyn
+            do j=1,shot%nrcv
+                if(is_first_in) S(i)%scale(j) = either(0., maxval(abs(shot%dobs(:,j))) / maxval(abs(shot%dsyn(:,j))) , shot%rcv(j)%is_badtrace)
+                tmp_dsyn(:,j)=shot%dsyn(:,j)*S(i)%scale(j)
+            enddo
+
+            fobj%misfit = fobj%misfit &
+                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-tmp_dsyn, shot%dt)
+
+        end select
 
         call alloc(shot%dadj,shot%nt,shot%nrcv)
         call kernel_L2sq(shot%dadj)
@@ -94,6 +118,8 @@ use m_smoother_laplacian_sparse
     enddo
     
     call hud('        END LOOP OVER SHOTS        ')
+
+    is_first_in=.false.
 
 
     !allreduce objective function value

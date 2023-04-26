@@ -28,20 +28,22 @@ use m_Modeling
         real,optional :: o_dt
 
         real,dimension(:,:),allocatable :: weight
-        character(:),allocatable :: suf
+        character(:),allocatable :: suf,op
         type(t_string),dimension(:),allocatable :: list,sublist
 
         nt = either(o_nt,  shot%nt  , present(o_nt ))
         ntr= either(o_ntr, shot%nrcv, present(o_ntr))
         dt = either(o_dt,  shot%dt  , present(o_dt ))
         call alloc(self%weight,nt,ntr,o_init=1.)
-        call alloc(weight,nt,ntr,o_init=1.)
 
         suf = either(o_suffix,'',present(o_suffix))
 
         list=setup%get_strs('WEIGHTING'//suf,'WEI'//suf,o_default=either('aoffset^1','aoffset^0.5',m%is_cubic))
+        op=setup%get_str('WEIGHTING_OPERATIONS'//suf,'WEI_OP'//suf,o_default='multiply')
 
         do i=1,size(list)
+            call alloc(weight,nt,ntr,o_init=1.)
+
             if(index(list(i)%s,'p*')>0) then !weight pressure components
                 sublist=split(list(i)%s,o_sep='*')
                 call hud('Will multiply pressure component by '//sublist(2)%s)
@@ -83,7 +85,19 @@ use m_Modeling
                 call hud('Will weight traces by aoffset range:'//sublist(2)%s//':'//sublist(3)%s)
                 call by_aoffset_range(weight,str2real(sublist(2)%s),str2real(sublist(3)%s))
             endif
+
+            if (index(list(i)%s,'t^')>0) then !weight traces by power of time
+                sublist=split(list(i)%s,o_sep='^')
+                call hud('Will weight traces by t^'//sublist(2)%s)
+                call by_time(weight,o_power=str2real(sublist(2)%s))
+            endif
             
+            if (index(list(i)%s,'time_window')>0) then !use window defined by time
+                sublist=split(list(i)%s,o_sep=':')
+                call hud('Will weight traces by time window:'//sublist(2)%s//':'//sublist(3)%s)
+                call by_time_window(weight,str2real(sublist(2)%s),str2real(sublist(3)%s))
+            endif
+
             if (index(list(i)%s,'polygon')>0) then !polygon defined weights to multiply on traces
                 sublist=split(list(i)%s,o_sep=':')
                 call hud('Will weight traces with polygons defined in '//sublist(2)%s)
@@ -108,19 +122,20 @@ use m_Modeling
                 call by_pershot(weight,sublist(2)%s)
             endif
 
+
+	    select case(op)
+                case ('multiply')
+                self%weight = self%weight * weight
+
+                case ('add')
+                self%weight = self%weight + weight
+
+                case ('overlay')
+                self%weight = weight
+
+            end select
+
         enddo
-
-        select case(setup%get_str('WEIGHTING_OPERATIONS'//suf,'WEI_OP'//suf,o_default='multiply'))
-            case ('multiply')
-            self%weight = self%weight * weight
-
-            case ('add')
-            self%weight = self%weight + weight
-
-            case ('overlay')
-            self%weight = weight
-
-        end select
 
         deallocate(weight)
 
@@ -181,13 +196,41 @@ use m_Modeling
 
     end subroutine
 
+    subroutine by_time(weight,o_power,o_factor)
+        real,dimension(:,:) :: weight
+        real,optional :: o_power, o_factor
+
+        if(present(o_power)) then
+            do i=1,shot%nt
+                weight(i,:)=weight(i,:)*((i+0.5-1)*shot%dt)**o_power
+            enddo
+        endif
+
+!        if(present(o_factor)) then
+!            do i=1,shot%nrcv    
+!                weight(:,i)=weight(:,i)*shot%rcv(i)%aoffset*o_factor
+!            enddo
+!        endif
+
+    end subroutine
+
     subroutine by_aoffset_range(weight,aoff_min,aoff_max)
         real,dimension(:,:) :: weight
-        real :: aoff_min,aoff_max
 
         do i=1,shot%nrcv    
             if (shot%rcv(i)%aoffset<aoff_min) weight(:,i)=0.
             if (shot%rcv(i)%aoffset>aoff_max) weight(:,i)=0.
+        enddo
+
+    end subroutine
+
+    subroutine by_time_window(weight,tmin,tmax)
+        real,dimension(:,:) :: weight
+
+        do i=1,shot%nt
+            t=(i-1)*shot%dt
+            if (t<tmin) weight(i,:)=0.
+            if (t>tmax) weight(i,:)=0.
         enddo
 
     end subroutine
