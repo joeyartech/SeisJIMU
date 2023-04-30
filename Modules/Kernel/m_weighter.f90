@@ -86,9 +86,9 @@ use m_Modeling
                 call by_aoffset_range(weight,str2real(sublist(2)%s),str2real(sublist(3)%s))
             endif
 
-            if (index(list(i)%s,'t^')>0) then !weight traces by power of time
+            if (index(list(i)%s,'time^')>0) then !weight traces by power of time
                 sublist=split(list(i)%s,o_sep='^')
-                call hud('Will weight traces by t^'//sublist(2)%s)
+                call hud('Will weight traces by time^'//sublist(2)%s)
                 call by_time(weight,o_power=str2real(sublist(2)%s))
             endif
             

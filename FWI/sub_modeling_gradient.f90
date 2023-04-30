@@ -21,7 +21,7 @@ use m_smoother_laplacian_sparse
     type :: t_S
         real,dimension(:),allocatable :: scale
     end type
-    type(t_S),dimension(:),allocatable :: S
+    type(t_S),dimension(:),allocatable,save :: S
     real,dimension(:,:),allocatable :: tmp_dsyn
     
     if(is_first_in) allocate(S(shls%nshots_per_processor)) !then can NOT randomly sample shots..
@@ -63,10 +63,9 @@ use m_smoother_laplacian_sparse
         if(update_wavelet/='no') then
             call wei_wl%update('_4WAVELET')
             call shot%update_wavelet(wei_wl%weight)
-
-            !write synthetic data
-            call shot%write('updated_Ru_',shot%dsyn)
         endif
+        !write synthetic data
+        call shot%write('dsyn_',shot%dsyn)
 
         !Adjoint state method with Lagrangian formulation
         !to compute the gradient (L2 norm example)
@@ -87,12 +86,16 @@ use m_smoother_laplacian_sparse
                 + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
 
         case('L2_scaled')
-	    if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
-            tmp_dsyn=shot%dsyn
+	       if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
+            call alloc(tmp_dsyn,shot%nt,shot%nrcv)
             do j=1,shot%nrcv
                 if(is_first_in) S(i)%scale(j) = either(0., maxval(abs(shot%dobs(:,j))) / maxval(abs(shot%dsyn(:,j))) , shot%rcv(j)%is_badtrace)
                 tmp_dsyn(:,j)=shot%dsyn(:,j)*S(i)%scale(j)
             enddo
+            
+            !check if S is changing..
+!            if(shot%index==1)   print*, 'on '//shot%sindex,i,S(i)%scale
+!            if(shot%index==112) print*, 'on '//shot%sindex,i,S(i)%scale
 
             fobj%misfit = fobj%misfit &
                 + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-tmp_dsyn, shot%dt)
@@ -121,6 +124,9 @@ use m_smoother_laplacian_sparse
 
     is_first_in=.false.
 
+    if(mpiworld%is_master) then
+        call execute_command_line('cat '//dir_out//'updated_wavelet_Shot????.su > '//dir_out//'updated_wavelet.su')
+    endif
 
     !allreduce objective function value
     call mpi_allreduce(mpi_in_place, [fobj%misfit], 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)

@@ -19,9 +19,9 @@ ShotDec=batching
 # Kernel #
 ##########
 #Param=vp-rho-tilD
-#Param=velocities-density
+Param=velocities-density
 #Param=velocities-density_pseudotime
-Param=velocities-impedance
+#Param=velocities-impedance
 #Param=slowness-density
 App=FWI
 
@@ -30,6 +30,6 @@ App=FWI
 ################
 LineS=Wolfe
 #LineS=enumerate
-Optim=SD
-#Optim=NLCG
+#Optim=SD
+Optim=NLCG
 #Optim=lBFGS

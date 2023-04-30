@@ -249,7 +249,7 @@ use m_model
     subroutine set_var_time(self)
         class(t_shot) :: self
 
-        character(:),allocatable :: file, str
+        character(:),allocatable :: file1,file2, str
         type(t_suformat) :: wavelet
         real,dimension(:,:),allocatable :: tmp1,tmp2
 
@@ -258,14 +258,15 @@ use m_model
         !self%fmin=setup%get_real('MIN_FREQUENCY','FMIN',o_default='1')
 
         !source time function, which should not have dt, dx info
-        file=setup%get_file('FILE_SRC_TIME_FUNC','FILE_WAVELET')
+        file1=setup%get_file('FILE_SRC_TIME_FUNC','FILE_WAVELET')
+        file2=setup%get_str('FILE_WAVELET_PREFIX')
 
-        if(file=='') then !not given
-            str=setup%get_str('WAVELET_TYPE',o_default='sinexp')
-            if(str=='sinexp') then
+        if(file1=='' .and. file2=='') then !both not given
+            select case (setup%get_str('WAVELET_TYPE',o_default='sinexp'))
+            case ('sinexp')
                 call hud('Use filtered sinexp wavelet')
                 self%wavelet=wavelet_sinexp(self%nt,self%dt,self%fpeak)
-            elseif(str=='ricker envelope') then
+            case ('ricker envelope')
                 call hud('Use Ricker envelope wavelet')
                 call alloc(tmp1,self%nt,1)
                 call alloc(tmp2,self%nt,1)
@@ -273,30 +274,37 @@ use m_model
                 call hilbert_envelope(tmp1,tmp2,self%nt,1)
                 self%wavelet=tmp2(:,1)
                 deallocate(tmp1,tmp2)
-            else
+            case default
                 call hud('Use Ricker wavelet')
                 self%wavelet=wavelet_ricker(self%nt,self%dt,self%fpeak)
-            endif
+            endselect
 
-        else !wavelet file exists
+        elseif(file1/='') then !wavelet file exists
             call alloc(self%wavelet,self%nt)
-            call wavelet%read(file)
+            call wavelet%read(file1)
             call resampler(wavelet%trs(:,1),self%wavelet,1,&
                             din=wavelet%dt,nin=wavelet%ns, &
                             dout=self%dt,  nout=self%nt)
 
+        elseif(file2/='') then !wavelet file exists
+            call alloc(self%wavelet,self%nt)
+            call wavelet%read(file2//self%sindex(5:8)//'.su',self%sindex)
+            call resampler(wavelet%trs(:,1),self%wavelet,1,&
+                            din=wavelet%dt,nin=wavelet%ns, &
+                            dout=self%dt,  nout=self%nt)
         endif
 
-        str=setup%get_str('WAVELET_SCALING')
-        if(str=='') then
-        elseif(str=='by dx3dt' .or. str=='by dtdx3') then
+        select case (setup%get_str('WAVELET_SCALING'))
+        case ('')
+        case ('by dx3dt', 'by dtdx3')
             self%wavelet=self%wavelet/self%dt*m%cell_volume
-        else
+        case default
             self%wavelet=self%wavelet*str2real(str)
-        endif
+        endselect
 
-        if(mpiworld%is_master) call suformat_write('wavelet',self%wavelet,self%nt,ntr=1,o_dt=self%dt)
-
+        !if(mpiworld%is_master) call suformat_write('wavelet',self%wavelet,self%nt,ntr=1,o_dt=self%dt)
+        call suformat_write('wavelet_'//self%sindex,self%wavelet,self%nt,ntr=1,o_dt=self%dt)
+        
     end subroutine
 
     subroutine set_var_space(self,is_fdsg)
@@ -425,7 +433,7 @@ use m_model
 
     subroutine update_wavelet(self,weight)
         class(t_shot) :: self
-	real,dimension(:,:) :: weight
+        real,dimension(:,:) :: weight
 
         type(t_suformat) :: sudata
 
@@ -443,8 +451,11 @@ use m_model
         call sudata%init(self%nt,1,o_dt=self%dt,o_data=self%wavelet)
         sudata%hdrs%fldr=self%index
 
-        open(12,file=dir_out//'updated_wavelet.su',action='write',access='direct',recl=4*(60+self%nt))
-        write(12,rec=self%index) sudata%hdrs, sudata%trs
+        ! open(12,file=dir_out//'updated_wavelet.su',action='write',access='direct',recl=4*(60+self%nt))
+        ! write(12,rec=self%index) sudata%hdrs, sudata%trs
+        ! close(12)
+        open(12,file=dir_out//'updated_wavelet_'//self%sindex//'.su',action='write',access='direct',recl=4*(60+self%nt))
+        write(12,rec=1) sudata%hdrs, sudata%trs
         close(12)
 
     end subroutine
