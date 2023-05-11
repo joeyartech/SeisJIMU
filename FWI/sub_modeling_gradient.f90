@@ -22,7 +22,7 @@ use m_smoother_laplacian_sparse
         real,dimension(:),allocatable :: scale
     end type
     type(t_S),dimension(:),allocatable,save :: S
-    real,dimension(:,:),allocatable :: tmp_dsyn
+    real,dimension(:,:),allocatable :: tmp_dsyn, gmwindow
     
     if(is_first_in) allocate(S(shls%nshots_per_processor)) !then can NOT randomly sample shots..
 
@@ -59,7 +59,7 @@ use m_smoother_laplacian_sparse
         if(mpiworld%is_master) call shot%write('draw_',shot%dsyn)
 
         !update wavelet
-	    update_wavelet=setup%get_str('UPDATE_WAVELET',o_default='per shot')
+	update_wavelet=setup%get_str('UPDATE_WAVELET',o_default='per shot')
         if(update_wavelet/='no') then
             call wei_wl%update('_4WAVELET')
             call shot%update_wavelet(wei_wl%weight)
@@ -86,12 +86,17 @@ use m_smoother_laplacian_sparse
                 + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
 
         case('L2_scaled')
-	       if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
+            if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
             call alloc(tmp_dsyn,shot%nt,shot%nrcv)
             do j=1,shot%nrcv
                 if(is_first_in) S(i)%scale(j) = either(0., maxval(abs(shot%dobs(:,j))) / maxval(abs(shot%dsyn(:,j))) , shot%rcv(j)%is_badtrace)
                 tmp_dsyn(:,j)=shot%dsyn(:,j)*S(i)%scale(j)
             enddo
+            if(is_first_in) then
+            	open(12,file=dir_out//'dobs_dsyn_max_ratio',access='direct',recl=4*shot%nrcv)
+            	write(12,rec=shot%index) S(i)%scale
+            	close(12)
+            endif
             
             !check if S is changing..
 !            if(shot%index==1)   print*, 'on '//shot%sindex,i,S(i)%scale
@@ -100,6 +105,10 @@ use m_smoother_laplacian_sparse
             fobj%misfit = fobj%misfit &
                 + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-tmp_dsyn, shot%dt)
 
+        case('imaging')
+            fobj%misfit = fobj%misfit &
+                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs, shot%dt)
+                
         end select
 
         call alloc(shot%dadj,shot%nt,shot%nrcv)
@@ -117,7 +126,39 @@ use m_smoother_laplacian_sparse
         
         !adjoint modeling
         call ppg%adjoint(fld_a,fld_u,o_a_star_u=a_star_u)
-            
+
+
+!output grad for each shot
+if(setup%get_bool('IF_SAVE_GRADIENT_PER_SHOT')) then
+open(12,file=dir_out//'a_star_u_'//shot%sindex,action='write',access='direct',recl=4*m%n)
+write(12,rec=1) a_star_u%rp_div_sv
+write(12,rec=2) a_star_u%rv_grad_sp
+close(12)
+endif
+!gaussian masking on source singularities
+if(setup%get_bool('IF_MASK_SINGULARITY')) then
+    nmute=nint(1.2*1900/shot%fpeak/m%dz) !=19
+    !nmute=nint(1.2*m%vp(shot%src%iz,shot%src%ix)/shot%fpeak/m%dz)
+    jsigma=3
+    call alloc(gmwindow,[-nmute,nmute],[-nmute,nmute])
+    do jx=-nmute,nmute
+    do jz=-nmute,nmute
+        R=sqrt(1.0*(jz**2+jx**2))
+        if(R>nmute) R=nmute
+        gmwindow(jz,jx) = exp(-0.5*((nmute-R)/jsigma)**2)
+    enddo
+    enddo
+
+    do jx=-nmute,+nmute
+        ix=shot%src%ix+jx; if(ix<1.or.ix>m%nx) cycle
+    do jz=-nmute,+nmute
+        iz=shot%src%iz+jz; if(iz<1.or.iz>m%nz) cycle
+        correlate_gradient(iz,ix,1,:)=correlate_gradient(iz,ix,1,:)*gmwindow(jz,jx)
+    enddo
+    enddo
+endif
+          
+  
     enddo
     
     call hud('        END LOOP OVER SHOTS        ')

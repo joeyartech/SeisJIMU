@@ -344,6 +344,8 @@ use m_preconditioner
         type(t_querypoint) :: qp
         logical,optional :: oif_update_m,oif_approx,oif_gradient
 
+	logical,save :: is_first_in=.true.
+
         character(:),allocatable :: s_job
 
         type(t_string),dimension(:),allocatable :: smoothings
@@ -376,6 +378,11 @@ use m_preconditioner
         !         correlate_gradient =-correlate_gradient
         !     endif
         ! endif
+
+if(is_first_in) then
+	call sysio_write('raw_1st_corr_grad',correlate_gradient,size(correlate_gradient))
+	is_first_in=.false.
+endif
         
         qp%f = sum(self%dnorm_weights*self%dnorms) ! + sum(self%xnorm_weights*self%xnorms)
 

@@ -434,14 +434,25 @@ use m_model
     subroutine update_wavelet(self,weight)
         class(t_shot) :: self
         real,dimension(:,:) :: weight
-
+        
+        real,dimension(:,:),allocatable :: tmp_dsyn
         type(t_suformat) :: sudata
 
-        if(setup%get_str('UPDATE_WAVELET')=='per shot') then
-            call matchfilter_estimate(weight*self%dsyn,weight*self%dobs,self%nt,self%nrcv)
+	if(index(setup%get_str('UPDATE_WAVELET'),'scaling')) then
+            call alloc(tmp_dsyn,self%nt,self%nrcv)
+	    do j=1,self%nrcv
+		scaling=either(0., maxval(abs(self%dobs(:,j))) / maxval(abs(self%dsyn(:,j))) , self%rcv(j)%is_badtrace)
+		tmp_dsyn(:,j) = self%dsyn(:,j)*scaling
+	    enddo
+	else
+	    tmp_dsyn=self%dsyn
+	endif     
+            
+        if(index(setup%get_str('UPDATE_WAVELET'),'per shot')) then
+            call matchfilter_estimate(weight*tmp_dsyn,weight*self%dobs,self%nt,self%nrcv)
         else
             call hud('Will average wavelet over diff shots. If some MPI processors are idle, then MPI communication will be stuck.')
-            call matchfilter_estimate(weight*self%dsyn,weight*self%dobs,self%nt,self%nrcv,oif_stack=.true.)
+            call matchfilter_estimate(weight*tmp_dsyn,weight*self%dobs,self%nt,self%nrcv,oif_stack=.true.)
         endif
 
         call matchfilter_apply_to_wavelet(self%wavelet)
