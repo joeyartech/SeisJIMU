@@ -34,9 +34,12 @@ use singleton
         !90deg phase shift == multiply by i*sgn(freq)
         !ref: https://github.com/yanhuay/seisDD/blob/master/seisDD/lib/src/m_hilbert_transform.f90
         !created by Yanhua O. Yuan (yanhuay@princeton.edu)
-        data_fft(1:imid-1    ,:) =-c_i*data_fft(1:imid-1    ,:) ! pos. spectrum (-i)
-        data_fft(  imid      ,:) = 0.0                           ! d.c. component
-        data_fft(  imid+1:npt,:) = c_i*data_fft(  imid+1:npt,:) ! neg. spectrum (i)
+        ! data_fft(1:imid-1    ,:) =-c_i*data_fft(1:imid-1    ,:) ! pos. spectrum (-i)
+        ! data_fft(  imid      ,:) = 0.0                          ! d.c. component
+        ! data_fft(  imid+1:npt,:) = c_i*data_fft(  imid+1:npt,:) ! neg. spectrum (i)
+        data_fft(1       ,:) = 0.0                      ! DC
+        data_fft(2:imid-1,:) =-c_i*data_fft(2:imid-1,:) ! pos. spectrum (-i)
+        data_fft(imid:npt,:) = c_i*data_fft(imid:npt,:) ! neg. spectrum (i)
 
         ! inverse fourier transform
         data=real(fft(data_fft,dim=[1],inv=.true.),kind=4)
@@ -48,14 +51,28 @@ use singleton
 
     end subroutine
 
+    ! !this is way problematic, esp when ntr>1
+    ! subroutine hilbert_envelope(datain,dataout,nt,ntr)
+    !     real,dimension(nt,ntr) :: datain
+    !     real,dimension(:,:),allocatable :: dataout
+
+    !     call hilbert_transform(datain,dataout,nt,ntr)
+        
+    !     dataout=sqrt(datain**2+dataout**2)
+
+    ! end subroutine
+
     subroutine hilbert_envelope(datain,dataout,nt,ntr)
         real,dimension(nt,ntr) :: datain
         real,dimension(:,:),allocatable :: dataout
 
-        call hilbert_transform(datain,dataout,nt,ntr)
+        type(t_suformat) :: seismo
         
-        dataout=sqrt(datain**2+dataout**2)
-
+        call suformat_write('tmp',datain,nt,ntr)
+        call execute_command_line('suenv < '//dir_out//'/tmp.su > tmp1.su')
+        ! call seismo%init(nt,ntr)
+        call seismo%read('tmp1.su')
+        dataout=seismo%trs
     end subroutine
 
     subroutine hilbert_phase(datain,dataout,nt,ntr)

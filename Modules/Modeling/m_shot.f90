@@ -62,6 +62,7 @@ use m_model
         procedure :: init
         procedure :: read_from_setup
         procedure :: read_from_data
+        procedure :: read_wlenv
         procedure :: set_var_time
         procedure :: set_var_space
         procedure :: update_wavelet
@@ -283,6 +284,49 @@ use m_model
         endif
 
         if(mpiworld%is_master) call suformat_write('wavelet',self%wavelet,self%nt,ntr=1,o_dt=self%dt)
+
+    end subroutine
+
+    subroutine read_wlenv(self)
+        class(t_shot) :: self
+
+        character(:),allocatable :: file, str
+        type(t_suformat) :: wavelet
+        real,dimension(:,:),allocatable :: tmp1,tmp2
+
+        !source time function, which should not have dt, dx info
+        file=setup%get_file('FILE_WAVELET_ENV')
+
+        if(file=='') then !not given
+            str=setup%get_str('WAVELET_TYPE_ENV',o_default='ricker envelope')
+            if(str=='ricker envelope') then
+                call hud('Use Ricker envelope wavelet')
+                call alloc(tmp1,self%nt,1)
+                call alloc(tmp2,self%nt,1)
+                tmp1(:,1)=wavelet_ricker(self%nt,self%dt,self%fpeak)
+                call hilbert_envelope(tmp1,tmp2,self%nt,1)
+                self%wavelet=tmp2(:,1)
+                deallocate(tmp1,tmp2)   
+            endif
+
+        else !wavelet file exists
+            call alloc(self%wavelet,self%nt)
+            call wavelet%read(file)
+            call resampler(wavelet%trs(:,1),self%wavelet,1,&
+                            din=wavelet%dt,nin=wavelet%ns, &
+                            dout=self%dt,  nout=self%nt)
+
+        endif
+
+        str=setup%get_str('WAVELET_SCALING')
+        if(str=='') then
+        elseif(str=='by dx3dt' .or. str=='by dtdx3') then
+            self%wavelet=self%wavelet/self%dt*m%cell_volume
+        else
+            self%wavelet=self%wavelet*str2real(str)
+        endif
+
+        if(mpiworld%is_master) call suformat_write('wavelet_envelope',self%wavelet,self%nt,ntr=1,o_dt=self%dt)
 
     end subroutine
 
