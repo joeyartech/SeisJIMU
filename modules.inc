@@ -4,7 +4,8 @@
 ############
 # Modeling #
 ############
-WaveEq=BornEnv_reconstruct
+WaveEq=ExactEnv
+#WaveEq=BornEnv_reconstruct
 #WaveEq=BornEnv_monoD
 #WaveEq=AC2nd
 #WaveEq=AC

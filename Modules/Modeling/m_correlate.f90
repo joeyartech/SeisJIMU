@@ -21,10 +21,11 @@ use m_computebox
         ! integer :: ifz,ilz,ifx,ilx,ify,ily,ift,ilt
 
         !wavefield components in computation domain
-        real,dimension(:,:,:),allocatable :: sp_sp
-        real,dimension(:,:,:),allocatable :: rp_sp
-        real,dimension(:,:,:),allocatable :: drp_dt_dsp_dt, div_rp_div_sp
-        real,dimension(:,:,:),allocatable :: rp_lap_sp, lap_rp_sp
+        ! real,dimension(:,:,:),allocatable :: sp_sp
+        ! real,dimension(:,:,:),allocatable :: rp_sp
+        ! real,dimension(:,:,:),allocatable :: drp_dt_dsp_dt, div_rp_div_sp
+        ! real,dimension(:,:,:),allocatable :: rp_lap_sp, lap_rp_sp
+        real,dimension(:,:,:),allocatable :: rp_ddsp, grad_rp_grad_sp
 
         contains
 
@@ -138,13 +139,15 @@ use m_computebox
     subroutine scale(self,scaler)
         class(t_correlate) :: self
 
-        if(allocated(self%sp_sp)) call scale_copy(self%sp_sp,scaler)
-        if(allocated(self%rp_sp)) call scale_copy(self%rp_sp,scaler)
+        ! if(allocated(self%sp_sp)) call scale_copy(self%sp_sp,scaler)
+        ! if(allocated(self%rp_sp)) call scale_copy(self%rp_sp,scaler)
 
-        if(allocated(self%drp_dt_dsp_dt)) call scale_copy(self%drp_dt_dsp_dt,scaler)
-        if(allocated(self%div_rp_div_sp)) call scale_copy(self%div_rp_div_sp,scaler)
-        if(allocated(self%rp_lap_sp))     call scale_copy(self%rp_lap_sp,    scaler)
-        if(allocated(self%lap_rp_sp))     call scale_copy(self%lap_rp_sp,    scaler)
+        ! if(allocated(self%drp_dt_dsp_dt)) call scale_copy(self%drp_dt_dsp_dt,scaler)
+
+        if(allocated(self%rp_ddsp))       call scale_copy(self%rp_ddsp,scaler)
+        if(allocated(self%grad_rp_grad_sp)) call scale_copy(self%grad_rp_grad_sp,scaler)
+        ! if(allocated(self%rp_lap_sp))     call scale_copy(self%rp_lap_sp,    scaler)
+        ! if(allocated(self%lap_rp_sp))     call scale_copy(self%lap_rp_sp,    scaler)
 
         ! if(allocated(self%rp_sp)) then
         !     self%rp_sp        = self%rp_sp*scaler
@@ -222,12 +225,12 @@ use m_computebox
         character(:),allocatable :: suf
 
         if(.not.present(o_it)) then !just write
-            if(allocated(self%sp_sp))         call sysio_write(self%name//'%sp_sp'        ,self%sp_sp,        m%n)
-            if(allocated(self%rp_sp))         call sysio_write(self%name//'%rp_sp'        ,self%rp_sp,        m%n)
-            if(allocated(self%drp_dt_dsp_dt)) call sysio_write(self%name//'%drp_dt_dsp_dt',self%drp_dt_dsp_dt,m%n)
-            if(allocated(self%div_rp_div_sp)) call sysio_write(self%name//'%div_rp_div_sp',self%div_rp_div_sp,m%n)
-            if(allocated(self%rp_lap_sp))     call sysio_write(self%name//'%rp_lap_sp'    ,self%rp_lap_sp,    m%n)
-            if(allocated(self%lap_rp_sp))     call sysio_write(self%name//'%lap_rp_sp'    ,self%lap_rp_sp,    m%n)
+            ! if(allocated(self%sp_sp))         call sysio_write(self%name//'%sp_sp'        ,self%sp_sp,        m%n)
+            ! if(allocated(self%rp_sp))         call sysio_write(self%name//'%rp_sp'        ,self%rp_sp,        m%n)
+            ! if(allocated(self%drp_dt_dsp_dt)) call sysio_write(self%name//'%drp_dt_dsp_dt',self%drp_dt_dsp_dt,m%n)
+            if(allocated(self%grad_rp_grad_sp)) call sysio_write(self%name//'%grad_rp_grad_sp',self%grad_rp_grad_sp,m%n)
+            if(allocated(self%rp_ddsp))         call sysio_write(self%name//'%rp_ddsp'    ,self%rp_ddsp,    m%n)
+            ! if(allocated(self%lap_rp_sp))     call sysio_write(self%name//'%lap_rp_sp'    ,self%lap_rp_sp,    m%n)
 
             return
 
@@ -238,12 +241,12 @@ use m_computebox
             suf=either(o_suffix,'',present(o_suffix))
 
             if(o_it==1 .or. mod(o_it,i_snapshot)==0 .or. o_it==nt) then
-                if(allocated(self%sp_sp))         call sysio_write('snap_'//self%name//'%sp_sp'//suf,        self%sp_sp,        m%n,o_mode='append')
-                if(allocated(self%rp_sp))         call sysio_write('snap_'//self%name//'%rp_sp'//suf,        self%rp_sp,        m%n,o_mode='append')
-                if(allocated(self%drp_dt_dsp_dt)) call sysio_write('snap_'//self%name//'%drp_dt_dsp_dt'//suf,self%drp_dt_dsp_dt,m%n,o_mode='append')
-                if(allocated(self%div_rp_div_sp)) call sysio_write('snap_'//self%name//'%div_rp_div_sp'//suf,self%div_rp_div_sp,m%n,o_mode='append')
-                if(allocated(self%rp_lap_sp))     call sysio_write('snap_'//self%name//'%rp_lap_sp'//suf,    self%rp_lap_sp,    m%n,o_mode='append')
-                if(allocated(self%lap_rp_sp))     call sysio_write('snap_'//self%name//'%lap_rp_sp'//suf,    self%lap_rp_sp,    m%n,o_mode='append')
+                ! if(allocated(self%sp_sp))         call sysio_write('snap_'//self%name//'%sp_sp'//suf,        self%sp_sp,        m%n,o_mode='append')
+                ! if(allocated(self%rp_sp))         call sysio_write('snap_'//self%name//'%rp_sp'//suf,        self%rp_sp,        m%n,o_mode='append')
+                ! if(allocated(self%drp_dt_dsp_dt)) call sysio_write('snap_'//self%name//'%drp_dt_dsp_dt'//suf,self%drp_dt_dsp_dt,m%n,o_mode='append')
+                if(allocated(self%grad_rp_grad_sp)) call sysio_write('snap_'//self%name//'%grad_rp_grad_sp'//suf,self%grad_rp_grad_sp,m%n,o_mode='append')
+                if(allocated(self%rp_ddsp))         call sysio_write('snap_'//self%name//'%rp_ddsp'//suf,    self%rp_ddsp,    m%n,o_mode='append')
+                ! if(allocated(self%lap_rp_sp))     call sysio_write('snap_'//self%name//'%lap_rp_sp'//suf,    self%lap_rp_sp,    m%n,o_mode='append')
 
             endif
 
@@ -273,10 +276,12 @@ use m_computebox
     subroutine final(self)
         type(t_correlate) :: self
 
-        call dealloc(self%sp_sp,self%rp_sp)
-        call dealloc(self%drp_dt_dsp_dt)
-        call dealloc(self%div_rp_div_sp)
-        call dealloc(self%rp_lap_sp,self%lap_rp_sp)
+        ! call dealloc(self%sp_sp,self%rp_sp)
+        ! call dealloc(self%drp_dt_dsp_dt)
+        ! call dealloc(self%grad_rp_grad_sp)
+        ! call dealloc(self%rp_ddsp,self%lap_rp_sp)
+
+        call dealloc(self%rp_ddsp, self%grad_rp_grad_sp)
 
     end subroutine
 
