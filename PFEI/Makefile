@@ -47,12 +47,15 @@ mod :
 	#Optimization
 	(cd ../Modules/Optimization; make App=$(APP))
 
-exe : sub_modeling_gradient.o main.o
-	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/$(app)_$(WaveEq)_$(Solver)_$(Order)_$(LineS)_$(Optim)_$(TAG)
-	(cd ../exe; ln -sf $(app)_$(WaveEq)_$(Solver)_$(Order)_$(LineS)_$(Optim)_$(TAG) $(APP) )
+#exe : sub_modeling_gradient.o main.o
+#exe : sub_modeling_gradient_reconstruct.o main.o
+#exe : sub_modeling_gradient_reconstruct2.o main.o
+exe : sub_modeling_gradient_exactenv.o main.o
+	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/$(app)_$(WaveEq)_$(Solver)_$(Order)_$(LineS)_$(Optim)
+	(cd ../exe; ln -sf $(app)_$(WaveEq)_$(Solver)_$(Order)_$(LineS)_$(Optim) $(APP) )
 
 clean :
-	-rm main.o sub_modeling_gradient.o
+	-rm main.o sub_modeling_gradient*.o
 
 cleanall :
 	#System
