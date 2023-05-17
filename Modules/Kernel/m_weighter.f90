@@ -244,10 +244,6 @@ use m_Modeling
         character(i_str_slen) :: text
         integer,parameter :: max_gain_length=20 !maximum number of points
         real,dimension(max_gain_length) :: xgain,tgain
-
-        real,dimension(:,:),allocatable :: weight
-
-        call alloc(weight,self%nt,self%ntr)
         
         open(10,file=file,action='read')
 
@@ -402,10 +398,6 @@ use m_Modeling
         integer,parameter :: max_gain_length=20 !maximum number of points per line
         real,dimension(max_gain_length) :: xgain, tgain, gain
         real,dimension(:,:),allocatable :: table, tmp_table
-
-        real,dimension(:,:),allocatable :: weight
-
-        call alloc(weight,self%nt,self%ntr)
 
         open(10,file=file,action='read')
 
