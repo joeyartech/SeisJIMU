@@ -157,6 +157,15 @@ use m_fracderi
         call F0_star_E%write
     endif
 
+
+call mpi_allreduce(mpi_in_place, dF_star_E%rp_ddsp, m%n, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+call mpi_allreduce(mpi_in_place, F0_star_E%rp_ddsp, m%n, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+if(mpiworld%is_master) then
+    call dF_star_E%write(o_suffix='_stacked')
+    call F0_star_E%write(o_suffix='_stacked')
+endif
+
+
     !allreduce energy, gradient
     ! call mpi_allreduce(mpi_in_place, correlate_energy  , m%n          , mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     call mpi_allreduce(mpi_in_place, correlate_gradient, m%n*ppg%ngrad, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
@@ -166,11 +175,6 @@ use m_fracderi
 
     if(mpiworld%is_master) call sysio_write('correlate_gradient',correlate_gradient,m%n*ppg%ngrad)
 
-
-    if(setup%get_str('JOB',o_default='gradient')/='optimization') then
-        call mpiworld%final
-        stop
-    endif
 
     call mpiworld%barrier
 

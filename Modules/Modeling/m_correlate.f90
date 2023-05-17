@@ -224,12 +224,14 @@ use m_computebox
 
         character(:),allocatable :: suf
 
+        suf=either(o_suffix,'',present(o_suffix))
+
         if(.not.present(o_it)) then !just write
             ! if(allocated(self%sp_sp))         call sysio_write(self%name//'%sp_sp'        ,self%sp_sp,        m%n)
             ! if(allocated(self%rp_sp))         call sysio_write(self%name//'%rp_sp'        ,self%rp_sp,        m%n)
             ! if(allocated(self%drp_dt_dsp_dt)) call sysio_write(self%name//'%drp_dt_dsp_dt',self%drp_dt_dsp_dt,m%n)
-            if(allocated(self%grad_rp_grad_sp)) call sysio_write(self%name//'%grad_rp_grad_sp',self%grad_rp_grad_sp,m%n)
-            if(allocated(self%rp_ddsp))         call sysio_write(self%name//'%rp_ddsp'    ,self%rp_ddsp,    m%n)
+            if(allocated(self%grad_rp_grad_sp)) call sysio_write(self%name//'%grad_rp_grad_sp'//suf,self%grad_rp_grad_sp,m%n)
+            if(allocated(self%rp_ddsp))         call sysio_write(self%name//'%rp_ddsp'//suf        ,self%rp_ddsp,        m%n)
             ! if(allocated(self%lap_rp_sp))     call sysio_write(self%name//'%lap_rp_sp'    ,self%lap_rp_sp,    m%n)
 
             return
@@ -238,14 +240,12 @@ use m_computebox
 
         if(if_snapshot) then !write snapshots
 
-            suf=either(o_suffix,'',present(o_suffix))
-
             if(o_it==1 .or. mod(o_it,i_snapshot)==0 .or. o_it==nt) then
                 ! if(allocated(self%sp_sp))         call sysio_write('snap_'//self%name//'%sp_sp'//suf,        self%sp_sp,        m%n,o_mode='append')
                 ! if(allocated(self%rp_sp))         call sysio_write('snap_'//self%name//'%rp_sp'//suf,        self%rp_sp,        m%n,o_mode='append')
                 ! if(allocated(self%drp_dt_dsp_dt)) call sysio_write('snap_'//self%name//'%drp_dt_dsp_dt'//suf,self%drp_dt_dsp_dt,m%n,o_mode='append')
                 if(allocated(self%grad_rp_grad_sp)) call sysio_write('snap_'//self%name//'%grad_rp_grad_sp'//suf,self%grad_rp_grad_sp,m%n,o_mode='append')
-                if(allocated(self%rp_ddsp))         call sysio_write('snap_'//self%name//'%rp_ddsp'//suf,    self%rp_ddsp,    m%n,o_mode='append')
+                if(allocated(self%rp_ddsp))         call sysio_write('snap_'//self%name//'%rp_ddsp'//suf,        self%rp_ddsp,        m%n,o_mode='append')
                 ! if(allocated(self%lap_rp_sp))     call sysio_write('snap_'//self%name//'%lap_rp_sp'//suf,    self%lap_rp_sp,    m%n,o_mode='append')
 
             endif

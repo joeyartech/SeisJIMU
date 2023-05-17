@@ -1,1 +1,1 @@
-compiler.inc_ifort
+compiler.inc_gfortran

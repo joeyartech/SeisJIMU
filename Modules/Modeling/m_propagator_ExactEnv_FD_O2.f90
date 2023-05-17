@@ -41,7 +41,7 @@ use m_cpml
             'Basic gradients: gikpa, gbuo'
 
         integer :: nbndlayer=max(1,hicks_r) !minimum absorbing layer thickness
-        integer :: ngrad=2 !number of basic gradients
+        integer :: ngrad=2  !number of basic gradients
         !integer :: nimag=1 !number of basic images
         !integer :: nengy=1 !number of energy terms
 
@@ -538,7 +538,7 @@ use m_cpml
             write(*,*) 'Elapsed time to update field ',tt4/mpiworld%max_threads
             write(*,*) 'Elapsed time to evolve field ',tt5/mpiworld%max_threads
             write(*,*) 'Elapsed time to extract field',tt6/mpiworld%max_threads
-            write(*,*) 'Elapsed time to correlate    ',tt7/mpiworld%max_threads
+            ! write(*,*) 'Elapsed time to correlate    ',tt7/mpiworld%max_threads
         endif
 
         call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
@@ -560,9 +560,20 @@ use m_cpml
         type(t_field) :: fld_dF,fld_F0,fld_v,fld_u
         type(t_correlate) :: dF_star_E, F0_star_E
 
-        real,dimension(:,:,:),allocatable :: E,E_prev,E_next,ph,D
+        type(t_field) :: fld_E,fld_ph
+        real,dimension(:,:,:),allocatable :: D
 
-        real :: time_dir !time direction
+        real,parameter :: time_dir=-1. !time direction
+
+        call self%init_field(fld_E, name='fld_E')
+        call self%init_field(fld_ph,name='fld_ph')
+
+        !compute attributes
+        call compute_attributes(fld_E%p     ,fld_ph%p     ,fld_v%p     ,fld_u%p     )
+        call compute_attributes(fld_E%p_prev,fld_ph%p_prev,fld_v%p_prev,fld_u%p_prev)
+        call compute_attributes(fld_E%p_next,fld_ph%p_next,fld_v%p_next,fld_u%p_next)
+
+        call alloc(D,      [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
         !seismo
         call alloc(fld_dF%seismo, shot%nrcv,self%nt)
@@ -579,8 +590,6 @@ use m_cpml
         
         ift=1; ilt=self%nt
 
-        time_dir=-1.
-
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
@@ -595,6 +604,8 @@ use m_cpml
                 call cpu_time(tic)
                 call self%evolve_pressure(fld_v,time_dir,it)
                 call self%evolve_pressure(fld_u,time_dir,it)
+                call self%evolve_pressure(fld_E,time_dir,it)
+                call self%evolve_pressure(fld_ph,time_dir,it)
                 call cpu_time(toc)
                 tt1=tt1+toc-tic
 
@@ -613,6 +624,7 @@ use m_cpml
                 call cpu_time(tic)
                 call self%update_pressure(fld_v,time_dir,it)
                 call self%update_pressure(fld_u,time_dir,it)
+                call compute_attributes(fld_E%p_prev,fld_ph%p_prev,fld_v%p_prev,fld_u%p_prev)
                 call cpu_time(toc)
                 tt4=tt4+toc-tic
 
@@ -625,15 +637,17 @@ use m_cpml
                 tt5=tt5+toc-tic
             ! endif
 
-            call compute_attributes(E,E_prev,E_next,ph,D, fld_v,fld_u)
-
+            call cpu_time(tic)
+            call compute_D(D,fld_ph)
+            call cpu_time(toc)
+            tt6=tt6+toc-tic
 
             !adjoint step 6: inject to p^it+1 at receivers
             call cpu_time(tic)
             call self%inject_pressure_scattering(fld_dF,fld_F0,D,it)
             call self%inject_pressure(fld_F0,time_dir,it)
             call cpu_time(toc)
-            tt6=tt6+toc-tic
+            tt7=tt7+toc-tic
 
             !adjoint step 4:
             call cpu_time(tic)
@@ -645,10 +659,10 @@ use m_cpml
             !gradient: rf%p^it star sf%p^it
             ! if(mod(it,irdt)==0) then
                 call cpu_time(tic)
-                call cross_correlate(fld_dF, E_prev,E,E_next,fld_u, dF_star_E,it)
-                call cross_correlate(fld_F0, E_prev,E,E_next,fld_u, F0_star_E,it)
+                call cross_correlate(fld_dF,fld_E,dF_star_E,it)
+                call cross_correlate(fld_F0,fld_E,F0_star_E,it)
                 call cpu_time(toc)
-                tt11=tt11+toc-tic
+                tt9=tt9+toc-tic
             ! endif
 
             !adjoint step 5
@@ -657,7 +671,7 @@ use m_cpml
             call self%evolve_pressure(fld_dF,time_dir,it)
             call self%evolve_pressure(fld_F0,time_dir,it)
             call cpu_time(toc)
-            tt7=tt7+toc-tic
+            tt10=tt10+toc-tic
 
             ! !adjoint step 5: inject to s^it+1.5 at receivers
             ! call cpu_time(tic)
@@ -672,7 +686,7 @@ use m_cpml
                 call self%extract(fld_dF,it)
                 call self%extract(fld_F0,it)
                 call cpu_time(toc)
-                tt10=tt10+toc-tic
+                tt11=tt11+toc-tic
             ! endif
 
             ! !gkpa: rf%s^it+0.5 star tilD sf%s_dt^it+0.5
@@ -690,9 +704,9 @@ use m_cpml
             !snapshot
             call fld_v%write(it,o_suffix='_adj')
             call fld_u%write(it,o_suffix='_adj')
-            call fld_u%write_ext(it,'E_adj', E,cb%n)
-            call fld_u%write_ext(it,'ph_adj',ph,cb%n)
-            call fld_u%write_ext(it,'D_adj' ,D ,cb%n)
+            call fld_E%write( it,o_suffix='_adj')
+            call fld_ph%write(it,o_suffix='_adj')
+            call fld_ph%write_ext(it,'D_adj' ,D ,cb%n)
             call fld_dF%write(it,o_suffix='_adj')
             call fld_F0%write(it,o_suffix='_adj')
 
@@ -700,6 +714,24 @@ use m_cpml
             call F0_star_E%write(it,o_suffix='_adj')
             
         enddo
+
+
+        if(mpiworld%is_master) then
+            write(*,*) 'Elapsed time to evolve field        ',tt1/mpiworld%max_threads
+            write(*,*) 'Elapsed time to load boundary       ',tt2/mpiworld%max_threads
+            ! write(*,*) 'Elapsed time to set field           ',tt3/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update field        ',tt4/mpiworld%max_threads
+            write(*,*) 'Elapsed time to rm source           ',tt5/mpiworld%max_threads
+            write(*,*) 'Elapsed time to compute attributes  ',tt6/mpiworld%max_threads
+            write(*,*) 'Elapsed time -----------------------'
+            write(*,*) 'Elapsed time to add adj & virtual src',tt7/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update adj field    ',tt8/mpiworld%max_threads
+            write(*,*) 'Elapsed time to evolve adj field    ',tt10/mpiworld%max_threads
+            ! write(*,*) 'Elapsed time to set adj field       ',tt9/mpiworld%max_threads
+            write(*,*) 'Elapsed time to extract fields      ',tt11/mpiworld%max_threads
+            write(*,*) 'Elapsed time to correlate           ',tt9/mpiworld%max_threads
+
+        endif
 
         call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
         call hud('ximage < snap_rfield%*  n1='//num2str(cb%nz)//' perc=99')
@@ -712,45 +744,85 @@ use m_cpml
             call dF_star_E%scale(m%cell_volume*rdt)
             call F0_star_E%scale(m%cell_volume*rdt)
 
-            call correlate_stack( dF_star_E%rp_ddsp        +F0_star_E%rp_ddsp,         correlate_gradient(:,:,:,1)) !gikpa
-            call correlate_stack( dF_star_E%grad_rp_grad_sp+F0_star_E%grad_rp_grad_sp, correlate_gradient(:,:,:,2)) !gbuo
+            if (setup%get_str('GRADIENT_TERMS',o_default='two')=='two') then
+                call correlate_stack( dF_star_E%rp_ddsp        +F0_star_E%rp_ddsp,         correlate_gradient(:,:,:,1)) !gikpa
+                call correlate_stack( dF_star_E%grad_rp_grad_sp+F0_star_E%grad_rp_grad_sp, correlate_gradient(:,:,:,2)) !gbuo
+            else
+                call correlate_stack(                           F0_star_E%rp_ddsp,         correlate_gradient(:,:,:,1)) !gikpa
+                call correlate_stack(                           F0_star_E%grad_rp_grad_sp, correlate_gradient(:,:,:,2)) !gbuo
+            endif
+
         ! endif
 
     end subroutine
 
-    subroutine compute_attributes(E,E_prev,E_next,ph,D, v,u)
-    use m_math
-        real,dimension(:,:,:),allocatable :: E,E_prev,E_next,ph,D
-        type(t_field) :: v,u
+    ! subroutine compute_attributes(E,E_prev,E_next,ph,D, v,u)
+    ! use m_math
+    !     real,dimension(:,:,:),allocatable :: E,E_prev,E_next,ph,D
+    !     type(t_field) :: v,u
 
-        real,dimension(:,:,:),allocatable :: ph_prev, ph_next, grad_ph_sq
+    !     real,dimension(:,:,:),allocatable :: ph_prev, ph_next, grad_ph_sq
 
-        call alloc(E,      [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(E_prev, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(E_next, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(ph,     [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(D,      [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+    !     call alloc(E,      [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+    !     call alloc(E_prev, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+    !     call alloc(E_next, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+    !     call alloc(ph,     [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+    !     call alloc(D,      [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
-        call alloc(ph_prev,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(ph_next,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(grad_ph_sq,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+    !     call alloc(ph_prev,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+    !     call alloc(ph_next,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+    !     call alloc(grad_ph_sq,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
-        E     =sqrt(v%p     **2+u%p     **2)
-        E_prev=sqrt(v%p_prev**2+u%p_prev**2)
-        E_next=sqrt(v%p_next**2+u%p_next**2)
+    !     E     =sqrt(v%p     **2+u%p     **2)
+    !     E_prev=sqrt(v%p_prev**2+u%p_prev**2)
+    !     E_next=sqrt(v%p_next**2+u%p_next**2)
 
-        ph     =(atan2(v%p     ,u%p)     -r_pi/2.)  *E     /(E     +1e-4*maxval(E     )) +r_pi/2. !stablize
-        ph_prev=(atan2(v%p_prev,u%p_prev)-r_pi/2.)  *E_prev/(E_prev+1e-4*maxval(E_prev)) +r_pi/2.
-        ph_next=(atan2(v%p_next,u%p_next)-r_pi/2.)  *E_next/(E_next+1e-4*maxval(E_next)) +r_pi/2.
+    !     ph     =(atan2(v%p     ,u%p)     -r_pi/2.)  *E     /(E     +1e-4*maxval(E     )) +r_pi/2. !stablize
+    !     ph_prev=(atan2(v%p_prev,u%p_prev)-r_pi/2.)  *E_prev/(E_prev+1e-4*maxval(E_prev)) +r_pi/2.
+    !     ph_next=(atan2(v%p_next,u%p_next)-r_pi/2.)  *E_next/(E_next+1e-4*maxval(E_next)) +r_pi/2.
 
+    !     do ix=cb%ifx+1,cb%ilx-1
+    !     do iz=cb%ifz+1,cb%ilz-1
+    !         grad_ph_sq(iz,ix,1) = ( asin(sin(ph(iz+1,ix,1)-ph(iz-1,ix,1))) *inv_2dx)**2 &
+    !                              +( asin(sin(ph(iz,ix+1,1)-ph(iz,ix-1,1))) *inv_2dz)**2
+    !     enddo
+    !     enddo
+
+    !     D= (asin(sin(ph_next-ph_prev)) *inv_2dt)**2 /ppg%kpa - grad_ph_sq/cb%rho
+
+    !     D(cb%ifz,:,:)=0.
+    !     D(cb%ilz,:,:)=0.
+
+    !     D(:,cb%ifx,:)=0.
+    !     D(:,cb%ilx,:)=0.
+
+    ! end subroutine
+
+    subroutine compute_attributes(E,ph,v,u)
+    use m_math
+        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: E,ph,v,u
+
+        E  = sqrt(v**2+u**2)
+        ph = (atan2(v,u) -r_pi/2.) *E/(E+1e-4*maxval(E)) +r_pi/2. !stablize
+
+    end subroutine
+
+    subroutine compute_D(D,ph)
+        real,dimension(:,:,:),allocatable :: D
+        type(t_field) :: ph
+        
+        real,dimension(:,:,:),allocatable :: grad_ph_sq
+
+        call alloc(grad_ph_sq,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+                
         do ix=cb%ifx+1,cb%ilx-1
         do iz=cb%ifz+1,cb%ilz-1
-            grad_ph_sq(iz,ix,1) = ( asin(sin(ph(iz+1,ix,1)-ph(iz-1,ix,1))) *inv_2dx)**2 &
-                                 +( asin(sin(ph(iz,ix+1,1)-ph(iz,ix-1,1))) *inv_2dz)**2
+            grad_ph_sq(iz,ix,1) = ( asin(sin(ph%p(iz+1,ix,1)-ph%p(iz-1,ix,1))) *inv_2dx)**2 &
+                                 +( asin(sin(ph%p(iz,ix+1,1)-ph%p(iz,ix-1,1))) *inv_2dz)**2
         enddo
         enddo
 
-        D= (asin(sin(ph_next-ph_prev)) *inv_2dt)**2 /ppg%kpa - grad_ph_sq/cb%rho
+        D= (asin(sin(ph%p_next-ph%p_prev)) *inv_2dt)**2 /ppg%kpa - grad_ph_sq/cb%rho
 
         D(cb%ifz,:,:)=0.
         D(cb%ilz,:,:)=0.
@@ -1059,18 +1131,17 @@ use m_cpml
 
     end subroutine
 
-    subroutine cross_correlate(rf,E_prev,E,E_next,sf,corr,it)
-        type(t_field), intent(in) :: rf, sf
-        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: E_prev,E,E_next
+    subroutine cross_correlate(rf,sE,corr,it)
+        type(t_field), intent(in) :: rf, sE
         type(t_correlate) :: corr
 
         ! real,dimension(:,:,:),allocatable :: tmp_sf_p
 
         !nonzero only when sf touches rf
-        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
-        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
-        ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
-        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
+        ifz=max(sE%bloom(1,it),rf%bloom(1,it),2)
+        ilz=min(sE%bloom(2,it),rf%bloom(2,it),cb%mz)
+        ifx=max(sE%bloom(3,it),rf%bloom(3,it),1)
+        ilx=min(sE%bloom(4,it),rf%bloom(4,it),cb%mx)
         ! ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
         ! ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
         
@@ -1090,9 +1161,9 @@ use m_cpml
         else if(corr%purpose=='gradient') then
 
             corr%rp_ddsp = corr%rp_ddsp + &
-                rf%p(1:m%nz,1:m%nx,1:m%ny) * ( E_next(1:m%nz,1:m%nx,1:m%ny)-2*E(1:m%nz,1:m%nx,1:m%ny)+E_prev(1:m%nz,1:m%nx,1:m%ny) )/dt2
+                rf%p(1:m%nz,1:m%nx,1:m%ny) * ( sE%p_next(1:m%nz,1:m%nx,1:m%ny)-2*sE%p(1:m%nz,1:m%nx,1:m%ny)+sE%p_prev(1:m%nz,1:m%nx,1:m%ny) )/dt2
 
-            call grad2d(rf%p,E,corr%grad_rp_grad_sp,   ifz,ilz,ifx,ilx)
+            call grad2d(rf%p,sE%p,corr%grad_rp_grad_sp,   ifz,ilz,ifx,ilx)
 
         endif
 

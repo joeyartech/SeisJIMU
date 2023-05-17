@@ -25,7 +25,7 @@ Param=vp-rho-tilD
 #Param=velocities-density_pseudotime
 #Param=velocities-impedance
 #Param=slowness-density
-App=FWI
+App=PFEI
 
 ################
 # Optimization #
