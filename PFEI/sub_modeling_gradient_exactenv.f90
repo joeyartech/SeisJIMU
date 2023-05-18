@@ -76,7 +76,7 @@ use m_fracderi
         call shot%read_wlhilb
         call ppg%init_field(fld_v, name='fld_v');    call fld_v%ignite
         call ppg%forward(fld_v)
-        call fld_v%acquire; call shot%write('Rv_',shot%dsyn)
+        call fld_v%acquire; !call shot%write('Rv_',shot%dsyn)
         
         shot%dsyn_aux = shot%dsyn
         call fld_u%acquire
@@ -163,6 +163,14 @@ call mpi_allreduce(mpi_in_place, F0_star_E%rp_ddsp, m%n, mpi_real, mpi_sum, mpiw
 if(mpiworld%is_master) then
     call dF_star_E%write(o_suffix='_stacked')
     call F0_star_E%write(o_suffix='_stacked')
+
+
+    den1=sqrt(sum(F0_star_E%rp_ddsp**2,.not.m%is_freeze_zone))
+    den2=sqrt(sum(dF_star_E%rp_ddsp**2,.not.m%is_freeze_zone))
+    costh=sum(F0_star_E%rp_ddsp/den1*dF_star_E%rp_ddsp/den2,.not.m%is_freeze_zone)
+
+    call hud('Angle between F₀★E & δF★E (w/ mask): '//num2str(acosd(costh))//'°')
+    
 endif
 
 

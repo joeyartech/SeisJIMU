@@ -30,7 +30,7 @@ use m_cpml
             'Time-domain ISOtropic 2D/3D Exact Envelope propagation (the adjoint is NOT)'//s_NL// &
             '2nd-order Pressure mono tilD formulation'//s_NL// &
             'Vireux-Levandar Staggered-Grid Finite-Difference (FDSG) method'//s_NL// &
-            'Cartesian O(x²,t²) stencil'//s_NL// &
+            'Cartesian O(x⁴,t²) stencil'//s_NL// &
             'CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal'//s_NL// &
             '   -> dt ≤ 0.5*Vmax/dx'//s_NL// &
             'Required model attributes: vp, rho, tilD'//s_NL// &
@@ -624,37 +624,40 @@ use m_cpml
                 call cpu_time(tic)
                 call self%update_pressure(fld_v,time_dir,it)
                 call self%update_pressure(fld_u,time_dir,it)
-                call compute_attributes(fld_E%p_prev,fld_ph%p_prev,fld_v%p_prev,fld_u%p_prev)
                 call cpu_time(toc)
                 tt4=tt4+toc-tic
 
+                call cpu_time(tic)
+                call compute_attributes(fld_E%p_prev,fld_ph%p_prev,fld_v%p_prev,fld_u%p_prev)
+                call cpu_time(toc)
+                tt5=tt5+toc-tic
 
                 !backward step 1: rm p^it at source
                 call cpu_time(tic)
                 call self%inject_pressure(fld_v,time_dir,it)
                 call self%inject_pressure(fld_u,time_dir,it)
                 call cpu_time(toc)
-                tt5=tt5+toc-tic
+                tt6=tt6+toc-tic
             ! endif
 
             call cpu_time(tic)
-            call compute_D(D,fld_ph)
+            call compute_D(D,fld_ph,it)
             call cpu_time(toc)
-            tt6=tt6+toc-tic
+            tt7=tt7+toc-tic
 
             !adjoint step 6: inject to p^it+1 at receivers
             call cpu_time(tic)
             call self%inject_pressure_scattering(fld_dF,fld_F0,D,it)
             call self%inject_pressure(fld_F0,time_dir,it)
             call cpu_time(toc)
-            tt7=tt7+toc-tic
+            tt8=tt8+toc-tic
 
             !adjoint step 4:
             call cpu_time(tic)
             call self%update_pressure(fld_dF,time_dir,it)
             call self%update_pressure(fld_F0,time_dir,it)
             call cpu_time(toc)
-            tt8=tt8+toc-tic
+            tt9=tt9+toc-tic
 
             !gradient: rf%p^it star sf%p^it
             ! if(mod(it,irdt)==0) then
@@ -662,7 +665,7 @@ use m_cpml
                 call cross_correlate(fld_dF,fld_E,dF_star_E,it)
                 call cross_correlate(fld_F0,fld_E,F0_star_E,it)
                 call cpu_time(toc)
-                tt9=tt9+toc-tic
+                tt10=tt10+toc-tic
             ! endif
 
             !adjoint step 5
@@ -671,7 +674,7 @@ use m_cpml
             call self%evolve_pressure(fld_dF,time_dir,it)
             call self%evolve_pressure(fld_F0,time_dir,it)
             call cpu_time(toc)
-            tt10=tt10+toc-tic
+            tt11=tt11+toc-tic
 
             ! !adjoint step 5: inject to s^it+1.5 at receivers
             ! call cpu_time(tic)
@@ -686,7 +689,7 @@ use m_cpml
                 call self%extract(fld_dF,it)
                 call self%extract(fld_F0,it)
                 call cpu_time(toc)
-                tt11=tt11+toc-tic
+                tt12=tt12+toc-tic
             ! endif
 
             ! !gkpa: rf%s^it+0.5 star tilD sf%s_dt^it+0.5
@@ -721,15 +724,16 @@ use m_cpml
             write(*,*) 'Elapsed time to load boundary       ',tt2/mpiworld%max_threads
             ! write(*,*) 'Elapsed time to set field           ',tt3/mpiworld%max_threads
             write(*,*) 'Elapsed time to update field        ',tt4/mpiworld%max_threads
-            write(*,*) 'Elapsed time to rm source           ',tt5/mpiworld%max_threads
-            write(*,*) 'Elapsed time to compute attributes  ',tt6/mpiworld%max_threads
+            write(*,*) 'Elapsed time to compute E & ph      ',tt5/mpiworld%max_threads
+            write(*,*) 'Elapsed time to rm source           ',tt6/mpiworld%max_threads
+            write(*,*) 'Elapsed time to compute D           ',tt7/mpiworld%max_threads
             write(*,*) 'Elapsed time -----------------------'
-            write(*,*) 'Elapsed time to add adj & virtual src',tt7/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update adj field    ',tt8/mpiworld%max_threads
-            write(*,*) 'Elapsed time to evolve adj field    ',tt10/mpiworld%max_threads
+            write(*,*) 'Elapsed time to add adj & virtual src',tt8/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update adj field    ',tt9/mpiworld%max_threads
+            write(*,*) 'Elapsed time to evolve adj field    ',tt11/mpiworld%max_threads
             ! write(*,*) 'Elapsed time to set adj field       ',tt9/mpiworld%max_threads
-            write(*,*) 'Elapsed time to extract fields      ',tt11/mpiworld%max_threads
-            write(*,*) 'Elapsed time to correlate           ',tt9/mpiworld%max_threads
+            write(*,*) 'Elapsed time to extract fields      ',tt12/mpiworld%max_threads
+            write(*,*) 'Elapsed time to correlate           ',tt10/mpiworld%max_threads
 
         endif
 
@@ -807,20 +811,26 @@ use m_cpml
 
     end subroutine
 
-    subroutine compute_D(D,ph)
+    subroutine compute_D(D,ph,it)
         real,dimension(:,:,:),allocatable :: D
         type(t_field) :: ph
         
         real,dimension(:,:,:),allocatable :: grad_ph_sq
 
+        ifz=ph%bloom(1,it)
+        ilz=ph%bloom(2,it)
+        ifx=ph%bloom(3,it)
+        ilx=ph%bloom(4,it)
+
         call alloc(grad_ph_sq,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-                
-        do ix=cb%ifx+1,cb%ilx-1
-        do iz=cb%ifz+1,cb%ilz-1
-            grad_ph_sq(iz,ix,1) = ( asin(sin(ph%p(iz+1,ix,1)-ph%p(iz-1,ix,1))) *inv_2dx)**2 &
-                                 +( asin(sin(ph%p(iz,ix+1,1)-ph%p(iz,ix-1,1))) *inv_2dz)**2
-        enddo
-        enddo
+        
+        call fd2d_grad_ph_sq(ph%p, grad_ph_sq, ifz,ilz,ifx,ilx)
+        ! do ix=cb%ifx+1,cb%ilx-1
+        ! do iz=cb%ifz+1,cb%ilz-1
+        !     grad_ph_sq(iz,ix,1) = ( asin(sin(ph%p(iz+1,ix,1)-ph%p(iz-1,ix,1))) *inv_2dx)**2 &
+        !                          +( asin(sin(ph%p(iz,ix+1,1)-ph%p(iz,ix-1,1))) *inv_2dz)**2
+        ! enddo
+        ! enddo
 
         D= (asin(sin(ph%p_next-ph%p_prev)) *inv_2dt)**2 /ppg%kpa - grad_ph_sq/cb%rho
 
@@ -931,12 +941,13 @@ use m_cpml
         type(t_field) :: fld_d, fld
         real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: D
 
-        ! ifz=fld%bloom(1,it)
-        ! ilz=fld%bloom(2,it)
-        ! ifx=fld%bloom(3,it)
-        ! ilx=fld%bloom(4,it)
+        ifz=fld%bloom(1,it)
+        ilz=fld%bloom(2,it)
+        ifx=fld%bloom(3,it)
+        ilx=fld%bloom(4,it)
 
-        fld_d%p = fld_d%p +1.0*dt2*self%kpa*D*fld%p /m%cell_volume !I don't understand why should divide by the cell_volume..
+        ! fld_d%p = fld_d%p +1.0*dt2*self%kpa*D*fld%p /m%cell_volume !I don't understand why should divide by the cell_volume..
+        call flattend_inject_scattering(fld_d%p,fld%p,self%kpa,D,ifz,ilz,ifx,ilx)
 
     end subroutine
 
@@ -993,17 +1004,31 @@ use m_cpml
         class(t_propagator) :: self
         type(t_field) :: f
 
+        real,dimension(:,:,:),pointer :: tmp
+
         if(time_dir>0.) then !in forward time
-            f%p_prev = f%p
-            f%p      = f%p_next
-            !f%p_next = f%p_prev
+            tmp=>f%p_prev
+            f%p_prev=>f%p
+            f%p     =>f%p_next
+            f%p_next=>tmp
+
+            ! f%p_prev = f%p
+            ! f%p      = f%p_next
+            ! !f%p_next = f%p_prev
 
         else !in reverse time
-            f%p_next = f%p
-            f%p      = f%p_prev
-            !f%p_prev = f%p_next
+            tmp=>f%p_next
+            f%p_next=>f%p
+            f%p     =>f%p_prev
+            f%p_prev=>tmp
+
+            ! f%p_next = f%p
+            ! f%p      = f%p_prev
+            ! !f%p_prev = f%p_next
 
         endif
+
+        nullify(tmp)
         
     end subroutine
 
@@ -1172,6 +1197,59 @@ use m_cpml
 
     !========= Finite-Difference on flattened arrays ==================
     
+    subroutine flattend_inject_scattering(dp,p,kpa,D,ifz,ilz,ifx,ilx)
+        real,dimension(*) :: dp,p,kpa,D
+        
+        !$omp parallel default (shared)&
+        !$omp private(i)
+        !$omp do schedule(dynamic)
+        do ix = ifx,ilx
+            !dir$ simd
+            do iz = ifz,ilz
+
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+
+                dp(i) = dp(i) +1.*dt2*kpa(i)*D(i)*p(i) /m%cell_volume
+
+            enddo
+        enddo
+        !$omp end do
+        !$omp end parallel
+        
+    end subroutine
+
+    subroutine fd2d_grad_ph_sq(ph, grad_ph_sq, ifz,ilz,ifx,ilx)
+        real,dimension(*) :: ph, grad_ph_sq
+
+        nz=cb%nz
+        nx=cb%nx
+        
+        !$omp parallel default (shared)&
+        !$omp private(i)
+        !$omp do schedule(dynamic)
+        do ix = ifx+1,ilx-1
+            !dir$ simd
+            do iz = ifz+1,ilz-1
+
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+
+                izm1_ix=i-1       !iz-1,ix
+                iz_ix  =i         !iz,ix
+                izp1_ix=i+1       !iz+1,ix
+
+                iz_ixm1=i    -nz  !iz,ix-1
+                iz_ixp1=i    +nz  !iz,ix+1
+
+                grad_ph_sq(iz_ix) = ( asin(sin(ph(izp1_ix)-ph(izm1_ix))) *inv_2dx)**2 &
+                                   +( asin(sin(ph(iz_ixp1)-ph(iz_ixm1))) *inv_2dz)**2
+
+            enddo
+        enddo
+        !$omp end do
+        !$omp end parallel
+        
+    end subroutine
+
     subroutine fd2d_laplacian(p,dp_dz,dp_dx,&
                                 dpzz_dz,dpxx_dx,&
                                 lap,&

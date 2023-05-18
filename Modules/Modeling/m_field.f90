@@ -39,7 +39,8 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:,:),allocatable ::     sxx,sxy
         real,dimension(:,:,:),allocatable ::         syy
         real,dimension(:,:,:),allocatable :: shh !szz, sxx or syy
-        real,dimension(:,:,:),allocatable :: p, p_prev, p_next !negated pressure
+        ! real,dimension(:,:,:),allocatable :: p !negated pressure
+        real,dimension(:,:,:),pointer :: p=> null(), p_prev=> null(), p_next=> null() !negated pressure
         !N.B. pressure is defined >0 for inward stress, but here tobe compatible with szz etc, p is defined >0 for outward stress
 
         !boundary components for wavefield recontruction
@@ -573,7 +574,7 @@ use, intrinsic :: ieee_arithmetic
         !deallocate(self%name)
 
         call dealloc(self%vz,self%vx,self%vy)
-        call dealloc(self%szz,self%szx,self%szy,self%sxx,self%sxy,self%shh,self%p)
+        call dealloc(self%szz,self%szx,self%szy,self%sxx,self%sxy,self%shh)!,self%p)
 
         call dealloc(self%bnd%vz_top,  self%bnd%vz_bot)
         call dealloc(self%bnd%vx_left, self%bnd%vx_right)
@@ -627,12 +628,12 @@ use, intrinsic :: ieee_arithmetic
                 call chp%read(self%vz, self%vx, self%vy )
                 call chp%read(self%szz,self%szx,self%szy)
                 call chp%read(self%sxx,self%sxy,self%syy)
-                call chp%read(self%shh,self%p)
+                call chp%read(self%shh)!,self%p)
                 call chp%close
                 call hud('Read '//self%name//'%vz,vx,vy from '//chp%name//', size='//num2str(total_size(self%vz,self%vx,self%vy)))
                 call hud('Read '//self%name//'%szz,szx,szy from '//chp%name//', size='//num2str(total_size(self%szz,self%szx,self%szy)))
                 call hud('Read '//self%name//'%sxx,sxy,syy from '//chp%name//', size='//num2str(total_size(self%sxx,self%sxy,self%syy)))
-                call hud('Read '//self%name//'%shh,p from '//chp%name//', size='//num2str(total_size(self%shh,self%p)))
+                !call hud('Read '//self%name//'%shh,p from '//chp%name//', size='//num2str(total_size(self%shh,self%p)))
             case ('boundary')
                 call chp%open(self%name//'%boundary')
                 call chp%read(self%bnd%vz_top,  self%bnd%vz_bot  )
@@ -668,7 +669,7 @@ use, intrinsic :: ieee_arithmetic
                 call chp%write(self%vz, self%vx, self%vy )
                 call chp%write(self%szz,self%szx,self%szy)
                 call chp%write(self%sxx,self%sxy,self%syy)
-                call chp%write(self%shh,self%p)
+                call chp%write(self%shh)!,self%p)
                 call chp%close
             case ('boundary')
                 call chp%open(self%name//'%boundary')
