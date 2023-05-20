@@ -22,7 +22,7 @@ use m_cpml
 
 
     !scaling source wavelet
-    real :: wavelet_scaler
+    real :: wavelet_scaler, virtualsrc_scaler
 
     type,public :: t_propagator
         !info
@@ -173,6 +173,12 @@ use m_cpml
         inv_2dx =1./2/m%dx
         
         wavelet_scaler=dt2/m%cell_volume
+
+        if(setup%get_bool('IF_VIRTUAL_SRC_SCALED_BY_VOLUME_SIZE',o_default='T')) then
+            virtualsrc_scaler=dt2/m%cell_volume
+        else
+            virtualsrc_scaler=dt2
+        endif
 
         if_hicks=shot%if_hicks
 
@@ -555,10 +561,11 @@ use m_cpml
     end subroutine
 
 
-    subroutine adjoint(self,fld_dF,fld_F0, fld_v,fld_u, dF_star_E,F0_star_E)
+    subroutine adjoint(self,fld_dF,fld_F0, fld_v,fld_u, dF_star_E,F0_star_E, dF_star_Eph,F0_star_Eph)
         class(t_propagator) :: self
         type(t_field) :: fld_dF,fld_F0,fld_v,fld_u
-        type(t_correlate) :: dF_star_E, F0_star_E
+        type(t_correlate) :: dF_star_E,  F0_star_E
+        type(t_correlate) :: dF_star_Eph,F0_star_Eph
 
         type(t_field) :: fld_E,fld_ph
         real,dimension(:,:,:),allocatable :: D
@@ -664,6 +671,8 @@ use m_cpml
                 call cpu_time(tic)
                 call cross_correlate(fld_dF,fld_E,dF_star_E,it)
                 call cross_correlate(fld_F0,fld_E,F0_star_E,it)
+                call cross_correlate_Eph(fld_dF,fld_E,fld_ph,dF_star_Eph,it)
+                call cross_correlate_Eph(fld_F0,fld_E,fld_ph,F0_star_Eph,it)
                 call cpu_time(toc)
                 tt10=tt10+toc-tic
             ! endif
@@ -715,6 +724,8 @@ use m_cpml
 
             call dF_star_E%write(it,o_suffix='_adj')
             call F0_star_E%write(it,o_suffix='_adj')
+            call dF_star_Eph%write(it,o_suffix='_adj')
+            call F0_star_Eph%write(it,o_suffix='_adj')
             
         enddo
 
@@ -747,14 +758,23 @@ use m_cpml
         ! if(if_corr) then
             call dF_star_E%scale(m%cell_volume*rdt)
             call F0_star_E%scale(m%cell_volume*rdt)
+            call dF_star_Eph%scale(m%cell_volume*rdt)
+            call F0_star_Eph%scale(m%cell_volume*rdt)
 
-            if (setup%get_str('GRADIENT_TERMS',o_default='two')=='two') then
-                call correlate_stack( dF_star_E%rp_ddsp        +F0_star_E%rp_ddsp,         correlate_gradient(:,:,:,1)) !gikpa
-                call correlate_stack( dF_star_E%grad_rp_grad_sp+F0_star_E%grad_rp_grad_sp, correlate_gradient(:,:,:,2)) !gbuo
-            else
-                call correlate_stack(                           F0_star_E%rp_ddsp,         correlate_gradient(:,:,:,1)) !gikpa
-                call correlate_stack(                           F0_star_E%grad_rp_grad_sp, correlate_gradient(:,:,:,2)) !gbuo
-            endif
+            select case (setup%get_str('GRADIENT_TERMS',o_default='1234'))
+            case ('1')
+                call correlate_stack(F0_star_E%rp_ddsp        , correlate_gradient(:,:,:,1)) !gikpa
+                call correlate_stack(F0_star_E%grad_rp_grad_sp, correlate_gradient(:,:,:,2)) !gbuo
+            case ('12')
+                call correlate_stack(F0_star_E%rp_ddsp        +dF_star_E%rp_ddsp        , correlate_gradient(:,:,:,1)) !gikpa
+                call correlate_stack(F0_star_E%grad_rp_grad_sp+dF_star_E%grad_rp_grad_sp, correlate_gradient(:,:,:,2)) !gbuo
+            case ('123')
+                call correlate_stack(F0_star_E%rp_ddsp        +dF_star_E%rp_ddsp        -F0_star_Eph%rp_ddsp        , correlate_gradient(:,:,:,1)) !gikpa
+                call correlate_stack(F0_star_E%grad_rp_grad_sp+dF_star_E%grad_rp_grad_sp-F0_star_Eph%grad_rp_grad_sp, correlate_gradient(:,:,:,2)) !gbuo
+            case ('1234')
+                call correlate_stack(F0_star_E%rp_ddsp        +dF_star_E%rp_ddsp        -F0_star_Eph%rp_ddsp        -dF_star_Eph%rp_ddsp        , correlate_gradient(:,:,:,1)) !gikpa
+                call correlate_stack(F0_star_E%grad_rp_grad_sp+dF_star_E%grad_rp_grad_sp-F0_star_Eph%grad_rp_grad_sp-dF_star_Eph%grad_rp_grad_sp, correlate_gradient(:,:,:,2)) !gbuo
+            endselect
 
         ! endif
 
@@ -807,7 +827,9 @@ use m_cpml
         real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: E,ph,v,u
 
         E  = sqrt(v**2+u**2)
-        ph = (atan2(v,u) -r_pi/2.) *E/(E+1e-4*maxval(E)) +r_pi/2. !stablize
+
+        !ph = atan2(v,u)
+        ph = (atan2(v,u) -r_pi/2.) *E/(E+1e-4*maxval(E)) +r_pi/2. !stablize, while r_pi/2 canbe -r_pi/2..
 
     end subroutine
 
@@ -946,8 +968,13 @@ use m_cpml
         ifx=fld%bloom(3,it)
         ilx=fld%bloom(4,it)
 
-        ! fld_d%p = fld_d%p +1.0*dt2*self%kpa*D*fld%p /m%cell_volume !I don't understand why should divide by the cell_volume..
-        call flattend_inject_scattering(fld_d%p,fld%p,self%kpa,D,ifz,ilz,ifx,ilx)
+        !fld_d%p = fld_d%p +1.0*dt2*self%kpa*D*fld%p /m%cell_volume !I don't understand why should divide by the cell_volume..
+        fld_d%p(2:m%nz-1,2:m%nz-1,1) = fld_d%p(2:m%nz-1,2:m%nz-1,1) &
+            ! +1.0*dt2*self%kpa(2:m%nz-1,2:m%nz-1,1)*D(2:m%nz-1,2:m%nz-1,1)*fld%p(2:m%nz-1,2:m%nz-1,1)
+            !+1.0*dt2*self%kpa(2:m%nz-1,2:m%nz-1,1)*D(2:m%nz-1,2:m%nz-1,1)*fld%p(2:m%nz-1,2:m%nz-1,1) /m%cell_volume !I don't understand why should divide by the cell_volume..
+            +1.0*self%kpa(2:m%nz-1,2:m%nz-1,1)*D(2:m%nz-1,2:m%nz-1,1)*fld%p(2:m%nz-1,2:m%nz-1,1) *virtualsrc_scaler !w cell_volume by default
+            
+        ! call flattend_inject_scattering(fld_d%p,fld%p,self%kpa,D,ifz,ilz,ifx,ilx)
 
     end subroutine
 
@@ -1185,10 +1212,51 @@ use m_cpml
         
         else if(corr%purpose=='gradient') then
 
+            !for gikpa
             corr%rp_ddsp = corr%rp_ddsp + &
                 rf%p(1:m%nz,1:m%nx,1:m%ny) * ( sE%p_next(1:m%nz,1:m%nx,1:m%ny)-2*sE%p(1:m%nz,1:m%nx,1:m%ny)+sE%p_prev(1:m%nz,1:m%nx,1:m%ny) )/dt2
 
+            !for gbuo
             call grad2d(rf%p,sE%p,corr%grad_rp_grad_sp,   ifz,ilz,ifx,ilx)
+
+        endif
+
+    end subroutine
+
+    subroutine cross_correlate_Eph(rf,sE,sph,corr,it)
+        type(t_field), intent(in) :: rf, sE, sph
+        type(t_correlate) :: corr
+
+        ! real,dimension(:,:,:),allocatable :: tmp_sf_p
+
+        !nonzero only when sf touches rf
+        ifz=max(sE%bloom(1,it),rf%bloom(1,it),2)
+        ilz=min(sE%bloom(2,it),rf%bloom(2,it),cb%mz)
+        ifx=max(sE%bloom(3,it),rf%bloom(3,it),1)
+        ilx=min(sE%bloom(4,it),rf%bloom(4,it),cb%mx)
+        ! ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
+        ! ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
+        
+        ! if(m%is_cubic) then
+        !     ! call grad3d_moduli(rf%p,sf%vz,sf%vx,sf%vy,&
+        !     !                    grad,                  &
+        !     !                    ifz,ilz,ifx,ilx,ify,ily)
+        ! else
+        !     call grad2d_tilD((rf%p_next-rf%p_prev)/2/dt,(sf%p_next-sf%p_prev)/2/dt,&
+        !                       grad%sp_rp,dt,     &
+        !                       ifz,ilz,ifx,ilx)
+            
+        ! endif
+
+        if(m%is_cubic) then
+        
+        else if(corr%purpose=='gradient') then
+
+            corr%rp_ddsp = corr%rp_ddsp + &
+                rf%p(1:m%nz,1:m%nx,1:m%ny) * sE%p(1:m%nz,1:m%nx,1:m%ny) *((asin(sin(sph%p_next(1:m%nz,1:m%nx,1:m%ny)-sph%p_prev(1:m%nz,1:m%nx,1:m%ny))))*inv_2dt)**2
+
+            !for gbuo [wait]
+            !call grad2d_ph(rf%p,sph%p,corr%grad_rp_grad_sp,   ifz,ilz,ifx,ilx)
 
         endif
 
@@ -1197,26 +1265,26 @@ use m_cpml
 
     !========= Finite-Difference on flattened arrays ==================
     
-    subroutine flattend_inject_scattering(dp,p,kpa,D,ifz,ilz,ifx,ilx)
-        real,dimension(*) :: dp,p,kpa,D
+    ! subroutine flattend_inject_scattering(dp,p,kpa,D,ifz,ilz,ifx,ilx)
+    !     real,dimension(*) :: dp,p,kpa,D
         
-        !$omp parallel default (shared)&
-        !$omp private(i)
-        !$omp do schedule(dynamic)
-        do ix = ifx,ilx
-            !dir$ simd
-            do iz = ifz,ilz
+    !     !$omp parallel default (shared)&
+    !     !$omp private(i)
+    !     !$omp do schedule(dynamic)
+    !     do ix = ifx,ilx
+    !         !dir$ simd
+    !         do iz = ifz,ilz
 
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
 
-                dp(i) = dp(i) +1.*dt2*kpa(i)*D(i)*p(i) /m%cell_volume
+    !             dp(i) = dp(i) +1.*dt2*kpa(i)*D(i)*p(i) /m%cell_volume
 
-            enddo
-        enddo
-        !$omp end do
-        !$omp end parallel
+    !         enddo
+    !     enddo
+    !     !$omp end do
+    !     !$omp end parallel
         
-    end subroutine
+    ! end subroutine
 
     subroutine fd2d_grad_ph_sq(ph, grad_ph_sq, ifz,ilz,ifx,ilx)
         real,dimension(*) :: ph, grad_ph_sq

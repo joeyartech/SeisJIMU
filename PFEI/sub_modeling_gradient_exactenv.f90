@@ -17,11 +17,13 @@ use m_fracderi
     type(t_weighter) :: wei_wl
 
     type(t_field) :: fld_u,fld_v, fld_F0, fld_dF
-    type(t_correlate) :: F0_star_E, dF_star_E
+    type(t_correlate) :: F0_star_E,   dF_star_E
+    type(t_correlate) :: F0_star_Eph, dF_star_Eph
     ! real,dimension(:,:),allocatable :: Wdres
     !real,dimension(:,:,:),allocatable :: Ddt2
     ! character(:),allocatable :: update_wavelet
-    real,dimension(:,:),allocatable :: hilb
+    real,dimension(:,:),allocatable :: tmp
+    real,dimension(:,:,:),allocatable :: term12, term34
 
     character(:),allocatable :: dnorm
     
@@ -76,7 +78,7 @@ use m_fracderi
         call shot%read_wlhilb
         call ppg%init_field(fld_v, name='fld_v');    call fld_v%ignite
         call ppg%forward(fld_v)
-        call fld_v%acquire; !call shot%write('Rv_',shot%dsyn)
+        call fld_v%acquire; call shot%write('Rv_',shot%dsyn)
         
         shot%dsyn_aux = shot%dsyn
         call fld_u%acquire
@@ -85,41 +87,34 @@ use m_fracderi
 
         if(setup%get_str('JOB')=='forward modeling') cycle
 
+        call hud('Converting observed seismogram (dobs) to envelope data via Hilbert transform')
+        tmp=shot%dobs
+        call hilbert_envelope(tmp,shot%dobs,shot%nt,shot%nrcv)
+        call shot%write('denv_',shot%dobs)
+
         call hud('----  Computing dadj=dobs-E[u]=d-RE₀-RδE  ----')
-        !     if(.not.allocated(dnorm)) dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2sq')
-        !     select case (dnorm)
-        !         case ('L2sq')
-        !         fobj%misfit = fobj%misfit &
-        !             + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-(shot%dsyn+shot%dsyn_aux), shot%dt)
-        !         call kernel_L2sq(shot%dadj)
+            call wei%update
+            call alloc(shot%dadj,shot%nt,shot%nrcv)
 
-        !         case ('L2sq_abs')
-        !         fobj%misfit = fobj%misfit &
-        !             + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, abs(shot%dobs)-abs(shot%dsyn+shot%dsyn_aux), shot%dt)
-        !         call kernel_L2sq(shot%dadj)
-        !         shot%dadj = shot%dadj*sgns(shot%dsyn+shot%dsyn_aux)
+            if(.not.allocated(dnorm)) dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2sq')
+            select case (dnorm)
+                case ('L2sq')
+                fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
+                call kernel_L2sq(shot%dadj)
 
-        !         case ('L2sq_modabs')
-        !         fobj%misfit = fobj%misfit &
-        !             + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, abs(shot%dobs)-abs(shot%dsyn+shot%dsyn_aux), shot%dt)
-        !         call kernel_L2sq(shot%dadj)
-        !         shot%dadj = shot%dadj*sgns2(shot%dsyn+shot%dsyn_aux,  shot%dobs-(shot%dsyn+shot%dsyn_aux)  )
+                case ('L2sq_deri')
+                fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, deri(shot%dobs)-deri(shot%dsyn), shot%dt)
+                call kernel_L2sq(shot%dadj)
+                tmp=deri(shot%dadj)
+                shot%dadj=-tmp; deallocate(tmp)
 
-        !         case default
-        !         call error('No DNORM specified!')
-        !         !fobj%misfit = fobj%misfit &
-        !         !    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, (shot%dobs)**2-(shot%dsyn+shot%dsyn_aux)**2, shot%dt)
-        !         !call kernel_L2sq(shot%dadj)
-        !         !shot%dadj = shot%dadj*2.*(shot%dsyn+shot%dsyn_aux)
+                case default
+                call error('No DNORM specified!')
 
-        !     end select
+            end select
 
-        call wei%update
-        call alloc(shot%dadj,shot%nt,shot%nrcv)
-        fobj%misfit = fobj%misfit &
-            + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
-            ! + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn-shot%dsyn_aux, shot%dt)
-        call kernel_L2sq(shot%dadj)
         call shot%write('dadj_',shot%dadj)
 
         
@@ -129,7 +124,9 @@ use m_fracderi
         call ppg%init_field(fld_F0,name='fld_F0',ois_adjoint=.true.);  call fld_F0%ignite
         call ppg%init_correlate(dF_star_E,'dF_star_E','gradient')
         call ppg%init_correlate(F0_star_E,'F0_star_E','gradient')
-        call ppg%adjoint(fld_dF,fld_F0, fld_v,fld_u, dF_star_E,F0_star_E)
+        call ppg%init_correlate(dF_star_Eph,'dF_star_Eph','gradient')
+        call ppg%init_correlate(F0_star_Eph,'F0_star_Eph','gradient')
+        call ppg%adjoint(fld_dF,fld_F0, fld_v,fld_u, dF_star_E,F0_star_E,dF_star_Eph,F0_star_Eph)
 
         call hud('---------------------------------')
 
@@ -155,21 +152,28 @@ use m_fracderi
     if(mpiworld%is_master) then
         call dF_star_E%write
         call F0_star_E%write
+        call dF_star_Eph%write
+        call F0_star_Eph%write
     endif
 
 
 call mpi_allreduce(mpi_in_place, dF_star_E%rp_ddsp, m%n, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
 call mpi_allreduce(mpi_in_place, F0_star_E%rp_ddsp, m%n, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+call mpi_allreduce(mpi_in_place, dF_star_Eph%rp_ddsp, m%n, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+call mpi_allreduce(mpi_in_place, F0_star_Eph%rp_ddsp, m%n, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
 if(mpiworld%is_master) then
     call dF_star_E%write(o_suffix='_stacked')
     call F0_star_E%write(o_suffix='_stacked')
+    call dF_star_Eph%write(o_suffix='_stacked')
+    call F0_star_Eph%write(o_suffix='_stacked')
 
+    term12=  F0_star_E%rp_ddsp+dF_star_E%rp_ddsp
+    term34=-(F0_star_Eph%rp_ddsp+dF_star_Eph%rp_ddsp)
+    den12=sqrt(sum(term12**2,.not.m%is_freeze_zone))
+    den34=sqrt(sum(term34**2,.not.m%is_freeze_zone))
+    costh=sum(term12/den12*term34/den34,.not.m%is_freeze_zone)
 
-    den1=sqrt(sum(F0_star_E%rp_ddsp**2,.not.m%is_freeze_zone))
-    den2=sqrt(sum(dF_star_E%rp_ddsp**2,.not.m%is_freeze_zone))
-    costh=sum(F0_star_E%rp_ddsp/den1*dF_star_E%rp_ddsp/den2,.not.m%is_freeze_zone)
-
-    call hud('Angle between F₀★E & δF★E (w/ mask): '//num2str(acosd(costh))//'°')
+    call hud('Angle between F★E & -F★Eϕ (w/ mask): '//num2str(acosd(costh))//'°')
     
 endif
 
@@ -188,42 +192,23 @@ endif
 
 
     contains
-    pure function sgns(a) result(s)
-    use m_math, only: r_eps
-        real,dimension(:,:),intent(in) :: a
-        real,dimension(:,:),allocatable :: s
-        s=a
-        where (a>r_eps)
-            s=1.
-        elsewhere (a<-r_eps)
-            s=-1.
-        elsewhere
-            s=0.
-        endwhere
-        !where (a>0.)
-        !    s=1.
-        !elsewhere
-        !    s=-1.
-        !endwhere
+    function deri(a) result(d)
+        real,dimension(:,:),allocatable :: a,d
+        intent(in) :: a
+        real inv_2dt
+
+        inv_2dt = 1./2/shot%dt
+        
+        d=a
+        do ir=1,shot%nrcv
+            do it=2,shot%nt-1
+                d(it,ir) = (a(it+1,ir)-a(it-1,ir))*inv_2dt
+            enddo
+                d(1,ir) = d(2,ir)
+                d(shot%nt,ir) = d(shot%nt-1,ir)
+        enddo
+
     end function
 
-    pure function sgns2(a,b) result(s)
-        real,dimension(:,:),intent(in) :: a,b
-        real,dimension(:,:),allocatable :: s
-        s=a
-        where (a>r_eps)
-            s=1.
-        elsewhere (a<-r_eps)
-            s=-1.
-        elsewhere
-            where (b>r_eps)
-                s=1.
-            elsewhere (b<-r_eps)
-                s=-1.
-            elsewhere
-                s=0.
-            endwhere
-        endwhere
-    end function
 
 end subroutine
