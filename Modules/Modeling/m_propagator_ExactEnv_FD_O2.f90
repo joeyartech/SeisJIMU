@@ -768,6 +768,9 @@ use m_cpml
             case ('12')
                 call correlate_stack(F0_star_E%rp_ddsp        +dF_star_E%rp_ddsp        , correlate_gradient(:,:,:,1)) !gikpa
                 call correlate_stack(F0_star_E%grad_rp_grad_sp+dF_star_E%grad_rp_grad_sp, correlate_gradient(:,:,:,2)) !gbuo
+            case ('13')
+                call correlate_stack(F0_star_E%rp_ddsp                                  -F0_star_Eph%rp_ddsp        , correlate_gradient(:,:,:,1)) !gikpa
+                call correlate_stack(F0_star_E%grad_rp_grad_sp                          -F0_star_Eph%grad_rp_grad_sp, correlate_gradient(:,:,:,2)) !gbuo
             case ('123')
                 call correlate_stack(F0_star_E%rp_ddsp        +dF_star_E%rp_ddsp        -F0_star_Eph%rp_ddsp        , correlate_gradient(:,:,:,1)) !gikpa
                 call correlate_stack(F0_star_E%grad_rp_grad_sp+dF_star_E%grad_rp_grad_sp-F0_star_Eph%grad_rp_grad_sp, correlate_gradient(:,:,:,2)) !gbuo

@@ -103,6 +103,14 @@ use m_fracderi
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
                 call kernel_L2sq(shot%dadj)
 
+		case ('L2sq_hilb')
+        	call hilbert_transform(shot%dobs-shot%dsyn,tmp,shot%nt,shot%nrcv)
+                fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, tmp, shot%dt)
+		call kernel_L2sq(shot%dadj)
+	        tmp=-shot%dadj
+        	call hilbert_transform(tmp,shot%dadj,shot%nt,shot%nrcv); deallocate(tmp)
+
                 case ('L2sq_deri')
                 fobj%misfit = fobj%misfit &
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, deri(shot%dobs)-deri(shot%dsyn), shot%dt)
@@ -119,7 +127,7 @@ use m_fracderi
 
         
         call hud('----  Solving AᴴF₀=Rᴴdadj and AᴴδF=DF₀  ----')
-        call hud('----  Forming (F₀+δF)★E  ----')
+        call hud('----  and crosscorrelate  ----')
         call ppg%init_field(fld_dF,name='fld_dF',ois_adjoint=.true.)
         call ppg%init_field(fld_F0,name='fld_F0',ois_adjoint=.true.);  call fld_F0%ignite
         call ppg%init_correlate(dF_star_E,'dF_star_E','gradient')
