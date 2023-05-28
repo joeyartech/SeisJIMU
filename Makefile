@@ -34,13 +34,17 @@ fwi :
 	(cd FWI; make)
 	@printf "\n"
 
+ei :
+	(cd EI; make)
+	@printf "\n"
+
 pfei :
 	(cd PFEI; make)
 	@printf "\n"
 
 
 clean :
-	-rm FWD/*.o FWI/*.o WPI/*.o PFEI/*.o
+	-rm FWD/*.o FWI/*.o WPI/*.o EI/*.o PFEI/*.o
 
 cleanmod :
 	(cd Modules/System; make clean)
