@@ -4,29 +4,23 @@
 ############
 # Modeling #
 ############
-WaveEq=ExactEnv2
-#WaveEq=ExactEnv
-#WaveEq=BornEnv_reconstruct
-#WaveEq=BornEnv_monoD
-#WaveEq=AC2nd
+WaveEq=AC2nd
 #WaveEq=AC
 #WaveEq=AC_VTI
 #WaveEq=PSV
-Solver=FD
-#Solver=FDSG
-#Order=O4
-Order=O2
+Solver=FDSG
+Order=O4
 ShotDec=batching
 
 ##########
 # Kernel #
 ##########
-Param=vp-rho-tilD
+Param=vp-rho
 #Param=velocities-density
 #Param=velocities-density_pseudotime
 #Param=velocities-impedance
 #Param=slowness-density
-App=PFEI
+App=FWI
 
 ################
 # Optimization #

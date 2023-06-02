@@ -16,8 +16,8 @@ mod :
 	(cd ../../Modules/Etc; make)
 	(cd ../../Modules/Signal; make m_Hilbert.o)
 
-#exe : test.o
-exe : main.o
+#exe : main.o
+exe : test.o
 	mpif90 $(FLAGF90) $(MOD) $(obj) $^ -o ../../exe/envelope
 
 clean :

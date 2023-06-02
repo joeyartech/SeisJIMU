@@ -20,8 +20,6 @@ use m_smoother_laplacian_sparse
         real,dimension(:,:,:),allocatable :: eps,del,eta
         real,dimension(:,:,:),allocatable :: qp,qs
 
-        real,dimension(:,:,:),allocatable :: tilD
-
         !prior models
         real,dimension(:,:,:),allocatable :: vp_prior,vs_prior,rho_prior
 
@@ -162,12 +160,6 @@ use m_smoother_laplacian_sparse
                 read(12,rec=i) self%qs
                 call hud('qs model is read.')
 
-
-            case ('tilD')
-                call alloc(self%tilD,self%nz,self%nx,self%ny)
-                read(12,rec=i) self%tilD
-                call hud('tilD model is read.')
-
             end select
 
         enddo
@@ -231,70 +223,6 @@ use m_smoother_laplacian_sparse
         endif
 
         call dealloc(tmp)
-
-        !4th check if tilD model is derived from vp2
-        ! if(setup%get_str('TILD_MODEL_FROM','TILD_FROM',o_default='conditional_-200lapvp2')=='conditional_-200lapvp2') then
-        !     call alloc(self%tilD,self%nz,self%nx,self%ny)
-        !     do ix=2,self%nx-1
-        !     do iz=2,self%nz-1
-        !         if(self%vp(iz+1,ix,1)<self%vp(iz,ix,1)) then
-        !             self%tilD(iz,ix,1) = -200.*( &
-        !                 (self%vp(iz+1,ix,1)**2-2.*self%vp(iz,ix,1)**2+self%vp(iz-1,ix,1)**2)/self%dz**2 &
-        !                +(self%vp(iz,ix+1,1)**2-2.*self%vp(iz,ix,1)**2+self%vp(iz,ix-1,1)**2)/self%dx**2 &
-        !                 )
-        !         endif
-        !     enddo; enddo
-        !     self%tilD(1 ,:,1)     =self%tilD(2   ,:,1)
-        !     self%tilD(self%nz,:,1)=self%tilD(self%nz-1,:,1)
-        !     self%tilD(:,1 ,1)     =self%tilD(:,2   ,1)
-        !     self%tilD(:,self%nx,1)=self%tilD(:,self%nx-1,1)
-
-        !     call hud('tilD model is built from -200∇²vp² where ∂z(vp)<0.')
-
-        !     call sysio_write('starting_tilD',self%tilD,size(self%tilD))
-
-        ! endif
-        if(.not.allocated(self%tilD)) then
-            str=setup%get_str('TILD_MODEL_FROM','TILD_FROM',o_default='conditional_lapvp2')
-            if(str=='conditional_lapvp2') then
-                call alloc(self%tilD,self%nz,self%nx,self%ny)
-                do ix=2,self%nx-1
-                do iz=2,self%nz-1
-                    if(self%vp(iz+1,ix,1)<self%vp(iz,ix,1)) then
-                        self%tilD(iz,ix,1) = -1e-10*( &
-                            (self%vp(iz+1,ix,1)**2-2.*self%vp(iz,ix,1)**2+self%vp(iz-1,ix,1)**2)/self%dz**2 &
-                           +(self%vp(iz,ix+1,1)**2-2.*self%vp(iz,ix,1)**2+self%vp(iz,ix-1,1)**2)/self%dx**2 &
-                            )
-                    endif
-                enddo; enddo
-                self%tilD(1 ,:,1)     =self%tilD(2   ,:,1)
-                self%tilD(self%nz,:,1)=self%tilD(self%nz-1,:,1)
-                self%tilD(:,1 ,1)     =self%tilD(:,2   ,1)
-                self%tilD(:,self%nx,1)=self%tilD(:,self%nx-1,1)
-
-                call hud('tilD model is built from -1e-10*∇²vp² where ∂z(vp)<0.')
-                call sysio_write('derived_tilD',self%tilD,size(self%tilD))
-
-            ! call hud('smoothing the derived tilD model')
-            ! call smoother_Laplacian_init([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],setup%get_real('PEAK_FREQUENCY','FPEAK'))
-            ! call smoother_Laplacian_pseudo_nonstationary(self%tilD(:,:,:),m%vp)
-
-            ! call sysio_write('derived_tilD_smth',self%tilD,size(self%tilD))
-
-            elseif(str=='inverse_rho') then
-                call alloc(self%tilD,self%nz,self%nx,self%ny)
-                if(allocated(self%rho)) then
-                    self%tilD=1./self%rho
-                else
-                    self%tilD=1./1000.
-                endif
-
-                call hud('tilD model is built from 1/rho.')
-                call sysio_write('derived_tilD',self%tilD,size(self%tilD))
-
-            endif
-
-        endif
 
     end subroutine
 
@@ -491,12 +419,6 @@ use m_smoother_laplacian_sparse
                 if(allocated(self%qs)) then
                     write(13,rec=i) self%qs
                     ! call hud('qs model is written.')
-                endif
-
-            case ('tilD')
-                if(allocated(self%tilD)) then
-                    write(13,rec=i) self%tilD
-                    call hud('tilD model is written.')
                 endif
 
             end select
