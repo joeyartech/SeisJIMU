@@ -1,0 +1,47 @@
+MODEL_SIZE              '201   201   1'
+MODEL_SPACING           '10    10    1'
+MODEL_ORIGIN            '0     0     0'
+FILE_MODEL              'model'
+MODEL_ATTRIBUTES        vp
+
+IS_FREESURFACE          F
+
+FILE_DATA_PREFIX        'results_fwd/dsyn_Shot'
+WEIGHTING               'polygon:wei'
+
+IF_BLOOM                F
+
+ACQUI_GEOMETRY          spread
+FS                      '20 500 500'
+FR                      '40 20  0'
+DR                      '0  20  0'
+NR                      100
+
+WAVELET_TYPE            'ricker'
+T0                       0.25
+                       # fsz   fsx  fsy  lsz   lsx    lsy  ns
+#SOURCE_LINE             '26    505  500  20    505    500  1'
+                       # frz   frx  fry  lrz   lrx    lry  nr
+#RECEIVER_LINE           '26    10    0   26    1990   0    100'
+
+SCOMP                     p
+RCOMP                     p #'p vz vx'
+
+IF_HICKS		F
+
+NT           1000
+DT           0.002
+FPEAK        7
+
+PARAMETER     'vp:1500:2000'
+
+SNAPSHOT      p
+
+JOB           gradient
+
+MAX_ITERATE   10
+
+IF_USE_CHECKPOINT   F
+
+
+#why the vz comp of dsyn is weird?
