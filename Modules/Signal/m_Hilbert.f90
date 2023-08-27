@@ -7,7 +7,7 @@ use singleton
 
     subroutine hilbert_transform(din,dout,nt,ntr)
         real,dimension(nt,ntr) :: din
-        real,dimension(:,:),allocatable :: dout
+        real,dimension(nt,ntr) :: dout
 
         complex(fftkind),dimension(nt,ntr) :: dfft
 

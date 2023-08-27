@@ -8,7 +8,8 @@ use m_fobjective
 use m_matchfilter
 use m_smoother_laplacian_sparse
 use m_resampler
-use m_hilbert
+!use m_hilbert
+use m_hilbert_nofft
 
     logical,save :: is_first_in=.true.
 
@@ -96,7 +97,9 @@ use m_hilbert
                 call kernel_L2sq(shot%dadj)
                 call fld_p%ignite(o_wavelet=shot%dadj)
                 call shot%write('dadj_',shot%dadj)
-                tmp=shot%dadj; call hilbert_transform(shot%dadj,tmp,shot%nt,shot%nrcv)
+                tmp=shot%dadj
+                !call hilbert_transform(shot%dadj,tmp,shot%nt,shot%nrcv)
+                call hilbert_nofft('generic',shot%dadj,tmp,shot%nt,shot%nrcv)
                 call fld_q%ignite(o_wavelet=tmp)
 
                 ! case default
