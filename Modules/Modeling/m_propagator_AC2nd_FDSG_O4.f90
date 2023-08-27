@@ -2,7 +2,8 @@ module m_propagator
 use m_System
 use m_hicks, only : hicks_r
 use m_resampler
-use m_hilbert
+!use m_hilbert
+use m_hilbert_nofft
 use m_model
 use m_shot
 use m_computebox
@@ -622,9 +623,14 @@ use m_cpml
                 call cpu_time(tic)
                 call self%update_pressure(fld_v,time_dir,it)
                 call self%update_pressure(fld_u,time_dir,it)
-                call field_separate(fld_v%p_prev,fld_u%p_prev,fld_sD%p_prev,fld_sU%p_prev)
                 call cpu_time(toc)
                 tt4=tt4+toc-tic
+
+                !backward step : separate fields
+                call cpu_time(tic)
+                call field_separate(fld_v%p_prev,fld_u%p_prev,fld_sD%p_prev,fld_sU%p_prev)
+                call cpu_time(toc)
+                tt3=tt3+toc-tic
 
                 !backward step 1: rm p^it at source
                 call cpu_time(tic)
@@ -645,9 +651,14 @@ use m_cpml
             call cpu_time(tic)
             call self%update_pressure(fld_q,time_dir,it)
             call self%update_pressure(fld_p,time_dir,it)
-            call field_separate(fld_q%p_prev,fld_p%p_prev,fld_rD%p_prev,fld_rU%p_prev)
             call cpu_time(toc)
             tt9=tt9+toc-tic
+
+            !adjoint step 4:
+            call cpu_time(tic)
+            call field_separate(fld_q%p_prev,fld_p%p_prev,fld_rD%p_prev,fld_rU%p_prev)
+            call cpu_time(toc)
+            tt13=tt13+toc-tic
 
             !gradient: rf%p^it star sf%p^it
             if(mod(it,irdt)==0) then
@@ -715,10 +726,12 @@ use m_cpml
             write(*,*) 'Elapsed time to load boundary       ',tt2/mpiworld%max_threads
             ! write(*,*) 'Elapsed time to set field           ',tt3/mpiworld%max_threads
             write(*,*) 'Elapsed time to update field        ',tt4/mpiworld%max_threads
+            write(*,*) 'Elapsed time to separate field      ',tt3/mpiworld%max_threads
             write(*,*) 'Elapsed time to rm source           ',tt6/mpiworld%max_threads        
             write(*,*) 'Elapsed time -----------------------'
             write(*,*) 'Elapsed time to add adj & virtual src',tt8/mpiworld%max_threads
             write(*,*) 'Elapsed time to update adj field    ',tt9/mpiworld%max_threads
+            write(*,*) 'Elapsed time to separate adj field  ',tt13/mpiworld%max_threads
             write(*,*) 'Elapsed time to evolve adj field    ',tt11/mpiworld%max_threads
             ! write(*,*) 'Elapsed time to set adj field       ',tt9/mpiworld%max_threads
             write(*,*) 'Elapsed time to extract fields      ',tt12/mpiworld%max_threads
@@ -918,22 +931,34 @@ use m_cpml
         
     end subroutine
 
+    ! subroutine field_separate(v,u,Dn,Up)
+    !     real,dimension(cb%ifz:cb%ilz,cb%ifz:cb%ilz) :: v, u, Dn, Up
+    !     real,dimension(:,:),allocatable :: tmp,tmp2
+
+    !     call alloc(tmp, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+    !     call alloc(tmp2,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+
+    !     tmp=v!(:,:)
+    !     tmp(cb%ifz:0,:)=0.; tmp(cb%mz+1:cb%ilz,:)=0.
+    !     call hilbert_transform(tmp,tmp2,cb%nz,cb%nx)
+    !     ! tmp2(cb%ifz:0,:)=0.;tmp2(cb%mz+1:cb%ilz,:)=0.
+
+    !     !Dn(:,:,1) =(u(:,:,1) +time_dir*tmp2(:,:))/2.
+    !     Dn =(u +tmp2)/2.
+    !     Up = u -Dn
+
+    ! end subroutine
+
     subroutine field_separate(v,u,Dn,Up)
-        real,dimension(cb%ifz:cb%ilz,cb%ifz:cb%ilz) :: v, u, Dn, Up
-        real,dimension(:,:),allocatable :: tmp,tmp2
+        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: v, u, Dn, Up
 
-        call alloc(tmp, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(tmp2,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        ! call hilbert_transform(v,Dn,cb%nz,cb%nx)  !Dn is actually Hz[v] !correct
+        call hilbert_nofft('generic',v,Dn,cb%nz,cb%nx)  !Dn is actually Hz[v]  !BUG: no phase shift
+        !call hilbert_nofft('naive',v,Dn,cb%nz,cb%nx)  !Dn is actually Hz[v] !BUG: yes phase shift but dim is wrong (nz & nx)
 
-        tmp=v!(:,:)
-        tmp(cb%ifz:0,:)=0.; tmp(cb%mz+1:cb%ilz,:)=0.
-        call hilbert_transform(tmp,tmp2,cb%nz,cb%nx)
-        ! tmp2(cb%ifz:0,:)=0.;tmp2(cb%mz+1:cb%ilz,:)=0.
-
-        !Dn(:,:,1) =(u(:,:,1) +time_dir*tmp2(:,:))/2.
-        Dn =(u +tmp2)/2.
+        Dn =(u +Dn)/2.
         Up = u -Dn
-
+        
     end subroutine
 
     subroutine extract(self,f,it)

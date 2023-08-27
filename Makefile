@@ -1,4 +1,4 @@
-Compiler=ifort
+Compiler=gfortran
 
 prepare :
 	-mkdir mod exe

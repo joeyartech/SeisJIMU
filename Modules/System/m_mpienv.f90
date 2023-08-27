@@ -51,6 +51,11 @@ use m_string
         
         self%communicator=either(o_communicator,MPI_COMM_WORLD,present(o_communicator))
         
+        call mpi_get_version(iversion,isubversion,ierr)
+        if(self%is_master) then
+            write(*,'(a,x,i1,a,i1)') 'MPI Version:', iversion,'.',isubversion
+        endif
+
         call mpi_init_thread(either(o_thread_level,MPI_THREAD_SINGLE,present(o_thread_level)),self%thread_level,self%ierr)
         self%max_threads=OMP_GET_MAX_THREADS()
 

@@ -2,6 +2,7 @@ module m_shot
 use m_System
 use m_hicks
 use m_hilbert
+use m_hilbert_nofft
 use m_wavelet
 use m_resampler
 use m_matchfilter
@@ -305,7 +306,8 @@ use m_model
                 call alloc(tmp1,self%nt,1)
                 call alloc(tmp2,self%nt,1)
                 tmp1(:,1)=wavelet_ricker(self%nt,self%dt,self%fpeak)
-                call hilbert_transform(tmp1,tmp2,self%nt,1)
+                !call hilbert_transform(tmp1,tmp2,self%nt,1)
+                call hilbert_nofft('generic',tmp1,tmp2,self%nt,1)
                 self%wavelet=tmp2(:,1)
                 deallocate(tmp1,tmp2)   
             endif
