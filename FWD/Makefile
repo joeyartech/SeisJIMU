@@ -14,6 +14,7 @@ obj = \
 ../Modules/Modeling/m_shotlist_$(ShotDec).o \
 ../Modules/Modeling/m_shot.o \
 ../Modules/Modeling/m_computebox.o \
+../Modules/Modeling/m_correlate.o \
 ../Modules/Modeling/m_field.o \
 ../Modules/Modeling/m_cpml.o \
 ../Modules/Modeling/m_propagator_$(WaveEq)_$(Solver)_$(Order).o \
@@ -33,8 +34,8 @@ mod :
 	(cd ../Modules/Modeling; make)
 
 exe : main.o
-	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/$(app)_$(WaveEq)_$(Solver)_$(Order)
-	(cd ../exe; ln -sf $(app)_$(WaveEq)_$(Solver)_$(Order) $(APP) )
+	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/$(app)_$(WaveEq)_$(Solver)_$(Order)_$(TAG)
+	(cd ../exe; ln -sf $(app)_$(WaveEq)_$(Solver)_$(Order)_$(TAG) $(APP) )
 
 clean :
 	-rm main.o

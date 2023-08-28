@@ -39,7 +39,8 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:,:),allocatable ::     sxx,sxy
         real,dimension(:,:,:),allocatable ::         syy
         real,dimension(:,:,:),allocatable :: shh !szz, sxx or syy
-        real,dimension(:,:,:),allocatable :: p, p_prev, p_next !negated pressure
+        ! real,dimension(:,:,:),allocatable :: p !negated pressure
+        real,dimension(:,:,:),pointer :: p=> null(), p_prev=> null(), p_next=> null() !negated pressure
         !N.B. pressure is defined >0 for inward stress, but here tobe compatible with szz etc, p is defined >0 for outward stress
 
         !boundary components for wavefield recontruction
@@ -56,6 +57,7 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:,:),allocatable :: dshh_dz,dshh_dx,dshh_dy
         real,dimension(:,:,:),allocatable :: dp_dz,dp_dx,dp_dy
         real,dimension(:,:,:),allocatable :: dpzz_dz,dpxx_dx,dpyy_dy
+        real,dimension(:,:,:),allocatable :: lap
         real,dimension(:,:,:),allocatable :: lapz,lapx,lapy
 
         real,dimension(:,:,:),allocatable :: poynz,poynx
@@ -279,6 +281,8 @@ use, intrinsic :: ieee_arithmetic
         if(allocated(self%dpxx_dx))   self%dpxx_dx=0.
         if(allocated(self%dpyy_dy))   self%dpyy_dy=0.
 
+        if(allocated(self%lap)) self%lap=0.
+
         if(allocated(self%lapz)) self%lapz=0.
         if(allocated(self%lapx)) self%lapx=0.
         if(allocated(self%lapy)) self%lapy=0.
@@ -320,7 +324,11 @@ use, intrinsic :: ieee_arithmetic
                     !     call sysio_write('snap_'//self%name//'%vx'//suf,self%vy,size(self%vy),o_mode='append')
                         
                     case ('p')
-                        call sysio_write('snap_'//self%name//'%p'//suf,self%p,size(self%p),o_mode='append')
+                        call sysio_write('snap_'//self%name//'%p'//suf,self%p,cb%n,o_mode='append')
+                    case ('p_prev')
+                        call sysio_write('snap_'//self%name//'%p_prev'//suf,self%p_prev,cb%n,o_mode='append')
+                    case ('p_next')
+                        call sysio_write('snap_'//self%name//'%p_next'//suf,self%p_next,cb%n,o_mode='append')
                     ! case ('szz')
                     !     call sysio_write('snap_'//self%name//'%szz'//suf,self%szz,size(self%szz),o_mode='append')
                     ! case ('sxx')
@@ -328,14 +336,17 @@ use, intrinsic :: ieee_arithmetic
                     ! case ('szx')
                     !     call sysio_write('snap_'//self%name//'%szx'//suf,self%szx,size(self%szx),o_mode='append')
                     case ('dp_dz')
-                        call sysio_write('snap_'//self%name//'%dp_dz'//suf,self%dp_dz,size(self%dp_dz),o_mode='append')
+                        call sysio_write('snap_'//self%name//'%dp_dz'//suf,self%dp_dz,cb%n,o_mode='append')
                     case ('lapz')
-                        call sysio_write('snap_'//self%name//'%lapz'//suf,self%lapz,size(self%lapz),o_mode='append')
+                        call sysio_write('snap_'//self%name//'%lapz'//suf,self%lapz,cb%n,o_mode='append')
+                        case ('lapx')
+                        call sysio_write('snap_'//self%name//'%lapx'//suf,self%lapx,cb%n,o_mode='append')
 
                     case ('poynz')
-                        call sysio_write('snap_'//self%name//'%poynz'//suf,self%poynz,size(self%poynz),o_mode='append')
+                        call sysio_write('snap_'//self%name//'%poynz'//suf,self%poynz,cb%n,o_mode='append')
                     case ('poynx')
-                        call sysio_write('snap_'//self%name//'%poynx'//suf,self%poynx,size(self%poynx),o_mode='append')
+                        call sysio_write('snap_'//self%name//'%poynx'//suf,self%poynx,cb%n,o_mode='append')
+
                     end select
                 enddo
             endif
@@ -577,7 +588,7 @@ use, intrinsic :: ieee_arithmetic
         !deallocate(self%name)
 
         call dealloc(self%vz,self%vx,self%vy)
-        call dealloc(self%szz,self%szx,self%szy,self%sxx,self%sxy,self%shh,self%p)
+        call dealloc(self%szz,self%szx,self%szy,self%sxx,self%sxy,self%shh)!,self%p)
 
         call dealloc(self%bnd%vz_top,  self%bnd%vz_bot)
         call dealloc(self%bnd%vx_left, self%bnd%vx_right)
@@ -592,6 +603,8 @@ use, intrinsic :: ieee_arithmetic
         call dealloc(self%dszx_dx,self%dsxx_dx)
         call dealloc(self%dshh_dz,self%dshh_dx,self%dshh_dy)
         call dealloc(self%dp_dz,self%dp_dx,self%dp_dy)
+
+        call dealloc(self%lap)
 
         call dealloc(self%wavelet)
 
@@ -629,12 +642,12 @@ use, intrinsic :: ieee_arithmetic
                 call chp%read(self%vz, self%vx, self%vy )
                 call chp%read(self%szz,self%szx,self%szy)
                 call chp%read(self%sxx,self%sxy,self%syy)
-                call chp%read(self%shh,self%p)
+                call chp%read(self%shh)!,self%p)
                 call chp%close
                 call hud('Read '//self%name//'%vz,vx,vy from '//chp%name//', size='//num2str(total_size(self%vz,self%vx,self%vy)))
                 call hud('Read '//self%name//'%szz,szx,szy from '//chp%name//', size='//num2str(total_size(self%szz,self%szx,self%szy)))
                 call hud('Read '//self%name//'%sxx,sxy,syy from '//chp%name//', size='//num2str(total_size(self%sxx,self%sxy,self%syy)))
-                call hud('Read '//self%name//'%shh,p from '//chp%name//', size='//num2str(total_size(self%shh,self%p)))
+                !call hud('Read '//self%name//'%shh,p from '//chp%name//', size='//num2str(total_size(self%shh,self%p)))
             case ('boundary')
                 call chp%open(self%name//'%boundary')
                 call chp%read(self%bnd%vz_top,  self%bnd%vz_bot  )
@@ -670,7 +683,7 @@ use, intrinsic :: ieee_arithmetic
                 call chp%write(self%vz, self%vx, self%vy )
                 call chp%write(self%szz,self%szx,self%szy)
                 call chp%write(self%sxx,self%sxy,self%syy)
-                call chp%write(self%shh,self%p)
+                call chp%write(self%shh)!,self%p)
                 call chp%close
             case ('boundary')
                 call chp%open(self%name//'%boundary')

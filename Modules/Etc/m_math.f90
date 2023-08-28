@@ -32,7 +32,10 @@ module m_math
     !p    - +
     !m    - -
     !d    - ∂
-    !nbla, nabla - ∇
+    !grad - ∇
+    !div  - ∇·
+    !curv - ∇x
+    !lap  - ∇·∇, ∇·b∇
     !inv  - inverse
     !_    - subscript, inverse, division, duplicate etc.
 
@@ -53,7 +56,7 @@ module m_math
     !math constants
     real,parameter :: r_pi = 3.1415927
     double precision,parameter :: d_pi = 3.1415926535897932d0
-    !real,parameter :: r_epsilon = epsilon(r_pi)
+    real,parameter :: r_epsilon = epsilon(r_pi)
     real,parameter :: r_eps=1e-15 !1e-3
     complex,parameter :: c_i=cmplx(0.,1.)
     

@@ -2,11 +2,12 @@ module m_propagator
 use m_System
 use m_hicks, only : hicks_r
 use m_resampler
+use m_hilbert
 use m_model
 use m_shot
 use m_computebox
 use m_field
-use m_correlation
+use m_correlate
 use m_cpml
 
     private
@@ -16,6 +17,9 @@ use m_cpml
     
     real :: c1x, c1y, c1z
     real :: c2x, c2y, c2z
+
+    !scaling source wavelet
+    real :: wavelet_scaler
 
     type,public :: t_propagator
         !info
@@ -54,10 +58,12 @@ use m_cpml
         procedure :: check_discretization
         procedure :: init
         procedure :: init_field
+        procedure :: init_correlate
         procedure :: init_abslayer
 
         procedure :: forward
         procedure :: adjoint
+        ! procedure :: adjoint_3terms
         
         procedure :: inject_velocities
         procedure :: inject_stresses
@@ -151,6 +157,8 @@ use m_cpml
         c1x=coef(1)/m%dx; c1y=coef(1)/m%dy; c1z=coef(1)/m%dz
         c2x=coef(2)/m%dx; c2y=coef(2)/m%dy; c2z=coef(2)/m%dz
         
+        wavelet_scaler=self%dt/m%cell_volume
+
         if_hicks=shot%if_hicks
 
         call alloc(self%buoz,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -225,6 +233,18 @@ use m_cpml
         call alloc(f%poynz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%poynx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
                 
+    end subroutine
+
+    subroutine init_correlate(self,corr,name)
+        class(t_propagator) :: self
+        type(t_correlate) :: corr
+        character(*) :: name
+        
+        corr%name=name
+
+        call alloc(corr%gkpa,m%nz,m%nx,m%ny)
+        call alloc(corr%grho,m%nz,m%nx,m%ny)
+
     end subroutine
 
     subroutine init_abslayer(self)
@@ -439,19 +459,13 @@ use m_cpml
 
     end subroutine
 
-    subroutine adjoint(self,fld_a,fld_u,oif_record_adjseismo,o_a_star_u)
-    !adjoint_a_star_Du for imaging
+    subroutine adjoint(self,fld_a,fld_u,a_star_u)
+    !adjoint_a_star_Du
         class(t_propagator) :: self
         type(t_field) :: fld_a,fld_u
-        logical,optional :: oif_record_adjseismo
-        type(t_correlation),optional :: o_a_star_u
+        type(t_correlate) :: a_star_u
         
         real,parameter :: time_dir=-1. !time direction
-        logical :: if_record_adjseismo
-        character(:),allocatable :: s_poynting_def
-
-        if_record_adjseismo =either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
-        if(if_record_adjseismo)  call alloc(fld_a%seismo,1,self%nt)
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
         call fld_u%reinit
@@ -522,13 +536,28 @@ use m_cpml
             tt6=tt6+toc-tic
             
             !gkpa: rf%s^it+0.5 star D sf%s_dt^it+0.5
-            !use sf%v^it+1 to compute sf%s_dt^it+0.5, as backward step 4
-            if(mod(it,irdt)==0 .and. present(o_a_star_u)) then
+            !use sf%v^it+1 to compute sf%s_dt^it+0.5, as backward step
+
+            if(mod(it,irdt)==0) then
                 call cpu_time(tic)
-                call imaging(fld_a,fld_u,it,o_a_star_u%rp_sp)
+                call cross_correlate_imaging(fld_a,fld_u,a_star_u,it)
                 call cpu_time(toc)
                 tt7=tt7+toc-tic
             endif
+
+            if(mod(it,irdt)==0) then
+                call cpu_time(tic)
+                call cross_correlate_gkpa(fld_a,fld_u,a_star_u,it)
+                call cpu_time(toc)
+                tt6=tt6+toc-tic
+            endif
+
+            ! if(if_compute_imag.and.mod(it,irdt)==0) then
+            !     call cpu_time(tic)
+            !     call imaging(fld_a,fld_u,it,cb%imag)
+            !     call cpu_time(toc)
+            !     tt6=tt6+toc-tic
+            ! endif
 
             ! !energy term of sfield
             ! if(self%if_compute_engy.and.mod(it,irdt)==0) then
@@ -576,45 +605,47 @@ use m_cpml
                 tt12=tt12+toc-tic
             endif
             
-            ! !grho: sfield%v_dt^it \dot rfield%v^it
-            ! !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
-            ! if(if_compute_grad.and.mod(it,irdt)==0) then
-            !     call cpu_time(tic)
-            !     call gradient_density(fld_a,fld_u,it,cb%grad(:,:,:,1))
-            !     call cpu_time(toc)
-            !     tt6=tt6+toc-tic
-            ! endif
+            !grho: sfield%v_dt^it \dot rfield%v^it
+            !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
+            if(mod(it,irdt)==0) then
+                call cpu_time(tic)
+                call cross_correlate_grho(fld_a,fld_u,a_star_u,it)
+                call cpu_time(toc)
+                tt6=tt6+toc-tic
+            endif
             
             !snapshot
             call fld_a%write(it,o_suffix='_rev')
             call fld_u%write(it,o_suffix='_rev')
-            if(present(o_a_star_u)) then
-                call fld_a%write_ext(it,'corr_a_star_u',o_a_star_u%rp_sp,m%n)
-            endif
+
+            ! if(if_compute_imag) then
+            !     call fld_a%write_ext(it,'imag' ,cb%imag,size(cb%imag))
+            ! endif
+            ! if(if_compute_grad) then
+            !     ! call fld_a%write_ext(it,'grad_density',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
+            !     ! call fld_a%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+            !     call fld_a%write_ext(it,'grad_a_star_Du' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+            ! endif
+
             ! if(self%if_compute_engy) then
             !     call fld_a%write_ext(it,'engy',cb%engy(:,:,:,1),size(cb%engy(:,:,:,1)))
             ! endif
 
         enddo
-        
-        ! !postprocess
-        ! if(if_compute_imag) call imaging_postprocess
-        ! if(if_compute_grad) call gradient_postprocess
-        
+
         if(mpiworld%is_master) then
             write(*,*) 'Elapsed time to load boundary            ',tt1/mpiworld%max_threads
             write(*,*) 'Elapsed time to update stresses          ',tt2/mpiworld%max_threads
             write(*,*) 'Elapsed time to rm source stresses       ',tt3/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update velocities        ',tt8/mpiworld%max_threads
-            write(*,*) 'Elapsed time to rm source velocities     ',tt9/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update velocities        ',tt7/mpiworld%max_threads
+            write(*,*) 'Elapsed time to rm source velocities     ',tt8/mpiworld%max_threads
             write(*,*) 'Elapsed time ----------------------------'
             write(*,*) 'Elapsed time to add adjsource stresses   ',tt4/mpiworld%max_threads
             write(*,*) 'Elapsed time to update adj stresses      ',tt5/mpiworld%max_threads
-            write(*,*) 'Elapsed time to add adjsource velocities ',tt10/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update adj velocities    ',tt11/mpiworld%max_threads
-            write(*,*) 'Elapsed time to extract&write fields     ',tt12/mpiworld%max_threads
-            write(*,*) 'Elapsed time to Poynting vectors         ',tt6/mpiworld%max_threads
-            write(*,*) 'Elapsed time to correlate                ',tt7/mpiworld%max_threads
+            write(*,*) 'Elapsed time to add adjsource velocities ',tt9/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update adj velocities    ',tt10/mpiworld%max_threads
+            write(*,*) 'Elapsed time to extract&write fields     ',tt11/mpiworld%max_threads
+            write(*,*) 'Elapsed time to correlate                ',tt6/mpiworld%max_threads
 
         endif
 
@@ -622,9 +653,221 @@ use m_cpml
         call hud('ximage < snap_rfield%*  n1='//num2str(cb%nz)//' perc=99')
         call hud('xmovie < snap_rfield%*  n1='//num2str(cb%nz)//' n2='//num2str(cb%nx)//' clip=?e-?? loop=2 title=%g')
         call hud('ximage < snap_*  n1='//num2str(cb%mz)//' perc=99')
-        call hud('xmovie < snap_*  n1='//num2str(cb%mz)//' n2='//num2str(cb%mx)//' clip=?e-?? loop=2 title=%g')
+        call hud('xmovie < snap_*  n1='//num2str(cb%mz)//' n2='//num2str(cb%mx)//' clip=?e-?? loop=2 title=%g')    
+       
+        !postprocess
+        call a_star_u%scale(m%cell_volume*rdt)
         
+        call correlate_stack(a_star_u%gkpa, correlate_gradient(:,:,:,1))
+        call correlate_stack(a_star_u%grho, correlate_gradient(:,:,:,2))
+
     end subroutine
+
+    ! subroutine adjoint_3terms(self,fld_q,fld_p,fld_v,fld_u,D_star_D,D_star_U,U_star_D)
+    !     class(t_propagator) :: self
+    !     type(t_field) :: fld_q,fld_p,fld_v,fld_u
+    !     type(t_correlate) :: D_star_D, D_star_U, U_star_D
+
+    !     real,parameter :: time_dir=-1. !time direction
+        
+    !     type(t_field) :: fld_rD,fld_rU,fld_sD,fld_sU
+    !     call self%init_field(fld_rD,name='fld_rD',ois_adjoint=.true.)
+    !     call self%init_field(fld_rU,name='fld_rU',ois_adjoint=.true.)
+    !     call self%init_field(fld_sD,name='fld_sD')
+    !     call self%init_field(fld_sU,name='fld_sU')
+
+    !     !reinitialize absorbing boundary for incident wavefield reconstruction
+    !     call fld_v%reinit
+    !     call fld_u%reinit
+                    
+    !     !timing
+    !     tt1=0.; tt2=0.; tt3=0.
+    !     tt4=0.; tt5=0.; tt6=0.
+    !     tt7=0.; tt8=0.; tt9=0.
+    !     tt10=0.;tt11=0.; tt12=0.; tt13=0.
+        
+    !     ift=1; ilt=self%nt
+
+    !     ! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        
+    !     do it=ilt,ift,int(time_dir)
+    !         if(mod(it,500)==0 .and. mpiworld%is_master) then
+    !             write(*,*) 'it----',it
+    !             call fld_q%check_value
+    !             call fld_p%check_value
+    !             call fld_v%check_value
+    !             call fld_u%check_value
+    !         endif            
+
+    !         !do backward time stepping to reconstruct the source (incident) wavefield
+    !         !and adjoint time stepping to compute the receiver (adjoint) field
+    !         !step# conforms with forward time stepping
+
+    !         ! if(present(o_sf)) then
+
+    !             !backward step 6: retrieve v^it+1 at boundary layers (BC)
+    !             call cpu_time(tic)
+    !             call fld_v%boundary_transport('load',it)
+    !             call fld_u%boundary_transport('load',it)
+    !             call cpu_time(toc)
+    !             tt1=tt1+toc-tic
+                
+    !             !backward step 4: s^it+1.5 -> s^it+0.5 by FD of v^it+1
+    !             call cpu_time(tic)
+    !             call self%update_stresses(fld_v,time_dir,it)
+    !             call self%update_stresses(fld_u,time_dir,it)
+    !             call cpu_time(toc)
+    !             tt2=tt2+toc-tic
+
+    !             !backward step 3: rm pressure from s^it+0.5
+    !             call cpu_time(tic)
+    !             call self%inject_stresses(fld_v,time_dir,it)
+    !             call self%inject_stresses(fld_u,time_dir,it)
+    !             call cpu_time(toc)
+    !             tt3=tt3+toc-tic
+    !         ! endif
+
+    !         !--------------------------------------------------------!
+
+    !         !adjoint step 5: inject to s^it+1.5 at receivers
+    !         call cpu_time(tic)
+    !         call self%inject_stresses(fld_q,time_dir,it)
+    !         call self%inject_stresses(fld_p,time_dir,it)
+    !         call cpu_time(toc)
+    !         tt4=tt4+toc-tic
+
+    !         !adjoint step 4: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
+    !         call cpu_time(tic)
+    !         call self%update_stresses(fld_q,time_dir,it)
+    !         call self%update_stresses(fld_p,time_dir,it)
+    !         call cpu_time(toc)
+    !         tt5=tt5+toc-tic
+
+    !         !gkpa: rf%s^it+0.5 star D sf%s_dt^it+0.5
+    !         !use sf%v^it+1 to compute sf%s_dt^it+0.5, as backward step 4
+    !         if(mod(it,irdt)==0) then
+    !             call cpu_time(tic)
+    !             call field_separate(fld_q,fld_p,fld_rD,fld_rU)
+    !             call field_separate(fld_v,fld_u,fld_sD,fld_sU)
+    !             call cross_correlate_gkpa(fld_rD,fld_sD,D_star_D,it)
+    !             call cross_correlate_gkpa(fld_rD,fld_sU,D_star_U,it)
+    !             call cross_correlate_gkpa(fld_rU,fld_sD,U_star_D,it)
+                
+    !             call cpu_time(toc)
+    !             tt6=tt6+toc-tic
+    !         endif
+
+    !         ! !energy term of sfield
+    !         ! if(self%if_compute_engy.and.mod(it,irdt)==0) then
+    !         !     call cpu_time(tic)
+    !         !     call energy(fld_u,it,cb%engy)
+    !         !     call cpu_time(toc)
+    !         !     tt6=tt6+toc-tic
+    !         ! endif
+                
+    !         !========================================================!
+
+    !         ! if(present(o_sf)) then
+    !             !backward step 2: v^it+1 -> v^it by FD of s^it+0.5
+    !             call cpu_time(tic)
+    !             call self%update_velocities(fld_v,time_dir,it)
+    !             call self%update_velocities(fld_u,time_dir,it)
+    !             call cpu_time(toc)
+    !             tt7=tt7+toc-tic
+
+    !             !backward step 1: rm forces from v^it
+    !             call cpu_time(tic)
+    !             call self%inject_velocities(fld_v,time_dir,it)
+    !             call self%inject_velocities(fld_u,time_dir,it)
+    !             call cpu_time(toc)
+    !             tt8=tt8+toc-tic
+    !         ! endif
+
+    !         !--------------------------------------------------------!
+
+    !         !adjoint step 3: inject to v^it+1 at receivers
+    !         call cpu_time(tic)
+    !         call self%inject_velocities(fld_q,time_dir,it)
+    !         call self%inject_velocities(fld_p,time_dir,it)
+    !         call cpu_time(toc)
+    !         tt9=tt9+toc-tic
+
+    !         !adjoint step 2: v^it+1 -> v^it by FD^T of s^it+0.5
+    !         call cpu_time(tic)
+    !         call self%update_velocities(fld_q,time_dir,it)
+    !         call self%update_velocities(fld_p,time_dir,it)
+    !         call cpu_time(toc)
+    !         tt10=tt10+toc-tic
+            
+    !         ! !adjoint step 1: sample v^it or s^it+0.5 at source position
+    !         ! if(if_record_adjseismo) then
+    !         !     call cpu_time(tic)
+    !         !     call self%extract(fld_a,it)
+    !         !     call cpu_time(toc)
+    !         !     tt11=tt11+toc-tic
+    !         ! endif
+            
+    !         ! !grho: sfield%v_dt^it \dot rfield%v^it
+    !         ! !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
+    !         ! if(if_compute_grad.and.mod(it,irdt)==0) then
+    !         !     call cpu_time(tic)
+    !         !     call gradient_density(fld_a,fld_u,it,cb%grad(:,:,:,1))
+    !         !     call cpu_time(toc)
+    !         !     tt6=tt6+toc-tic
+    !         ! endif
+            
+    !         !snapshot
+    !         call fld_p %write(it,o_suffix='_rev')
+    !         call fld_rD%write(it,o_suffix='_rev')
+    !         call fld_rU%write(it,o_suffix='_rev')
+    !         call fld_u %write(it,o_suffix='_rev')
+    !         call fld_sD%write(it,o_suffix='_rev')
+    !         call fld_sU%write(it,o_suffix='_rev')
+            
+    !         ! call fld_a%write_ext(it,'grad_density',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
+    !         ! call fld_a%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
+    !         call D_star_D%write(it,o_suffix='_rev')
+    !         call D_star_U%write(it,o_suffix='_rev')
+    !         call U_star_D%write(it,o_suffix='_rev')
+        
+    !     enddo
+
+    !     if(mpiworld%is_master) then
+    !         write(*,*) 'Elapsed time to load boundary            ',tt1/mpiworld%max_threads
+    !         write(*,*) 'Elapsed time to update stresses          ',tt2/mpiworld%max_threads
+    !         write(*,*) 'Elapsed time to rm source stresses       ',tt3/mpiworld%max_threads
+    !         write(*,*) 'Elapsed time to update velocities        ',tt8/mpiworld%max_threads
+    !         write(*,*) 'Elapsed time to rm source velocities     ',tt9/mpiworld%max_threads
+    !         write(*,*) 'Elapsed time ----------------------------'
+    !         write(*,*) 'Elapsed time to add adjsource stresses   ',tt4/mpiworld%max_threads
+    !         write(*,*) 'Elapsed time to update adj stresses      ',tt5/mpiworld%max_threads
+    !         write(*,*) 'Elapsed time to add adjsource velocities ',tt10/mpiworld%max_threads
+    !         write(*,*) 'Elapsed time to update adj velocities    ',tt11/mpiworld%max_threads
+    !         write(*,*) 'Elapsed time to extract&write fields     ',tt12/mpiworld%max_threads
+    !         write(*,*) 'Elapsed time to Poynting vectors         ',tt6/mpiworld%max_threads
+    !         write(*,*) 'Elapsed time to correlate                ',tt7/mpiworld%max_threads
+
+    !     endif
+
+    !     call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
+    !     call hud('ximage < snap_rfield%*  n1='//num2str(cb%nz)//' perc=99')
+    !     call hud('xmovie < snap_rfield%*  n1='//num2str(cb%nz)//' n2='//num2str(cb%nx)//' clip=?e-?? loop=2 title=%g')
+    !     call hud('ximage < snap_*  n1='//num2str(cb%mz)//' perc=99')
+    !     call hud('xmovie < snap_*  n1='//num2str(cb%mz)//' n2='//num2str(cb%mx)//' clip=?e-?? loop=2 title=%g')
+
+        
+    !     !postprocess
+    !     !scale by m%cell_volume*rdt tobe an image or gradient in the discretized world
+    !     call D_star_D%scale(m%cell_volume*rdt)
+    !     call D_star_U%scale(m%cell_volume*rdt)
+    !     call U_star_D%scale(m%cell_volume*rdt)
+
+    !     call correlate_stack(D_star_D%gkpa,     correlate_gradient(:,:,:,1))
+    !     call correlate_stack(D_star_U%gkpa,     correlate_gradient(:,:,:,1))
+    !     call correlate_stack(U_star_D%gkpa,     correlate_gradient(:,:,:,1))
+    !     ! call correlate_stack(                                  D_star_D%div_rp_div_sp, correlate_gradient(:,:,:,2)) !gbuo
+        
+    ! end subroutine
 
 
     !forward: add RHS to v^it
@@ -762,7 +1005,7 @@ use m_cpml
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
             ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
             
-            wl=time_dir*f%wavelet(1,it)
+            wl=time_dir*f%wavelet(1,it)*wavelet_scaler
             
             if(if_hicks) then
                 if(shot%src%comp=='p') then
@@ -790,7 +1033,7 @@ use m_cpml
                     ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
                     
                     !adjsource for pressure
-                    wl=f%wavelet(i,it)
+                    wl=f%wavelet(i,it)*wavelet_scaler
                     
                     if(if_hicks) then 
 
@@ -837,6 +1080,18 @@ use m_cpml
         
         !apply free surface boundary condition if needed
         if(m%is_freesurface) call fd_freesurface_stresses(f%p)
+
+    end subroutine
+
+    subroutine field_separate(v,u,upgoing,downgoing)
+        type(t_field) :: v, u, upgoing, downgoing
+        real,dimension(:,:),allocatable :: tmp
+
+        call alloc(tmp,cb%nz,cb%nx)
+        
+        call hilbert_transform(v%p(:,:,1),tmp,cb%nz,cb%nx)
+        downgoing%p(:,:,1) =u%p(:,:,1) +tmp
+        upgoing%p          =u%p        -downgoing%p
 
     end subroutine
 
@@ -950,10 +1205,10 @@ use m_cpml
     !For imaging:
     !I = ∫ a u dt =: a★u
 
-    subroutine gradient_density(rf,sf,it,grad)
+    subroutine cross_correlate_grho(rf,sf,corr,it)
         type(t_field), intent(in) :: rf, sf
-        real,dimension(cb%mz,cb%mx,cb%my) :: grad
-        
+        type(t_correlate) :: corr
+
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
         ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
@@ -963,20 +1218,20 @@ use m_cpml
         ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
         
         if(m%is_cubic) then
-            call grad3d_density(rf%vz,rf%vx,rf%vy,sf%p,&
-                                grad,                  &
-                                ifz,ilz,ifx,ilx,ify,ily)
+            call grad3d_grho(rf%vz,rf%vx,rf%vy,sf%p,&
+                             corr%grho,             &
+                             ifz,ilz,ifx,ilx,ify,ily)
         else
-            call grad2d_density(rf%vz,rf%vx,sf%p,&
-                                grad,            &
-                                ifz,ilz,ifx,ilx)
+            call grad2d_grho(rf%vz,rf%vx,sf%p,&
+                             corr%grho,       &
+                             ifz,ilz,ifx,ilx)
         endif
         
     end subroutine
 
-    subroutine gradient_moduli(rf,sf,it,grad)
+    subroutine cross_correlate_gkpa(rf,sf,corr,it)
         type(t_field), intent(in) :: rf, sf
-        real,dimension(cb%mz,cb%mx,cb%my) :: grad
+        type(t_correlate) :: corr
 
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
@@ -987,9 +1242,9 @@ use m_cpml
         ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
         
         if(m%is_cubic) then
-            call grad3d_moduli(rf%p,sf%vz,sf%vx,sf%vy,&
-                               grad,                  &
-                               ifz,ilz,ifx,ilx,ify,ily)
+            call grad3d_gkpa(rf%p,sf%vz,sf%vx,sf%vy,&
+                             corr%gkpa,             &
+                             ifz,ilz,ifx,ilx,ify,ily)
         else
             ! call grad2d_moduli(rf%p,sf%p,sf_p_save,&
             !                    grad,            &
@@ -997,9 +1252,9 @@ use m_cpml
             ! sf_p_save = sf%p
             
             !inexact greadient
-            call grad2d_moduli(rf%p,sf%vz,sf%vx,&
-                               grad,            &
-                               ifz,ilz,ifx,ilx)
+            call grad2d_gkpa(rf%p,sf%vz,sf%vx,&
+                             corr%gkpa,       &
+                             ifz,ilz,ifx,ilx)
         endif
         
     end subroutine
@@ -1468,9 +1723,9 @@ use m_cpml
     end subroutine
 
     
-    subroutine grad3d_moduli(rf_p,sf_vz,sf_vx,sf_vy,&
-                             grad,                  &
-                             ifz,ilz,ifx,ilx,ify,ily)
+    subroutine grad3d_gkpa(rf_p,sf_vz,sf_vx,sf_vy,&
+                           grad,                  &
+                           ifz,ilz,ifx,ilx,ify,ily)
         real,dimension(*) :: rf_p,sf_vz,sf_vx,sf_vy
         real,dimension(*) :: grad
         
@@ -1571,9 +1826,9 @@ use m_cpml
 
     ! end subroutine
 
-    subroutine grad2d_moduli(rf_p,sf_vz,sf_vx,&
-                             grad,            &
-                             ifz,ilz,ifx,ilx)
+    subroutine grad2d_gkpa(rf_p,sf_vz,sf_vx,&
+                           grad,            &
+                           ifz,ilz,ifx,ilx)
         real,dimension(*) :: rf_p,sf_vz,sf_vx
         real,dimension(*) :: grad
         
@@ -1597,8 +1852,8 @@ use m_cpml
             !dir$ simd
             do iz=ifz,ilz
                 
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
                 izm1_ix=i-1  !iz-1,ix
                 iz_ix  =i    !iz,ix
@@ -1625,9 +1880,9 @@ use m_cpml
 
     end subroutine
     
-    subroutine grad3d_density(rf_vz,rf_vx,rf_vy,sf_p,&
-                              grad,                  &
-                              ifz,ilz,ifx,ilx,ify,ily)
+    subroutine grad3d_grho(rf_vz,rf_vx,rf_vy,sf_p,&
+                           grad,                  &
+                           ifz,ilz,ifx,ilx,ify,ily)
         real,dimension(*) :: rf_vz,rf_vx,rf_vy,sf_p
         real,dimension(*) :: grad
         
@@ -1695,9 +1950,9 @@ use m_cpml
         
     end subroutine
     
-    subroutine grad2d_density(rf_vz,rf_vx,sf_p,&
-                              grad,            &
-                              ifz,ilz,ifx,ilx)
+    subroutine grad2d_grho(rf_vz,rf_vx,sf_p,&
+                           grad,            &
+                           ifz,ilz,ifx,ilx)
         real,dimension(*) :: rf_vz,rf_vx,sf_p
         real,dimension(*) :: grad
         
@@ -1844,8 +2099,8 @@ use m_cpml
             !dir$ simd
             do iz=ifz,ilz
                 
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
                 rp = rf_p(i)
                 sp = sf_p(i)
@@ -1916,8 +2171,8 @@ use m_cpml
             !dir$ simd
             do iz=ifz,ilz
                 
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
                 sp = sf_p(i)
                 

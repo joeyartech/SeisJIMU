@@ -13,7 +13,7 @@ obj = \
 ../../Modules/Modeling/m_shotlist_$(ShotDec).o \
 ../../Modules/Modeling/m_shot.o \
 ../../Modules/Modeling/m_computebox.o \
-../../Modules/Modeling/m_correlation.o \
+../../Modules/Modeling/m_correlate.o \
 ../../Modules/Modeling/m_field.o \
 ../../Modules/Modeling/m_cpml.o \
 ../../Modules/Modeling/m_propagator_$(WaveEq)_$(Solver)_$(Order).o \
@@ -44,7 +44,7 @@ mod :
 	(cd ../../Modules/Optimization; make m_linesearcher_$(LineS).o)
 
 
-exe : ../../PFEI/sub_modeling_gradient.o main.o sub_optimizer_init_loop.o
+exe : ../../$(App)/sub_modeling_gradient.o main.o sub_optimizer_init_loop.o
 	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../../exe/gradienttest_$(WaveEq)_$(Solver)_$(Order)_$(Param)
 	(cd ../../exe; ln -sf gradienttest_$(WaveEq)_$(Solver)_$(Order)_$(Param) GradientTest )
 
