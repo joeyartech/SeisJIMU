@@ -316,10 +316,10 @@ use, intrinsic :: ieee_arithmetic
             if(it==1 .or. mod(it,i_snapshot)==0 .or. it==nt) then
                 do i=1,size(snapshot)
                     select case (snapshot(i)%s)
-                    ! case ('vz')
-                    !     call sysio_write('snap_'//self%name//'%vz'//suf,self%vz,size(self%vz),o_mode='append')
-                    ! case ('vx')
-                    !     call sysio_write('snap_'//self%name//'%vx'//suf,self%vx,size(self%vx),o_mode='append')
+                    case ('vz')
+                        call sysio_write('snap_'//self%name//'%vz'//suf,self%vz,cb%n,o_mode='append')
+                    case ('vx')
+                        call sysio_write('snap_'//self%name//'%vx'//suf,self%vx,cb%n,o_mode='append')
                     ! case ('vy')
                     !     call sysio_write('snap_'//self%name//'%vx'//suf,self%vy,size(self%vy),o_mode='append')
                         
@@ -339,7 +339,7 @@ use, intrinsic :: ieee_arithmetic
                         call sysio_write('snap_'//self%name//'%dp_dz'//suf,self%dp_dz,cb%n,o_mode='append')
                     case ('lapz')
                         call sysio_write('snap_'//self%name//'%lapz'//suf,self%lapz,cb%n,o_mode='append')
-                        case ('lapx')
+                    case ('lapx')
                         call sysio_write('snap_'//self%name//'%lapx'//suf,self%lapx,cb%n,o_mode='append')
 
                     case ('poynz')

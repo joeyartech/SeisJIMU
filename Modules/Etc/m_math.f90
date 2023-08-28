@@ -31,6 +31,9 @@ module m_math
     !omga - ω
     !p    - +
     !m    - -
+    !sq   - squared
+    !sqr  - square root
+    !dot  - dot above
     !d    - ∂
     !grad - ∇
     !div  - ∇·

@@ -1,6 +1,6 @@
 MODEL_SIZE              '76 76 1'
 MODEL_SPACING           '20 20 1'
-FILE_MODEL              'model'
+FILE_MODEL              '2layer'
 MODEL_ATTRIBUTES         vp
 FILE_TOPO               'topo'
 
@@ -15,11 +15,9 @@ NR                      76
 SCOMP                   p
 RCOMP                   p #'p vz'
 
-NT               280
+NT               500
 DT               0.002
 
-## for RTM ##
-FILE_DATA_PREFIX    'results_fwd/dobs_Shot'
 
 FPEAK            10
 WAVELET_TYPE        'ricker'
@@ -28,8 +26,15 @@ UPDATE_WAVELET		'no'
 RDT			0
 
 
-SNAPSHOT     'p poynz poynx'
+SNAPSHOT     'p p_prev p_next'
+#SNAPSHOT     'p poynz poynx'
 #NSNAPSHOT    50
+
+
+## for RTM ##
+FILE_DATA_PREFIX    'results_fwd/dobs_Shot'
+
+JOB           imaging
 
 IF_USE_CHECKPOINT   F
 

@@ -2,12 +2,16 @@ subroutine modeling_imaging
 use mpi
 use m_System
 use m_Modeling
+use m_hilbert
 !use m_weighter
 
     logical,save :: is_first_in=.true.
 
-    type(t_field) :: fld_u, fld_a
-    type(t_correlation) :: a_star_u
+    type(t_field) :: fld_v, fld_u, fld_q, fld_p
+    type(t_correlate) :: a_star_u
+    real,dimension(:,:),allocatable :: tmp
+
+    call alloc(correlate_image,m%nz,m%nx,m%ny,ppg%nimag)
     
     call hud('===== START LOOP OVER SHOTS =====')
     
@@ -27,12 +31,17 @@ use m_Modeling
         call ppg%init
         call ppg%init_abslayer
 
+        call hud('----  Solving Au=s  ----')
         call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
-
-        !forward modeling
-        !A u= s
         call ppg%forward(fld_u)
-        call fld_u%acquire; call shot%write('Ru',shot%dsyn)
+        call fld_u%acquire; call shot%write('Ru_',shot%dsyn)
+
+        call hud('----  Solving Av=H[s]  ----')
+        call shot%read_wlhilb
+        call ppg%init_field(fld_v,name='fld_v');    call fld_v%ignite
+        call ppg%forward(fld_v)
+        call fld_v%acquire; call shot%write('Rv_',shot%dsyn); shot%dsyn_aux=shot%dsyn
+        call fld_u%acquire
 
         if(setup%get_str('JOB')=='forward modeling') cycle
 
@@ -41,23 +50,24 @@ use m_Modeling
             call hud('        Imaging        ')
             call hud('-----------------------')
 
-            call a_star_u%init('a_star_u',shape123_from='model') !F₂★E₀ for gtDt
-            call alloc(a_star_u%drp_dt_dsp_dt,m%nz,m%nx,m%ny,1)
-            call alloc(a_star_u%nab_rp_nab_sp,m%nz,m%nx,m%ny,1)
+            call ppg%init_field(fld_p,name='fld_p',ois_adjoint=.true.)
+            call ppg%init_field(fld_q,name='fld_q',ois_adjoint=.true.)
 
-            !adjoint modeling
+            call fld_p%ignite(o_wavelet=shot%dobs)
+            tmp=shot%dobs
+            call hilbert_transform(shot%dobs,tmp,shot%nt,shot%nrcv)
+            call fld_q%ignite(o_wavelet=tmp)
+
+            call ppg%init_correlate(a_star_u,'a_star_u')
+
+            call hud('----  Solving adjoint eqn & xcorrelate  ----')
             !Aᴴa = -Rᴴd
-            call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite(shot%dobs)
-            call ppg%adjoint(fld_a,fld_u,o_a_star_u=a_star_u)
-            call hud('---------------------------------')
+            call ppg%adjoint_poynting(fld_q,fld_p,fld_v,fld_u,a_star_u)
 
-            !call cb%project_back
-            correlation_image(cb%ioz:cb%ioz+cb%mz-1,&
-                  cb%iox:cb%iox+cb%mx-1,&
-                  cb%ioy:cb%ioy+cb%my-1,1) = &
-            correlation_image(cb%ioz:cb%ioz+cb%mz-1,&
-                  cb%iox:cb%iox+cb%mx-1,&
-                  cb%ioy:cb%ioy+cb%my-1,1) + a_star_u%rp_sp(:,:,:,1)
+            call hud('----  Assemble  ----')
+            call ppg%assemble(a_star_u)
+
+            call hud('---------------------------------')
 
         endif
         
@@ -70,13 +80,16 @@ use m_Modeling
         stop
     endif
 
-    !collect
 
     !collect global correlations
-    call mpi_allreduce(mpi_in_place,correlation_image, m%n, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    call mpi_allreduce(mpi_in_place,correlate_image, m%n*ppg%nimag, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     
+    if(mpiworld%is_master) call sysio_write('correlate_image',correlate_image,m%n*ppg%nimag)
+
+    !write correlate
     if(mpiworld%is_master) then
-        call sysio_write('correlation_image' ,correlation_image,m%n)
+        call a_star_u%write
+
     endif
 
     ! if(ppg%if_compute_engy) then

@@ -5,7 +5,7 @@ use m_computebox
 
     private
 
-    public :: correlate_init, correlate_stack
+    public :: correlate_init, correlate_assemble
 
     real,dimension(:,:,:,:),allocatable,public :: correlate_energy, correlate_image, correlate_gradient, correlate_pgradient
 
@@ -20,9 +20,13 @@ use m_computebox
         ! !index
         ! integer :: ifz,ilz,ifx,ilx,ify,ily,ift,ilt
 
-        !wavefield components in computation domain
+        !gradient components
         real,dimension(:,:,:),allocatable :: gkpa, gikpa
         real,dimension(:,:,:),allocatable :: grho, gbuo
+
+        !image components
+        real,dimension(:,:,:),allocatable :: ipp
+        real,dimension(:,:,:),allocatable :: ibksc, ifwsc !backward & forward scatters
 
         contains
 
@@ -75,7 +79,7 @@ use m_computebox
 
     end subroutine
 
-    subroutine correlate_stack(small,big)
+    subroutine correlate_assemble(small,big)
         real,dimension(:,:,:) :: small, big
 
         big(cb%ioz:cb%ioz+cb%mz-1,&

@@ -110,22 +110,11 @@ use m_hilbert_nofft
         
         call hud('----  Solving adjoint eqn & xcorrelate  ----')
 
-if(setup%get_bool('IF_1TERM',o_default='F')) then
-call ppg%init_correlate(a_star_u,'a_star_u')
-call ppg%adjoint(fld_p,fld_u, a_star_u)
-call a_star_u%write
-stop
-endif
+        call ppg%init_correlate(a_star_u,'a_star_u')
+        call ppg%adjoint(fld_p,fld_u,a_star_u)
 
-        call ppg%init_correlate(U_star_D,'U_star_D') !migration isochrone
-        call ppg%init_correlate(D_star_D,'D_star_D') !left rabbit ear
-        call ppg%init_correlate(U_star_U,'U_star_U') !right rabbit ear
-        call ppg%init_correlate(D_star_U,'D_star_U') !4th term
-        call ppg%adjoint_3terms(fld_q,fld_p, fld_v,fld_u, U_star_D,D_star_D,U_star_U,o_D_star_U=D_star_U)
-
-        call hud('----  Assembly  ----')
-        grad_term_weights=setup%get_reals('GRADIENT_TERMS_WEIGHT',o_default='1 5 5')  !5 ~= reflection coefficient
-        call ppg%gradient_3terms(U_star_D,D_star_D,U_star_U,grad_term_weights)
+        call hud('----  Assemble  ----')
+        call ppg%assemble(a_star_u)
 
         call hud('---------------------------------')
 
@@ -149,31 +138,8 @@ endif
 
     !write correlate
     if(mpiworld%is_master) then
-        call U_star_D%write
-        call D_star_D%write
-        call U_star_U%write
-        call D_star_U%write
+        call a_star_u%write
     endif
-
-
-if (setup%get_bool('IF_COMPUTE_ANGLE',o_default='F')) then
-call U_star_D%stack
-call D_star_D%stack
-call U_star_U%stack
-if(mpiworld%is_master) then
-    call U_star_D%write(o_suffix='_stacked')
-    call D_star_D%write(o_suffix='_stacked')
-    call U_star_U%write(o_suffix='_stacked')
-    
-    term1=U_star_D%gikpa
-    term2=D_star_D%gikpa+U_star_U%gikpa
-    den1=sqrt(sum(term1**2,.not.m%is_freeze_zone))
-    den2=sqrt(sum(term2**2,.not.m%is_freeze_zone))
-    costh=sum(term1/den1*term2/den2,.not.m%is_freeze_zone)
-
-    call hud('Angle between MI & RE (w/ mask): '//num2str(acos(costh)*180/r_pi)//'°')
-endif
-endif
 
     !allreduce energy, gradient
     ! call mpi_allreduce(mpi_in_place, correlate_energy  , m%n          , mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)

@@ -2,7 +2,6 @@ module m_propagator
 use m_System
 use m_hicks, only : hicks_r
 use m_resampler
-use m_hilbert
 use m_model
 use m_shot
 use m_computebox
@@ -33,13 +32,14 @@ use m_cpml
             'Required model attributes: vp, rho'//s_NL// &
             'Required field components: vz, vx, vy(3D), p'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
-            'Imaging conditions: P-Pxcorr'//s_NL// &
+            'Poynting definitions: p_dotp_gradp, dotp_gradp, p_v'//s_NL// &
+            'Imaging conditions: ipp ibksc ifwsc (P-Pxcorr of backward & forward scattering)'//s_NL// &
             'Energy terms: Σ_shot ∫ sfield%p² dt'//s_NL// &
             'Basic gradients: grho gkpa'
 
         integer :: nbndlayer=max(2,hicks_r) !minimum absorbing layer thickness
         integer :: ngrad=2 !number of basic gradients
-        integer :: nimag=1 !number of basic images
+        integer :: nimag=3 !number of basic images
         integer :: nengy=1 !number of energy terms
 
         logical :: if_compute_engy=.false.
@@ -60,9 +60,10 @@ use m_cpml
         procedure :: init_field
         procedure :: init_correlate
         procedure :: init_abslayer
+        procedure :: assemble
 
         procedure :: forward
-        procedure :: adjoint
+        procedure :: adjoint_poynting
         ! procedure :: adjoint_3terms
         
         procedure :: inject_velocities
@@ -78,12 +79,11 @@ use m_cpml
 
     type(t_propagator),public :: ppg
 
+    character(:),allocatable :: s_poynting_def
+
     logical :: if_hicks
     integer :: irdt
     real :: rdt
-
-    !these procedures will be contained in an m_correlate module in future release
-    public :: gradient_density, gradient_moduli, imaging, energy, gradient_postprocess, imaging_postprocess
 
     ! real,dimension(:,:,:),allocatable :: sf_p_save
 
@@ -189,6 +189,9 @@ use m_cpml
         !initialize m_field
         call field_init(.false.,self%nt,self%dt)
 
+        !initialize m_correlate
+        call correlate_init(ppg%nt,ppg%dt)
+
         !rectified interval for time integration
         !default to Nyquist, and must be a multiple of dt
         rdt=setup%get_real('REF_RECT_TIME_INTEVAL','RDT',o_default=num2str(0.5/shot%fmax))
@@ -196,6 +199,9 @@ use m_cpml
         if(irdt==0) irdt=1
         rdt=irdt*self%dt
         call hud('rdt, irdt = '//num2str(rdt)//', '//num2str(irdt))
+
+        s_poynting_def=setup%get_str('POYNTING_DEF',o_default='p_v')
+        if(s_poynting_def/='p_dotp_gradp'.and.s_poynting_def/='dotp_gradp'.and.s_poynting_def/='p_v') call error('Sorry, other Poynting definitions have not yet implemented.')
 
     end subroutine
 
@@ -242,8 +248,14 @@ use m_cpml
         
         corr%name=name
 
-        call alloc(corr%gkpa,m%nz,m%nx,m%ny)
-        call alloc(corr%grho,m%nz,m%nx,m%ny)
+        if(name(1:1)=='g') then !gradient components
+            call alloc(corr%gkpa,m%nz,m%nx,m%ny)
+            call alloc(corr%grho,m%nz,m%nx,m%ny)
+        else !image components
+            call alloc(corr%ipp,m%nz,m%nx,m%ny)
+            call alloc(corr%ibksc,m%nz,m%nx,m%ny)
+            call alloc(corr%ifwsc,m%nz,m%nx,m%ny)
+        endif
 
     end subroutine
 
@@ -253,6 +265,24 @@ use m_cpml
         call cpml%init
 
     end subroutine
+
+    subroutine assemble(self,corr)
+        class(t_propagator) :: self
+        type(t_correlate) :: corr
+
+        if(allocated(correlate_image)) then
+            call correlate_assemble(corr%ipp, correlate_image(:,:,:,1))
+            call correlate_assemble(corr%ibksc, correlate_image(:,:,:,2))
+            call correlate_assemble(corr%ifwsc, correlate_image(:,:,:,3))
+        endif
+
+        if(allocated(correlate_gradient)) then
+            call correlate_assemble(corr%grho, correlate_gradient(:,:,:,1))
+            call correlate_assemble(corr%gkpa, correlate_gradient(:,:,:,2))
+        endif        
+        
+    end subroutine
+
     
     !========= Derivations =================
     !PDE:      A u = M ∂ₜ u - D u = f
@@ -377,16 +407,13 @@ use m_cpml
         type(t_field) :: fld_u
 
         real,parameter :: time_dir=1. !time direction
-        character(:),allocatable :: s_poynting_def
 
         !seismo
         call alloc(fld_u%seismo,shot%nrcv,self%nt)
             
-        tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.
-        
-        ift=1; ilt=self%nt
+        tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.; tt7=0.
 
-        s_poynting_def=setup%get_str('POYNTING_DEF',o_default='p_dotp_nabp')
+        ift=1; ilt=self%nt
 
         do it=ift,ilt
             if(mod(it,500)==0 .and. mpiworld%is_master) then
@@ -419,11 +446,6 @@ use m_cpml
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
-            call cpu_time(tic)
-            call poynting(s_poynting_def,fld_u,time_dir,it)
-            call cpu_time(toc)
-            tt5=tt5+toc-tic
-
             !step 5: sample v^it+1 or s^it+1.5 at receivers
             call cpu_time(tic)
             call self%extract(fld_u,it)
@@ -448,7 +470,6 @@ use m_cpml
             write(*,*) 'Elapsed time to update velocities    ',tt2/mpiworld%max_threads
             write(*,*) 'Elapsed time to add source stresses  ',tt3/mpiworld%max_threads
             write(*,*) 'Elapsed time to update stresses      ',tt4/mpiworld%max_threads
-            write(*,*) 'Elapsed time to Poynting vectors     ',tt5/mpiworld%max_threads
             write(*,*) 'Elapsed time to extract field        ',tt6/mpiworld%max_threads
             write(*,*) 'Elapsed time to save boundary        ',tt7/mpiworld%max_threads
         endif
@@ -459,12 +480,13 @@ use m_cpml
 
     end subroutine
 
-    subroutine adjoint(self,fld_a,fld_u,a_star_u)
+    subroutine adjoint_poynting(self,fld_q,fld_a,fld_v,fld_u, a_star_u)
     !adjoint_a_star_Du
         class(t_propagator) :: self
-        type(t_field) :: fld_a,fld_u
+        type(t_field) :: fld_q,fld_a
+        type(t_field) :: fld_v,fld_u
         type(t_correlate) :: a_star_u
-        
+
         real,parameter :: time_dir=-1. !time direction
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
@@ -480,8 +502,6 @@ use m_cpml
 
         ! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
-        s_poynting_def=setup%get_str('POYNTING_DEF',o_default='p_dotp_nabp')
-        
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
@@ -530,8 +550,8 @@ use m_cpml
 
             !compute Poynting vectors before imaging
             call cpu_time(tic)
-            call poynting(s_poynting_def,fld_u,time_dir,it)
-            call poynting(s_poynting_def,fld_a,time_dir,it)
+            call compute_poynting(fld_u,it)
+            call compute_poynting(fld_a,it)
             call cpu_time(toc)
             tt6=tt6+toc-tic
             
@@ -540,21 +560,14 @@ use m_cpml
 
             if(mod(it,irdt)==0) then
                 call cpu_time(tic)
-                call cross_correlate_imaging(fld_a,fld_u,a_star_u,it)
+                call cross_correlate_image(fld_a,fld_u,a_star_u,it)
                 call cpu_time(toc)
                 tt7=tt7+toc-tic
             endif
 
-            if(mod(it,irdt)==0) then
-                call cpu_time(tic)
-                call cross_correlate_gkpa(fld_a,fld_u,a_star_u,it)
-                call cpu_time(toc)
-                tt6=tt6+toc-tic
-            endif
-
-            ! if(if_compute_imag.and.mod(it,irdt)==0) then
+            ! if(mod(it,irdt)==0) then
             !     call cpu_time(tic)
-            !     call imaging(fld_a,fld_u,it,cb%imag)
+            !     call cross_correlate_gkpa(fld_a,fld_u,a_star_u,it)
             !     call cpu_time(toc)
             !     tt6=tt6+toc-tic
             ! endif
@@ -597,41 +610,34 @@ use m_cpml
             call cpu_time(toc)
             tt11=tt11+toc-tic
             
-            !adjoint step 1: sample v^it or s^it+0.5 at source position
-            if(if_record_adjseismo) then
-                call cpu_time(tic)
-                call self%extract(fld_a,it)
-                call cpu_time(toc)
-                tt12=tt12+toc-tic
-            endif
+            ! !adjoint step 1: sample v^it or s^it+0.5 at source position
+            ! if(if_record_adjseismo) then
+            !     call cpu_time(tic)
+            !     call self%extract(fld_a,it)
+            !     call cpu_time(toc)
+            !     tt12=tt12+toc-tic
+            ! endif
             
-            !grho: sfield%v_dt^it \dot rfield%v^it
-            !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
-            if(mod(it,irdt)==0) then
-                call cpu_time(tic)
-                call cross_correlate_grho(fld_a,fld_u,a_star_u,it)
-                call cpu_time(toc)
-                tt6=tt6+toc-tic
-            endif
+            ! !grho: sfield%v_dt^it \dot rfield%v^it
+            ! !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
+            ! if(mod(it,irdt)==0) then
+            !     call cpu_time(tic)
+            !     call cross_correlate_grho(fld_a,fld_u,a_star_u,it)
+            !     call cpu_time(toc)
+            !     tt6=tt6+toc-tic
+            ! endif
             
             !snapshot
             call fld_a%write(it,o_suffix='_rev')
             call fld_u%write(it,o_suffix='_rev')
 
-            ! if(if_compute_imag) then
-            !     call fld_a%write_ext(it,'imag' ,cb%imag,size(cb%imag))
-            ! endif
-            ! if(if_compute_grad) then
-            !     ! call fld_a%write_ext(it,'grad_density',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
-            !     ! call fld_a%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
-            !     call fld_a%write_ext(it,'grad_a_star_Du' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
-            ! endif
-
-            ! if(self%if_compute_engy) then
-            !     call fld_a%write_ext(it,'engy',cb%engy(:,:,:,1),size(cb%engy(:,:,:,1)))
-            ! endif
+            call a_star_u%write(it,o_suffix='_rev')
 
         enddo
+
+        !postprocess
+        call cross_correlate_postprocess(a_star_u)
+        call a_star_u%scale(m%cell_volume*rdt)
 
         if(mpiworld%is_master) then
             write(*,*) 'Elapsed time to load boundary            ',tt1/mpiworld%max_threads
@@ -645,7 +651,8 @@ use m_cpml
             write(*,*) 'Elapsed time to add adjsource velocities ',tt9/mpiworld%max_threads
             write(*,*) 'Elapsed time to update adj velocities    ',tt10/mpiworld%max_threads
             write(*,*) 'Elapsed time to extract&write fields     ',tt11/mpiworld%max_threads
-            write(*,*) 'Elapsed time to correlate                ',tt6/mpiworld%max_threads
+            write(*,*) 'Elapsed time to compute Poynting vectors ',tt6/mpiworld%max_threads
+            write(*,*) 'Elapsed time to correlate                ',tt7/mpiworld%max_threads
 
         endif
 
@@ -653,221 +660,9 @@ use m_cpml
         call hud('ximage < snap_rfield%*  n1='//num2str(cb%nz)//' perc=99')
         call hud('xmovie < snap_rfield%*  n1='//num2str(cb%nz)//' n2='//num2str(cb%nx)//' clip=?e-?? loop=2 title=%g')
         call hud('ximage < snap_*  n1='//num2str(cb%mz)//' perc=99')
-        call hud('xmovie < snap_*  n1='//num2str(cb%mz)//' n2='//num2str(cb%mx)//' clip=?e-?? loop=2 title=%g')    
-       
-        !postprocess
-        call a_star_u%scale(m%cell_volume*rdt)
-        
-        call correlate_stack(a_star_u%gkpa, correlate_gradient(:,:,:,1))
-        call correlate_stack(a_star_u%grho, correlate_gradient(:,:,:,2))
+        call hud('xmovie < snap_*  n1='//num2str(cb%mz)//' n2='//num2str(cb%mx)//' clip=?e-?? loop=2 title=%g')
 
     end subroutine
-
-    ! subroutine adjoint_3terms(self,fld_q,fld_p,fld_v,fld_u,D_star_D,D_star_U,U_star_D)
-    !     class(t_propagator) :: self
-    !     type(t_field) :: fld_q,fld_p,fld_v,fld_u
-    !     type(t_correlate) :: D_star_D, D_star_U, U_star_D
-
-    !     real,parameter :: time_dir=-1. !time direction
-        
-    !     type(t_field) :: fld_rD,fld_rU,fld_sD,fld_sU
-    !     call self%init_field(fld_rD,name='fld_rD',ois_adjoint=.true.)
-    !     call self%init_field(fld_rU,name='fld_rU',ois_adjoint=.true.)
-    !     call self%init_field(fld_sD,name='fld_sD')
-    !     call self%init_field(fld_sU,name='fld_sU')
-
-    !     !reinitialize absorbing boundary for incident wavefield reconstruction
-    !     call fld_v%reinit
-    !     call fld_u%reinit
-                    
-    !     !timing
-    !     tt1=0.; tt2=0.; tt3=0.
-    !     tt4=0.; tt5=0.; tt6=0.
-    !     tt7=0.; tt8=0.; tt9=0.
-    !     tt10=0.;tt11=0.; tt12=0.; tt13=0.
-        
-    !     ift=1; ilt=self%nt
-
-    !     ! call alloc(sf_p_save,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        
-    !     do it=ilt,ift,int(time_dir)
-    !         if(mod(it,500)==0 .and. mpiworld%is_master) then
-    !             write(*,*) 'it----',it
-    !             call fld_q%check_value
-    !             call fld_p%check_value
-    !             call fld_v%check_value
-    !             call fld_u%check_value
-    !         endif            
-
-    !         !do backward time stepping to reconstruct the source (incident) wavefield
-    !         !and adjoint time stepping to compute the receiver (adjoint) field
-    !         !step# conforms with forward time stepping
-
-    !         ! if(present(o_sf)) then
-
-    !             !backward step 6: retrieve v^it+1 at boundary layers (BC)
-    !             call cpu_time(tic)
-    !             call fld_v%boundary_transport('load',it)
-    !             call fld_u%boundary_transport('load',it)
-    !             call cpu_time(toc)
-    !             tt1=tt1+toc-tic
-                
-    !             !backward step 4: s^it+1.5 -> s^it+0.5 by FD of v^it+1
-    !             call cpu_time(tic)
-    !             call self%update_stresses(fld_v,time_dir,it)
-    !             call self%update_stresses(fld_u,time_dir,it)
-    !             call cpu_time(toc)
-    !             tt2=tt2+toc-tic
-
-    !             !backward step 3: rm pressure from s^it+0.5
-    !             call cpu_time(tic)
-    !             call self%inject_stresses(fld_v,time_dir,it)
-    !             call self%inject_stresses(fld_u,time_dir,it)
-    !             call cpu_time(toc)
-    !             tt3=tt3+toc-tic
-    !         ! endif
-
-    !         !--------------------------------------------------------!
-
-    !         !adjoint step 5: inject to s^it+1.5 at receivers
-    !         call cpu_time(tic)
-    !         call self%inject_stresses(fld_q,time_dir,it)
-    !         call self%inject_stresses(fld_p,time_dir,it)
-    !         call cpu_time(toc)
-    !         tt4=tt4+toc-tic
-
-    !         !adjoint step 4: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
-    !         call cpu_time(tic)
-    !         call self%update_stresses(fld_q,time_dir,it)
-    !         call self%update_stresses(fld_p,time_dir,it)
-    !         call cpu_time(toc)
-    !         tt5=tt5+toc-tic
-
-    !         !gkpa: rf%s^it+0.5 star D sf%s_dt^it+0.5
-    !         !use sf%v^it+1 to compute sf%s_dt^it+0.5, as backward step 4
-    !         if(mod(it,irdt)==0) then
-    !             call cpu_time(tic)
-    !             call field_separate(fld_q,fld_p,fld_rD,fld_rU)
-    !             call field_separate(fld_v,fld_u,fld_sD,fld_sU)
-    !             call cross_correlate_gkpa(fld_rD,fld_sD,D_star_D,it)
-    !             call cross_correlate_gkpa(fld_rD,fld_sU,D_star_U,it)
-    !             call cross_correlate_gkpa(fld_rU,fld_sD,U_star_D,it)
-                
-    !             call cpu_time(toc)
-    !             tt6=tt6+toc-tic
-    !         endif
-
-    !         ! !energy term of sfield
-    !         ! if(self%if_compute_engy.and.mod(it,irdt)==0) then
-    !         !     call cpu_time(tic)
-    !         !     call energy(fld_u,it,cb%engy)
-    !         !     call cpu_time(toc)
-    !         !     tt6=tt6+toc-tic
-    !         ! endif
-                
-    !         !========================================================!
-
-    !         ! if(present(o_sf)) then
-    !             !backward step 2: v^it+1 -> v^it by FD of s^it+0.5
-    !             call cpu_time(tic)
-    !             call self%update_velocities(fld_v,time_dir,it)
-    !             call self%update_velocities(fld_u,time_dir,it)
-    !             call cpu_time(toc)
-    !             tt7=tt7+toc-tic
-
-    !             !backward step 1: rm forces from v^it
-    !             call cpu_time(tic)
-    !             call self%inject_velocities(fld_v,time_dir,it)
-    !             call self%inject_velocities(fld_u,time_dir,it)
-    !             call cpu_time(toc)
-    !             tt8=tt8+toc-tic
-    !         ! endif
-
-    !         !--------------------------------------------------------!
-
-    !         !adjoint step 3: inject to v^it+1 at receivers
-    !         call cpu_time(tic)
-    !         call self%inject_velocities(fld_q,time_dir,it)
-    !         call self%inject_velocities(fld_p,time_dir,it)
-    !         call cpu_time(toc)
-    !         tt9=tt9+toc-tic
-
-    !         !adjoint step 2: v^it+1 -> v^it by FD^T of s^it+0.5
-    !         call cpu_time(tic)
-    !         call self%update_velocities(fld_q,time_dir,it)
-    !         call self%update_velocities(fld_p,time_dir,it)
-    !         call cpu_time(toc)
-    !         tt10=tt10+toc-tic
-            
-    !         ! !adjoint step 1: sample v^it or s^it+0.5 at source position
-    !         ! if(if_record_adjseismo) then
-    !         !     call cpu_time(tic)
-    !         !     call self%extract(fld_a,it)
-    !         !     call cpu_time(toc)
-    !         !     tt11=tt11+toc-tic
-    !         ! endif
-            
-    !         ! !grho: sfield%v_dt^it \dot rfield%v^it
-    !         ! !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
-    !         ! if(if_compute_grad.and.mod(it,irdt)==0) then
-    !         !     call cpu_time(tic)
-    !         !     call gradient_density(fld_a,fld_u,it,cb%grad(:,:,:,1))
-    !         !     call cpu_time(toc)
-    !         !     tt6=tt6+toc-tic
-    !         ! endif
-            
-    !         !snapshot
-    !         call fld_p %write(it,o_suffix='_rev')
-    !         call fld_rD%write(it,o_suffix='_rev')
-    !         call fld_rU%write(it,o_suffix='_rev')
-    !         call fld_u %write(it,o_suffix='_rev')
-    !         call fld_sD%write(it,o_suffix='_rev')
-    !         call fld_sU%write(it,o_suffix='_rev')
-            
-    !         ! call fld_a%write_ext(it,'grad_density',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
-    !         ! call fld_a%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
-    !         call D_star_D%write(it,o_suffix='_rev')
-    !         call D_star_U%write(it,o_suffix='_rev')
-    !         call U_star_D%write(it,o_suffix='_rev')
-        
-    !     enddo
-
-    !     if(mpiworld%is_master) then
-    !         write(*,*) 'Elapsed time to load boundary            ',tt1/mpiworld%max_threads
-    !         write(*,*) 'Elapsed time to update stresses          ',tt2/mpiworld%max_threads
-    !         write(*,*) 'Elapsed time to rm source stresses       ',tt3/mpiworld%max_threads
-    !         write(*,*) 'Elapsed time to update velocities        ',tt8/mpiworld%max_threads
-    !         write(*,*) 'Elapsed time to rm source velocities     ',tt9/mpiworld%max_threads
-    !         write(*,*) 'Elapsed time ----------------------------'
-    !         write(*,*) 'Elapsed time to add adjsource stresses   ',tt4/mpiworld%max_threads
-    !         write(*,*) 'Elapsed time to update adj stresses      ',tt5/mpiworld%max_threads
-    !         write(*,*) 'Elapsed time to add adjsource velocities ',tt10/mpiworld%max_threads
-    !         write(*,*) 'Elapsed time to update adj velocities    ',tt11/mpiworld%max_threads
-    !         write(*,*) 'Elapsed time to extract&write fields     ',tt12/mpiworld%max_threads
-    !         write(*,*) 'Elapsed time to Poynting vectors         ',tt6/mpiworld%max_threads
-    !         write(*,*) 'Elapsed time to correlate                ',tt7/mpiworld%max_threads
-
-    !     endif
-
-    !     call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
-    !     call hud('ximage < snap_rfield%*  n1='//num2str(cb%nz)//' perc=99')
-    !     call hud('xmovie < snap_rfield%*  n1='//num2str(cb%nz)//' n2='//num2str(cb%nx)//' clip=?e-?? loop=2 title=%g')
-    !     call hud('ximage < snap_*  n1='//num2str(cb%mz)//' perc=99')
-    !     call hud('xmovie < snap_*  n1='//num2str(cb%mz)//' n2='//num2str(cb%mx)//' clip=?e-?? loop=2 title=%g')
-
-        
-    !     !postprocess
-    !     !scale by m%cell_volume*rdt tobe an image or gradient in the discretized world
-    !     call D_star_D%scale(m%cell_volume*rdt)
-    !     call D_star_U%scale(m%cell_volume*rdt)
-    !     call U_star_D%scale(m%cell_volume*rdt)
-
-    !     call correlate_stack(D_star_D%gkpa,     correlate_gradient(:,:,:,1))
-    !     call correlate_stack(D_star_U%gkpa,     correlate_gradient(:,:,:,1))
-    !     call correlate_stack(U_star_D%gkpa,     correlate_gradient(:,:,:,1))
-    !     ! call correlate_stack(                                  D_star_D%div_rp_div_sp, correlate_gradient(:,:,:,2)) !gbuo
-        
-    ! end subroutine
 
 
     !forward: add RHS to v^it
@@ -1083,15 +878,41 @@ use m_cpml
 
     end subroutine
 
-    subroutine field_separate(v,u,upgoing,downgoing)
-        type(t_field) :: v, u, upgoing, downgoing
-        real,dimension(:,:),allocatable :: tmp
+    subroutine compute_poynting(f,it)
+        type(t_field) :: f
 
-        call alloc(tmp,cb%nz,cb%nx)
+        !nonzero only when sf touches rf
+        ifz=f%bloom(1,it)+2
+        ilz=f%bloom(2,it)-2
+        ifx=f%bloom(3,it)+2
+        ilx=f%bloom(4,it)-2
+
+        ! ify=max(f%bloom(5,it),1)
+        ! ily=min(f%bloom(6,it),cb%my)
         
-        call hilbert_transform(v%p(:,:,1),tmp,cb%nz,cb%nx)
-        downgoing%p(:,:,1) =u%p(:,:,1) +tmp
-        upgoing%p          =u%p        -downgoing%p
+        ! if(m%is_cubic) then
+        !     ! call grad3d_moduli(rf%p,sf%vz,sf%vx,sf%vy,&
+        !     !                    grad,                  &
+        !     !                    ifz,ilz,ifx,ilx,ify,ily)
+        ! else
+            select case(s_poynting_def)
+
+            case('p_dotp_gradp')! s:=p*dotp*∇p
+                call poyn_dotp_gradp(f%p,f%vz,f%vx,ppg%kpa,f%poynz,f%poynx,ifz,ilz,ifx,ilx)
+                f%poynz=f%p*f%poynz
+                f%poynx=f%p*f%poynx
+
+            case('dotp_gradp')! s:=dotp*∇p
+                call poyn_dotp_gradp(f%p,f%vz,f%vx,ppg%kpa,f%poynz,f%poynx,ifz,ilz,ifx,ilx)
+
+            case('p_v')! s:=p*v
+                !call poyn_p_v(f%p,f%v,f%poynz,f%poynx,ifz,ilz,ifx,ilx)
+                f%poynz=f%p*f%vz
+                f%poynx=f%p*f%vx
+
+            end select
+            
+        ! endif
 
     end subroutine
 
@@ -1258,63 +1079,10 @@ use m_cpml
         endif
         
     end subroutine
-    
-    subroutine gradient_postprocess
 
-        !scale the kernel tobe a gradient in the discretized world
-        cb%grad = cb%grad*m%cell_volume*rdt
-        
-        !grho
-        cb%grad(:,:,:,1) = cb%grad(:,:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
-        !gkpa
-        cb%grad(:,:,:,2) = cb%grad(:,:,:,2) * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my))
-                
-        !preparing for cb%project_back
-        cb%grad(1,:,:,:) = cb%grad(2,:,:,:)
-
-    end subroutine
-
-    subroutine poynting(s_poynting_def,fld,time_dir,it)
-        character(:),allocatable :: s_poynting_def
-        type(t_field) :: fld
-
-        !nonzero only when sf touches rf
-        ifz=fld%bloom(1,it)+2
-        ilz=fld%bloom(2,it)-2
-        ifx=fld%bloom(3,it)+2
-        ilx=fld%bloom(4,it)-2
-
-        ! ify=max(fld%bloom(5,it),1)
-        ! ily=min(fld%bloom(6,it),cb%my)
-        
-        ! if(m%is_cubic) then
-        !     ! call grad3d_moduli(rf%p,sf%vz,sf%vx,sf%vy,&
-        !     !                    grad,                  &
-        !     !                    ifz,ilz,ifx,ilx,ify,ily)
-        ! else
-            select case(s_poynting_def)
-
-            case('p_dotp_nabp')! s:=p*dotp*nabp
-                call poyn_dotp_nabp(fld%p,fld%vz,fld%vx,ppg%kpa,fld%poynz,fld%poynx,ifz,ilz,ifx,ilx)
-                fld%poynz=fld%p*fld%poynz
-                fld%poynx=fld%p*fld%poynx
-
-            case('dotp_nabp')! s:=dotp*nabp
-                call poyn_dotp_nabp(fld%p,fld%vz,fld%vx,ppg%kpa,fld%poynz,fld%poynx,ifz,ilz,ifx,ilx)
-
-            case('p_v')! s:=p*v
-                !call poyn_p_v(fld%p,fld%v,fld%poynz,fld%poynx,ifz,ilz,ifx,ilx)
-                fld%poynz=fld%p*fld%vz
-                fld%poynx=fld%p*fld%vx
-
-            end select
-            
-        ! endif
-    end subroutine
-
-    subroutine imaging(rf,sf,it,imag)
+    subroutine cross_correlate_image(rf,sf,corr,it)
         type(t_field), intent(in) :: rf, sf
-        real,dimension(cb%mz,cb%mx,cb%my) :: imag
+        type(t_correlate) :: corr
         
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
@@ -1329,9 +1097,10 @@ use m_cpml
         !                       imag,                  &
         !                       ifz,ilz,ifx,ilx,ify,ily)
         ! else
-            call imag2d_xcorr(rf%p,sf%p,&
-                              imag,            &
-                              ifz,ilz,ifx,ilx)
+            call imag2d(rf%p,sf%p,&
+                        rf%poynz,rf%poynx,sf%poynz,sf%poynx, &
+                        corr%ipp,corr%ibksc,corr%ifwsc, &
+                        ifz,ilz,ifx,ilx)
         ! endif
 
         ! call imag2d_xcorr(rf%p,rf%vz,rf%vx,&
@@ -1341,13 +1110,24 @@ use m_cpml
 
     end subroutine
 
-    subroutine imaging_postprocess
+    subroutine cross_correlate_postprocess(corr)
+        type(t_correlate) :: corr
+        
+        if(allocated(correlate_gradient)) then
+            !scaling gradients by model parameters
+            corr%grho = corr%grho / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
+            corr%gkpa = corr%gkpa * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my))
+                    
+            !preparing for projection back
+            corr%gkpa(1,:,:) = corr%gkpa(2,:,:)
+            corr%grho(1,:,:) = corr%grho(2,:,:)
+        endif
 
-        !scale by rdt tobe an image in the discretized world
-        cb%imag = cb%imag*rdt
-
-        !for cb%project_back
-        cb%imag(1,:,:,:) = cb%imag(2,:,:,:)
+        if(allocated(correlate_image)) then
+            corr%ipp (1,:,:) = corr%ipp (2,:,:)
+            corr%ibksc(1,:,:) = corr%ibksc(2,:,:)
+            corr%ifwsc(1,:,:) = corr%ifwsc(2,:,:)
+        endif
 
     end subroutine
 
@@ -1377,7 +1157,7 @@ use m_cpml
 
     !========= Finite-Difference on flattened arrays ==================
     
-    subroutine poyn_dotp_nabp(p,vz,vx,kpa,&
+    subroutine poyn_dotp_gradp(p,vz,vx,kpa,&
                             poynz,poynx,   &
                             ifz,ilz,ifx,ilx)
         real,dimension(*) :: p,vz,vx,kpa,poynz,poynx
@@ -2008,44 +1788,44 @@ use m_cpml
     end subroutine
 
 
-    subroutine imag3d_xcorr(rf_p,sf_p,             &
-                            imag,                  &
-                            ifz,ilz,ifx,ilx,ify,ily)
-        real,dimension(*) :: rf_p,sf_p
-        real,dimension(*) :: imag
+    ! subroutine imag3d_ipp(rf_p,sf_p,             &
+    !                       imag,                  &
+    !                       ifz,ilz,ifx,ilx,ify,ily)
+    !     real,dimension(*) :: rf_p,sf_p
+    !     real,dimension(*) :: imag
         
-        nz=cb%nz
-        nx=cb%nx
+    !     nz=cb%nz
+    !     nx=cb%nx
         
-        rp=0.
-        sp=0.
+    !     rp=0.
+    !     sp=0.
         
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,iy,i,j,&
-        !$omp         rp,sp)
-        !$omp do schedule(dynamic) collapse(2)
-        do iy=ify,ily
-        do ix=ifx,ilx
+    !     !$omp parallel default (shared)&
+    !     !$omp private(iz,ix,iy,i,j,&
+    !     !$omp         rp,sp)
+    !     !$omp do schedule(dynamic) collapse(2)
+    !     do iy=ify,ily
+    !     do ix=ifx,ilx
         
-            !dir$ simd
-            do iz=ifz,ilz
+    !         !dir$ simd
+    !         do iz=ifz,ilz
                 
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !grad has no boundary layers
+    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
+    !             j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !grad has no boundary layers
                 
-                rp = rf_p(i)
-                sp = sf_p(i)
+    !             rp = rf_p(i)
+    !             sp = sf_p(i)
                 
-                imag(j)=imag(j) + rp*sp
+    !             imag(j)=imag(j) + rp*sp
                 
-            end do
+    !         end do
             
-        end do
-        end do
-        !$omp end do
-        !$omp end parallel
+    !     end do
+    !     end do
+    !     !$omp end do
+    !     !$omp end parallel
         
-    end subroutine
+    ! end subroutine
 
     ! subroutine imag2d_xcorr(rf_p,rf_vz,rf_vx,&
     !                         sf_p,sf_vz,sf_vx,&
@@ -2079,11 +1859,13 @@ use m_cpml
 
     ! end subroutine
 
-    subroutine imag2d_xcorr(rf_p,sf_p,     &
-                            imag,          &
-                            ifz,ilz,ifx,ilx)
+    subroutine imag2d(rf_p,sf_p,&
+                        rf_poynz,rf_poynx,sf_poynz,sf_poynx,&
+                        ipp, ibksc, ifwsc,&
+                        ifz,ilz,ifx,ilx)
         real,dimension(*) :: rf_p,sf_p
-        real,dimension(*) :: imag
+        real,dimension(*) :: rf_poynz,rf_poynx,sf_poynz,sf_poynx
+        real,dimension(*) :: ipp, ibksc, ifwsc
         
         nz=cb%nz
         
@@ -2102,10 +1884,13 @@ use m_cpml
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
                 j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
-                rp = rf_p(i)
-                sp = sf_p(i)
-                
-                imag(j)=imag(j) + rp*sp
+                ipp(j)=ipp(j) + rf_p(i)*sf_p(i)
+
+                if(rf_poynz(i)*sf_poynz(i)+rf_poynx(i)*sf_poynx(i) < 0.) then !backward scattering
+                    ibksc(j)=ibksc(j) + rf_p(i)*sf_p(i)
+                else
+                    ifwsc(j)=ifwsc(j) + rf_p(i)*sf_p(i)
+                endif
                 
             end do
             
