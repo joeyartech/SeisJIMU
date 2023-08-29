@@ -247,7 +247,7 @@ use m_cpml
         call alloc(f%p_prev, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%p_next, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
-        if(.not.either(ois_simple,.false.,present(ois_simple))) then
+        ! if(.not.either(ois_simple,.false.,present(ois_simple))) then
             call alloc(f%dp_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
             call alloc(f%dp_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
             call alloc(f%dp_dy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -257,7 +257,7 @@ use m_cpml
             call alloc(f%dpyy_dy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
             call alloc(f%lap, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        endif
+        ! endif
 
     end subroutine
 
@@ -577,13 +577,13 @@ use m_cpml
         call fld_v%reinit
         call fld_u%reinit
         
-        call self%init_field(fld_rD,name='fld_rD',ois_simple=.true.)
-        call self%init_field(fld_rU,name='fld_rU',ois_simple=.true.)
-        call self%init_field(fld_sD,name='fld_sD',ois_simple=.true.)
-        call self%init_field(fld_sU,name='fld_sU',ois_simple=.true.)
+        call self%init_field(fld_rD,name='fld_rD',ois_adjoint=.true.)!,ois_simple=.true.)
+        call self%init_field(fld_rU,name='fld_rU',ois_adjoint=.true.)!,ois_simple=.true.)
+        call self%init_field(fld_sD,name='fld_sD')!,ois_simple=.true.)
+        call self%init_field(fld_sU,name='fld_sU')!,ois_simple=.true.)
 
-        call separate_field(fld_v%p_prev,fld_u%p_prev,fld_sD%p_prev,fld_sU%p_prev)
-        call separate_field(fld_v%p     ,fld_u%p     ,fld_sD%p     ,fld_sU%p     )
+        ! call separate_field(fld_v%p_prev,fld_u%p_prev,fld_sD%p_prev,fld_sU%p_prev)
+        ! call separate_field(fld_v%p     ,fld_u%p     ,fld_sD%p     ,fld_sU%p     )
 
         !timing
         tt1=0.; tt2=0.; tt3=0.
@@ -607,8 +607,8 @@ use m_cpml
                 call cpu_time(tic)
                 call self%evolve_pressure(fld_v,time_dir,it)
                 call self%evolve_pressure(fld_u,time_dir,it)
-                call self%evolve_pressure(fld_sD,time_dir,ir)
-                call self%evolve_pressure(fld_sU,time_dir,ir)
+                call self%evolve_pressure(fld_sD,time_dir,it)
+                call self%evolve_pressure(fld_sU,time_dir,it)
                 call cpu_time(toc)
                 tt1=tt1+toc-tic
 
@@ -626,11 +626,11 @@ use m_cpml
                 call cpu_time(toc)
                 tt4=tt4+toc-tic
 
-                !backward step : separate fields
-                call cpu_time(tic)
-                call separate_field(fld_v%p_prev,fld_u%p_prev,fld_sD%p_prev,fld_sU%p_prev)
-                call cpu_time(toc)
-                tt3=tt3+toc-tic
+                ! !backward step : separate fields
+                ! call cpu_time(tic)
+                ! call separate_field(fld_v%p_prev,fld_u%p_prev,fld_sD%p_prev,fld_sU%p_prev)
+                ! call cpu_time(toc)
+                ! tt3=tt3+toc-tic
 
                 !backward step 1: rm p^it at source
                 call cpu_time(tic)
@@ -654,14 +654,26 @@ use m_cpml
             call cpu_time(toc)
             tt9=tt9+toc-tic
 
-            !adjoint step 4:
-            call cpu_time(tic)
-            call separate_field(fld_q%p_prev,fld_p%p_prev,fld_rD%p_prev,fld_rU%p_prev)
-            call cpu_time(toc)
-            tt13=tt13+toc-tic
+            ! !adjoint step 4:
+            ! call cpu_time(tic)
+            ! call separate_field(fld_q%p_prev,fld_p%p_prev,fld_rD%p_prev,fld_rU%p_prev)
+            ! call cpu_time(toc)
+            ! tt13=tt13+toc-tic
 
             !gradient: rf%p^it star sf%p^it
             if(mod(it,irdt)==0) then
+                call cpu_time(tic)
+                call separate_field(fld_q%p,fld_p%p,fld_rD%p,fld_rU%p)
+                call separate_field(fld_v%p,fld_u%p,fld_sD%p,fld_sU%p)
+                call cpu_time(toc)
+                tt3=tt3+toc-tic
+
+                call cpu_time(tic)
+                call compute_laplacian_nocpml(fld_sD,it)
+                call compute_laplacian_nocpml(fld_sU,it)
+                call cpu_time(toc)
+                tt13=tt13+toc-tic
+
                 call cpu_time(tic)
                 call cross_correlate(fld_rU,fld_sD,U_star_D,it)
                 call cross_correlate(fld_rD,fld_sD,D_star_D,it)
@@ -676,8 +688,8 @@ use m_cpml
             call cpu_time(tic)
             call self%evolve_pressure(fld_q,time_dir,it)
             call self%evolve_pressure(fld_p,time_dir,it)
-            call self%evolve_pressure(fld_rU,time_dir,ir)
-            call self%evolve_pressure(fld_rD,time_dir,ir)
+            call self%evolve_pressure(fld_rU,time_dir,it)
+            call self%evolve_pressure(fld_rD,time_dir,it)
             call cpu_time(toc)
             tt11=tt11+toc-tic
 
@@ -701,13 +713,15 @@ use m_cpml
             !--------------------------------------------------------!
             
             !snapshot
-            call fld_p %write(it,o_suffix='_rev')
-            call fld_rD%write(it,o_suffix='_rev')
-            call fld_rU%write(it,o_suffix='_rev')
-            call fld_u %write(it,o_suffix='_rev')
-            call fld_sD%write(it,o_suffix='_rev')
-            call fld_sU%write(it,o_suffix='_rev')
-
+            call fld_p%write(it,o_suffix='_rev')
+            call fld_u%write(it,o_suffix='_rev')
+            if(mod(it,irdt)==0) then
+                call fld_rD%write(it,o_suffix='_rev')
+                call fld_rU%write(it,o_suffix='_rev')
+                call fld_sD%write(it,o_suffix='_rev')
+                call fld_sU%write(it,o_suffix='_rev')
+            endif
+            
             call U_star_D%write(it,o_suffix='_rev')
             call D_star_D%write(it,o_suffix='_rev')
             call U_star_U%write(it,o_suffix='_rev')
@@ -726,15 +740,16 @@ use m_cpml
             write(*,*) 'Elapsed time to load boundary       ',tt2/mpiworld%max_threads
             ! write(*,*) 'Elapsed time to set field           ',tt3/mpiworld%max_threads
             write(*,*) 'Elapsed time to update field        ',tt4/mpiworld%max_threads
-            write(*,*) 'Elapsed time to separate field      ',tt3/mpiworld%max_threads
+            ! write(*,*) 'Elapsed time to separate field      ',tt3/mpiworld%max_threads
             write(*,*) 'Elapsed time to rm source           ',tt6/mpiworld%max_threads        
             write(*,*) 'Elapsed time -----------------------'
             write(*,*) 'Elapsed time to add adj & virtual src',tt8/mpiworld%max_threads
             write(*,*) 'Elapsed time to update adj field    ',tt9/mpiworld%max_threads
-            write(*,*) 'Elapsed time to separate adj field  ',tt13/mpiworld%max_threads
             write(*,*) 'Elapsed time to evolve adj field    ',tt11/mpiworld%max_threads
             ! write(*,*) 'Elapsed time to set adj field       ',tt9/mpiworld%max_threads
             write(*,*) 'Elapsed time to extract fields      ',tt12/mpiworld%max_threads
+            write(*,*) 'Elapsed time to separate fields     ',tt3/mpiworld%max_threads
+            write(*,*) 'Elapsed time to compute laplacian   ',tt13/mpiworld%max_threads
             write(*,*) 'Elapsed time to correlate           ',tt10/mpiworld%max_threads
 
         endif
@@ -958,7 +973,30 @@ use m_cpml
 
         Dn =(u +Dn)/2.
         Up = u -Dn
-        
+
+    end subroutine
+
+    subroutine compute_laplacian_nocpml(f,it)
+        type(t_field) :: f
+
+        !compute laplacian for gradient cross correlation
+        ifz=f%bloom(1,it)
+        if(m%is_freesurface) ifz=max(ifz,1)
+        ilz=f%bloom(2,it)
+        ifx=f%bloom(3,it)
+        ilx=f%bloom(4,it)
+
+        if(m%is_cubic) then
+            ! call fd3d_pressure(f%p,                                      &
+            !                    f%dp_dz,f%dp_dx,f%dp_dy,                  &
+            !                    self%buoz,self%buox,self%buoy,self%kpa,   &
+            !                    ifz,f%bloom(2,it),f%bloom(3,it),f%bloom(4,it))
+        else
+            call fd2d_laplacian_nocpml(f%p,f%lap,  &
+                                ppg%buoz,ppg%buox,   &
+                                ifz,ilz,ifx,ilx)
+        endif
+
     end subroutine
 
     subroutine extract(self,f,it)
@@ -1099,7 +1137,8 @@ use m_cpml
 
         !for gikpa
         corr%gikpa = corr%gikpa + &
-            rf%p(1:m%nz,1:m%nx,1:m%ny) * ( sf%p_next(1:m%nz,1:m%nx,1:m%ny)-2*sf%p(1:m%nz,1:m%nx,1:m%ny)+sf%p_prev(1:m%nz,1:m%nx,1:m%ny) )/dt2
+            !rf%p(1:m%nz,1:m%nx,1:m%ny) * ( sf%p_next(1:m%nz,1:m%nx,1:m%ny)-2*sf%p(1:m%nz,1:m%nx,1:m%ny)+sf%p_prev(1:m%nz,1:m%nx,1:m%ny) )/dt2
+            rf%p(1:m%nz,1:m%nx,1:m%ny) * ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*sf%lap(1:m%nz,1:m%nx,1:m%ny)
 
         !for gbuo
         call fd2d_grho(rf%p,sf%p,corr%gbuo,   ifz,ilz,ifx,ilx)
@@ -1195,6 +1234,88 @@ use m_cpml
 
                 dpzz_dz_ = dpzz_dz_/cpml%kpa_z(iz) + dpzz_dz(iz_ix)
                 dpxx_dx_ = dpxx_dx_/cpml%kpa_x(ix) + dpxx_dx(iz_ix)
+
+                lap(iz_ix) = dpzz_dz_ + dpxx_dx_
+
+            enddo
+        enddo
+        !$omp end do
+        !$omp end parallel
+
+    end subroutine
+
+    subroutine fd2d_laplacian_nocpml(p,&
+                                    lap,&
+                                    buoz,buox,&
+                                    ifz,ilz,ifx,ilx)
+        real,dimension(*) :: p
+        real,dimension(*) :: lap
+        real,dimension(*) :: buoz,buox
+
+        real,dimension(:),allocatable :: pzz,pxx
+        call alloc(pzz,cb%n)
+        call alloc(pxx,cb%n)
+
+        nz=cb%nz
+        nx=cb%nx
+        
+        !flux: b∇u ~= ( bz*∂zᵇp , bx*∂ₓᵇp )
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,&
+        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,&
+        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,&
+        !$omp         dp_dz_,dp_dx_)
+        !$omp do schedule(dynamic)
+        do ix = ifx+2,ilx-1
+            !dir$ simd
+            do iz = ifz+2,ilz-1
+
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+
+                izm2_ix=i-2  !iz-2,ix
+                izm1_ix=i-1  !iz-1,ix
+                iz_ix  =i    !iz,ix
+                izp1_ix=i+1  !iz+1,ix
+                
+                iz_ixm2=i  -2*nz !iz,ix-2
+                iz_ixm1=i  -nz  !iz,ix-1
+                iz_ixp1=i  +nz  !iz,ix+1
+
+                dp_dz_ = c1z*(p(iz_ix) - p(izm1_ix)) +c2z*(p(izp1_ix)-p(izm2_ix))
+                dp_dx_ = c1x*(p(iz_ix) - p(iz_ixm1)) +c2x*(p(iz_ixp1)-p(iz_ixm2))
+
+                pzz(iz_ix) = buoz(iz_ix)*dp_dz_
+                pxx(iz_ix) = buox(iz_ix)*dp_dx_
+
+            enddo
+        enddo
+        !$omp end do
+        !$omp end parallel
+        
+        !laplacian: ∇·b∇u ~= ∂zᶠ(bz*∂zᵇp) + ∂ₓᶠ(bx*∂ₓᵇp)
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,&
+        !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
+        !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
+        !$omp         dpzz_dz_,dpxx_dx_)
+        !$omp do schedule(dynamic)
+        do ix = ifx+1,ilx-2
+            !dir$ simd
+            do iz = ifz+1,ilz-2
+
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+
+                izm1_ix=i-1  !iz-1,ix
+                iz_ix  =i    !iz,ix
+                izp1_ix=i+1  !iz+1,ix
+                izp2_ix=i+2  !iz+2,ix
+                
+                iz_ixm1=i  -nz  !iz,ix-1
+                iz_ixp1=i  +nz  !iz,ix+1
+                iz_ixp2=i  +2*nz !iz,ix+2
+                
+                dpzz_dz_ = c1z*(pzz(izp1_ix) - pzz(iz_ix))  +c2z*(pzz(izp2_ix) - pzz(izm1_ix))
+                dpxx_dx_ = c1x*(pxx(iz_ixp1) - pxx(iz_ix))  +c2x*(pxx(iz_ixp2) - pxx(iz_ixm1))
 
                 lap(iz_ix) = dpzz_dz_ + dpxx_dx_
 

@@ -5,7 +5,7 @@ use m_math
     private
     public :: hilbert_nofft
 
-    integer,parameter :: LHHALF=30   !/* half-length of Hilbert transform filter*/
+    integer,parameter :: LHHALF=50   !/* half-length of Hilbert transform filter*/
     integer,parameter :: LH=2*LHHALF+1   !/* filter length must be odd */
 
     real,dimension(0:LH-1) :: h
