@@ -105,6 +105,7 @@ use m_computebox
     end subroutine
 
     subroutine stack(self)
+    use mpi
         class(t_correlate) :: self
 
         if(allocated(self%gkpa))  call mpi_reduce(mpi_in_place, self%gkpa,  m%n, mpi_real, mpi_sum, 0, mpiworld%communicator, mpiworld%ierr)
