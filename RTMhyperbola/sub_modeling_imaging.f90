@@ -7,8 +7,8 @@ use m_hilbert
 
     logical,save :: is_first_in=.true.
 
-    type(t_field) :: fld_a, fld_u
-    type(t_correlate) :: a_star_u
+    type(t_field) :: fld_a1, fld_a2
+    type(t_correlate) :: a1_star_a2
     real,dimension(:,:),allocatable :: tmp
 
     call alloc(correlate_image,m%nz,m%nx,m%ny,ppg%nimag)
@@ -19,8 +19,10 @@ use m_hilbert
     
         call shot%init(shls%yield(i))
         call shot%read_from_data
+        call shot%read_from_data2
         call shot%set_var_time
         call shot%set_var_space(index(ppg%info,'FDSG')>0)
+        call shot%set_var_space2(index(ppg%info,'FDSG')>0)
 
         call hud('Modeling Shot# '//shot%sindex)
         
@@ -31,43 +33,30 @@ use m_hilbert
         call ppg%init
         call ppg%init_abslayer
 
-        call hud('----  Solving Au=s  ----')
-        call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
-        call ppg%forward(fld_u)
-        call fld_u%acquire; call shot%write('Ru_',shot%dsyn)
+        call hud('-----------------------')
+        call hud('        Imaging        ')
+        call hud('-----------------------')
 
-        if(setup%get_str('JOB')=='forward modeling') cycle
+        call ppg%init_field(fld_a1,name='fld_a1',ois_adjoint=.true.)
+        call ppg%init_field(fld_a2,name='fld_a2',ois_adjoint=.true.)
 
-        if(setup%get_str('JOB')=='imaging') then
-            call hud('-----------------------')
-            call hud('        Imaging        ')
-            call hud('-----------------------')
+        call fld_a1%ignite(o_wavelet=shot%dobs)
+        call fld_a2%ignite(o_wavelet=shot%dobs2)
+        
+        call ppg%init_correlate(a1_star_a2,'a1_star_a2')
 
-            call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
+        call hud('----  Solving adjoint eqn & xcorrelate  ----')
+        !Aᴴa = -Rᴴd
+        call ppg%adjoint_hyperbola(fld_a1,fld_a2,a1_star_a2)
 
-            call fld_a%ignite(o_wavelet=shot%dobs)
-            
-            call ppg%init_correlate(a_star_u,'a_star_u')
+        call hud('----  Assemble  ----')
+        call ppg%assemble(a1_star_a2)
 
-            call hud('----  Solving adjoint eqn & xcorrelate  ----')
-            !Aᴴa = -Rᴴd
-            call ppg%adjoint(fld_a,fld_u,a_star_u)
-
-            call hud('----  Assemble  ----')
-            call ppg%assemble(a_star_u)
-
-            call hud('---------------------------------')
-
-        endif
+        call hud('---------------------------------')
         
     enddo
     
     call hud('        END LOOP OVER SHOTS        ')
-
-    if(setup%get_str('JOB')=='forward modeling') then
-        call mpiworld%final
-        stop
-    endif
 
 
     !collect global correlations
@@ -77,7 +66,7 @@ use m_hilbert
 
     !write correlate
     if(mpiworld%is_master) then
-        call a_star_u%write
+        call a1_star_a2%write
 
     endif
 

@@ -49,10 +49,10 @@ use m_model
         logical :: if_hicks=.true.
 
         type(t_source) :: src
-        type(t_receiver),dimension(:),allocatable :: rcv
-        integer :: nrcv   !=size(rcv)
+        type(t_receiver),dimension(:),allocatable :: rcv, rcv2
+        integer :: nrcv, nrcv2   !=size(rcv)
 
-        real,dimension(:,:),allocatable :: dobs !observed seismogram
+        real,dimension(:,:),allocatable :: dobs,dobs2 !observed seismogram
         real,dimension(:,:),allocatable :: dsyn !synthetic seismogram
         real,dimension(:,:),allocatable :: dsyn_aux !auxiliary synthetic seismogram
         !real,dimension(:,:),allocatable :: dres !residual seismogram
@@ -62,10 +62,10 @@ use m_model
         procedure :: init
         procedure :: read_from_setup
         procedure :: read_from_data
-        procedure :: read_wlenv
-        procedure :: read_wlhilb
+        procedure :: read_from_data2
         procedure :: set_var_time
         procedure :: set_var_space
+        procedure :: set_var_space2
         procedure :: update_wavelet
         procedure :: update_adjsource
         procedure :: write
@@ -235,6 +235,64 @@ use m_model
 
     end subroutine
 
+    subroutine read_from_data2(self)
+        class(t_shot) :: self
+
+        type(t_suformat) :: sudata
+        character(:),allocatable :: str, zerophase, locut, hicut
+        character(:),allocatable :: fstoplo,fpasslo,fpasshi,fstophi
+        character(:),allocatable :: astoplo,apasslo,apasshi,astophi
+
+        call sudata%read(setup%get_str('FILE_DATA_PREFIX')//self%sindex(5:8)//'_2.su',self%sindex)
+
+        shot%nrcv2=sudata%ntr
+        if(allocated(self%rcv2))deallocate(self%rcv2)
+        allocate(self%rcv2(shot%nrcv2))
+
+        scalel=sudata%hdrs(1)%scalel !assume same scalel for all traces
+        scalco=sudata%hdrs(1)%scalco !assume same scalco for all traces
+
+        if(scalel==0.) scalel=1.
+        if(scalco==0.) scalco=1.
+
+        if(scalel<0.) scalel=-1./scalel
+        if(scalco<0.) scalco=-1./scalco
+
+        do i=1,shot%nrcv2
+            self%rcv2(i)%z=-sudata%hdrs(i)%gelev*scalel
+            self%rcv2(i)%x= sudata%hdrs(i)%gx   *scalco
+            self%rcv2(i)%y= sudata%hdrs(i)%gy   *scalco
+
+            self%rcv2(i)%is_badtrace = sudata%hdrs(i)%trid==2 .or. sudata%hdrs(i)%trid==3  !dead or dummy trace
+            
+            select case (sudata%hdrs(i)%trid)
+            case (11); self%rcv2(i)%comp='p'  !pressure
+            case (12); self%rcv2(i)%comp='vz' !vertical velocity
+            case (14); self%rcv2(i)%comp='vx' !horizontal velocity in in-line
+            case (13); self%rcv2(i)%comp='vy' !horizontal velocity in cross-line
+            case default
+                self%rcv2(i)%comp='p'
+            end select
+            
+        enddo
+
+        !shift positions to be 0-based
+        !then m%oz,ox,oy is no longer of use before writing shots
+        self%rcv2(:)%z=self%rcv2(:)%z - m%oz
+        self%rcv2(:)%x=self%rcv2(:)%x - m%ox
+        self%rcv2(:)%y=self%rcv2(:)%y - m%oy
+
+        ! call check_range(self)
+
+        !load traces
+        self%nt=sudata%ns !assume all traces have same ns
+        self%dt=sudata%dt !assume all traces have same dt
+
+        call alloc(self%dobs2,self%nt,self%nrcv)
+        self%dobs2=sudata%trs
+
+    end subroutine
+
     subroutine set_var_time(self)
         class(t_shot) :: self
 
@@ -285,92 +343,6 @@ use m_model
         endif
 
         if(mpiworld%is_master) call suformat_write('wavelet',self%wavelet,self%nt,ntr=1,o_dt=self%dt)
-
-    end subroutine
-
-    subroutine read_wlhilb(self)
-        class(t_shot) :: self
-
-        character(:),allocatable :: file, str
-        type(t_suformat) :: wavelet
-        real,dimension(:,:),allocatable :: tmp1,tmp2
-
-        !source time function, which should not have dt, dx info
-        file=setup%get_file('FILE_WAVELET_HILB')
-
-        if(file=='') then !not given
-            str=setup%get_str('WAVELET_TYPE_HILB',o_default='ricker hilbert')
-            if(str=='ricker hilbert') then
-                call hud('Use Ricker hilbert wavelet')
-                call alloc(tmp1,self%nt,1)
-                call alloc(tmp2,self%nt,1)
-                tmp1(:,1)=wavelet_ricker(self%nt,self%dt,self%fpeak)
-                call hilbert_transform(tmp1,tmp2,self%nt,1)
-                self%wavelet=tmp2(:,1)
-                deallocate(tmp1,tmp2)   
-            endif
-
-        else !wavelet file exists
-            call alloc(self%wavelet,self%nt)
-            call wavelet%read(file)
-            call resampler(wavelet%trs(:,1),self%wavelet,1,&
-                            din=wavelet%dt,nin=wavelet%ns, &
-                            dout=self%dt,  nout=self%nt)
-
-        endif
-
-        str=setup%get_str('WAVELET_SCALING')
-        if(str=='') then
-        elseif(str=='by dx3dt' .or. str=='by dtdx3') then
-            self%wavelet=self%wavelet/self%dt*m%cell_volume
-        else
-            self%wavelet=self%wavelet*str2real(str)
-        endif
-
-        if(mpiworld%is_master) call suformat_write('wavelet_hilbert',self%wavelet,self%nt,ntr=1,o_dt=self%dt)
-
-    end subroutine
-
-    subroutine read_wlenv(self)
-        class(t_shot) :: self
-
-        character(:),allocatable :: file, str
-        type(t_suformat) :: wavelet
-        real,dimension(:,:),allocatable :: tmp1,tmp2
-
-        !source time function, which should not have dt, dx info
-        file=setup%get_file('FILE_WAVELET_ENV')
-
-        if(file=='') then !not given
-            str=setup%get_str('WAVELET_TYPE_ENV',o_default='ricker envelope')
-            if(str=='ricker envelope') then
-                call hud('Use Ricker envelope wavelet')
-                call alloc(tmp1,self%nt,1)
-                call alloc(tmp2,self%nt,1)
-                tmp1(:,1)=wavelet_ricker(self%nt,self%dt,self%fpeak)
-                call hilbert_envelope(tmp1,tmp2,self%nt,1)
-                self%wavelet=tmp2(:,1)
-                deallocate(tmp1,tmp2)   
-            endif
-
-        else !wavelet file exists
-            call alloc(self%wavelet,self%nt)
-            call wavelet%read(file)
-            call resampler(wavelet%trs(:,1),self%wavelet,1,&
-                            din=wavelet%dt,nin=wavelet%ns, &
-                            dout=self%dt,  nout=self%nt)
-
-        endif
-
-        str=setup%get_str('WAVELET_SCALING')
-        if(str=='') then
-        elseif(str=='by dx3dt' .or. str=='by dtdx3') then
-            self%wavelet=self%wavelet/self%dt*m%cell_volume
-        else
-            self%wavelet=self%wavelet*str2real(str)
-        endif
-
-        if(mpiworld%is_master) call suformat_write('wavelet_envelope',self%wavelet,self%nt,ntr=1,o_dt=self%dt)
 
     end subroutine
 
@@ -493,6 +465,92 @@ use m_model
             write(*,*)'  minmax ifx,ilx:',minval(self%rcv(:)%ifx),maxval(self%rcv(:)%ifx),minval(self%rcv(:)%ilx),maxval(self%rcv(:)%ilx)
             write(*,*)'  minmax ify,ily:',minval(self%rcv(:)%ify),maxval(self%rcv(:)%ify),minval(self%rcv(:)%ily),maxval(self%rcv(:)%ily)
             write(*,*)'  nrcv:',self%nrcv
+            write(*,*)'---------------------------------'
+        endif
+
+    end subroutine
+
+    subroutine set_var_space2(self,is_fdsg)
+        class(t_shot) :: self
+        logical :: is_fdsg
+
+        logical,save :: is_first_in=.true.
+        real,save :: halfz, halfx, halfy
+
+        ! !absolute offset
+        ! do ir=1,self%nrcv2
+        !     self%rcv2(ir)%aoffset=sqrt( (self%src%z-self%rcv(ir)%z)**2 &
+        !                                +(self%src%x-self%rcv(ir)%x)**2 &
+        !                                +(self%src%y-self%rcv(ir)%y)**2 )
+        ! enddo
+
+        if(is_first_in) then
+            !Hicks interpolation
+            self%if_hicks=setup%get_bool('IF_HICKS',o_default='T')
+
+            call hicks_init(m%dz,m%dx,m%dy,m%is_cubic,m%is_freesurface)
+            
+            !velocity grids are shift from normal stress grids by half grid length (staggered-grid FD)
+            !e.g. v(1) is actually v[0.5], v(2) is actually v[1.5],
+            !thus to correctly Hicks-interpolate the recorded s/r positions of forces,
+            !we need to artificially add 0.5 to the positions.
+            halfz=either(m%dz/2.,0.,is_fdsg)
+            halfx=either(m%dx/2.,0.,is_fdsg)
+            halfy=either(m%dy/2.,0.,is_fdsg)
+
+        endif
+        
+        is_first_in=.false.
+
+        !receivers
+        do i=1,self%nrcv2
+
+            select case (self%rcv2(i)%comp)
+            case('p','pbnd') !explosive source or non-vertical force
+                call hicks_put_position(self%rcv2(i)%z,       self%rcv2(i)%x,       self%rcv2(i)%y)
+            ! case('vz') !vertical force
+            !     call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x,       self%rcv(i)%y)
+            ! case('vx')
+            !     call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x+halfx, self%rcv(i)%y)
+            ! case('vy')
+            !     call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y+halfy)
+            end select
+
+            call hicks_get_position(self%rcv2(i)%ifz, self%rcv2(i)%ifx, self%rcv2(i)%ify,&
+                                    self%rcv2(i)%iz , self%rcv2(i)%ix , self%rcv2(i)%iy ,&
+                                    self%rcv2(i)%ilz, self%rcv2(i)%ilx, self%rcv2(i)%ily )
+
+            select case (self%rcv2(i)%comp)
+            case('p','pbnd') !explosive source or non-vertical force
+                call hicks_get_coefficient('antisymm', self%rcv2(i)%interp_coef)
+            ! case('vz') !vertical force
+            !     call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef)
+            ! case default
+            !     call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
+            end select
+
+        enddo
+
+        if(.not.self%if_hicks) then
+            self%rcv2(:)%ifz=0; self%rcv2(:)%ilz=0
+            self%rcv2(:)%ifx=0; self%rcv2(:)%ilx=0
+            self%rcv2(:)%ify=0; self%rcv2(:)%ily=0
+        endif
+
+        if(mpiworld%is_master) then
+            write(*,*)'================================='
+            write(*,*) self%sindex//' info:'
+            write(*,*)'================================='
+            write(*,*)'  nt,dt:',self%nt,self%dt
+            write(*,*)'---------------------------------'
+            write(*,*)'R positions after removing m%oz,ox,iy,'
+            write(*,*)'  minmax rz,iz:',minval(self%rcv2(:)%z),maxval(self%rcv2(:)%z),minval(self%rcv2(:)%iz),maxval(self%rcv2(:)%iz)
+            write(*,*)'  minmax rx,ix:',minval(self%rcv2(:)%x),maxval(self%rcv2(:)%x),minval(self%rcv2(:)%ix),maxval(self%rcv2(:)%ix)
+            write(*,*)'  minmax ry,iy:',minval(self%rcv2(:)%y),maxval(self%rcv2(:)%y),minval(self%rcv2(:)%iy),maxval(self%rcv2(:)%iy)
+            write(*,*)'  minmax ifz,ilz:',minval(self%rcv2(:)%ifz),maxval(self%rcv2(:)%ifz),minval(self%rcv2(:)%ilz),maxval(self%rcv2(:)%ilz)
+            write(*,*)'  minmax ifx,ilx:',minval(self%rcv2(:)%ifx),maxval(self%rcv2(:)%ifx),minval(self%rcv2(:)%ilx),maxval(self%rcv2(:)%ilx)
+            write(*,*)'  minmax ify,ily:',minval(self%rcv2(:)%ify),maxval(self%rcv2(:)%ify),minval(self%rcv2(:)%ily),maxval(self%rcv2(:)%ily)
+            write(*,*)'  nrcv:',self%nrcv2
             write(*,*)'---------------------------------'
         endif
 
