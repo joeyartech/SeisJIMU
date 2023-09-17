@@ -4,8 +4,8 @@
 ############
 # Modeling #
 ############
-WaveEq=AC2nd
-#WaveEq=AC
+#WaveEq=AC2nd
+WaveEq=AC
 #WaveEq=AC_VTI
 #WaveEq=PSV
 Solver=FDSG

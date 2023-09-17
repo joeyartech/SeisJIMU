@@ -132,6 +132,10 @@ use m_computebox
             if(allocated(self%gbuo))   call sysio_write(self%name//'%gbuo'//suf  ,self%gbuo,  m%n)
             if(allocated(self%gkpa))   call sysio_write(self%name//'%gkpa'//suf  ,self%gkpa,  m%n)
             if(allocated(self%gikpa))  call sysio_write(self%name//'%gikpa'//suf ,self%gikpa, m%n)
+
+            if(allocated(self%ipp))    call sysio_write(self%name//'%ipp'//suf   ,self%ipp,   m%n)
+            if(allocated(self%ibksc))  call sysio_write(self%name//'%ibksc'//suf ,self%ibksc, m%n)
+            if(allocated(self%ifwsc))  call sysio_write(self%name//'%ifwsc'//suf ,self%ifwsc, m%n)
             return
 
         endif
@@ -144,6 +148,10 @@ use m_computebox
                 if(allocated(self%gkpa))  call sysio_write('snap_'//self%name//'%gkpa'//suf, self%gkpa, m%n,o_mode='append')
                 if(allocated(self%gikpa)) call sysio_write('snap_'//self%name//'%gikpa'//suf,self%gikpa,m%n,o_mode='append')
   
+                if(allocated(self%ipp))    call sysio_write('snap_'//self%name//'%ipp'//suf   ,self%ipp,   m%n,o_mode='append')
+                if(allocated(self%ibksc))  call sysio_write('snap_'//self%name//'%ibksc'//suf ,self%ibksc, m%n,o_mode='append')
+                if(allocated(self%ifwsc))  call sysio_write('snap_'//self%name//'%ifwsc'//suf ,self%ifwsc, m%n,o_mode='append')
+
             endif
 
         endif
@@ -155,6 +163,8 @@ use m_computebox
 
         call dealloc(self%grho, self%gbuo)
         call dealloc(self%gkpa, self%gikpa)
+
+        call dealloc(self%ipp,self%ibksc,self%ifwsc)
 
     end subroutine
 

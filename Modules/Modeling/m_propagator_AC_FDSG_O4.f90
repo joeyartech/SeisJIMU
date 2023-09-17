@@ -17,6 +17,10 @@ use m_cpml
     real :: c1x, c1y, c1z
     real :: c2x, c2y, c2z
 
+    !local const
+    real :: dt2, inv_2dt, inv_2dz, inv_2dx
+
+
     !scaling source wavelet
     real :: wavelet_scaler
 
@@ -32,7 +36,7 @@ use m_cpml
             'Required model attributes: vp, rho'//s_NL// &
             'Required field components: vz, vx, vy(3D), p'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
-            'Poynting definitions: p_dotp_gradp, dotp_gradp, p_v'//s_NL// &
+            'Poynting definitions: p_dotp_gradp, dotp_gradp, p_v, Esq_gradphi'//s_NL// &
             'Imaging conditions: ipp ibksc ifwsc (P-Pxcorr of backward & forward scattering)'//s_NL// &
             'Energy terms: Σ_shot ∫ sfield%p² dt'//s_NL// &
             'Basic gradients: grho gkpa'
@@ -156,6 +160,9 @@ use m_cpml
 
         c1x=coef(1)/m%dx; c1y=coef(1)/m%dy; c1z=coef(1)/m%dz
         c2x=coef(2)/m%dx; c2y=coef(2)/m%dy; c2z=coef(2)/m%dz
+
+        inv_2dz =1./2/m%dz
+        inv_2dx =1./2/m%dx
         
         wavelet_scaler=self%dt/m%cell_volume
 
@@ -201,7 +208,9 @@ use m_cpml
         call hud('rdt, irdt = '//num2str(rdt)//', '//num2str(irdt))
 
         s_poynting_def=setup%get_str('POYNTING_DEF',o_default='p_v')
-        if(s_poynting_def/='p_dotp_gradp'.and.s_poynting_def/='dotp_gradp'.and.s_poynting_def/='p_v') call error('Sorry, other Poynting definitions have not yet implemented.')
+        if(s_poynting_def/='p_dotp_gradp'.and.s_poynting_def/='dotp_gradp'.and.s_poynting_def/='p_v'.and.s_poynting_def/='Esq_gradphi') then
+            call error('Sorry, other Poynting definitions have not yet implemented.')
+        endif
 
     end subroutine
 
@@ -480,16 +489,17 @@ use m_cpml
 
     end subroutine
 
-    subroutine adjoint_poynting(self,fld_q,fld_a,fld_v,fld_u, a_star_u)
+    subroutine adjoint_poynting(self,fld_q,fld_p,fld_v,fld_u, a_star_u)
     !adjoint_a_star_Du
         class(t_propagator) :: self
-        type(t_field) :: fld_q,fld_a
+        type(t_field) :: fld_q,fld_p
         type(t_field) :: fld_v,fld_u
         type(t_correlate) :: a_star_u
 
         real,parameter :: time_dir=-1. !time direction
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
+        call fld_v%reinit
         call fld_u%reinit
                     
         !timing
@@ -505,7 +515,9 @@ use m_cpml
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
-                call fld_a%check_value
+                call fld_q%check_value
+                call fld_p%check_value
+                call fld_v%check_value
                 call fld_u%check_value
             endif            
 
@@ -517,18 +529,21 @@ use m_cpml
 
                 !backward step 6: retrieve v^it+1 at boundary layers (BC)
                 call cpu_time(tic)
+                call fld_v%boundary_transport('load',it)
                 call fld_u%boundary_transport('load',it)
                 call cpu_time(toc)
                 tt1=tt1+toc-tic
                 
                 !backward step 4: s^it+1.5 -> s^it+0.5 by FD of v^it+1
                 call cpu_time(tic)
+                call self%update_stresses(fld_v,time_dir,it)
                 call self%update_stresses(fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt2=tt2+toc-tic
 
                 !backward step 3: rm pressure from s^it+0.5
                 call cpu_time(tic)
+                call self%inject_stresses(fld_v,time_dir,it)
                 call self%inject_stresses(fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt3=tt3+toc-tic
@@ -538,20 +553,22 @@ use m_cpml
 
             !adjoint step 5: inject to s^it+1.5 at receivers
             call cpu_time(tic)
-            call self%inject_stresses(fld_a,time_dir,it)
+            call self%inject_stresses(fld_q,time_dir,it)
+            call self%inject_stresses(fld_p,time_dir,it)
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
             !adjoint step 4: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
             call cpu_time(tic)
-            call self%update_stresses(fld_a,time_dir,it)
+            call self%update_stresses(fld_q,time_dir,it)
+            call self%update_stresses(fld_p,time_dir,it)
             call cpu_time(toc)
             tt5=tt5+toc-tic
 
             !compute Poynting vectors before imaging
             call cpu_time(tic)
-            call compute_poynting(fld_u,it)
-            call compute_poynting(fld_a,it)
+            call compute_poynting(fld_q,fld_p,it)
+            call compute_poynting(fld_v,fld_u,it)
             call cpu_time(toc)
             tt6=tt6+toc-tic
             
@@ -560,7 +577,7 @@ use m_cpml
 
             if(mod(it,irdt)==0) then
                 call cpu_time(tic)
-                call cross_correlate_image(fld_a,fld_u,a_star_u,it)
+                call cross_correlate_image(fld_p,fld_u,a_star_u,it)
                 call cpu_time(toc)
                 tt7=tt7+toc-tic
             endif
@@ -585,12 +602,14 @@ use m_cpml
             ! if(present(o_sf)) then
                 !backward step 2: v^it+1 -> v^it by FD of s^it+0.5
                 call cpu_time(tic)
+                call self%update_velocities(fld_v,time_dir,it)
                 call self%update_velocities(fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt8=tt8+toc-tic
 
                 !backward step 1: rm forces from v^it
                 call cpu_time(tic)
+                call self%inject_velocities(fld_v,time_dir,it)
                 call self%inject_velocities(fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt9=tt9+toc-tic
@@ -600,13 +619,15 @@ use m_cpml
 
             !adjoint step 3: inject to v^it+1 at receivers
             call cpu_time(tic)
-            call self%inject_velocities(fld_a,time_dir,it)
+            call self%inject_velocities(fld_q,time_dir,it)
+            call self%inject_velocities(fld_p,time_dir,it)
             call cpu_time(toc)
             tt10=tt10+toc-tic
 
             !adjoint step 2: v^it+1 -> v^it by FD^T of s^it+0.5
             call cpu_time(tic)
-            call self%update_velocities(fld_a,time_dir,it)
+            call self%update_velocities(fld_q,time_dir,it)
+            call self%update_velocities(fld_p,time_dir,it)
             call cpu_time(toc)
             tt11=tt11+toc-tic
             
@@ -628,7 +649,7 @@ use m_cpml
             ! endif
             
             !snapshot
-            call fld_a%write(it,o_suffix='_rev')
+            call fld_p%write(it,o_suffix='_rev')
             call fld_u%write(it,o_suffix='_rev')
 
             call a_star_u%write(it,o_suffix='_rev')
@@ -878,14 +899,17 @@ use m_cpml
 
     end subroutine
 
-    subroutine compute_poynting(f,it)
-        type(t_field) :: f
+    subroutine compute_poynting(v,u,it)
+        type(t_field) :: v, u
+
+        real,dimension(:,:,:),allocatable :: E2, ph !envelope squared & inst phase
+        real,dimension(:,:,:),allocatable :: dph_dz, dph_dx
 
         !nonzero only when sf touches rf
-        ifz=f%bloom(1,it)+2
-        ilz=f%bloom(2,it)-2
-        ifx=f%bloom(3,it)+2
-        ilx=f%bloom(4,it)-2
+        ifz=u%bloom(1,it)+2
+        ilz=u%bloom(2,it)-2
+        ifx=u%bloom(3,it)+2
+        ilx=u%bloom(4,it)-2
 
         ! ify=max(f%bloom(5,it),1)
         ! ily=min(f%bloom(6,it),cb%my)
@@ -898,17 +922,34 @@ use m_cpml
             select case(s_poynting_def)
 
             case('p_dotp_gradp')! s:=p*dotp*∇p
-                call poyn_dotp_gradp(f%p,f%vz,f%vx,ppg%kpa,f%poynz,f%poynx,ifz,ilz,ifx,ilx)
-                f%poynz=f%p*f%poynz
-                f%poynx=f%p*f%poynx
+                call poyn_dotp_gradp(u%p,u%vz,u%vx,ppg%kpa,u%poynz,u%poynx,ifz,ilz,ifx,ilx)
+                u%poynz=u%p*u%poynz
+                u%poynx=u%p*u%poynx
 
             case('dotp_gradp')! s:=dotp*∇p
-                call poyn_dotp_gradp(f%p,f%vz,f%vx,ppg%kpa,f%poynz,f%poynx,ifz,ilz,ifx,ilx)
+                call poyn_dotp_gradp(u%p,u%vz,u%vx,ppg%kpa,u%poynz,u%poynx,ifz,ilz,ifx,ilx)
 
             case('p_v')! s:=p*v
-                !call poyn_p_v(f%p,f%v,f%poynz,f%poynx,ifz,ilz,ifx,ilx)
-                f%poynz=f%p*f%vz
-                f%poynx=f%p*f%vx
+                !call poyn_p_v(u%p,u%v,u%poynz,u%poynx,ifz,ilz,ifx,ilx)
+                u%poynz=u%p*u%vz
+                u%poynx=u%p*u%vx
+
+            case('Esq_gradphi')! s:=E²*∇ϕ
+                !E=sqrt(u%p*u%p+v%p*v%p)
+                E2=u%p*u%p+v%p*v%p
+                ph=atan2(v%p,u%p)
+
+                do ix=ifx,ilx
+                do iz=ifz,ilz
+                    dph_dz(iz,ix,1) = asin(sin(ph(iz+1,ix,1) - ph(iz-1,ix,1)))*inv_2dz
+                    dph_dx(iz,ix,1) = asin(sin(ph(iz,ix+1,1) - ph(iz,ix-1,1)))*inv_2dx
+
+                    u%poynz(iz,ix,1)=E2(iz,ix,1)*dph_dz(iz,ix,1)
+                    u%poynx(iz,ix,1)=E2(iz,ix,1)*dph_dx(iz,ix,1)
+                enddo
+                enddo
+
+                deallocate(E2,ph,dph_dz,dph_dx)
 
             end select
             

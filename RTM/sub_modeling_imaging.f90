@@ -88,6 +88,8 @@ use m_hilbert
     endif
 
 
+    if(mpiworld%is_master) call a_star_u%write
+
     !collect global correlations
     call mpi_allreduce(mpi_in_place,correlate_image, m%n*ppg%nimag, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     
