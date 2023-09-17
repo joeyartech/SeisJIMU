@@ -53,9 +53,16 @@ use m_hilbert
             call ppg%init_field(fld_p,name='fld_p',ois_adjoint=.true.)
             call ppg%init_field(fld_q,name='fld_q',ois_adjoint=.true.)
 
-            call fld_p%ignite(o_wavelet=shot%dobs)
-            tmp=shot%dobs
-            call hilbert_transform(shot%dobs,tmp,shot%nt,shot%nrcv)
+            if(setup%get_str('RTM_ADJSRC',o_default='dobs')=='dobs') then
+                shot%dadj=shot%dobs
+            else
+                shot%dadj=shot%dobs-shot%dsyn
+            endif
+
+            call fld_p%ignite(o_wavelet=shot%dadj)
+                
+            call alloc(tmp,shot%nt,shot%nrcv)
+            call hilbert_transform(shot%dadj,tmp,shot%nt,shot%nrcv)
             call fld_q%ignite(o_wavelet=tmp)
 
             call ppg%init_correlate(a_star_u,'a_star_u')
