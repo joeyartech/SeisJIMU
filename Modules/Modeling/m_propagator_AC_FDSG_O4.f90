@@ -903,7 +903,6 @@ use m_cpml
         type(t_field) :: v, u
 
         real,dimension(:,:,:),allocatable :: E2, ph !envelope squared & inst phase
-        real,dimension(:,:,:),allocatable :: dph_dz, dph_dx
 
         !nonzero only when sf touches rf
         ifz=u%bloom(1,it)+2
@@ -939,17 +938,22 @@ use m_cpml
                 E2=u%p*u%p+v%p*v%p
                 ph=atan2(v%p,u%p)
 
+                !$omp parallel default (shared)&
+                !$omp private(iz,ix,&
+                !$omp         dph_dz,dph_dx)
+                !$omp do schedule(dynamic)
                 do ix=ifx,ilx
                 do iz=ifz,ilz
-                    dph_dz(iz,ix,1) = asin(sin(ph(iz+1,ix,1) - ph(iz-1,ix,1)))*inv_2dz
-                    dph_dx(iz,ix,1) = asin(sin(ph(iz,ix+1,1) - ph(iz,ix-1,1)))*inv_2dx
+                    dph_dz = asin(sin(ph(iz+1,ix,1) - ph(iz-1,ix,1)))*inv_2dz
+                    dph_dx = asin(sin(ph(iz,ix+1,1) - ph(iz,ix-1,1)))*inv_2dx
 
-                    u%poynz(iz,ix,1)=E2(iz,ix,1)*dph_dz(iz,ix,1)
-                    u%poynx(iz,ix,1)=E2(iz,ix,1)*dph_dx(iz,ix,1)
+                    u%poynz(iz,ix,1)=E2(iz,ix,1)*dph_dz
+                    u%poynx(iz,ix,1)=E2(iz,ix,1)*dph_dx
+
                 enddo
                 enddo
-
-                deallocate(E2,ph,dph_dz,dph_dx)
+                !$omp end do
+                !$omp end parallel
 
             end select
             
