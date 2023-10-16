@@ -4,10 +4,7 @@
 ############
 # Modeling #
 ############
-#WaveEq=AC2nd
-WaveEq=AC
-#WaveEq=AC_VTI
-#WaveEq=PSV
+WaveEq=PSV2nd
 Solver=FDSG
 Order=O4
 ShotDec=batching
