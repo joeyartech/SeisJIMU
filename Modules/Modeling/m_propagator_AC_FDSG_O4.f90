@@ -208,7 +208,7 @@ use m_cpml
         call hud('rdt, irdt = '//num2str(rdt)//', '//num2str(irdt))
 
         s_poynting_def=setup%get_str('POYNTING_DEF',o_default='p_v')
-        if(s_poynting_def/='p_dotp_gradp'.and.s_poynting_def/='dotp_gradp'.and.s_poynting_def/='p_v'.and.s_poynting_def/='Esq_gradphi') then
+        if(s_poynting_def/='p_dotp_gradp'.and.s_poynting_def/='dotp_gradp'.and.s_poynting_def/='p_v'.and.s_poynting_def/='Esq_gradphi'.and.s_poynting_def/='Esq_gradphi2') then
             call error('Sorry, other Poynting definitions have not yet implemented.')
         endif
 
@@ -935,6 +935,9 @@ use m_cpml
 
             case('Esq_gradphi')! s:=E²*∇ϕ
                 !E=sqrt(u%p*u%p+v%p*v%p)
+                call alloc(E2,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+                call alloc(ph,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+
                 E2=u%p*u%p+v%p*v%p
                 ph=atan2(v%p,u%p)
 
@@ -944,6 +947,7 @@ use m_cpml
                 !$omp do schedule(dynamic)
                 do ix=ifx,ilx
                 do iz=ifz,ilz
+
                     dph_dz = asin(sin(ph(iz+1,ix,1) - ph(iz-1,ix,1)))*inv_2dz
                     dph_dx = asin(sin(ph(iz,ix+1,1) - ph(iz,ix-1,1)))*inv_2dx
 
@@ -955,6 +959,28 @@ use m_cpml
                 !$omp end do
                 !$omp end parallel
 
+            case('Esq_gradphi2')! s:=E²*∇ϕ=u∇v-v∇u
+
+                !$omp parallel default (shared)&
+                !$omp private(iz,ix,&
+                !$omp         du_dz,du_dx,dv_dz,dv_dx)
+                !$omp do schedule(dynamic)
+                do ix=ifx,ilx
+                do iz=ifz,ilz
+                    du_dz = (u%p(iz+1,ix,1) - u%p(iz-1,ix,1))*inv_2dz
+                    du_dx = (u%p(iz,ix+1,1) - u%p(iz,ix-1,1))*inv_2dx
+
+                    dv_dz = (v%p(iz+1,ix,1) - v%p(iz-1,ix,1))*inv_2dz
+                    dv_dx = (v%p(iz,ix+1,1) - v%p(iz,ix-1,1))*inv_2dx
+
+                    u%poynz(iz,ix,1)=u%p(iz,ix,1)*dv_dz-v%p(iz,ix,1)*du_dz
+                    u%poynx(iz,ix,1)=u%p(iz,ix,1)*dv_dx-v%p(iz,ix,1)*du_dx
+
+                enddo
+                enddo
+                !$omp end do
+                !$omp end parallel
+                
             end select
             
         ! endif
