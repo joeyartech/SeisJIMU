@@ -6,6 +6,7 @@ use m_model
 use m_shot
 use m_computebox
 use m_field
+use m_correlate
 use m_cpml
 
 use, intrinsic :: ieee_arithmetic
@@ -17,6 +18,12 @@ use, intrinsic :: ieee_arithmetic
     
     real :: c1x, c1y, c1z
     real :: c2x, c2y, c2z
+
+    !local const
+    real :: dt2, inv_2dt, inv_2dz, inv_2dx
+
+    !scaling source wavelet
+    real :: wavelet_scaler
 
     type,public :: t_propagator
         !info
@@ -31,14 +38,10 @@ use, intrinsic :: ieee_arithmetic
             'Required field components: pz,px,'//s_NL// &
             'Required field components: ez,ex,es'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
-            'Imaging conditions: P-Pxcorr'//s_NL// &
-            'Energy terms: Σ_shot ∫ sfield%p² dt'//s_NL// &
-            'Basic gradients: grho glda gmu'
+            'Basic gradients: glda gmu'
 
         integer :: nbndlayer=max(2,hicks_r) !minimum absorbing layer thickness
-        integer :: ngrad=3 !number of basic gradients
-        integer :: nimag=1 !number of basic images
-        integer :: nengy=1 !number of energy terms
+        integer :: ngrad=2 !number of basic gradients
 
         logical :: if_compute_engy=.false.
 
@@ -57,7 +60,9 @@ use, intrinsic :: ieee_arithmetic
         procedure :: check_discretization
         procedure :: init
         procedure :: init_field
+        procedure :: init_correlate
         procedure :: init_abslayer
+        procedure :: assemble
 
         procedure :: forward
         procedure :: adjoint
@@ -83,10 +88,6 @@ use, intrinsic :: ieee_arithmetic
     real :: rdt
 
     logical :: if_record_adjseismo=.false.
-
-    !these procedures will be contained in an m_correlate module in future release
-    public :: gradient_density, gradient_moduli, imaging, energy, gradient_postprocess, imaging_postprocess
-
 
     contains
     
@@ -168,6 +169,8 @@ use, intrinsic :: ieee_arithmetic
         c1x=coef(1)/m%dx; c1z=coef(1)/m%dz
         c2x=coef(2)/m%dx; c2z=coef(2)/m%dz
         
+        wavelet_scaler=self%dt/m%cell_volume
+
         if_hicks=shot%if_hicks
 
         if_record_adjseismo=either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
@@ -278,7 +281,7 @@ use, intrinsic :: ieee_arithmetic
 
         !f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
         !if(f%if_will_reconstruct) call f%init_boundary
-        call f%init_boundary
+        call f%init_boundary_momenta
 
         call alloc(f%pz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
         call alloc(f%px, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
@@ -291,10 +294,12 @@ use, intrinsic :: ieee_arithmetic
         call alloc(f%dpx_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
         call alloc(f%dpx_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
         call alloc(f%dez_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(f%dez_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(f%dex_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
         call alloc(f%dex_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
         call alloc(f%des_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
         call alloc(f%des_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
-                
+        
     end subroutine
 
     subroutine init_correlate(self,corr,name)
@@ -328,7 +333,7 @@ use, intrinsic :: ieee_arithmetic
         type(t_correlate) :: corr
 
         if(allocated(correlate_gradient)) then
-            call correlate_assemble(corr%grho, correlate_gradient(:,:,:,1))
+!            call correlate_assemble(corr%grho, correlate_gradient(:,:,:,1))
             call correlate_assemble(corr%glda, correlate_gradient(:,:,:,2))
             call correlate_assemble(corr%gmu,  correlate_gradient(:,:,:,3))
         endif        
@@ -490,7 +495,7 @@ use, intrinsic :: ieee_arithmetic
         do it=ift,ilt
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
-                call fld_u%check_value
+                call fld_u%check_value(fld_u%pz)
             endif
 
             !do forward time stepping (step# conforms with backward & adjoint time stepping)
@@ -530,7 +535,7 @@ use, intrinsic :: ieee_arithmetic
             !step 6: save v^it+1 in boundary layers
             ! if(fld_u%if_will_reconstruct) then
                 call cpu_time(tic)
-                call fld_u%boundary_transport('save',it)
+                call fld_u%boundary_transport_momenta('save',it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             ! endif
@@ -576,8 +581,8 @@ use, intrinsic :: ieee_arithmetic
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
-                call fld_a%check_value
-                call fld_u%check_value
+                call fld_a%check_value(fld_a%pz)
+                call fld_u%check_value(fld_u%pz)
             endif            
 
             !do backward time stepping to reconstruct the source (incident) wavefield
@@ -588,7 +593,7 @@ use, intrinsic :: ieee_arithmetic
 
                 !backward step 6: retrieve v^it+1 at boundary layers (BC)
                 call cpu_time(tic)
-                call fld_u%boundary_transport('load',it)
+                call fld_u%boundary_transport_momenta('load',it)
                 call cpu_time(toc)
                 tt1=tt1+toc-tic
                 
@@ -623,7 +628,7 @@ use, intrinsic :: ieee_arithmetic
             !use sf%v^it+1 to compute sf%s_dt^it+0.5, as backward step 4
             if(mod(it,irdt)==0) then
                 call cpu_time(tic)
-                call cross_correlate_gkpa_glda(fld_a,fld_u,a_star_u,it)
+                call cross_correlate_glda_gmu(fld_a,fld_u,a_star_u,it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             endif
@@ -676,7 +681,7 @@ use, intrinsic :: ieee_arithmetic
             ! endif
             
             !snapshot
-            call fld_p%write(it,o_suffix='_rev')
+            call fld_a%write(it,o_suffix='_rev')
             call fld_u%write(it,o_suffix='_rev')
 
             call a_star_u%write(it,o_suffix='_rev')
@@ -723,7 +728,7 @@ use, intrinsic :: ieee_arithmetic
             ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
             
-            wl=time_dir*f%wavelet(1,it)
+            wl=time_dir*f%wavelet(1,it)*wavelet_scaler
             
             if(if_hicks) then
                 select case (shot%src%comp)
@@ -756,7 +761,7 @@ use, intrinsic :: ieee_arithmetic
                 ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
                 ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
                 
-                wl=f%wavelet(i,it)
+                wl=f%wavelet(i,it)*wavelet_scaler
                 
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
@@ -800,9 +805,9 @@ use, intrinsic :: ieee_arithmetic
         if(m%is_freesurface) ifz=max(ifz,1)
 
         call fd2d_momenta(f%pz,f%px,f%ez,f%ex,f%es,            &
-                             f%dez_dz,f%dex_dx,f%des_dz,f%dex_dx,&
-                             self%buoz,self%buox,                &
-                             ifz,ilz,ifx,ilx,time_dir*self%dt)
+                        f%dez_dz,f%dex_dx,f%dex_dz,f%dez_dx,f%des_dz,f%des_dx,&
+                        self%ldap2mu,self%lda,self%mu,             &
+                        ifz,ilz,ifx,ilx,time_dir*self%dt)
 
         !apply free surface boundary condition if needed
         !free surface is located at [1,ix,1] level
@@ -819,15 +824,15 @@ use, intrinsic :: ieee_arithmetic
 
             do ix=ifx,ilx
                 f%pz(1,ix,1)= f%pz(2,ix,1) + 1/cb%rho(1,ix,1)* &
-                self%lda(1,ix)*(self%buox(1,ix,1)*f%px(1,ix,1)-self%buox(1,ix+1,1)*f%px(1,ix+1,1))*dz_dx/self%ldap2mu(1,ix)
+                self%lda(1,ix)*(self%buox(1,ix)*f%px(1,ix,1)-self%buox(1,ix+1)*f%px(1,ix+1,1))*dz_dx/self%ldap2mu(1,ix)
                 !f%px(0,ix)= f%px(2,ix) + (f%pz(1,ix)+f%pz(2,ix)-f%pz(1,ix+1)-f%pz(2,ix+1))*dz_dx/lm%ldap2mu(1,ix) !toy2del says this condition is not needed
             enddo
         endif
 
     end subroutine
     
-    !forward: add RHS to s^it+0.5
-    !adjoint: add RHS to s^it+1.5
+    !forward: add RHS to e^it+0.5
+    !adjoint: add RHS to e^it+1.5
     subroutine inject_strains(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
@@ -837,7 +842,7 @@ use, intrinsic :: ieee_arithmetic
             ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
             
-            wl=time_dir*f%wavelet(1,it)
+            wl=time_dir*f%wavelet(1,it)*wavelet_scaler
             
             if(if_hicks) then
                 select case (shot%src%comp)
@@ -845,16 +850,16 @@ use, intrinsic :: ieee_arithmetic
                     f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*shot%src%interp_coef(:,:,1)
                     case ('ex')
                     f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*shot%src%interp_coef(:,:,1)
-                    !case ('es')
-                    !f%es(ifz:ilz,ifx:ilx,1) = f%es(ifz:ilz,ifx:ilx,1) + wl*shot%src%interp_coef(:,:,1)
+                    ! case ('es')
+                    ! f%es(ifz:ilz,ifx:ilx,1) = f%es(ifz:ilz,ifx:ilx,1) + wl*shot%src%interp_coef(:,:,1)
                 endselect
                 
             else
                 select case (shot%src%comp)
                     case ('ez')
-                    f%ez(iz,ix,1) = f%ez(iz,ix,1) + wl*shot%src%interp_coef(:,:,1)
+                    f%ez(iz,ix,1) = f%ez(iz,ix,1) + wl
                     case ('ex')
-                    f%ex(iz,ix,1) = f%ex(iz,ix,1) + wl*shot%src%interp_coef(:,:,1)
+                    f%ex(iz,ix,1) = f%ex(iz,ix,1) + wl
                     !case ('es')
                     !f%es(iz,ix,1) = f%es(iz,ix,1) + wl*shot%src%interp_coef(:,:,1)
                 endselect
@@ -873,7 +878,7 @@ use, intrinsic :: ieee_arithmetic
                     ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
                     
                     !adjsource for pressure
-                    wl=f%wavelet(i,it)
+                    wl=f%wavelet(i,it)*wavelet_scaler
                     
                     if(if_hicks) then
                         select case (shot%src%comp)
@@ -885,9 +890,9 @@ use, intrinsic :: ieee_arithmetic
                     else           
                         select case (shot%src%comp)
                             case ('ez')
-                            f%ez(iz,ix,1) = f%ez(iz,ix,1) +wl*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
+                            f%ez(iz,ix,1) = f%ez(iz,ix,1) +wl
                             case ('ex')
-                            f%ex(iz,ix,1) = f%ex(iz,ix,1) +wl*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
+                            f%ex(iz,ix,1) = f%ex(iz,ix,1) +wl
                         endselect
                     endif
 
@@ -912,16 +917,16 @@ use, intrinsic :: ieee_arithmetic
 
         call fd2d_strains(f%pz,f%px,f%ez,f%ex,f%es,    &
                            f%dpz_dz,f%dpx_dx,f%dpz_dx,f%dpx_dz,&
-                           self%ldap2mu,self%lda,self%mu,  &
+                           self%buoz,self%buox,&
                            ifz,ilz,ifx,ilx,time_dir*self%dt)
         
         !apply free surface boundary condition if needed
         !free surface is located at [1,ix] level
-        !so explicit boundary condition: 0=ez(1,ix)=lda2mu*ez(1,ix)+lda*ex(1,ix) -> ez(1,ix)=-lda(1,ix)*ex(1,ix)/lda2mu(1,ix)
+        !so explicit boundary condition: 0=ez(1,ix)=ldap2mu*ez(1,ix)+lda*ex(1,ix) -> ez(1,ix)=-lda(1,ix)*ex(1,ix)/ldap2mu(1,ix)
         !and antisymmetric mirroring: mu*es[0.5,ix-0.5]=-mu*es[1.5,ix-0.5] -> mu(1,ix)*es(1,ix)=-mu(2,ix)*es(2,ix)
         if(m%is_freesurface) then
-            f%ez(1,:,1)=-self%lda(1,:,1)*f%ex(1,:,1)/self%lda2mu(1,:,1)
-            f%es(1,:,1)=-self%mu(2,:,1)*f%es(2,:,1)/self%mu(1,:,1)
+            f%ez(1,:,1)=-self%lda(1,:)*f%ex(1,:,1)/self%ldap2mu(1,:)
+            f%es(1,:,1)=-self%mu(2,:) *f%es(2,:,1)/self%mu(1,:)
         endif
 
     end subroutine
@@ -943,10 +948,12 @@ use, intrinsic :: ieee_arithmetic
                         f%seismo(i,it)=sum(f%ez(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
                         case ('ex')
                         f%seismo(i,it)=sum(f%ex(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
+                        case ('es')
+                        f%seismo(i,it)=sum(f%es(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
                         case ('pz')
                         f%seismo(i,it)=sum(f%pz(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
                         case ('px')
-                        f%seismo(i,it)=sum(f%[x(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
+                        f%seismo(i,it)=sum(f%px(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
                     end select
                     
                 else
@@ -955,6 +962,8 @@ use, intrinsic :: ieee_arithmetic
                         f%seismo(i,it)=f%ez(iz,ix,1)
                         case ('ex') !ez[iz,ix]
                         f%seismo(i,it)=f%ex(iz,ix,1)
+                        case ('es') !ez[iz,ix]
+                        f%seismo(i,it)=f%es(iz,ix,1)
                         case ('pz') !pz[iz-0.5,ix]
                         f%seismo(i,it)=f%pz(iz,ix,1)
                         case ('px') !px[iz,ix-0.5]
@@ -979,6 +988,9 @@ use, intrinsic :: ieee_arithmetic
 
                     case ('ex')
                     f%seismo(1,it)=sum(f%ex(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1))
+
+                    case ('es')
+                    f%seismo(1,it)=sum(f%es(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1))
                     
                     case ('pz')
                     f%seismo(1,it)=sum(f%pz(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1))
@@ -995,6 +1007,9 @@ use, intrinsic :: ieee_arithmetic
 
                     case ('ex') !ex[iz-0.5,ix,1]
                     f%seismo(1,it)=f%ex(iz,ix,1)
+
+                    case ('es') !ex[iz-0.5,ix,1]
+                    f%seismo(1,it)=f%es(iz,ix,1)
                     
                     case ('pz') !pz[iz-0.5,ix,1]
                     f%seismo(1,it)=f%pz(iz,ix,1)
@@ -1072,7 +1087,7 @@ use, intrinsic :: ieee_arithmetic
     !      2(λ+μ)μ 
 
     
-    subroutine cross_correlate_gkpa_glda(rf,sf,corr,it)
+    subroutine cross_correlate_glda_gmu(rf,sf,corr,it)
         type(t_field), intent(in) :: rf, sf
         type(t_correlate) :: corr
 
@@ -1085,9 +1100,9 @@ use, intrinsic :: ieee_arithmetic
         ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
         
         if(m%is_cubic) then
-            call grad3d_gkpa(rf%p,sf%pz,sf%px,sf%vy,&
-                             corr%gkpa,             &
-                             ifz,ilz,ifx,ilx,ify,ily)
+            ! call grad3d_gkpa(rf%p,sf%pz,sf%px,sf%vy,&
+            !                  corr%gkpa,             &
+            !                  ifz,ilz,ifx,ilx,ify,ily)
         else
             ! call grad2d_moduli(rf%p,sf%p,sf_p_save,&
             !                    grad,            &
@@ -1095,13 +1110,10 @@ use, intrinsic :: ieee_arithmetic
             ! sf_p_save = sf%p
             
             !inexact greadient
-            call grad2d_glda(rf%pz,rf%px,sf%ez,sf%ex,&
-                             corr%glda,       &
-                             ifz,ilz,ifx,ilx)
-
-            call grad2d_gmu (rf%pz,rf%px,sf%ez,sf%ex,sf%es,&
-                             corr%gmu,       &
-                             ifz,ilz,ifx,ilx)
+            call grad2d_glda_gmu(rf%pz,rf%px,sf%ez,sf%ex,sf%es,&
+                                ppg%buoz,ppg%buox,             &
+                                corr%glda,corr%gmu,            &
+                                ifz,ilz,ifx,ilx)
         endif
         
     end subroutine
@@ -1140,7 +1152,7 @@ use, intrinsic :: ieee_arithmetic
         !$omp private(iz,ix,i,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,&
         !$omp         iz_ixm2,iz_ixm1,iz_ixp1,&
-        !$omp         dez_dz_,dex_dx_,des_dz_,des_dx_)
+        !$omp         dez_dz_,dex_dx_,dex_dz_,dez_dx_,des_dz_,des_dx_)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
 
@@ -1198,11 +1210,11 @@ use, intrinsic :: ieee_arithmetic
     end subroutine
     
     subroutine fd2d_strains(pz,px,ez,ex,es,              &
-                             dpz_dz,dpx_dx,dpz_dx,dpx_dx,&
+                             dpz_dz,dpx_dx,dpz_dx,dpx_dz,&
                              buoz,buox,                  &
                              ifz,ilz,ifx,ilx,dt)
         real,dimension(*) :: pz,px,ez,ex,es
-        real,dimension(*) :: dpz_dz,dpx_dx,dpz_dx,dpx_dx
+        real,dimension(*) :: dpz_dz,dpx_dx,dpz_dx,dpx_dz
         real,dimension(*) :: buoz,buox
         
         nz=cb%nz
@@ -1257,13 +1269,13 @@ use, intrinsic :: ieee_arithmetic
 
                 !cpml
                 dpz_dx(i)=cpml%b_x_half(ix)*dpz_dx(i)+cpml%a_x_half(ix)*dpz_dx_
-                dpx_dx(i)=cpml%b_z_half(iz)*dpx_dx(i)+cpml%a_z_half(iz)*dpx_dz_
+                dpx_dz(i)=cpml%b_z_half(iz)*dpx_dz(i)+cpml%a_z_half(iz)*dpx_dz_
 
                 dpz_dx_=dpz_dx_*cpml%kpa_x_half(ix) + dpz_dx(i)
-                dpx_dz_=dpx_dz_*cpml%kpa_z_half(iz) + dpx_dx(i)
+                dpx_dz_=dpx_dz_*cpml%kpa_z_half(iz) + dpx_dz(i)
 
                 !shear stress
-                es(i) = es(i) + dt * mu(i)*(dpz_dx_+dpx_dz_)
+                es(i) = es(i) + dt * (dpz_dx_+dpx_dz_)
                 
             enddo
             
@@ -1295,9 +1307,10 @@ use, intrinsic :: ieee_arithmetic
         !$omp         iz_ixm2,izp1_ixm2,iz_ixm1,izp1_ixm1,&
         !$omp         izm2_ixp1,izm1_ixp1,iz_ixp1,izp1_ixp1,izp2_ixp1,&
         !$omp         iz_ixp2,izp1_ixp2,&
-        !$omp         sf_dvx_dx,sf_dvz_dz,&
-        !$omp         sf_4_dvzdx_p_dvxdz,rf_4_szx)
+        !$omp         sf_dez_dz,sf_dex_dz,sf_des_dz,sf_dez_dx,sf_dex_dx,sf_des_dx)
         !$omp do schedule(dynamic)
+!!        !$omp         sf_dvx_dx,sf_dvz_dz,&
+!!        !$omp         sf_4_dvzdx_p_dvxdz,rf_4_szx)
         do ix=ifx,ilx
         
             !dir$ simd
@@ -1327,35 +1340,40 @@ use, intrinsic :: ieee_arithmetic
                 izp1_ixp2= i+1  +2*nz  !iz+1,ix+2
                 
 
-                sf_dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
-                sf_dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
+                sf_dez_dz = c1z*(sf_ez(izp1_ix)-sf_ez(iz_ix)) +c2z*(sf_ez(izp2_ix)-sf_ez(izm1_ix))
+                sf_dex_dz = c1z*(sf_ex(iz_ixp1)-sf_ex(iz_ix)) +c2z*(sf_ex(iz_ixp2)-sf_ex(iz_ixm1))
+                sf_des_dz = c1z*(sf_es(iz_ixp1)-sf_es(iz_ix)) +c2z*(sf_es(iz_ixp2)-sf_es(iz_ixm1))
+
+                sf_dez_dx = c1x*(sf_ez(iz_ixp1)-sf_ez(iz_ix)) +c2x*(sf_ez(iz_ixp2)-sf_ez(iz_ixm1))
+                sf_dex_dx = c1x*(sf_ex(iz_ixp1)-sf_ex(iz_ix)) +c2x*(sf_ex(iz_ixp2)-sf_ex(iz_ixm1))
+                sf_des_dx = c1x*(sf_es(iz_ixp1)-sf_es(iz_ix)) +c2x*(sf_es(iz_ixp2)-sf_es(iz_ixm1))
 
                 grad_lda(j)=grad_lda(j) + rf_pz(i)*(sf_dez_dz + sf_dex_dz) &
                                         + rf_px(i)*(sf_dez_dx + sf_dex_dx)
 
 
-                sf_4_dvzdx_p_dvxdz = &   !(dpz_dx+dpx_dx)(iz,ix)     [iz-0.5,ix-0.5]
-                                         c1x*(sf_vz(iz_ix    )-sf_vz(iz_ixm1  )) +c2x*(sf_vz(iz_ixp1  )-sf_vz(iz_ixm2  )) &
-                                       + c1z*(sf_vx(iz_ix    )-sf_vx(izm1_ix  )) +c2z*(sf_vx(izp1_ix  )-sf_vx(izm2_ix  )) &
-                                     & &
-                                     & & !(dpz_dx+dpx_dx)(iz,ix+1)   [iz-0.5,ix+0.5]
-                                       + c1x*(sf_vz(iz_ixp1  )-sf_vz(iz_ix    )) +c2x*(sf_vz(iz_ixp2  )-sf_vz(iz_ixm1  )) &
-                                       + c1z*(sf_vx(iz_ixp1  )-sf_vx(izm1_ixp1)) +c2z*(sf_vx(izp1_ixp1)-sf_vx(izm2_ixp1)) &
-                                     & &
-                                     & & !(dpz_dx+dpx_dx)(iz+1,ix)   [iz+0.5,ix-0.5]
-                                       + c1x*(sf_vz(izp1_ix  )-sf_vz(izp1_ixm1)) +c2x*(sf_vz(izp1_ixp1)-sf_vz(izp1_ixm2)) &
-                                       + c1z*(sf_vx(izp1_ix  )-sf_vx(iz_ix    )) +c2z*(sf_vx(izp2_ix  )-sf_vx(izm1_ix  )) &
-                                     & &
-                                     & & !(dpz_dx+dpx_dx)(iz+1,ix+1) [iz+0.5,ix+0.5]
-                                       + c1x*(sf_vz(izp1_ixp1)-sf_vz(izp1_ix  )) +c2x*(sf_vz(izp1_ixp2)-sf_vz(izp1_ixm1)) &
-                                       + c1z*(sf_vx(izp1_ixp1)-sf_vx(iz_ixp1  )) +c2z*(sf_vx(izp2_ixp1)-sf_vx(izm1_ixp1))
+                ! sf_4_dvzdx_p_dvxdz = &   !(dpz_dx+dpx_dx)(iz,ix)     [iz-0.5,ix-0.5]
+                !                          c1x*(sf_vz(iz_ix    )-sf_vz(iz_ixm1  )) +c2x*(sf_vz(iz_ixp1  )-sf_vz(iz_ixm2  )) &
+                !                        + c1z*(sf_vx(iz_ix    )-sf_vx(izm1_ix  )) +c2z*(sf_vx(izp1_ix  )-sf_vx(izm2_ix  )) &
+                !                      & &
+                !                      & & !(dpz_dx+dpx_dx)(iz,ix+1)   [iz-0.5,ix+0.5]
+                !                        + c1x*(sf_vz(iz_ixp1  )-sf_vz(iz_ix    )) +c2x*(sf_vz(iz_ixp2  )-sf_vz(iz_ixm1  )) &
+                !                        + c1z*(sf_vx(iz_ixp1  )-sf_vx(izm1_ixp1)) +c2z*(sf_vx(izp1_ixp1)-sf_vx(izm2_ixp1)) &
+                !                      & &
+                !                      & & !(dpz_dx+dpx_dx)(iz+1,ix)   [iz+0.5,ix-0.5]
+                !                        + c1x*(sf_vz(izp1_ix  )-sf_vz(izp1_ixm1)) +c2x*(sf_vz(izp1_ixp1)-sf_vz(izp1_ixm2)) &
+                !                        + c1z*(sf_vx(izp1_ix  )-sf_vx(iz_ix    )) +c2z*(sf_vx(izp2_ix  )-sf_vx(izm1_ix  )) &
+                !                      & &
+                !                      & & !(dpz_dx+dpx_dx)(iz+1,ix+1) [iz+0.5,ix+0.5]
+                !                        + c1x*(sf_vz(izp1_ixp1)-sf_vz(izp1_ix  )) +c2x*(sf_vz(izp1_ixp2)-sf_vz(izp1_ixm1)) &
+                !                        + c1z*(sf_vx(izp1_ixp1)-sf_vx(iz_ixp1  )) +c2z*(sf_vx(izp2_ixp1)-sf_vx(izm1_ixp1))
 
-                        ![iz-0.5,ix-0.5]   [iz+0.5,ix-0.5]   [iz-0.5,ix+0.5]     [iz+0.5,ix+0.5]
-                rf_4_szx = rf_szx(iz_ix) + rf_szx(izp1_ix) + rf_szx(iz_ixp1) + rf_szx(izp1_ixp1)
+                !         ![iz-0.5,ix-0.5]   [iz+0.5,ix-0.5]   [iz-0.5,ix+0.5]     [iz+0.5,ix+0.5]
+                ! rf_4_szx = rf_szx(iz_ix) + rf_szx(izp1_ix) + rf_szx(iz_ixp1) + rf_szx(izp1_ixp1)
 
                 grad_mu(j)=grad_mu(j) + rf_pz(i)*(2*sf_dez_dz +sf_des_dx) &
-                                      + rf_px(i)*(2*sf_dex_dx +sf_des_dz) &
-                                      *0.0625*rf_4_szx*sf_4_dvzdx_p_dvxdz   !0.0625=1/16
+                                      + rf_px(i)*(2*sf_dex_dx +sf_des_dz)
+                                      ! *0.0625*rf_4_szx*sf_4_dvzdx_p_dvxdz   !0.0625=1/16
 
             end do
             

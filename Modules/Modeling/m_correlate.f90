@@ -22,6 +22,7 @@ use m_computebox
 
         !gradient components
         real,dimension(:,:,:),allocatable :: gkpa, gikpa
+        real,dimension(:,:,:),allocatable :: glda, gmu
         real,dimension(:,:,:),allocatable :: grho, gbuo
 
         !image components
@@ -96,6 +97,8 @@ use m_computebox
 
         if(allocated(self%gkpa))       call scale_copy(self%gkpa,scaler)
         if(allocated(self%gikpa))      call scale_copy(self%gikpa,scaler)
+        if(allocated(self%glda))       call scale_copy(self%glda,scaler)
+        if(allocated(self%gmu))        call scale_copy(self%gmu,scaler)
         if(allocated(self%grho))       call scale_copy(self%grho,scaler)
         if(allocated(self%gbuo))       call scale_copy(self%gbuo,scaler)
         
@@ -113,6 +116,8 @@ use m_computebox
 
         if(allocated(self%gkpa))  call mpi_reduce(mpi_in_place, self%gkpa,  m%n, mpi_real, mpi_sum, 0, mpiworld%communicator, mpiworld%ierr)
         if(allocated(self%gikpa)) call mpi_reduce(mpi_in_place, self%gikpa, m%n, mpi_real, mpi_sum, 0, mpiworld%communicator, mpiworld%ierr)
+        if(allocated(self%glda))  call mpi_reduce(mpi_in_place, self%glda,  m%n, mpi_real, mpi_sum, 0, mpiworld%communicator, mpiworld%ierr)
+        if(allocated(self%gmu))   call mpi_reduce(mpi_in_place, self%gmu,   m%n, mpi_real, mpi_sum, 0, mpiworld%communicator, mpiworld%ierr)
         if(allocated(self%grho))  call mpi_reduce(mpi_in_place, self%grho,  m%n, mpi_real, mpi_sum, 0, mpiworld%communicator, mpiworld%ierr)
         if(allocated(self%gbuo))  call mpi_reduce(mpi_in_place, self%gbuo,  m%n, mpi_real, mpi_sum, 0, mpiworld%communicator, mpiworld%ierr)
         
@@ -130,6 +135,8 @@ use m_computebox
         if(.not.present(o_it)) then !just write
             if(allocated(self%grho))   call sysio_write(self%name//'%grho'//suf  ,self%grho,  m%n)
             if(allocated(self%gbuo))   call sysio_write(self%name//'%gbuo'//suf  ,self%gbuo,  m%n)
+            if(allocated(self%glda))   call sysio_write(self%name//'%glda'//suf  ,self%glda,  m%n)
+            if(allocated(self%gmu ))   call sysio_write(self%name//'%gmu'//suf   ,self%gmu,   m%n)
             if(allocated(self%gkpa))   call sysio_write(self%name//'%gkpa'//suf  ,self%gkpa,  m%n)
             if(allocated(self%gikpa))  call sysio_write(self%name//'%gikpa'//suf ,self%gikpa, m%n)
 
@@ -145,6 +152,8 @@ use m_computebox
             if(o_it==1 .or. mod(o_it,i_snapshot)==0 .or. o_it==nt) then
                 if(allocated(self%grho))  call sysio_write('snap_'//self%name//'%grho'//suf, self%grho, m%n,o_mode='append')
                 if(allocated(self%gbuo))  call sysio_write('snap_'//self%name//'%gbuo'//suf, self%gbuo, m%n,o_mode='append')
+                if(allocated(self%glda))  call sysio_write('snap_'//self%name//'%glda'//suf, self%glda, m%n,o_mode='append')
+                if(allocated(self%gmu))   call sysio_write('snap_'//self%name//'%gmu'//suf,  self%gmu,  m%n,o_mode='append')
                 if(allocated(self%gkpa))  call sysio_write('snap_'//self%name//'%gkpa'//suf, self%gkpa, m%n,o_mode='append')
                 if(allocated(self%gikpa)) call sysio_write('snap_'//self%name//'%gikpa'//suf,self%gikpa,m%n,o_mode='append')
   
@@ -162,6 +171,7 @@ use m_computebox
         type(t_correlate) :: self
 
         call dealloc(self%grho, self%gbuo)
+        call dealloc(self%glda, self%gmu)
         call dealloc(self%gkpa, self%gikpa)
 
         call dealloc(self%ipp,self%ibksc,self%ifwsc)

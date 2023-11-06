@@ -86,11 +86,11 @@ use m_Modeling
         call ppg%forward(fld_u)
         call fld_u%acquire; call shot%write('Ru_',shot%dsyn)
 
-        call hud('----  Solving Av=H[s]  ----')
-        call shot%read_wlhilb
-        call ppg%init_field(fld_v,name='fld_v');    call fld_v%ignite
-        call ppg%forward(fld_v)
-        call fld_v%acquire; call shot%write('Rv_',shot%dsyn)
+        ! call hud('----  Solving Av=H[s]  ----')
+        ! call shot%read_wlhilb
+        ! call ppg%init_field(fld_v,name='fld_v');    call fld_v%ignite
+        ! call ppg%forward(fld_v)
+        ! call fld_v%acquire; call shot%write('Rv_',shot%dsyn)
 
 
     enddo

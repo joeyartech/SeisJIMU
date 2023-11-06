@@ -6,6 +6,7 @@ use m_model
 use m_shot
 use m_computebox
 use m_field
+use m_correlate
 use m_cpml
 
 use, intrinsic :: ieee_arithmetic
@@ -17,6 +18,12 @@ use, intrinsic :: ieee_arithmetic
     
     real :: c1x, c1y, c1z
     real :: c2x, c2y, c2z
+
+    !local const
+    real :: dt2, inv_2dt, inv_2dz, inv_2dx
+
+    !scaling source wavelet
+    real :: wavelet_scaler
 
     type,public :: t_propagator
         !info
@@ -57,7 +64,9 @@ use, intrinsic :: ieee_arithmetic
         procedure :: check_discretization
         procedure :: init
         procedure :: init_field
+        procedure :: init_correlate
         procedure :: init_abslayer
+        procedure :: assemble
 
         procedure :: forward
         procedure :: adjoint
@@ -82,9 +91,7 @@ use, intrinsic :: ieee_arithmetic
     integer :: irdt
     real :: rdt
 
-    !these procedures will be contained in an m_correlate module in future release
-    public :: gradient_density, gradient_moduli, imaging, energy, gradient_postprocess, imaging_postprocess
-
+    logical :: if_record_adjseismo=.false.
 
     contains
     
@@ -156,15 +163,21 @@ use, intrinsic :: ieee_arithmetic
         
     end subroutine
 
-    subroutine init(self)
+    subroutine init(self,oif_record_adjseismo)
         class(t_propagator) :: self
+
+        logical,optional :: oif_record_adjseismo
 
         real,dimension(:,:),allocatable :: temp_mu
 
         c1x=coef(1)/m%dx; c1z=coef(1)/m%dz
         c2x=coef(2)/m%dx; c2z=coef(2)/m%dz
         
+        wavelet_scaler=self%dt/m%cell_volume
+
         if_hicks=shot%if_hicks
+
+        if_record_adjseismo=either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
 
         call alloc(self%buoz,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%buox,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
@@ -272,7 +285,7 @@ use, intrinsic :: ieee_arithmetic
 
         !f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
         !if(f%if_will_reconstruct) call f%init_boundary
-        call f%init_boundary
+        call f%init_boundary_velocities
 
         call alloc(f%vz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
         call alloc(f%vx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
@@ -291,11 +304,42 @@ use, intrinsic :: ieee_arithmetic
                 
     end subroutine
 
+    subroutine init_correlate(self,corr,name)
+        class(t_propagator) :: self
+        type(t_correlate) :: corr
+        character(*) :: name
+        
+        corr%name=name
+
+        if(name(1:1)=='g') then !gradient components
+            call alloc(corr%grho,m%nz,m%nx,m%ny)
+            call alloc(corr%glda,m%nz,m%nx,m%ny)
+            call alloc(corr%gmu, m%nz,m%nx,m%ny)
+        ! else !image components
+        !     call alloc(corr%ipp,m%nz,m%nx,m%ny)
+        !     call alloc(corr%ibksc,m%nz,m%nx,m%ny)
+        !     call alloc(corr%ifwsc,m%nz,m%nx,m%ny)
+        endif
+
+    end subroutine
+
     subroutine init_abslayer(self)
         class(t_propagator) :: self
 
         call cpml%init
 
+    end subroutine
+
+    subroutine assemble(self,corr)
+        class(t_propagator) :: self
+        type(t_correlate) :: corr
+
+        if(allocated(correlate_gradient)) then
+            call correlate_assemble(corr%grho, correlate_gradient(:,:,:,1))
+            call correlate_assemble(corr%glda, correlate_gradient(:,:,:,2))
+            call correlate_assemble(corr%gmu,  correlate_gradient(:,:,:,3))
+        endif        
+        
     end subroutine
     
     !========= Derivations =================
@@ -453,7 +497,7 @@ use, intrinsic :: ieee_arithmetic
         do it=ift,ilt
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
-                call fld_u%check_value
+                call fld_u%check_value(fld_u%vz)
             endif
 
             !do forward time stepping (step# conforms with backward & adjoint time stepping)
@@ -493,7 +537,7 @@ use, intrinsic :: ieee_arithmetic
             !step 6: save v^it+1 in boundary layers
             ! if(fld_u%if_will_reconstruct) then
                 call cpu_time(tic)
-                call fld_u%boundary_transport('save',it)
+                call fld_u%boundary_transport_velocities('save',it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             ! endif
@@ -515,24 +559,13 @@ use, intrinsic :: ieee_arithmetic
 
     end subroutine
 
-    subroutine adjoint(self,fld_a,fld_u,oif_record_adjseismo,oif_compute_imag,oif_compute_grad)
+    subroutine adjoint(self,fld_a,fld_u,oif_record_adjseismo, a_star_u)
     !adjoint_a_star_Du
         class(t_propagator) :: self
         type(t_field) :: fld_a,fld_u
-        logical,optional :: oif_record_adjseismo, oif_compute_imag, oif_compute_grad
+        type(t_correlate) :: a_star_u
         
         real,parameter :: time_dir=-1. !time direction
-        logical :: if_record_adjseismo, if_compute_imag, if_compute_grad
-
-        if_record_adjseismo =either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
-        if_compute_imag     =either(oif_compute_imag,    .false.,present(oif_compute_imag))
-        if_compute_grad     =either(oif_compute_grad,    .false.,present(oif_compute_grad))
-        self%if_compute_engy=self%if_compute_engy.and.(if_compute_imag.or.if_compute_grad)
-        
-        if(if_record_adjseismo)  call alloc(fld_a%seismo,1,self%nt)
-        if(if_compute_imag)      call alloc(cb%imag,cb%mz,cb%mx,1,self%nimag)
-        if(if_compute_grad)      call alloc(cb%grad,cb%mz,cb%mx,1,self%ngrad)
-        if(self%if_compute_engy) call alloc(cb%engy,cb%mz,cb%mx,1,self%nengy)
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
         call fld_u%reinit
@@ -550,8 +583,8 @@ use, intrinsic :: ieee_arithmetic
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
-                call fld_a%check_value
-                call fld_u%check_value
+                call fld_a%check_value(fld_a%vz)
+                call fld_u%check_value(fld_u%vz)
             endif            
 
             !do backward time stepping to reconstruct the source (incident) wavefield
@@ -562,7 +595,7 @@ use, intrinsic :: ieee_arithmetic
 
                 !backward step 6: retrieve v^it+1 at boundary layers (BC)
                 call cpu_time(tic)
-                call fld_u%boundary_transport('load',it)
+                call fld_u%boundary_transport_velocities('load',it)
                 call cpu_time(toc)
                 tt1=tt1+toc-tic
                 
@@ -595,28 +628,13 @@ use, intrinsic :: ieee_arithmetic
 
             !gkpa: rf%s^it+0.5 star D sf%s_dt^it+0.5
             !use sf%v^it+1 to compute sf%s_dt^it+0.5, as backward step 4
-            if(if_compute_grad.and.mod(it,irdt)==0) then
+            if(mod(it,irdt)==0) then
                 call cpu_time(tic)
-                call gradient_moduli(fld_a,fld_u,it,cb%grad(:,:,1,2),cb%grad(:,:,1,3))
+                call cross_correlate_glda_gmu(fld_a,fld_u,a_star_u,it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             endif
-
-            if(if_compute_imag.and.mod(it,irdt)==0) then
-                call cpu_time(tic)
-                call imaging(fld_a,fld_u,it,cb%imag)
-                call cpu_time(toc)
-                tt6=tt6+toc-tic
-            endif
-
-            !energy term of sfield
-            if(self%if_compute_engy.and.mod(it,irdt)==0) then
-                call cpu_time(tic)
-                call energy(fld_u,it,cb%engy)
-                call cpu_time(toc)
-                tt6=tt6+toc-tic
-            endif
-                
+                            
             !========================================================!
 
             ! if(present(o_sf)) then
@@ -655,35 +673,26 @@ use, intrinsic :: ieee_arithmetic
                 tt11=tt11+toc-tic
             endif
             
-            !grho: sfield%v_dt^it \dot rfield%v^it
-            !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
-            if(if_compute_grad.and.mod(it,irdt)==0) then
-                call cpu_time(tic)
-                call gradient_density(fld_a,fld_u,it,cb%grad(:,:,1,1))
-                call cpu_time(toc)
-                tt6=tt6+toc-tic
-            endif
+!            !grho: sfield%v_dt^it \dot rfield%v^it
+!            !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
+!            if(if_compute_grad.and.mod(it,irdt)==0) then
+!                call cpu_time(tic)
+!                call gradient_density(fld_a,fld_u,it,cb%grad(:,:,1,1))
+!                call cpu_time(toc)
+!                tt6=tt6+toc-tic
+!            endif
             
             !snapshot
             call fld_a%write(it,o_suffix='_rev')
             call fld_u%write(it,o_suffix='_rev')
-            if(if_compute_imag) then
-                call fld_a%write_ext(it,'imag' ,cb%imag,size(cb%imag))
-            endif
-            if(if_compute_grad) then
-                ! call fld_a%write_ext(it,'grad_density',cb%grad(:,:,:,1),size(cb%grad(:,:,:,1)))
-                ! call fld_a%write_ext(it,'grad_moduli' ,cb%grad(:,:,:,2),size(cb%grad(:,:,:,2)))
-                call fld_a%write_ext(it,'grad_a_star_Du' ,cb%grad,size(cb%grad))
-            endif
-            if(self%if_compute_engy) then
-                call fld_a%write_ext(it,'engy',cb%engy(:,:,:,1),size(cb%engy(:,:,:,1)))
-            endif
+
+            call a_star_u%write(it,o_suffix='_rev')
 
         enddo
         
         !postprocess
-        if(if_compute_imag) call imaging_postprocess
-        if(if_compute_grad) call gradient_postprocess
+        call cross_correlate_postprocess(a_star_u)
+        call a_star_u%scale(m%cell_volume*rdt)
         
         if(mpiworld%is_master) then
             write(*,*) 'Elapsed time to load boundary            ',tt1/mpiworld%max_threads
@@ -721,7 +730,7 @@ use, intrinsic :: ieee_arithmetic
             ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
             
-            wl=time_dir*f%wavelet(1,it)
+            wl=time_dir*f%wavelet(1,it)*wavelet_scaler
             
             if(if_hicks) then
                 select case (shot%src%comp)
@@ -754,7 +763,7 @@ use, intrinsic :: ieee_arithmetic
                 ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
                 ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
                 
-                wl=f%wavelet(i,it)
+                wl=f%wavelet(i,it)*wavelet_scaler
                 
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
@@ -834,7 +843,7 @@ use, intrinsic :: ieee_arithmetic
             ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
             
-            wl=time_dir*f%wavelet(1,it)
+            wl=time_dir*f%wavelet(1,it)*wavelet_scaler
             
             if(if_hicks) then
                 if(shot%src%comp=='p') then
@@ -863,7 +872,7 @@ use, intrinsic :: ieee_arithmetic
                     ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
                     
                     !adjsource for pressure
-                    wl=f%wavelet(i,it)
+                    wl=f%wavelet(i,it)*wavelet_scaler
                     
                     if(if_hicks) then 
 
@@ -1048,25 +1057,25 @@ use, intrinsic :: ieee_arithmetic
     !      2(λ+μ)μ 
 
     
-    subroutine gradient_density(rf,sf,it,grad)
-        type(t_field), intent(in) :: rf, sf
-        real,dimension(cb%mz,cb%mx,1) :: grad
-        
-        !nonzero only when sf touches rf
-        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
-        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
-        ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
-        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
-        
-        call grad2d_density(rf%vz,rf%vx,sf%szz,sf%sxx,sf%szx,&
-                            grad,                            &
-                            ifz,ilz,ifx,ilx)
-        
-    end subroutine
+   ! subroutine gradient_density(rf,sf,it,grad)
+   !     type(t_field), intent(in) :: rf, sf
+   !     real,dimension(cb%mz,cb%mx,1) :: grad
+       
+   !     !nonzero only when sf touches rf
+   !     ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
+   !     ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
+   !     ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
+   !     ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
+       
+   !     call grad2d_density(rf%vz,rf%vx,sf%szz,sf%sxx,sf%szx,&
+   !                         grad,                            &
+   !                         ifz,ilz,ifx,ilx)
+       
+   ! end subroutine
 
-    subroutine gradient_moduli(rf,sf,it,grad_lda,grad_mu)
+    subroutine cross_correlate_glda_gmu(rf,sf,corr,it)
         type(t_field), intent(in) :: rf, sf
-        real,dimension(cb%mz,cb%mx,1) :: grad_lda,grad_mu
+        type(t_correlate) :: corr
 
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
@@ -1075,82 +1084,82 @@ use, intrinsic :: ieee_arithmetic
         ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
                     
         !inexact greadient
-        call grad2d_moduli(rf%szz,rf%sxx,rf%szx,sf%vz,sf%vx,  &
+        call grad2d_glda_gmu(rf%szz,rf%sxx,rf%szx,sf%vz,sf%vx,  &
                            ppg%ldap2mu,ppg%lda,ppg%two_ldapmu,&
-                           grad_lda,grad_mu,                  &
+                           corr%glda,corr%gmu,            &
                            ifz,ilz,ifx,ilx)
         
     end subroutine
     
-    subroutine gradient_postprocess
+    subroutine cross_correlate_postprocess(corr)
+        type(t_correlate) :: corr
 
         real,dimension(:,:),allocatable :: mhalf_inv_ldapmu
-
-        !scale the kernel tobe a gradient in the discretized world
-        cb%grad = cb%grad*m%cell_volume*rdt
         
         !grho
-        cb%grad(:,:,1,1) = cb%grad(:,:,1,1) / cb%rho(1:cb%mz,1:cb%mx,1)
+        corr%grho(:,:,1) = corr%grho(:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1)
 
         mhalf_inv_ldapmu = -0.5/(ppg%ldap2mu(1:cb%mz,1:cb%mx)-ppg%mu(1:cb%mz,1:cb%mx))
 
         !glda
-        cb%grad(:,:,1,2) = cb%grad(:,:,1,2) *mhalf_inv_ldapmu
+        corr%glda(:,:,1) = corr%glda(:,:,1) *mhalf_inv_ldapmu
         !gmu
-        cb%grad(:,:,1,3) = cb%grad(:,:,1,3) *mhalf_inv_ldapmu/ppg%mu(1:cb%mz,1:cb%mx)
-        where( ieee_is_nan(cb%grad(:,:,1,3)) .or. .not.ieee_is_finite(cb%grad(:,:,1,3)) )
-            cb%grad(:,:,1,3)=0.
+        corr%gmu(:,:,1) = corr%gmu(:,:,1) *mhalf_inv_ldapmu/ppg%mu(1:cb%mz,1:cb%mx)
+        where( ieee_is_nan(corr%gmu(:,:,1)) .or. .not.ieee_is_finite(corr%gmu(:,:,1)) )
+            corr%gmu(:,:,1)=0.
         endwhere
 
-        !preparing for cb%project_back
-        cb%grad(1,:,:,:) = cb%grad(2,:,:,:)
+        !preparing for projection back
+        corr%grho(1,:,:) = corr%grho(2,:,:)
+        corr%glda(1,:,:) = corr%glda(2,:,:)
+        corr%gmu (1,:,:) = corr%gmu (2,:,:)
 
         deallocate(mhalf_inv_ldapmu)
 
     end subroutine
 
-    subroutine imaging(rf,sf,it,imag)
-        type(t_field), intent(in) :: rf, sf
-        real,dimension(cb%mz,cb%mx,1) :: imag
+    ! subroutine imaging(rf,sf,it,imag)
+    !     type(t_field), intent(in) :: rf, sf
+    !     real,dimension(cb%mz,cb%mx,1) :: imag
         
-        !nonzero only when sf touches rf
-        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
-        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
-        ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
-        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
+    !     !nonzero only when sf touches rf
+    !     ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
+    !     ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
+    !     ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
+    !     ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
         
-        call imag2d_xcorr(rf%szz,rf%sxx, &
-                          sf%szz,sf%sxx, &
-                          imag,          &
-                          ifz,ilz,ifx,ilx)
+    !     call imag2d_xcorr(rf%szz,rf%sxx, &
+    !                       sf%szz,sf%sxx, &
+    !                       imag,          &
+    !                       ifz,ilz,ifx,ilx)
         
-    end subroutine
+    ! end subroutine
 
-    subroutine imaging_postprocess
+    ! subroutine imaging_postprocess
 
-        !scale by rdt tobe an image in the discretized world
-        cb%imag = cb%imag*rdt
+    !     !scale by rdt tobe an image in the discretized world
+    !     cb%imag = cb%imag*rdt
 
-        !for cb%project_back
-        cb%imag(1,:,:,:) = cb%imag(2,:,:,:)
+    !     !for cb%project_back
+    !     cb%imag(1,:,:,:) = cb%imag(2,:,:,:)
 
-    end subroutine
+    ! end subroutine
 
-    subroutine energy(sf,it,engy)
-        type(t_field),intent(in) :: sf
-        real,dimension(cb%mz,cb%mx,1) :: engy
+    ! subroutine energy(sf,it,engy)
+    !     type(t_field),intent(in) :: sf
+    !     real,dimension(cb%mz,cb%mx,1) :: engy
 
-        !nonzero only when sf touches rf
-        ifz=max(sf%bloom(1,it),2)
-        ilz=min(sf%bloom(2,it),cb%mz)
-        ifx=max(sf%bloom(3,it),1)
-        ilx=min(sf%bloom(4,it),cb%mx)
+    !     !nonzero only when sf touches rf
+    !     ifz=max(sf%bloom(1,it),2)
+    !     ilz=min(sf%bloom(2,it),cb%mz)
+    !     ifx=max(sf%bloom(3,it),1)
+    !     ilx=min(sf%bloom(4,it),cb%mx)
         
-        call engy2d_xcorr(sf%szz,sf%sxx, &
-                          engy,          &
-                          ifz,ilz,ifx,ilx)
+    !     call engy2d_xcorr(sf%szz,sf%sxx, &
+    !                       engy,          &
+    !                       ifz,ilz,ifx,ilx)
         
-    end subroutine
+    ! end subroutine
 
     !========= Finite-Difference on flattened arrays ==================
     
@@ -1298,7 +1307,7 @@ use, intrinsic :: ieee_arithmetic
         
     end subroutine
 
-    subroutine grad2d_moduli(rf_szz,rf_sxx,rf_szx,&
+    subroutine grad2d_glda_gmu(rf_szz,rf_sxx,rf_szx,&
                              sf_vz,sf_vx,         &
                              ldap2mu,lda,two_ldapmu,&
                              grad_lda,grad_mu,    &
