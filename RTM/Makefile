@@ -33,7 +33,7 @@ mod :
 	#Modeling
 	(cd ../Modules/Modeling; make)
 
-exe : sub_modeling_imaging.o main.o
+exe : ../Modules/Kernel/m_weighter.o sub_modeling_imaging.o main.o
 	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/$(app)_$(WaveEq)_$(Solver)_$(Order)
 	(cd ../exe; ln -sf $(app)_$(WaveEq)_$(Solver)_$(Order) $(APP) )
 

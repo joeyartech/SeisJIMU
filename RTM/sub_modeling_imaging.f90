@@ -3,16 +3,24 @@ use mpi
 use m_System
 use m_Modeling
 use m_hilbert
-!use m_weighter
+use m_weighter
 
     logical,save :: is_first_in=.true.
 
     type(t_field) :: fld_v, fld_u, fld_q, fld_p
     type(t_correlate) :: a_star_u
-    real,dimension(:,:),allocatable :: tmp
+    real,dimension(:,:),allocatable :: tmp!, env
+    real,dimension(:,:),allocatable :: ADCIG !shape=nz,360
+    logical :: if_ADCIG
+    character(:),allocatable :: s_adjsrc
 
     call alloc(correlate_image,m%nz,m%nx,m%ny,ppg%nimag)
     
+
+    if_ADCIG=setup%get_bool('IF_ADCIG')
+    if(if_ADCIG) call alloc(ADCIG,m%nz,360)
+
+
     call hud('===== START LOOP OVER SHOTS =====')
     
     do i=1,shls%nshots_per_processor
@@ -53,11 +61,21 @@ use m_hilbert
             call ppg%init_field(fld_p,name='fld_p',ois_adjoint=.true.)
             call ppg%init_field(fld_q,name='fld_q',ois_adjoint=.true.)
 
-            if(setup%get_str('RTM_ADJSRC',o_default='dobs')=='dobs') then
-                shot%dadj=shot%dobs
-            else
-                shot%dadj=shot%dobs-shot%dsyn
+            call wei%update
+            s_adjsrc=setup%get_str('RTM_ADJSRC',o_default='dobs')
+            if(s_adjsrc=='dobs') then
+                shot%dadj=wei%weight*shot%dobs
+            ! elseif(s_adjsrc=='mute_dobs') then
+            !     call alloc(env,shot%nt,shot%nrcv)
+            !     call hilbert_envelope(shot%dsyn,env,shot%nt,shot%nrcv)
+            !     shot%dadj=shot%dobs
+            !     where(env>1e-4*maxval(env))
+            !         shot%dadj=0.
+            !     endwhere
+            elseif(s_adjsrc=='dobs-dsyn') then
+                shot%dadj=wei%weight*(shot%dobs-shot%dsyn)
             endif
+            call shot%write('dadj_',shot%dadj)
 
             call fld_p%ignite(o_wavelet=shot%dadj)
                 
@@ -69,7 +87,12 @@ use m_hilbert
 
             call hud('----  Solving adjoint eqn & xcorrelate  ----')
             !Aᴴa = -Rᴴd
-            call ppg%adjoint_poynting(fld_q,fld_p,fld_v,fld_u,a_star_u)
+            if(.not.if_ADCIG) then
+                call ppg%adjoint_poynting(fld_q,fld_p,fld_v,fld_u,a_star_u)
+            else
+                call ppg%adjoint_poynting(fld_q,fld_p,fld_v,fld_u,a_star_u,ADCIG)
+                call sysio_write('ADCIG_'//shot%sindex,ADCIG,m%nz*360)
+            endif
 
             call hud('----  Assemble  ----')
             call ppg%assemble(a_star_u)
@@ -100,6 +123,12 @@ use m_hilbert
         call a_star_u%write
 
     endif
+
+    !collect global ADCIGs
+    call mpi_allreduce(mpi_in_place,ADCIG, m%nz*360, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    
+    if(mpiworld%is_master) call sysio_write('ADCIG',ADCIG,m%nz*360)
+
 
     ! if(ppg%if_compute_engy) then
     !     call mpi_allreduce(mpi_in_place, m%energy  ,  m%n*ppg%nengy, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)

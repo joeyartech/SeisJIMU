@@ -84,6 +84,8 @@ use m_cpml
     type(t_propagator),public :: ppg
 
     character(:),allocatable :: s_poynting_def
+    logical :: if_ADCIG
+    integer :: ix_ADCIG
 
     logical :: if_hicks
     integer :: irdt
@@ -208,9 +210,14 @@ use m_cpml
         call hud('rdt, irdt = '//num2str(rdt)//', '//num2str(irdt))
 
         s_poynting_def=setup%get_str('POYNTING_DEF',o_default='p_v')
-        if(s_poynting_def/='p_dotp_gradp'.and.s_poynting_def/='dotp_gradp'.and.s_poynting_def/='p_v'.and.s_poynting_def/='Esq_gradphi'.and.s_poynting_def/='Esq_gradphi2') then
-            call error('Sorry, other Poynting definitions have not yet implemented.')
-        endif
+        ! if(s_poynting_def/='p_dotp_gradp'.and.s_poynting_def/='dotp_gradp'.and.s_poynting_def/='p_v' &
+        !     .and.s_poynting_def/='Esq_gradphi'.and.s_poynting_def/='u_gradv-v_gradu'.and. &
+        !     s_poynting_def/='(u_gradv-v_gradu)u2'.and.s_poynting_def/='gradphi') then
+        !     call error('Sorry, other Poynting definitions have not yet implemented.')
+        ! endif
+
+        if_ADCIG=setup%get_bool('IF_ADCIG')
+        if(if_ADCIG) ix_ADCIG=nint(setup%get_real('ADCIG_X')/m%dx)+1
 
     end subroutine
 
@@ -489,12 +496,13 @@ use m_cpml
 
     end subroutine
 
-    subroutine adjoint_poynting(self,fld_q,fld_p,fld_v,fld_u, a_star_u)
+    subroutine adjoint_poynting(self,fld_q,fld_p,fld_v,fld_u, a_star_u, o_ADCIG)
     !adjoint_a_star_Du
         class(t_propagator) :: self
         type(t_field) :: fld_q,fld_p
         type(t_field) :: fld_v,fld_u
         type(t_correlate) :: a_star_u
+        real,dimension(:,:),optional :: o_ADCIG
 
         real,parameter :: time_dir=-1. !time direction
 
@@ -517,7 +525,7 @@ use m_cpml
                 write(*,*) 'it----',it
                 call fld_q%check_value
                 call fld_p%check_value
-                call fld_v%check_value
+                ! call fld_v%check_value
                 call fld_u%check_value
             endif            
 
@@ -578,6 +586,7 @@ use m_cpml
             if(mod(it,irdt)==0) then
                 call cpu_time(tic)
                 call cross_correlate_image(fld_p,fld_u,a_star_u,it)
+                if(present(o_ADCIG)) call cross_correlate_ADCIG(fld_p,fld_u,o_ADCIG,it)
                 call cpu_time(toc)
                 tt7=tt7+toc-tic
             endif
@@ -959,7 +968,7 @@ use m_cpml
                 !$omp end do
                 !$omp end parallel
 
-            case('Esq_gradphi2')! s:=E²*∇ϕ=u∇v-v∇u
+            case('u_gradv-v_gradu')! s:=E²*∇ϕ=u∇v-v∇u
 
                 !$omp parallel default (shared)&
                 !$omp private(iz,ix,&
@@ -980,6 +989,85 @@ use m_cpml
                 enddo
                 !$omp end do
                 !$omp end parallel
+                
+            ! case('(u_gradv-v_gradu)u2')! s:=(u∇v-v∇u)*u²
+
+            !     !$omp parallel default (shared)&
+            !     !$omp private(iz,ix,&
+            !     !$omp         du_dz,du_dx,dv_dz,dv_dx)
+            !     !$omp do schedule(dynamic)
+            !     do ix=ifx,ilx
+            !     do iz=ifz,ilz
+            !         du_dz = (u%p(iz+1,ix,1) - u%p(iz-1,ix,1))*inv_2dz
+            !         du_dx = (u%p(iz,ix+1,1) - u%p(iz,ix-1,1))*inv_2dx
+
+            !         dv_dz = (v%p(iz+1,ix,1) - v%p(iz-1,ix,1))*inv_2dz
+            !         dv_dx = (v%p(iz,ix+1,1) - v%p(iz,ix-1,1))*inv_2dx
+
+            !         u%poynz(iz,ix,1)=(u%p(iz,ix,1)*dv_dz-v%p(iz,ix,1)*du_dz)*u%p(iz,ix,1)**2
+            !         u%poynx(iz,ix,1)=(u%p(iz,ix,1)*dv_dx-v%p(iz,ix,1)*du_dx)*u%p(iz,ix,1)**2
+
+            !     enddo
+            !     enddo
+            !     !$omp end do
+            !     !$omp end parallel
+
+            ! case('gradphi')! s:=∇ϕ
+            !     ! !E=sqrt(u%p*u%p+v%p*v%p)
+            !     ! call alloc(E2,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+            !     call alloc(ph,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+
+            !     ! E2=u%p*u%p+v%p*v%p
+            !     ph=atan2(v%p,u%p)
+
+            !     !$omp parallel default (shared)&
+            !     !$omp private(iz,ix,&
+            !     !$omp         dph_dz,dph_dx)
+            !     !$omp do schedule(dynamic)
+            !     do ix=ifx,ilx
+            !     do iz=ifz,ilz
+
+            !         dph_dz = asin(sin(ph(iz+1,ix,1) - ph(iz-1,ix,1)))*inv_2dz
+            !         dph_dx = asin(sin(ph(iz,ix+1,1) - ph(iz,ix-1,1)))*inv_2dx
+
+            !         u%poynz(iz,ix,1)=dph_dz
+            !         u%poynx(iz,ix,1)=dph_dx
+
+            !     enddo
+            !     enddo
+            !     !$omp end do
+            !     !$omp end parallel
+
+            ! case('Esq_gradphi/dphi')! s:=E²*∇ϕ/dphi=(u∇v-v∇u)/(udv-vdu)*(u²+v²)
+            !     !where ∇u canbe expressed by velocity component
+
+            !     !$omp parallel default (shared)&
+            !     !$omp private(iz,ix,&
+            !     !$omp         du_dz,du_dx,dv_dz,dv_dx)
+            !     !$omp do schedule(dynamic)
+            !     do ix=ifx,ilx
+            !     do iz=ifz,ilz
+            !         du_dz = (u%p(iz+1,ix,1) - u%p(iz-1,ix,1))*inv_2dz
+            !         du_dx = (u%p(iz,ix+1,1) - u%p(iz,ix-1,1))*inv_2dx
+
+            !         dv_dz = (v%p(iz+1,ix,1) - v%p(iz-1,ix,1))*inv_2dz
+            !         dv_dx = (v%p(iz,ix+1,1) - v%p(iz,ix-1,1))*inv_2dx
+
+            !         u%poynz(iz,ix,1)=u%p(iz,ix,1)*dv_dz-v%p(iz,ix,1)*du_dz
+            !         u%poynx(iz,ix,1)=u%p(iz,ix,1)*dv_dx-v%p(iz,ix,1)*du_dx
+
+            !         du_dt = ppg%kpa(iz,ix,1) * ((u%vz(iz+1,ix,1)-u%vz(iz-1,ix,1))*inv_2dz + (u%vx(iz,ix+1,1)-u%vx(iz,ix-1,1))*inv_2dx)
+            !         dv_dt = ppg%kpa(iz,ix,1) * ((v%vz(iz+1,ix,1)-v%vz(iz-1,ix,1))*inv_2dz + (v%vx(iz,ix+1,1)-v%vx(iz,ix-1,1))*inv_2dx)
+
+            !         tmp = (u%p(iz,ix,i1)**2+v%p(iz,ix,i1)**2 +1e-4) / (u%p(iz,ix,i1)*dv_dt-v%p(iz,ix,i1)*du_dt +1e-4)
+
+            !         u%poynz(iz,ix,1) = u%poynz(iz,ix,1) * tmp
+            !         u%poynx(iz,ix,1) = u%poynx(iz,ix,1) * tmp
+
+            !     enddo
+            !     enddo
+            !     !$omp end do
+            !     !$omp end parallel
                 
             end select
             
@@ -1168,7 +1256,12 @@ use m_cpml
         !                       imag,                  &
         !                       ifz,ilz,ifx,ilx,ify,ily)
         ! else
+            ! call imag2d(rf%p,sf%p,&
+            !             rf%poynz,rf%poynx,sf%poynz,sf%poynx, &
+            !             corr%ipp,corr%ibksc,corr%ifwsc, &
+            !             ifz,ilz,ifx,ilx)
             call imag2d(rf%p,sf%p,&
+                        rf%vz,rf%vx,sf%vz,sf%vz,&
                         rf%poynz,rf%poynx,sf%poynz,sf%poynx, &
                         corr%ipp,corr%ibksc,corr%ifwsc, &
                         ifz,ilz,ifx,ilx)
@@ -1178,6 +1271,66 @@ use m_cpml
         !                   sf%p,sf%vz,sf%vx,&
         !                   imag,            &
         !                   ifz,ilz,ifx,ilx)
+
+    end subroutine
+
+    subroutine cross_correlate_ADCIG(rf,sf,ADCIG,it)
+        type(t_field), intent(in) :: rf, sf
+        real,dimension(:,:) :: ADCIG
+        
+        ! !nonzero only when sf touches rf
+        ! ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
+        ! ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
+        ! ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
+        ! ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
+        ! ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
+        ! ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
+        
+
+        r_pi=3.1415927
+        ix=ix_ADCIG
+
+        ! eps = 1e-5*maxval(abs(sf%p))
+        
+        do iz=1,m%nz
+
+            ! if (atan2(rf%poynz(iz,ix,1)-sf%poynz(iz,ix,1)) then
+            ! if (sqrt(sf%poynz(iz,ix,1)**2+sf%poynx(iz,ix,1)**2)>1e-3) then
+            
+            angle=atan2(rf%poynx(iz,ix,1)-sf%poynx(iz,ix,1), &
+                        rf%poynz(iz,ix,1)-sf%poynz(iz,ix,1)) !only works for 2D vectors
+
+            !iangle=nint((angle+r_pi)*180./r_pi) !btw 0,360 deg
+            iangle=nint(abs(angle)*180./r_pi) !btw 0,180 deg
+
+! print*, angle,iangle
+
+            ADCIG(iz,iangle+1) = & !ADCIG has no x dim
+                ADCIG(iz,iangle+1) + rf%p(iz,ix,1)*sf%p(iz,ix,1)
+                !ADCIG(iz,iangle+1) + (rf%p(iz,ix,1))/(sf%p(iz,ix,1)+eps)
+
+        enddo
+
+        ! ! if(m%is_cubic) then
+        ! !     call imag3d_xcorr(rf%p,sf%p,&
+        ! !                       imag,                  &
+        ! !                       ifz,ilz,ifx,ilx,ify,ily)
+        ! ! else
+        !     ! call imag2d(rf%p,sf%p,&
+        !     !             rf%poynz,rf%poynx,sf%poynz,sf%poynx, &
+        !     !             corr%ipp,corr%ibksc,corr%ifwsc, &
+        !     !             ifz,ilz,ifx,ilx)
+        !     call imag2d_ADCIG(rf%p,sf%p,&
+        !                 rf%vz,rf%vx,sf%vz,sf%vz,&
+        !                 rf%poynz,rf%poynx,sf%poynz,sf%poynx,&
+        !                 ADCIG,&
+        !                 ifz,ilz,ifx,ilx)
+        ! ! endif
+
+        ! ! call imag2d_xcorr(rf%p,rf%vz,rf%vx,&
+        ! !                   sf%p,sf%vz,sf%vx,&
+        ! !                   imag,            &
+        ! !                   ifz,ilz,ifx,ilx)
 
     end subroutine
 
@@ -1931,10 +2084,12 @@ use m_cpml
     ! end subroutine
 
     subroutine imag2d(rf_p,sf_p,&
+                        rf_vz,rf_vx,sf_vz,sf_vx,&
                         rf_poynz,rf_poynx,sf_poynz,sf_poynx,&
                         ipp, ibksc, ifwsc,&
                         ifz,ilz,ifx,ilx)
         real,dimension(*) :: rf_p,sf_p
+        real,dimension(*) :: rf_vz,rf_vx,sf_vz,sf_vx
         real,dimension(*) :: rf_poynz,rf_poynx,sf_poynz,sf_poynx
         real,dimension(*) :: ipp, ibksc, ifwsc
         
@@ -1957,11 +2112,20 @@ use m_cpml
                 
                 ipp(j)=ipp(j) + rf_p(i)*sf_p(i)
 
-                if(rf_poynz(i)*sf_poynz(i)+rf_poynx(i)*sf_poynx(i) < 0.) then !backward scattering
+                if(rf_poynz(i)*sf_poynz(i)+rf_poynx(i)*sf_poynx(i) <= 0.) then !backward scattering
                     ibksc(j)=ibksc(j) + rf_p(i)*sf_p(i)
-                else
+                else !>0. as forward scattering
                     ifwsc(j)=ifwsc(j) + rf_p(i)*sf_p(i)
                 endif
+
+                ! rf_norm=sqrt(rf_poynz(i)**2+rf_poynx(i)**2)
+                ! sf_norm=sqrt(sf_poynz(i)**2+sf_poynx(i)**2)
+                ! dotprod=rf_poynz(i)*sf_poynz(i)+rf_poynx(i)*sf_poynx(i)
+                ! if ( acosd(dotprod/(rf_norm+1e-4)/(sf_norm+1e-4)) >50. ) then
+                !     ibksc(j)=ibksc(j) + rf_p(i)*sf_p(i)
+                ! else !>0. as forward scattering
+                !     ifwsc(j)=ifwsc(j) + rf_p(i)*sf_p(i)
+                ! endif
                 
             end do
             
@@ -1970,6 +2134,131 @@ use m_cpml
         !$omp end parallel
 
     end subroutine
+
+    ! subroutine imag2d_ISIC(rf_p,sf_p,&
+    !                         rf_vz,rf_vx,sf_vz,sf_vx,&
+    !                         rf_poynz,rf_poynx,sf_poynz,sf_poynx,&
+    !                         ipp, ibksc, ifwsc,&
+    !                         ifz,ilz,ifx,ilx)
+    !     real,dimension(*) :: rf_p,sf_p
+    !     real,dimension(*) :: rf_vz,rf_vx,sf_vz,sf_vx
+    !     real,dimension(*) :: rf_poynz,rf_poynx,sf_poynz,sf_poynx
+    !     real,dimension(*) :: ipp, ibksc, ifwsc
+
+    !     !grho0 = ISIC
+    !     dsvz=0.; dsvx=0.
+    !      rvz=0.; rvx=0.
+
+    !     dvz_dz=0.
+    !     dvx_dx=0.
+        
+    !      rp=0.
+    !     dsp=0.
+
+    !     !$omp parallel default (shared)&
+    !     !$omp private(iz,ix,i,j,&
+    !     !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
+    !     !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
+    !     !$omp         rvz, rvx,&
+    !     !$omp         dsvz,dsvx,&
+    !     !$omp         dvz_dz,dvx_dx,&
+    !     !$omp         rp,dsp, gkpa, grho0)
+    !     !$omp do schedule(dynamic)
+    !     do ix=ifx,ilx
+        
+    !         !dir$ simd
+    !         do iz=ifz,ilz
+            
+    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+    !             j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
+                
+    !             izm2_ix=i-2  !iz-2,ix
+    !             izm1_ix=i-1  !iz-1,ix
+    !             iz_ix  =i    !iz,ix
+    !             izp1_ix=i+1  !iz+1,ix
+    !             izp2_ix=i+2  !iz+2,ix
+                
+    !             iz_ixm2=i  -2*nz  !iz,ix-2
+    !             iz_ixm1=i    -nz  !iz,ix-1
+    !             iz_ixp1=i    +nz  !iz,ix+1
+    !             iz_ixp2=i  +2*nz  !iz,ix+2
+                
+    !             !grho0
+    !             rvz = rf_vz(iz_ix) +rf_vz(izp1_ix)
+    !             rvx = rf_vx(iz_ix) +rf_vx(iz_ixp1)
+                
+    !             dsvz = (c1z*(sf_p(iz_ix  )-sf_p(izm1_ix)) +c2z*(sf_p(izp1_ix)-sf_p(izm2_ix))) &
+    !                   +(c1z*(sf_p(izp1_ix)-sf_p(iz_ix  )) +c2z*(sf_p(izp2_ix)-sf_p(izm1_ix)))
+    !             dsvx = (c1x*(sf_p(iz_ix  )-sf_p(iz_ixm1)) +c2x*(sf_p(iz_ixp1)-sf_p(iz_ixm2))) &
+    !                   +(c1x*(sf_p(iz_ixp1)-sf_p(iz_ix  )) +c2x*(sf_p(iz_ixp2)-sf_p(iz_ixm1)))
+    !             !complete equation with unnecessary terms e.g. sf_p(iz_ix) for better understanding
+    !             !with flag -Ox, the compiler should automatically detect such possible simplification
+    !             grho0= 0.25*( rvz*dsvz + rvx*dsvx )
+
+
+    !             !gkpa
+    !             dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
+    !             dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
+                
+    !              rp = rf_p(i)
+    !             dsp = dvz_dz +dvx_dx
+                
+    !             gkpa= rp*dsp
+                
+
+    !             ifwsc(j) = ifwsc(j) - (gkpa +grho0 )
+    !             ibksc(j) = ibksc(j) - (gkpa -grho0 )
+
+    !             ipp  (j) = ipp  (j) -  gkpa
+                
+    !         enddo
+            
+    !     enddo
+    !     !$omp end do
+    !     !$omp end parallel
+
+    ! end subroutine
+
+    ! subroutine imag2d_ADCIG(rf_p,sf_p,&
+    !                     rf_vz,rf_vx,sf_vz,sf_vx,&
+    !                     rf_poynz,rf_poynx,sf_poynz,sf_poynx,&
+    !                     ADCIG,&
+    !                     ifz,ilz,ifx,ilx)
+    !     real,dimension(*) :: rf_p,sf_p
+    !     real,dimension(*) :: rf_vz,rf_vx,sf_vz,sf_vx
+    !     real,dimension(*) :: rf_poynz,rf_poynx,sf_poynz,sf_poynx
+    !     real,dimension(*) :: ADCIG
+        
+    !     nz=cb%nz
+    !     ix=ix_ADCIG
+        
+    !     rp=0.
+    !     sp=0.
+        
+    !     !$omp parallel default (shared)&
+    !     !$omp private(iz,ix,i,j,&
+    !     !$omp         rp,sp)
+    !     !$omp do schedule(dynamic)
+        
+    !         !dir$ simd
+    !         do iz=ifz,ilz
+                
+    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+    !             j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
+                
+    !             angle=atan2(rf_poynz(i),rf_poynx(i))-atan2(sf_poynz(i),sf_poynx(i)) !only works for 2D vectors
+
+    !             iangle=nint(angle)*180./r_pi +180. !btw 0,360 deg
+
+    !             ADCIG(iz-1 +(iangle-1)*cb%mz+1) = & !ADCIG has no x dim
+    !                 ADCIG(iz-1 +(iangle-1)*cb%mz+1) + rf_p(i)*sf_p(i)
+                
+    !         end do
+            
+    !     !$omp end do
+    !     !$omp end parallel
+
+    ! end subroutine
 
     subroutine engy3d_xcorr(sf_p,          &
                             engy,          &
