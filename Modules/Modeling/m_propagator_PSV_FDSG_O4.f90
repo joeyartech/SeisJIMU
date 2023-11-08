@@ -311,7 +311,7 @@ use, intrinsic :: ieee_arithmetic
         
         corr%name=name
 
-        if(name(1:1)=='g') then !gradient components
+        ! if(name(1:1)=='g') then !gradient components
             call alloc(corr%grho,m%nz,m%nx,m%ny)
             call alloc(corr%glda,m%nz,m%nx,m%ny)
             call alloc(corr%gmu, m%nz,m%nx,m%ny)
@@ -319,7 +319,7 @@ use, intrinsic :: ieee_arithmetic
         !     call alloc(corr%ipp,m%nz,m%nx,m%ny)
         !     call alloc(corr%ibksc,m%nz,m%nx,m%ny)
         !     call alloc(corr%ifwsc,m%nz,m%nx,m%ny)
-        endif
+        ! endif
 
     end subroutine
 

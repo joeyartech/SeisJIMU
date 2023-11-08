@@ -41,13 +41,13 @@ use, intrinsic :: ieee_arithmetic
             'Basic gradients: glda gmu'
 
         integer :: nbndlayer=max(2,hicks_r) !minimum absorbing layer thickness
-        integer :: ngrad=2 !number of basic gradients
+        integer :: ngrad=3 !number of basic gradients
 
         logical :: if_compute_engy=.false.
 
         !local models shared between fields
         real,dimension(:,:),allocatable :: buoz, buox, ldap2mu, lda, mu
-        real,dimension(:,:),allocatable :: two_ldapmu, ldapmu!, inv_ladpmu_4mu
+        real,dimension(:,:),allocatable :: inv_ladpmu_4mu, ldapmu
 
         !time frames
         integer :: nt
@@ -193,17 +193,17 @@ use, intrinsic :: ieee_arithmetic
         ! write(*,*) 'self%lda     sanity:', minval(self%lda),maxval(self%lda)
         ! endif
 
-        self%ldapmu=(self%lda+temp_mu)!why?
+        self%inv_ladpmu_4mu=0.25/(self%lda+temp_mu)/temp_mu
 
         !interpolat mu by harmonic average
         temp_mu=1./temp_mu
 
         do ix=cb%ifx+1,cb%ilx
         do iz=cb%ifz+1,cb%ilz
-                self%mu(iz,ix)=4./(temp_mu(iz-1,ix-1) &
-                                  +temp_mu(iz-1,ix  ) &
-                                  +temp_mu(iz  ,ix-1) &
-                                  +temp_mu(iz  ,ix  ))
+            self%mu(iz,ix)=4./(temp_mu(iz-1,ix-1) &
+                              +temp_mu(iz-1,ix  ) &
+                              +temp_mu(iz  ,ix-1) &
+                              +temp_mu(iz  ,ix  ))
         end do
         end do
 
@@ -309,7 +309,7 @@ use, intrinsic :: ieee_arithmetic
         
         corr%name=name
 
-        if(name(1:1)=='g') then !gradient components
+        ! if(name(1:1)=='g') then !gradient components
             call alloc(corr%grho,m%nz,m%nx,m%ny)
             call alloc(corr%glda,m%nz,m%nx,m%ny)
             call alloc(corr%gmu, m%nz,m%nx,m%ny)
@@ -317,7 +317,7 @@ use, intrinsic :: ieee_arithmetic
         !     call alloc(corr%ipp,m%nz,m%nx,m%ny)
         !     call alloc(corr%ibksc,m%nz,m%nx,m%ny)
         !     call alloc(corr%ifwsc,m%nz,m%nx,m%ny)
-        endif
+        ! endif
 
     end subroutine
 
@@ -470,9 +470,10 @@ use, intrinsic :: ieee_arithmetic
     !N.B. Same codes for spatial FDs as in forward time marching, with a negated dt, but the RHS should use a "+" sign (regardless of the reverse time direction).
     !
     !For adjoint test:
-    !In each step of forward time marching: dsyn=RGAf
-    !f:source wavelet, A:inject source into field, G:propagator, R:extract field at receivers
-    !while in each step of reverse-time adjoint marching: dadj=AᵀGᵀRᵀdsyn=AᵀGᵀRᵀdsyn
+    !In each step of forward time marching: dsyn=RGANf
+    !f:source wavelet, N=M⁻¹dt: NOT diagonal, that's why we have inv_ldapmu_4mu, BUT WHY NEED N?
+    !A:inject source into field, G:propagator, R:extract field at receivers
+    !while in each step of reverse-time adjoint marching: dadj=NAᵀGᵀRᵀdsyn~=AᵀGᵀRᵀNdsyn
     !Rᵀ:inject adjoint sources, Gᵀ:adjoint propagator, Aᵀ:extract adjoint fields
     !
 
@@ -855,20 +856,20 @@ use, intrinsic :: ieee_arithmetic
             if(if_hicks) then
                 select case (shot%src%comp)
                     case ('ez')
-                    f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl/self%ldapmu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
+                    f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
                     case ('ex')
-                    f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl/self%ldapmu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
+                    f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
                     case ('es')
-                    f%es(ifz:ilz,ifx:ilx,1) = f%es(ifz:ilz,ifx:ilx,1) + wl/self%mu(ifz:ilz,ifx:ilx)        *shot%src%interp_coef(:,:,1)
+                    f%es(ifz:ilz,ifx:ilx,1) = f%es(ifz:ilz,ifx:ilx,1) + wl/self%mu(ifz:ilz,ifx:ilx)                                          *shot%src%interp_coef(:,:,1)
                 endselect
                 
             else
                 select case (shot%src%comp)
                     case ('ez')
                     !f%ez(iz,ix,1) = f%ez(iz,ix,1) + wl
-                    f%ez(iz,ix,1) = f%ez(iz,ix,1) + wl/(self%lda(iz,ix)+self%mu(iz,ix))*2!/self%two_ldapmu(iz,ix)
+                    f%ez(iz,ix,1) = f%ez(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
                     case ('ex')
-                    f%ex(iz,ix,1) = f%ex(iz,ix,1) + wl/self%ldapmu(iz,ix)
+                    f%ex(iz,ix,1) = f%ex(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
                     case ('es')
                     f%es(iz,ix,1) = f%es(iz,ix,1) + wl/self%mu(iz,ix)
                 endselect
@@ -888,19 +889,19 @@ use, intrinsic :: ieee_arithmetic
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
                         case ('ez')
-                        f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) +wl/self%ldapmu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
+                        f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) +wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
                         case ('ex')
-                        f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) +wl/self%ldapmu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
+                        f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) +wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
                         case ('es')
-                        f%es(ifz:ilz,ifx:ilx,1) = f%es(ifz:ilz,ifx:ilx,1) +wl/self%mu(ifz:ilz,ifx:ilx)        *shot%rcv(i)%interp_coef(:,:,1)
+                        f%es(ifz:ilz,ifx:ilx,1) = f%es(ifz:ilz,ifx:ilx,1) +wl/self%mu(ifz:ilz,ifx:ilx)                                          *shot%rcv(i)%interp_coef(:,:,1)
                     endselect
                 else           
                     select case (shot%rcv(i)%comp)
                         case ('ez')
                         !f%ez(iz,ix,1) = f%ez(iz,ix,1) +wl
-                        f%ez(iz,ix,1) = f%ez(iz,ix,1) +wl/self%ldapmu(iz,ix)
+                        f%ez(iz,ix,1) = f%ez(iz,ix,1) +wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
                         case ('ex')
-                        f%ex(iz,ix,1) = f%ex(iz,ix,1) +wl/self%ldapmu(iz,ix)
+                        f%ex(iz,ix,1) = f%ex(iz,ix,1) +wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
                         case ('es')
                         f%es(iz,ix,1) = f%es(iz,ix,1) +wl/self%mu(iz,ix)
                     endselect
@@ -1083,8 +1084,8 @@ use, intrinsic :: ieee_arithmetic
         ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
         ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
         ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
-        ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
-        ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
+        ! ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
+        ! ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
         
         if(m%is_cubic) then
             ! call grad3d_gkpa(rf%p,sf%pz,sf%px,sf%vy,&

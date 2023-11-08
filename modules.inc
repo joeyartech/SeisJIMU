@@ -4,7 +4,8 @@
 ############
 # Modeling #
 ############
-WaveEq=DAS
+WaveEq=PSV
+#WaveEq=DAS
 Solver=FDSG
 Order=O4
 ShotDec=batching
@@ -12,8 +13,8 @@ ShotDec=batching
 ##########
 # Kernel #
 ##########
-Param=vp-rho
-#Param=velocities-density
+#Param=vp-rho
+Param=velocities-density
 #Param=velocities-density_pseudotime
 #Param=velocities-impedance
 #Param=slowness-density

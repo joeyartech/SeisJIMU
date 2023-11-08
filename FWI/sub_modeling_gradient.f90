@@ -8,22 +8,17 @@ use m_fobjective
 use m_matchfilter
 use m_smoother_laplacian_sparse
 use m_resampler
-!use m_hilbert
-use m_hilbert_nofft
 
     logical,save :: is_first_in=.true.
 
     character(:),allocatable :: update_wavelet
     type(t_weighter) :: wei_wl
 
-    type(t_field) :: fld_u,fld_v, fld_p, fld_q
-    type(t_correlate) :: U_star_D,D_star_D,U_star_U, D_star_U
+    type(t_field) :: fld_u,fld_a
     type(t_correlate) :: a_star_u
     real,dimension(:,:),allocatable :: tmp
     real,dimension(3) :: grad_term_weights
     character(:),allocatable :: dnorm
-
-    real,dimension(:,:,:),allocatable :: term1,term2
     
 
     !misfit
@@ -56,34 +51,25 @@ use m_hilbert_nofft
         call fld_u%acquire; call shot%write('Ru_',shot%dsyn)
 
 
-        if(index(setup%get_str('JOB',o_default='gradient'),'estimate wavelet')>0) then
-            call hud('--------------------------------')
-            call hud('        Estimate wavelet        ')
-            call hud('--------------------------------')
+        ! if(index(setup%get_str('JOB',o_default='gradient'),'estimate wavelet')>0) then
+        !     call hud('--------------------------------')
+        !     call hud('        Estimate wavelet        ')
+        !     call hud('--------------------------------')
 
-            call wei_wl%update
+        !     call wei_wl%update
 
-            call shot%update_wavelet(wei_wl%weight) !call gradient_matchfilter_data
+        !     call shot%update_wavelet(wei_wl%weight) !call gradient_matchfilter_data
         
-            !write synthetic data
-            call shot%write('updated_Ru_',shot%dsyn)
+        !     !write synthetic data
+        !     call shot%write('updated_Ru_',shot%dsyn)
 
-            cycle
+        !     cycle
 
-        endif
-
-        call hud('----  Solving Av=H[s]  ----')
-        call shot%read_wlhilb
-        call ppg%init_field(fld_v, name='fld_v');    call fld_v%ignite
-        call ppg%forward(fld_v)
-        call fld_v%acquire; call shot%write('Rv_',shot%dsyn); shot%dsyn_aux=shot%dsyn
-        call fld_u%acquire
+        ! endif
         
         if(setup%get_str('JOB')=='forward modeling') cycle
 
-
-        call ppg%init_field(fld_p,name='fld_p',ois_adjoint=.true.)
-        call ppg%init_field(fld_q,name='fld_q',ois_adjoint=.true.)
+        call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
 
         call hud('----  Computing obj func & dadj  ----')
             call wei%update
@@ -95,15 +81,11 @@ use m_hilbert_nofft
                 fobj%misfit = fobj%misfit &
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
                 call kernel_L2sq(shot%dadj)
-                call fld_p%ignite(o_wavelet=shot%dadj)
+                call fld_a%ignite(o_wavelet=shot%dadj)
                 call shot%write('dadj_',shot%dadj)
-                tmp=shot%dadj
-                !call hilbert_transform(shot%dadj,tmp,shot%nt,shot%nrcv)
-                call hilbert_nofft('generic',shot%dadj,tmp,shot%nt,shot%nrcv)
-                call fld_q%ignite(o_wavelet=tmp)
-
-                ! case default
-                ! call error('No DNORM specified!')
+                
+                case default
+                call error('No DNORM specified!')
 
             end select
 
@@ -111,7 +93,7 @@ use m_hilbert_nofft
         call hud('----  Solving adjoint eqn & xcorrelate  ----')
 
         call ppg%init_correlate(a_star_u,'a_star_u')
-        call ppg%adjoint(fld_p,fld_u,a_star_u)
+        call ppg%adjoint(fld_a,fld_u,a_star_u)
 
         call hud('----  Assemble  ----')
         call ppg%assemble(a_star_u)
@@ -150,9 +132,12 @@ use m_hilbert_nofft
 
     if(mpiworld%is_master) call sysio_write('correlate_gradient',correlate_gradient,m%n*ppg%ngrad)
 
-
     call mpiworld%barrier
 
+    if(setup%get_str('JOB')=='gradient') then
+        call mpiworld%final
+        stop
+    endif
 
     ! contains
     ! function deri(a) result(d)

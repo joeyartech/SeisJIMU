@@ -178,7 +178,6 @@ use m_model
                 self%rcv(i)%comp=scomp(1)%s
 
             case (11); self%rcv(i)%comp='p'  !pressure
-
             case (12); self%rcv(i)%comp='vz' !vertical velocity
             case (14); self%rcv(i)%comp='vx' !horizontal velocity in in-line
             case (13); self%rcv(i)%comp='vy' !horizontal velocity in cross-line
