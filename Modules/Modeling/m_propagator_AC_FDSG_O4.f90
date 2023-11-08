@@ -501,6 +501,9 @@ use m_cpml
         !reinitialize absorbing boundary for incident wavefield reconstruction
         call fld_v%reinit
         call fld_u%reinit
+
+        !for adjoint test
+        if(if_record_adjseismo) call alloc(fld_p%seismo,1,self%nt)
                     
         !timing
         tt1=0.; tt2=0.; tt3=0.
@@ -698,7 +701,7 @@ use m_cpml
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
             ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
             
-            wl=time_dir*f%wavelet(1,it)
+            wl=time_dir*f%wavelet(1,it)*wavelet_scaler
             
             if(if_hicks) then
                 select case (shot%src%comp)
@@ -738,7 +741,7 @@ use m_cpml
                 ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
                 ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
                 
-                wl=f%wavelet(i,it)
+                wl=f%wavelet(i,it)*wavelet_scaler
                 
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)

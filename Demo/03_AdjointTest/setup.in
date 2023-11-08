@@ -1,5 +1,5 @@
-MODEL_SIZE              '101 101 1'
-MODEL_SPACING           '20 20 1'
+MODEL_SIZE              '201 201 1'
+MODEL_SPACING           '10 10 1'
 #FILE_MODEL              'model'
 #MODEL_ATTRIBUTES        rho
 
@@ -14,16 +14,16 @@ NR                      100
 WAVELET_TYPE            ricker
 T0                       0.5
 
-SCOMP                   p
-RCOMP                   vz #'p vz'
+SCOMP                   pz
+RCOMP                   pz #'px ez ex es'
 
 IF_BLOOM        F
 IF_HICKS        F
 
 IF_USE_RANDOM   F
 
-NT           500
-DT           0.004
+NT           2000
+DT           0.002
 FPEAK        7
 
 #SNAPSHOT     'p vz'

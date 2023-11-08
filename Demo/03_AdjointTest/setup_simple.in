@@ -1,5 +1,5 @@
-MODEL_SIZE              '101 101 1'
-MODEL_SPACING           '20 20 1'
+MODEL_SIZE              '201 201 1'
+MODEL_SPACING           '10 10 1'
 FILE_MODEL              'simple'
 MODEL_ATTRIBUTES        vp  #'vp rho'
 
@@ -14,8 +14,8 @@ DR                      '0  20 0'
 FR                      '40 500  0'
 NR                      100
 
-SCOMP                   p
-RCOMP                   p #'p vz'
+SCOMP                   ez
+RCOMP                   pz #'px ez ex es'
 
 WAVELET_TYPE            ricker
 #T0                      0.5                                                                 
@@ -26,12 +26,12 @@ IF_HICKS        F
 
 IF_USE_RANDOM   F
 
-NT           500
-DT           0.006
+NT           2000
+DT           0.002
 FPEAK        7
 #RDT			0.006
 
-SNAPSHOT     p
+#SNAPSHOT     'pz px ez ex'
 #NSNAPSHOT    50
 
 IF_USE_CHECKPOINT   F

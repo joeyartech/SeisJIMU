@@ -48,6 +48,7 @@ use m_Modeling
 
     real,dimension(:,:),allocatable :: u,v,Lu,Ladj_v
     type(t_field) :: sfield, rfield
+    type(t_correlate) :: corr !not needed
 
     logical :: if_use_random
 
@@ -68,10 +69,12 @@ use m_Modeling
         call cb%project
 
         call ppg%check_discretization
-        call ppg%init
+        call ppg%init(oif_record_adjseismo=.true.)
         call ppg%init_abslayer
         
         call ppg%init_field(sfield,name='sfield')
+
+        call ppg%init_correlate(corr,'gradient') !not needed
         
         if_use_random=setup%get_bool('IF_USE_RANDOM',o_default='T')
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -109,13 +112,14 @@ use m_Modeling
         else
             v=Lu
         endif
+
+
         call suformat_write('v',v,ppg%nt,shot%nrcv,o_dt=ppg%dt)
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
         call rfield%ignite(o_wavelet=v)
 
         !adjoint modeling
-        call ppg%adjoint(rfield,sfield,oif_record_adjseismo=.true.)
+        call ppg%adjoint(rfield,sfield,corr)
 
         call rfield%acquire(o_seismo=Ladj_v)
         call suformat_write('Ladj_v',Ladj_v,ppg%nt,1,o_dt=ppg%dt)

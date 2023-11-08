@@ -559,7 +559,7 @@ use, intrinsic :: ieee_arithmetic
 
     end subroutine
 
-    subroutine adjoint(self,fld_a,fld_u,oif_record_adjseismo, a_star_u)
+    subroutine adjoint(self,fld_a,fld_u, a_star_u)
     !adjoint_a_star_Du
         class(t_propagator) :: self
         type(t_field) :: fld_a,fld_u
@@ -569,7 +569,10 @@ use, intrinsic :: ieee_arithmetic
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
         call fld_u%reinit
-                    
+        
+        !for adjoint test
+        if(if_record_adjseismo)  call alloc(fld_a%seismo,1,self%nt)
+
         !timing
         tt1=0.; tt2=0.; tt3=0.
         tt4=0.; tt5=0.; tt6=0.

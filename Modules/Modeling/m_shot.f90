@@ -352,6 +352,8 @@ use m_model
 
         case('ez','ex')
             call hicks_put_position(self%src%z,       self%src%x,       self%src%y)
+        case('es')
+            call hicks_put_position(self%src%z+halfz, self%src%x+halfx, self%src%y)
         case('pz') !vertical force
             call hicks_put_position(self%src%z+halfz, self%src%x,       self%src%y)
         case('px')
@@ -372,9 +374,9 @@ use m_model
         
         case('ez','ex')
             call hicks_get_coefficient('antisymm', self%src%interp_coef)
-        case('pz') !vertical force
+        case('es')
             call hicks_get_coefficient('symmetric',self%src%interp_coef)
-        case('px')
+        case('pz','px')
             call hicks_get_coefficient('symmetric',self%src%interp_coef)
 
         case default
@@ -401,6 +403,8 @@ use m_model
 
             case('ez','ex')
                 call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y)
+            case('es')
+                call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x+halfx, self%rcv(i)%y)
             case('pz')
                 call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x,       self%rcv(i)%y)
             case('px')
@@ -421,9 +425,9 @@ use m_model
 
             case('ez','ex')
                 call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)
-            case('pz')
+            case('es')
                 call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef)
-            case('px')
+            case('pz','px')
                 call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef)
 
             case default
