@@ -471,7 +471,8 @@ use, intrinsic :: ieee_arithmetic
     !
     !For adjoint test:
     !In each step of forward time marching: dsyn=RGANf
-    !f:source wavelet, N=M⁻¹dt: NOT diagonal, that's why we have inv_ldapmu_4mu, BUT WHY NEED N?
+    !f:source wavelet, N=M⁻¹dt: NOT diagonal, that's why we have inv_ldapmu_4mu and
+    !appreance of -sx on ez, -sz on ex, respectively. BUT WHY NEED N?
     !A:inject source into field, G:propagator, R:extract field at receivers
     !while in each step of reverse-time adjoint marching: dadj=NAᵀGᵀRᵀdsyn~=AᵀGᵀRᵀNdsyn
     !Rᵀ:inject adjoint sources, Gᵀ:adjoint propagator, Aᵀ:extract adjoint fields
@@ -857,7 +858,9 @@ use, intrinsic :: ieee_arithmetic
                 select case (shot%src%comp)
                     case ('ez')
                     f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
+                    f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda(ifz:ilz,ifx:ilx)) *shot%src%interp_coef(:,:,1)
                     case ('ex')
+                    f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda(ifz:ilz,ifx:ilx)) *shot%src%interp_coef(:,:,1)
                     f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
                     case ('es')
                     f%es(ifz:ilz,ifx:ilx,1) = f%es(ifz:ilz,ifx:ilx,1) + wl/self%mu(ifz:ilz,ifx:ilx)                                          *shot%src%interp_coef(:,:,1)
@@ -868,7 +871,9 @@ use, intrinsic :: ieee_arithmetic
                     case ('ez')
                     !f%ez(iz,ix,1) = f%ez(iz,ix,1) + wl
                     f%ez(iz,ix,1) = f%ez(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
+                    f%ex(iz,ix,1) = f%ex(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*(-self%lda(iz,ix))
                     case ('ex')
+                    f%ez(iz,ix,1) = f%ez(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*(-self%lda(iz,ix))
                     f%ex(iz,ix,1) = f%ex(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
                     case ('es')
                     f%es(iz,ix,1) = f%es(iz,ix,1) + wl/self%mu(iz,ix)
@@ -900,7 +905,9 @@ use, intrinsic :: ieee_arithmetic
                         case ('ez')
                         !f%ez(iz,ix,1) = f%ez(iz,ix,1) +wl
                         f%ez(iz,ix,1) = f%ez(iz,ix,1) +wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
+                        f%ex(iz,ix,1) = f%ex(iz,ix,1) +wl*self%inv_ladpmu_4mu(iz,ix)*(-self%lda(iz,ix))
                         case ('ex')
+                        f%ez(iz,ix,1) = f%ez(iz,ix,1) +wl*self%inv_ladpmu_4mu(iz,ix)*(-self%lda(iz,ix))
                         f%ex(iz,ix,1) = f%ex(iz,ix,1) +wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
                         case ('es')
                         f%es(iz,ix,1) = f%es(iz,ix,1) +wl/self%mu(iz,ix)

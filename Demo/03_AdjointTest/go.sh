@@ -13,58 +13,60 @@ rm c1 c2 tmp
 
 # makevel nx=201 nz=201 v000=2000 > model
 
-echo 'pz ez'
-echo 'SCOMP pz' >> setup_simple.in
-echo 'RCOMP ez' >> setup_simple.in
-../../exe/AdjointTest  setup_simple.in > out
+cp setup_default setup
 
-tail -10 out
+# echo 'pz ez'
+# echo 'SCOMP pz' >> setup
+# echo 'RCOMP ez' >> setup
+# ../../exe/AdjointTest  setup > out
+#
+# tail -10 out
 
 
 echo 'pz ex'
-echo 'SCOMP pz' >> setup_simple.in
-echo 'RCOMP ex' >> setup_simple.in
-../../exe/AdjointTest  setup_simple.in > out
+echo 'SCOMP pz' >> setup
+echo 'RCOMP ex' >> setup
+../../exe/AdjointTest  setup > out
 
 tail -10 out
 
 
 echo 'pz es'
-echo 'SCOMP pz' >> setup_simple.in
-echo 'RCOMP es' >> setup_simple.in
-../../exe/AdjointTest  setup_simple.in > out
+echo 'SCOMP pz' >> setup
+echo 'RCOMP es' >> setup
+../../exe/AdjointTest  setup > out
 
 tail -10 out
 
 
 echo 'px ez'
-echo 'SCOMP px' >> setup_simple.in
-echo 'RCOMP ez' >> setup_simple.in
-../../exe/AdjointTest  setup_simple.in > out
+echo 'SCOMP px' >> setup
+echo 'RCOMP ez' >> setup
+../../exe/AdjointTest  setup > out
 
 tail -10 out
 
 
 echo 'ez pz'
-echo 'SCOMP ez' >> setup_simple.in
-echo 'RCOMP pz' >> setup_simple.in
-../../exe/AdjointTest  setup_simple.in > out
+echo 'SCOMP ez' >> setup
+echo 'RCOMP pz' >> setup
+../../exe/AdjointTest  setup > out
 
 tail -10 out
 
 
 echo 'ex pz'
-echo 'SCOMP ex' >> setup_simple.in
-echo 'RCOMP pz' >> setup_simple.in
-../../exe/AdjointTest  setup_simple.in > out
+echo 'SCOMP ex' >> setup
+echo 'RCOMP pz' >> setup
+../../exe/AdjointTest  setup > out
 
 tail -10 out
 
 
 echo 'es pz'
-echo 'SCOMP es' >> setup_simple.in
-echo 'RCOMP pz' >> setup_simple.in
-../../exe/AdjointTest  setup_simple.in > out
+echo 'SCOMP es' >> setup
+echo 'RCOMP pz' >> setup
+../../exe/AdjointTest  setup > out
 
 tail -10 out
 
