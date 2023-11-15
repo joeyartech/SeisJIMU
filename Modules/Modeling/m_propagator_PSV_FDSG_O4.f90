@@ -258,6 +258,10 @@ use, intrinsic :: ieee_arithmetic
         !initialize m_field
         call field_init(.true.,self%nt,self%dt)
 
+        !initialize m_correlate
+        call correlate_init(self%nt,self%dt)
+        
+
         !rectified interval for time integration
         !default to Nyquist, and must be a multiple of dt
         rdt=setup%get_real('REF_RECT_TIME_INTEVAL','RDT',o_default=num2str(0.5/shot%fmax))

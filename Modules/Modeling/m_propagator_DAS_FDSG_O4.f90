@@ -254,6 +254,10 @@ use, intrinsic :: ieee_arithmetic
         !initialize m_field
         call field_init(.true.,self%nt,self%dt)
 
+        !initialize m_correlate
+        call correlate_init(self%nt,self%dt)
+
+
         !rectified interval for time integration
         !default to Nyquist, and must be a multiple of dt
         rdt=setup%get_real('REF_RECT_TIME_INTEVAL','RDT',o_default=num2str(0.5/shot%fmax))
@@ -895,7 +899,11 @@ use, intrinsic :: ieee_arithmetic
                     select case (shot%rcv(i)%comp)
                         case ('ez')
                         f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) +wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
+                            ! f%ex(iz,ix,1) = f%ex(iz,ix,1) +wl*self%inv_ladpmu_4mu(iz,ix)*(-self%lda(iz,ix))
+                            stop
                         case ('ex')
+                            ! f%ez(iz,ix,1) = f%ez(iz,ix,1) +wl*self%inv_ladpmu_4mu(iz,ix)*(-self%lda(iz,ix))
+                            stop
                         f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) +wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
                         case ('es')
                         f%es(ifz:ilz,ifx:ilx,1) = f%es(ifz:ilz,ifx:ilx,1) +wl/self%mu(ifz:ilz,ifx:ilx)                                          *shot%rcv(i)%interp_coef(:,:,1)
@@ -1105,8 +1113,13 @@ use, intrinsic :: ieee_arithmetic
             ! sf_p_save = sf%p
             
             !inexact greadient
-            call grad2d_glda_gmu(rf%pz,rf%px,sf%ez,sf%ex,sf%es,&
-                                ppg%buoz,ppg%buox,             &
+            ! call grad2d_glda_gmu(rf%pz,rf%px,sf%ez,sf%ex,sf%es,&
+            !                     ppg%buoz,ppg%buox,&
+            !                     corr%glda,corr%gmu,            &
+            !                     ifz,ilz,ifx,ilx)
+
+            call grad2d_glda_gmu(rf%pz,rf%px,sf%ez+sf%ex,&
+                                ppg%buoz,ppg%buox,ppg%ldap2mu,ppg%lda,&
                                 corr%glda,corr%gmu,            &
                                 ifz,ilz,ifx,ilx)
         endif
@@ -1291,21 +1304,16 @@ use, intrinsic :: ieee_arithmetic
         
         nz=cb%nz
         
-        sf_dpx_dx=0.
-        sf_dpz_dz=0.
-        sf_4_dpzdx_p_dpxdz=0.
-        rf_4_es=0.
-        
+        rf_dpzdz=0.; rf_dpxdx=0.; rf_dpxdz=0.; rf_dpzpx=0.; rf_4_dpzdx_p_dpxdz=0.; sf_4_es=0.
+
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
         !$omp         iz_ixm2,izp1_ixm2,iz_ixm1,izp1_ixm1,&
         !$omp         izm2_ixp1,izm1_ixp1,iz_ixp1,izp1_ixp1,izp2_ixp1,&
         !$omp         iz_ixp2,izp1_ixp2,&
-        !$omp         sf_dez_dz,sf_dex_dz,sf_des_dz,sf_dez_dx,sf_dex_dx,sf_des_dx)
+        !$omp         rf_dpzdz,rf_dpxdx,rf_dpxdz,rf_dpzpx,rf_4_dpzdx_p_dpxdz,sf_4_es)
         !$omp do schedule(dynamic)
-!!        !$omp         sf_dpx_dx,sf_dpz_dz,&
-!!        !$omp         sf_4_dpzdx_p_dpxdz,rf_4_es)
         do ix=ifx,ilx
         
             !dir$ simd
@@ -1335,48 +1343,45 @@ use, intrinsic :: ieee_arithmetic
                 izp1_ixp2= i+1  +2*nz  !iz+1,ix+2
                 
 
-                sf_dez_dz = c1z*(sf_ez(iz_ix)-sf_ez(izm1_ix)) +c2z*(sf_ez(izp1_ix)-sf_ez(izm2_ix))
-                sf_dex_dz = c1z*(sf_ex(iz_ix)-sf_ex(izm1_ix)) +c2z*(sf_ex(izp1_ix)-sf_ex(izm2_ix))
+                !missing buoyancy for the moment..
+                rf_dpzdz = c1z*(rf_pz(izp1_ix)-rf_pz(iz_ix)) +c2z*(rf_pz(izp2_ix)-rf_pz(izm1_ix))
+                rf_dpxdx = c1x*(rf_px(iz_ixp1)-rf_px(iz_ix)) +c2x*(rf_px(iz_ixp2)-rf_px(iz_ixm1))
 
-                sf_dez_dx = c1x*(sf_ez(iz_ix)-sf_ez(izm1_ix)) +c2x*(sf_ez(iz_ixp1)-sf_ez(iz_ixm2))
-                sf_dex_dx = c1x*(sf_ex(iz_ix)-sf_ex(izm1_ix)) +c2x*(sf_ex(iz_ixp1)-sf_ex(iz_ixm2))
+                grad_lda(j)=grad_lda(j) + (rf_dpzdz+rf_dpxdx) * (sf_ez(i)+sf_ex(i))
 
-                !Let's try this simplified version
-                !(neglecting the fact rf_pz & rf_px are living on two diff grids -- staggered grids --
-                !so do sf_dez_dz & sf_dez_dx.)
-                !If tests really show sth diff, then we can modify here further..
-                grad_lda(j)=grad_lda(j) + rf_pz(i)*(sf_dez_dz + sf_dex_dz) &
-                                        + rf_px(i)*(sf_dez_dx + sf_dex_dx)
+                rf_dpxdz = c1z*(sf_es(izp1_ix)-sf_es(iz_ix)) +c2z*(sf_es(izp2_ix)-sf_es(izm1_ix))
+                rf_dpzpx = c1x*(sf_es(iz_ixp1)-sf_es(iz_ix)) +c2x*(sf_es(iz_ixp2)-sf_es(iz_ixm1))
 
-                sf_des_dz = c1z*(sf_es(izp1_ix)-sf_es(iz_ix)) +c2z*(sf_es(izp2_ix)-sf_es(izm1_ix))
-                sf_des_dx = c1x*(sf_es(iz_ixp1)-sf_es(iz_ix)) +c2x*(sf_es(iz_ixp2)-sf_es(iz_ixm1))
+                ! grad_mu(j)=grad_mu(j) + rf_pz(i)*(2*sf_dez_dz + sf_des_dx) &
+                !                       + rf_px(i)*(2*sf_dex_dx + sf_des_dz)
 
-                grad_mu(j)=grad_mu(j) + rf_pz(i)*(2*sf_dez_dz + sf_des_dx) &
-                                      + rf_px(i)*(2*sf_dex_dx + sf_des_dz)
+                !missing buoyancy for the moment..
+                rf_4_dpzdx_p_dpxdz = &   !(dpz_dx+dpx_dx)(iz,ix)     [iz-0.5,ix-0.5]
+                                         c1x*(rf_pz(iz_ix    )-rf_pz(iz_ixm1  )) +c2x*(rf_pz(iz_ixp1  )-rf_pz(iz_ixm2  )) &
+                                       + c1z*(rf_px(iz_ix    )-rf_px(izm1_ix  )) +c2z*(rf_px(izp1_ix  )-rf_px(izm2_ix  )) &
+                                     & &
+                                     & & !(dpz_dx+dpx_dx)(iz,ix+1)   [iz-0.5,ix+0.5]
+                                       + c1x*(rf_pz(iz_ixp1  )-rf_pz(iz_ix    )) +c2x*(rf_pz(iz_ixp2  )-rf_pz(iz_ixm1  )) &
+                                       + c1z*(rf_px(iz_ixp1  )-rf_px(izm1_ixp1)) +c2z*(rf_px(izp1_ixp1)-rf_px(izm2_ixp1)) &
+                                     & &
+                                     & & !(dpz_dx+dpx_dx)(iz+1,ix)   [iz+0.5,ix-0.5]
+                                       + c1x*(rf_pz(izp1_ix  )-rf_pz(izp1_ixm1)) +c2x*(rf_pz(izp1_ixp1)-rf_pz(izp1_ixm2)) &
+                                       + c1z*(rf_px(izp1_ix  )-rf_px(iz_ix    )) +c2z*(rf_px(izp2_ix  )-rf_px(izm1_ix  )) &
+                                     & &
+                                     & & !(dpz_dx+dpx_dx)(iz+1,ix+1) [iz+0.5,ix+0.5]
+                                       + c1x*(rf_pz(izp1_ixp1)-rf_pz(izp1_ix  )) +c2x*(rf_pz(izp1_ixp2)-rf_pz(izp1_ixm1)) &
+                                       + c1z*(rf_px(izp1_ixp1)-rf_px(iz_ixp1  )) +c2z*(rf_px(izp2_ixp1)-rf_px(izm1_ixp1))
 
+                    ! [iz-0.5,ix-0.5]   [iz+0.5,ix-0.5]   [iz-0.5,ix+0.5]     [iz+0.5,ix+0.5]
+                sf_4_es = sf_es(iz_ix) + sf_es(izp1_ix) + sf_es(iz_ixp1) + sf_es(izp1_ixp1)
 
-                ! sf_4_dpzdx_p_dpxdz = &   !(dpz_dx+dpx_dx)(iz,ix)     [iz-0.5,ix-0.5]
-                !                          c1x*(sf_pz(iz_ix    )-sf_pz(iz_ixm1  )) +c2x*(sf_pz(iz_ixp1  )-sf_pz(iz_ixm2  )) &
-                !                        + c1z*(sf_px(iz_ix    )-sf_px(izm1_ix  )) +c2z*(sf_px(izp1_ix  )-sf_px(izm2_ix  )) &
-                !                      & &
-                !                      & & !(dpz_dx+dpx_dx)(iz,ix+1)   [iz-0.5,ix+0.5]
-                !                        + c1x*(sf_pz(iz_ixp1  )-sf_pz(iz_ix    )) +c2x*(sf_pz(iz_ixp2  )-sf_pz(iz_ixm1  )) &
-                !                        + c1z*(sf_px(iz_ixp1  )-sf_px(izm1_ixp1)) +c2z*(sf_px(izp1_ixp1)-sf_px(izm2_ixp1)) &
-                !                      & &
-                !                      & & !(dpz_dx+dpx_dx)(iz+1,ix)   [iz+0.5,ix-0.5]
-                !                        + c1x*(sf_pz(izp1_ix  )-sf_pz(izp1_ixm1)) +c2x*(sf_pz(izp1_ixp1)-sf_pz(izp1_ixm2)) &
-                !                        + c1z*(sf_px(izp1_ix  )-sf_px(iz_ix    )) +c2z*(sf_px(izp2_ix  )-sf_px(izm1_ix  )) &
-                !                      & &
-                !                      & & !(dpz_dx+dpx_dx)(iz+1,ix+1) [iz+0.5,ix+0.5]
-                !                        + c1x*(sf_pz(izp1_ixp1)-sf_pz(izp1_ix  )) +c2x*(sf_pz(izp1_ixp2)-sf_pz(izp1_ixm1)) &
-                !                        + c1z*(sf_px(izp1_ixp1)-sf_px(iz_ixp1  )) +c2z*(sf_px(izp2_ixp1)-sf_px(izm1_ixp1))
+                grad_mu(j)=grad_mu(j) + 2*rf_dpzdz*sf_ez(i) &
+                                      + 2*rf_dpxdx*sf_ex(i) &
+                                      + 0.0625*rf_4_dpzdx_p_dpxdz*sf_4_es   !0.0625=1/16
 
-                !         ![iz-0.5,ix-0.5]   [iz+0.5,ix-0.5]   [iz-0.5,ix+0.5]     [iz+0.5,ix+0.5]
-                ! rf_4_es = rf_es(iz_ix) + rf_es(izp1_ix) + rf_es(iz_ixp1) + rf_es(izp1_ixp1)
-
-                grad_mu(j)=grad_mu(j) + rf_pz(i)*(2*sf_dez_dz +sf_des_dx) &
-                                      + rf_px(i)*(2*sf_dex_dx +sf_des_dz)
-                                      ! *0.0625*rf_4_es*sf_4_dpzdx_p_dpxdz   !0.0625=1/16
+                ! grad_mu(j)=grad_mu(j) + rf_szz(i)*( ldap2mu(i)*sf_dvz_dz -    lda(i)*sf_dvx_dx) &
+                !                       + rf_sxx(i)*(-lda(i)    *sf_dvz_dz +ldap2mu(i)*sf_dvx_dx) &
+                !                       + two_ldapmu(i)*0.0625*rf_4_szx*sf_4_dvzdx_p_dvxdz   !0.0625=1/16
 
             end do
             
@@ -1385,6 +1390,7 @@ use, intrinsic :: ieee_arithmetic
         !$omp end parallel
 
     end subroutine
+
     
     subroutine grad2d_density(rf_pz,rf_px,         &
                               sf_ez,sf_ex,sf_es,&
