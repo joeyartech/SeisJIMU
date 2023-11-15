@@ -345,8 +345,8 @@ use, intrinsic :: ieee_arithmetic
     end subroutine
     
     !========= Derivations =================
-    !PDE:      A u = M ∂ₜ u - MD Mu = Mf
-    !Adjoint:  Aᵀa = M ∂ₜᵀa - MDᵀMa = Md
+    !PDE:      A u = M ∂ₜ u - MD Mu = f
+    !Adjoint:  Aᵀa = M ∂ₜᵀa - MDᵀMa = d
     !where
     !u=[pz px ez ex es]ᵀ, [pz px] are momenta, [ez ex] are normal strains, es is shear strain
     !f=[fz fx sz sx ss]ᵀδ(x-xs) with xs source position, d is recorded data
@@ -358,7 +358,7 @@ use, intrinsic :: ieee_arithmetic
     !a=[pzᵃ pxᵃ ezᵃ, exᵃ, esᵃ]ᵀ is the adjoint field
     !
     !Continuous case:
-    !<a|Au-Mf> = ∫ a(x,t) (M∂ₜ-MD)u(x,t) -Mf dx³dt
+    !<a|Au> = ∫ a(x,t) (M∂ₜ-MD)u(x,t) dx³dt
     !Integration by parts, eg.:
     !∫aᵀM∂ₜu dt = aMu|ₜ₌₀ᵀ - ∫(∂ₜa)ᵀMu dt, and freely choosing a(t=T)=0 (final condition),
     !∫aᵀM∂ₜu dt = -∫(∂ₜa)ᵀMu dt
@@ -401,12 +401,12 @@ use, intrinsic :: ieee_arithmetic
     !
     !Forward:
     !FD eqn:
-    !    [pz^n  ]   [ 0     0    ∂zᵇ  0  ∂ₓᶠ] [pz^n+1]      [∂zᵇ(λ+2μ)ez^n+½ + ∂zᵇ λez^n+½ + ∂ₓᶠ μes^n+½]   
-    !    |px^n  |   | 0     0     0  ∂ₓᵇ ∂zᶠ| |px^n+1|      |∂ₓᵇ(λ+2μ)ex^n+½ + ∂ₓᵇ λex^n+½ + ∂zᶠ μes^n+½|   
-    !∂ₜᶠ |ez^n+1| = |∂zᶠ    0     0   0   0 |M|ez^n+½| +f = |∂zᶠ bpz^n+1                                | +f
-    !    |ex^n+1|   | 0    ∂ₓᶠ    0   0   0 | |ex^n+½|      |∂ₓᶠ bpx^n+1                                |   
-    !    [es^n+1]   [∂ₓᵇ   ∂zᵇ    0   0   0 ] [es^n+½]      [∂ₓᵇ bpz^n+1 + ∂zᵇ bpx^n+1                  ]   
-    !where
+    !    [pz^n  ]   [ 0     0    ∂zᵇ  0  ∂ₓᶠ] [pz^n+1]         [∂zᵇ(λ+2μ)ez^n+½ + ∂zᵇ λez^n+½ + ∂ₓᶠ μes^n+½]  [                     ρfz ]
+    !    |px^n  |   | 0     0     0  ∂ₓᵇ ∂zᶠ| |px^n+1|         |∂ₓᵇ(λ+2μ)ex^n+½ + ∂ₓᵇ λex^n+½ + ∂zᶠ μes^n+½|  |                     ρfx |
+    !∂ₜᶠ |ez^n+1| = |∂zᶠ    0     0   0   0 |M|ez^n+½| +M⁻¹f = |∂zᶠ bpz^n+1                                | +|det⁻¹((λ+2μ)sz -     λsx)|
+    !    |ex^n+1|   | 0    ∂ₓᶠ    0   0   0 | |ex^n+½|         |∂ₓᶠ bpx^n+1                                |  |det⁻¹(    -λsz +(λ+2μ)sx)|
+    !    [es^n+1]   [∂ₓᵇ   ∂zᵇ    0   0   0 ] [es^n+½]         [∂ₓᵇ bpz^n+1 + ∂zᵇ bpx^n+1                  ]  [                   μ⁻¹ss ]
+    !where det=(λ+2μ)²-λ²=4(λ+μ)μ
     !∂ₜᶠ*dt := pz^n+1 - pz^n                             ~O(t²)
     !∂zᵇ*dz := c₁(ez(iz  )-ez(iz-1) +c₂(ez(iz+1)-ez(iz-2)  ~O(x⁴)
     !∂zᶠ*dz := c₁(pz(iz+1)-pz(iz  ) +c₂(pz(iz+2)-pz(iz-1)  ~O(x⁴)
@@ -414,7 +414,7 @@ use, intrinsic :: ieee_arithmetic
     !Time marching:
     ![pz^n+1 ]   [pz^n  ]   [∂zᵇ(λ+2μ)ez^n+½ + ∂zᵇ λez^n+½ + ∂ₓᶠ μes^n+½]
     !|px^n+1 |   |px^n  |   |∂ₓᵇ(λ+2μ)ex^n+½ + ∂ₓᵇ λex^n+½ + ∂zᶠ μes^n+½|
-    !|ez^n+1½| = |ez^n+½| + |∂zᶠ bpz^n+1                                |dt +f*dt
+    !|ez^n+1½| = |ez^n+½| + |∂zᶠ bpz^n+1                                |dt +M⁻¹f*dt
     !|ex^n+1½|   |ex^n+½|   |∂ₓᶠ bpx^n+1                                |
     ![es^n+1½]   [es^n+½]   [∂ₓᵇ bpz^n+1 + ∂zᵇ bpx^n+1                  ]
     !Step #1: pz^n += src
@@ -427,7 +427,7 @@ use, intrinsic :: ieee_arithmetic
     !Reverse time marching (for wavefield reconstruction)
     ![es^n+½]   [es^n+1½]   [∂zᵇ(λ+2μ)ez^n+½ + ∂zᵇ λez^n+½ + ∂ₓᶠ μes^n+½]
     !|ex^n+½|   |ex^n+1½|   |∂ₓᵇ(λ+2μ)ex^n+½ + ∂ₓᵇ λex^n+½ + ∂zᶠ μes^n+½|
-    !|ez^n+½| = |ez^n+1½| - |∂zᶠ bpz^n+1                                |dt -f*dt
+    !|ez^n+½| = |ez^n+1½| - |∂zᶠ bpz^n+1                                |dt -M⁻¹f*dt
     !|px^n  |   |px^n+1 |   |∂ₓᶠ bpx^n+1                                |
     ![pz^n  ]   [pz^n+1 ]   [∂ₓᵇ bpz^n+1 + ∂zᵇ bpx^n+1                  ]
     !Step #6: load boundary values for pz,px^n+1
@@ -441,30 +441,30 @@ use, intrinsic :: ieee_arithmetic
     !FD eqn:
     !    [pzᵃ^n  ]   [ 0     0    ∂zᶠᵀ  0   ∂ₓᵇᵀ] [pz^n+1]
     !    |pxᵃ^n  |   | 0     0     0   ∂ₓᶠᵀ ∂zᵇᵀ| |px^n+1|
-    !∂ₜᶠᵀ|ezᵃ^n+1| = |∂zᵇᵀ   0     0    0    0  |M|ez^n+½| +d
+    !∂ₜᶠᵀ|ezᵃ^n+1| = |∂zᵇᵀ   0     0    0    0  |M|ez^n+½| +M⁻¹d
     !    |exᵃ^n+1|   | 0    ∂ₓᵇᵀ   0    0    0  | |ex^n+½|
     !    [esᵃ^n+1]   [∂ₓᶠᵀ  ∂zᶠᵀ   0    0    0  ] [es^n+½]
     !where
     !∂ₜᶠᵀ = pz^n-1 -pz^n   = -∂ₜᵇ
     !∂zᵇᵀ = c₁(ez[i  ]-ez[i+½]) +c₂(ez[i- ½]-ez[i+1½]) = -∂zᶠ
     !∂zᶠᵀ = c₁(pz[i-½]-pz[i  ]) +c₂(pz[i-1½]-pz[i+ ½]) = -∂zᵇ
-    !    [pzᵃ^n  ]   [ 0    0   ∂zᵇ  0  ∂ₓᶠ] [pzᵃ^n+1]      [∂zᵇ(λ+2μ)ez^n+½ + ∂zᵇ λez^n+½ + ∂ₓᶠ μes^n+½]   
-    !    |pxᵃ^n  |   | 0    0    0  ∂ₓᵇ ∂zᶠ| |pxᵃ^n+1|      |∂ₓᵇ(λ+2μ)ex^n+½ + ∂ₓᵇ λex^n+½ + ∂zᶠ μes^n+½|   
-    !∂ₜᵇ |ezᵃ^n+1| = |∂zᶠ   0    0   0   0 |M|ezᵃ^n+½| -d = |∂zᶠ bpz^n+1                                | -d
-    !    |exᵃ^n+1|   | 0   ∂ₓᶠ   0   0   0 | |exᵃ^n+½|      |∂ₓᶠ bpx^n+1                                |   
-    !    [esᵃ^n+1]   [∂ₓᵇ  ∂zᵇ   0   0   0 ] [esᵃ^n+½]      [∂ₓᵇ bpz^n+1 + ∂zᵇ bpx^n+1                  ]   
+    !    [pzᵃ^n  ]   [ 0    0   ∂zᵇ  0  ∂ₓᶠ] [pzᵃ^n+1]         [∂zᵇ(λ+2μ)ez^n+½ + ∂zᵇ λez^n+½ + ∂ₓᶠ μes^n+½]   
+    !    |pxᵃ^n  |   | 0    0    0  ∂ₓᵇ ∂zᶠ| |pxᵃ^n+1|         |∂ₓᵇ(λ+2μ)ex^n+½ + ∂ₓᵇ λex^n+½ + ∂zᶠ μes^n+½|   
+    !∂ₜᵇ |ezᵃ^n+1| = |∂zᶠ   0    0   0   0 |M|ezᵃ^n+½| -M⁻¹d = |∂zᶠ bpz^n+1                                | -M⁻¹d
+    !    |exᵃ^n+1|   | 0   ∂ₓᶠ   0   0   0 | |exᵃ^n+½|         |∂ₓᶠ bpx^n+1                                |   
+    !    [esᵃ^n+1]   [∂ₓᵇ  ∂zᵇ   0   0   0 ] [esᵃ^n+½]         [∂ₓᵇ bpz^n+1 + ∂zᵇ bpx^n+1                  ]   
     !ie. Dᵀ=-D, antisymmetric
     !
     !Time marching:
     ![pzᵃ^n+1 ]   [pzᵃ^n  ]   [∂zᵇ(λ+2μ)ez^n+½ + ∂zᵇ λez^n+½ + ∂ₓᶠ μes^n+½]        
     !|pxᵃ^n+1 |   |pxᵃ^n  |   |∂ₓᵇ(λ+2μ)ex^n+½ + ∂ₓᵇ λex^n+½ + ∂zᶠ μes^n+½|        
-    !|ezᵃ^n+1½| = |ezᵃ^n+½| + |∂zᶠ bpz^n+1                                |dt -d*dt
+    !|ezᵃ^n+1½| = |ezᵃ^n+½| + |∂zᶠ bpz^n+1                                |dt -M⁻¹d*dt
     !|exᵃ^n+1½|   |exᵃ^n+½|   |∂ₓᶠ bpx^n+1                                |        
     ![esᵃ^n+1½]   [esᵃ^n+½]   [∂ₓᵇ bpz^n+1 + ∂zᵇ bpx^n+1                  ]        
     !but we have to do it in reverse time:
     ![esᵃ^n+½] = [esᵃ^n+1½]   [∂zᵇ(λ+2μ)ez^n+½ + ∂zᵇ λez^n+½ + ∂ₓᶠ μes^n+½]        
     !|exᵃ^n+½| = |exᵃ^n+1½|   |∂ₓᵇ(λ+2μ)ex^n+½ + ∂ₓᵇ λex^n+½ + ∂zᶠ μes^n+½|        
-    !|ezᵃ^n+½| = |ezᵃ^n+1½| - |∂zᶠ bpz^n+1                                |dt +d*dt
+    !|ezᵃ^n+½| = |ezᵃ^n+1½| - |∂zᶠ bpz^n+1                                |dt +M⁻¹d*dt
     !|pxᵃ^n  | = |pxᵃ^n+1 |   |∂ₓᶠ bpx^n+1                                |        
     ![pzᵃ^n  ] = [pzᵃ^n+1 ]   [∂ₓᵇ bpz^n+1 + ∂zᵇ bpx^n+1                  ]        
     !Step #5: eᵃ^n+1½ += adjsrc
@@ -472,11 +472,12 @@ use, intrinsic :: ieee_arithmetic
     !Step #3: pzᵃ^n+1 += adjsrc
     !Step #2: pzᵃ^n = pzᵃ^n+1 - spatial FD(eᵃ^n+½)
     !N.B. Same codes for spatial FDs as in forward time marching, with a negated dt, but the RHS should use a "+" sign (regardless of the reverse time direction).
+    !N.B. data residuals in ez (or ex) are adjoint sources for both ezᵃ & exᵃ, due to off-diagonal terms of M⁻¹ ("source cross-talk")
     !
     !For adjoint test:
     !In each step of forward time marching: dsyn=RGANf
     !f:source wavelet, N=M⁻¹dt: NOT diagonal, that's why we have inv_ldapmu_4mu and
-    !appreance of -sx on ez, -sz on ex, respectively. BUT WHY NEED N?
+    !appreance of -sx on ez, -sz on ex, respectively.
     !A:inject source into field, G:propagator, R:extract field at receivers
     !while in each step of reverse-time adjoint marching: dadj=NAᵀGᵀRᵀdsyn~=AᵀGᵀRᵀNdsyn
     !Rᵀ:inject adjoint sources, Gᵀ:adjoint propagator, Aᵀ:extract adjoint fields
@@ -818,9 +819,9 @@ use, intrinsic :: ieee_arithmetic
 
         if(m%is_freesurface) ifz=max(ifz,1)
 
-        call fd2d_momenta(f%pz,f%px,f%ez,f%ex,f%es,            &
+        call fd2d_momenta(f%pz,f%px,f%ez,f%ex,self%mu*f%es,                   &
                         f%dez_dz,f%dex_dx,f%dex_dz,f%dez_dx,f%des_dz,f%des_dx,&
-                        self%ldap2mu,self%lda,self%mu,             &
+                        self%ldap2mu,self%lda,                                &
                         ifz,ilz,ifx,ilx,time_dir*self%dt)
 
         !apply free surface boundary condition if needed
@@ -939,9 +940,8 @@ use, intrinsic :: ieee_arithmetic
         
         if(m%is_freesurface) ifz=max(ifz,1)
 
-        call fd2d_strains(f%pz,f%px,f%ez,f%ex,f%es,    &
+        call fd2d_strains(self%buoz*f%pz,self%buox*f%px,f%ez,f%ex,f%es,    &
                            f%dpz_dz,f%dpx_dx,f%dpz_dx,f%dpx_dz,&
-                           self%buoz,self%buox,&
                            ifz,ilz,ifx,ilx,time_dir*self%dt)
         
         !apply free surface boundary condition if needed
@@ -1056,40 +1056,27 @@ use, intrinsic :: ieee_arithmetic
 
     !========= gradient, imaging or other correlations ===================
     !For gradient:
-    !<a|Au-Mf> = <a|M∂ₜu-MDMu-Mf> = <a|M∂ₜu> -<a|MDMu> -<a|Mf>
-    !Kₘ<a|Au-Mf> = <a|KₘM∂ₜu> -<a|(KₘM)DMu> -<a|MD(KₘM)u> -<a|KₘMf>
-    !            = <a|KₘM(DMu+Mf))> -<a|(KₘM)DMu> -<a|MD(KₘM)u> -<a|KₘMf>
-    !            =                                -<a|MD(KₘM)u>
-    !            =                                -<a|MD(KₘM)u>
-    !            =-∫ aᵀ M D KₘM u dt
-    !No approximations!
+    !<a|Au> = <a|M∂ₜu-MDMu> = <a|M∂ₜu> - <a|MDMu>
+    !   Kₘ<a|M∂ₜu> = <a|(KₘM)∂ₜu> = <a|(KₘM)(DMu+f)> ≐ <a|(KₘM)DMu>
+    !   Kₘ<a|MDMu> = <a|(KₘM)DMu> + <a|M(KₘDM)u> = <a|(KₘM)DMu> - <DMa|(KₘM)u>
+    !So Kₘ<a|Au> ≐ <DMa|(KₘM)u> =∫ (DMa)ᵀ KₘM u dt
     !
-    !  [ 0     0    ∂zᵇ  0  ∂ₓᶠ]    [b              ]
-    !  | 0     0     0  ∂ₓᵇ ∂zᶠ|    |  b            |
-    !D=|∂zᶠ    0     0   0   0 |, M=|    λ+2μ  λ    |
-    !  | 0    ∂ₓᶠ    0   0   0 |    |     λ   λ+2μ  |
-    !  [∂ₓᵇ   ∂zᵇ    0   0   0 ]    [              μ]
-    !                            [0     ]
-    !                            | 0    |
-    !K_bM=diag{1,1,0,0,0}, K_λ M=|  1 1 |, K_μM=diag{0,0,2,2,1}
-    !                            |  1 1 |
-    !                            [     0]
+    !  [b              ]      [∂zᵇ(λ+2μ)ez +∂zᵇ λex     +∂ₓᶠμes]  
+    !  |  b            |      |∂ₓᵇ λez     +∂ₓᵇ(λ+2μ)ex +∂zᶠμes|  
+    !M=|    λ+2μ   λ   |, DMa=|∂zᶠbpz                          |, 
+    !  |      λ  λ+2μ  |      |∂ₓᶠbpx                          |  
+    !  [              μ]      [∂ₓᵇbpz +∂zᵇbpx                  }  
+    !
+    !                           [0     ]
+    !                           | 0    |
+    !K_bM=diag{1,1,0,0,0}, K_λM=|  1 1 |, K_μM=diag{0,0,2,2,1}
+    !                           |  1 1 |
+    !                           [     0]
     !
     !Therefore,
-    !
-    !       [pzᵃ]ᵀ    [  0  ]   [pzᵃ]ᵀ  [∂zᵇ(ez+ex)]
-    !       |pxᵃ|     |  0  |   |pxᵃ|   |∂ₓᵇ(ez+ex)|
-    !glda =-|ezᵃ| M D |ez+ex| =-|ezᵃ| M |          | =-b[ pzᵃ*∂zᵇ(ez+ex) + pxᵃ*∂ₓᵇ(ez+ex) ]  ie. -b\vec{pᵃ}\cdot\nabla(ez+ex)
-    !       |exᵃ|     |ez+ex|   |exᵃ|   |          |
-    !       [esᵃ]     [  0  ]   [esᵃ]   [          ]
-    !
-    !       [pzᵃ]ᵀ    [ 0 ]   [pzᵃ]ᵀ  [2∂zᵇez+∂ₓᶠes]
-    !       |pxᵃ|     | 0 |   |pxᵃ|   |2∂ₓᵇex+∂zᶠes|
-    ! gmu =-|ezᵃ| M D |2ez| =-|ezᵃ| M |            | =-b[ pzᵃ*(2∂zᵇez+∂ₓᶠes) + pxᵃ*(2∂ₓᵇex+∂zᶠes) ]
-    !       |exᵃ|     |2ex|   |exᵃ|   |            |
-    !       [esᵃ]     [ es]   [esᵃ]   [            ]
+    !glda =  ∂zᶠbpzᵃ*(ez+ex) + ∂ₓᶠbpxᵃ*(ez+ex)                      ie. ∇b\vec{pᵃ}⋅(ez+ex)
+    !gmu  = 2∂zᶠbpzᵃ* ez     +2∂ₓᶠbpxᵃ* ex     + (∂ₓᵇbpz +∂zᵇbpx)*es
 
-    
     subroutine cross_correlate_glda_gmu(rf,sf,corr,it)
         type(t_field), intent(in) :: rf, sf
         type(t_correlate) :: corr
@@ -1113,14 +1100,9 @@ use, intrinsic :: ieee_arithmetic
             ! sf_p_save = sf%p
             
             !inexact greadient
-            ! call grad2d_glda_gmu(rf%pz,rf%px,sf%ez,sf%ex,sf%es,&
-            !                     ppg%buoz,ppg%buox,&
-            !                     corr%glda,corr%gmu,            &
-            !                     ifz,ilz,ifx,ilx)
-
-            call grad2d_glda_gmu(rf%pz,rf%px,sf%ez+sf%ex,&
-                                ppg%buoz,ppg%buox,ppg%ldap2mu,ppg%lda,&
-                                corr%glda,corr%gmu,            &
+            call grad2d_glda_gmu(ppg%buoz*rf%pz,ppg%buox*rf%px,&
+                                sf%ez,sf%ex,sf%es,&
+                                corr%glda,corr%gmu,&
                                 ifz,ilz,ifx,ilx)
         endif
         
@@ -1129,11 +1111,7 @@ use, intrinsic :: ieee_arithmetic
     subroutine cross_correlate_postprocess(corr)
         type(t_correlate) :: corr
 
-        if(allocated(correlate_gradient)) then
-            !scaling gradients by model parameters
-            corr%glda = corr%glda / (-m%rho)
-            corr%gmu  = corr%gmu  / (-m%rho)
-                    
+        if(allocated(correlate_gradient)) then        
             !preparing for projection back
             corr%glda(1,:,:) = corr%glda(2,:,:)
             corr%gmu (1,:,:) = corr%gmu (2,:,:)
@@ -1143,13 +1121,13 @@ use, intrinsic :: ieee_arithmetic
 
     !========= Finite-Difference on flattened arrays ==================
     
-    subroutine fd2d_momenta(pz,px,ez,ex,es,              &
-                               dez_dz,dex_dx,dex_dz,dez_dx,des_dz,des_dx,&
-                               ldap2mu,lda,mu,             &
-                               ifz,ilz,ifx,ilx,dt)
-        real,dimension(*) :: pz,px,ez,ex,es
+    subroutine fd2d_momenta(pz,px,ez,ex,mu_es,              &
+                           dez_dz,dex_dx,dex_dz,dez_dx,des_dz,des_dx,&
+                           ldap2mu,lda,&
+                           ifz,ilz,ifx,ilx,dt)
+        real,dimension(*) :: pz,px,ez,ex,mu_es
         real,dimension(*) :: dez_dz,dex_dx,dex_dz,dez_dx,des_dz,des_dx
-        real,dimension(*) :: ldap2mu,lda,mu
+        real,dimension(*) :: ldap2mu,lda
         
         nz=cb%nz
         nx=cb%nx
@@ -1187,8 +1165,8 @@ use, intrinsic :: ieee_arithmetic
                 dex_dz_= c1z*(lda(iz_ix)*ex(iz_ix)-lda(izm1_ix)*ex(izm1_ix)) +c2z*(lda(izp1_ix)*ex(izp1_ix)-lda(izm2_ix)*ex(izm2_ix))
                 dez_dx_= c1x*(lda(iz_ix)*ez(iz_ix)-lda(iz_ixm1)*ez(iz_ixm1)) +c2x*(lda(iz_ixp1)*ez(iz_ixp1)-lda(iz_ixm2)*ez(iz_ixm2))
 
-                des_dz_= c1z*(mu(izp1_ix)*es(izp1_ix)-mu(iz_ix)*es(iz_ix)) +c2z*(mu(izp2_ix)*es(izp2_ix)-mu(izm1_ix)*es(izm1_ix))
-                des_dx_= c1x*(mu(iz_ixp1)*es(iz_ixp1)-mu(iz_ix)*es(iz_ix)) +c2x*(mu(iz_ixp2)*es(iz_ixp2)-mu(iz_ixm1)*es(iz_ixm1))
+                des_dz_= c1z*(mu_es(izp1_ix)-mu_es(iz_ix)) +c2z*(mu_es(izp2_ix)-mu_es(izm1_ix))
+                des_dx_= c1x*(mu_es(iz_ixp1)-mu_es(iz_ix)) +c2x*(mu_es(iz_ixp2)-mu_es(iz_ixm1))
                                 
                 !cpml
                 dez_dz(i)= cpml%b_z_half(iz)*dez_dz(i) + cpml%a_z_half(iz)*dez_dz_
@@ -1217,13 +1195,11 @@ use, intrinsic :: ieee_arithmetic
         
     end subroutine
     
-    subroutine fd2d_strains(pz,px,ez,ex,es,              &
+    subroutine fd2d_strains(bpz,bpx,ez,ex,es,              &
                              dpz_dz,dpx_dx,dpz_dx,dpx_dz,&
-                             buoz,buox,                  &
                              ifz,ilz,ifx,ilx,dt)
-        real,dimension(*) :: pz,px,ez,ex,es
+        real,dimension(*) :: bpz,bpx,ez,ex,es
         real,dimension(*) :: dpz_dz,dpx_dx,dpz_dx,dpx_dz
-        real,dimension(*) :: buoz,buox
         
         nz=cb%nz
         nx=cb%nx
@@ -1258,8 +1234,8 @@ use, intrinsic :: ieee_arithmetic
                 iz_ixp2=i  +2*nz !iz,ix+2
                 
 
-                dpz_dz_= c1z*(buoz(izp1_ix)*pz(izp1_ix)-buoz(iz_ix)*pz(iz_ix))  +c2z*(buoz(izp2_ix)*pz(izp2_ix)-buoz(izm1_ix)*pz(izm1_ix))
-                dpx_dx_= c1x*(buox(iz_ixp1)*px(iz_ixp1)-buox(iz_ix)*px(iz_ix))  +c2x*(buox(iz_ixp2)*px(iz_ixp2)-buox(iz_ixm1)*px(iz_ixm1))
+                dpz_dz_= c1z*(bpz(izp1_ix)-bpz(iz_ix))  +c2z*(bpz(izp2_ix)-bpz(izm1_ix))
+                dpx_dx_= c1x*(bpx(iz_ixp1)-bpx(iz_ix))  +c2x*(bpx(iz_ixp2)-bpx(iz_ixm1))
                 
                 !cpml
                 dpz_dz(i)=cpml%b_z(iz)*dpz_dz(i)+cpml%a_z(iz)*dpz_dz_
@@ -1272,8 +1248,8 @@ use, intrinsic :: ieee_arithmetic
                 ez(i) = ez(i) + dt * dpz_dz_
                 ex(i) = ex(i) + dt * dpx_dx_
 
-                dpz_dx_= c1x*(buoz(iz_ix)*pz(iz_ix)-buoz(iz_ixm1)*pz(iz_ixm1))  +c2x*(buoz(iz_ixp1)*pz(iz_ixp1)-buoz(iz_ixm2)*pz(iz_ixm2))
-                dpx_dz_= c1z*(buox(iz_ix)*px(iz_ix)-buox(izm1_ix)*px(izm1_ix))  +c2z*(buox(izp1_ix)*px(izp1_ix)-buox(izm2_ix)*px(izm2_ix))
+                dpz_dx_= c1x*(bpz(iz_ix)-bpz(iz_ixm1))  +c2x*(bpz(iz_ixp1)-bpz(iz_ixm2))
+                dpx_dz_= c1z*(bpx(iz_ix)-bpx(izm1_ix))  +c2z*(bpx(izp1_ix)-bpx(izm2_ix))
 
                 !cpml
                 dpz_dx(i)=cpml%b_x_half(ix)*dpz_dx(i)+cpml%a_x_half(ix)*dpz_dx_
@@ -1293,18 +1269,17 @@ use, intrinsic :: ieee_arithmetic
         
     end subroutine
 
-    subroutine grad2d_glda_gmu(rf_pz,rf_px,&
+    subroutine grad2d_glda_gmu(rf_bpz,rf_bpx,&
                              sf_ez,sf_ex,sf_es,&
-                             buoz,buox,&
-                             grad_lda,grad_mu,    &
+                             grad_lda,grad_mu,&
                              ifz,ilz,ifx,ilx)
-        real,dimension(*) :: rf_pz,rf_px,sf_ez,sf_ex,sf_es
-        real,dimension(*) :: buoz,buox
+        real,dimension(*) :: rf_bpz,rf_bpx
+        real,dimension(*) :: sf_ez,sf_ex,sf_es
         real,dimension(*) :: grad_lda,grad_mu
         
         nz=cb%nz
         
-        rf_dpzdz=0.; rf_dpxdx=0.; rf_dpxdz=0.; rf_dpzpx=0.; rf_4_dpzdx_p_dpxdz=0.; sf_4_es=0.
+        rf_dz_bpz=0.; rf_dx_bpx=0.; rf_4_dx_bpz_p_dz_bpx=0.; sf_4_es=0.
 
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
@@ -1312,7 +1287,7 @@ use, intrinsic :: ieee_arithmetic
         !$omp         iz_ixm2,izp1_ixm2,iz_ixm1,izp1_ixm1,&
         !$omp         izm2_ixp1,izm1_ixp1,iz_ixp1,izp1_ixp1,izp2_ixp1,&
         !$omp         iz_ixp2,izp1_ixp2,&
-        !$omp         rf_dpzdz,rf_dpxdx,rf_dpxdz,rf_dpzpx,rf_4_dpzdx_p_dpxdz,sf_4_es)
+        !$omp         rf_dz_bpz,rf_dx_bpx,rf_4_dx_bpz_p_dz_bpx,sf_4_es)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
         
@@ -1342,42 +1317,34 @@ use, intrinsic :: ieee_arithmetic
                 iz_ixp2  = i    +2*nz  !iz  ,ix+2
                 izp1_ixp2= i+1  +2*nz  !iz+1,ix+2
                 
+                rf_dz_bpz = c1z*(rf_bpz(izp1_ix)-rf_bpz(iz_ix)) + c2z*(rf_bpz(izp2_ix)-rf_bpz(izm1_ix))
+                rf_dx_bpx = c1x*(rf_bpx(iz_ixp1)-rf_bpx(iz_ix)) + c2x*(rf_bpx(iz_ixp2)-rf_bpx(iz_ixm1))
+
+                grad_lda(j) = grad_lda(j) + (rf_dz_bpz+rf_dx_bpx) * (sf_ez(i)+sf_ex(i))
 
                 !missing buoyancy for the moment..
-                rf_dpzdz = c1z*(rf_pz(izp1_ix)-rf_pz(iz_ix)) +c2z*(rf_pz(izp2_ix)-rf_pz(izm1_ix))
-                rf_dpxdx = c1x*(rf_px(iz_ixp1)-rf_px(iz_ix)) +c2x*(rf_px(iz_ixp2)-rf_px(iz_ixm1))
-
-                grad_lda(j)=grad_lda(j) + (rf_dpzdz+rf_dpxdx) * (sf_ez(i)+sf_ex(i))
-
-                rf_dpxdz = c1z*(sf_es(izp1_ix)-sf_es(iz_ix)) +c2z*(sf_es(izp2_ix)-sf_es(izm1_ix))
-                rf_dpzpx = c1x*(sf_es(iz_ixp1)-sf_es(iz_ix)) +c2x*(sf_es(iz_ixp2)-sf_es(iz_ixm1))
-
-                ! grad_mu(j)=grad_mu(j) + rf_pz(i)*(2*sf_dez_dz + sf_des_dx) &
-                !                       + rf_px(i)*(2*sf_dex_dx + sf_des_dz)
-
-                !missing buoyancy for the moment..
-                rf_4_dpzdx_p_dpxdz = &   !(dpz_dx+dpx_dx)(iz,ix)     [iz-0.5,ix-0.5]
-                                         c1x*(rf_pz(iz_ix    )-rf_pz(iz_ixm1  )) +c2x*(rf_pz(iz_ixp1  )-rf_pz(iz_ixm2  )) &
-                                       + c1z*(rf_px(iz_ix    )-rf_px(izm1_ix  )) +c2z*(rf_px(izp1_ix  )-rf_px(izm2_ix  )) &
+                rf_4_dx_bpz_p_dz_bpx = &  !(dpz_dx+dpx_dx)(iz,ix)     [iz-0.5,ix-0.5]
+                                         c1x*(rf_bpz(iz_ix    )-rf_bpz(iz_ixm1  )) + c2x*(rf_bpz(iz_ixp1  )-rf_bpz(iz_ixm2  )) &
+                                       + c1z*(rf_bpx(iz_ix    )-rf_bpx(izm1_ix  )) + c2z*(rf_bpx(izp1_ix  )-rf_bpx(izm2_ix  )) &
                                      & &
                                      & & !(dpz_dx+dpx_dx)(iz,ix+1)   [iz-0.5,ix+0.5]
-                                       + c1x*(rf_pz(iz_ixp1  )-rf_pz(iz_ix    )) +c2x*(rf_pz(iz_ixp2  )-rf_pz(iz_ixm1  )) &
-                                       + c1z*(rf_px(iz_ixp1  )-rf_px(izm1_ixp1)) +c2z*(rf_px(izp1_ixp1)-rf_px(izm2_ixp1)) &
+                                       + c1x*(rf_bpz(iz_ixp1  )-rf_bpz(iz_ix    )) + c2x*(rf_bpz(iz_ixp2  )-rf_bpz(iz_ixm1  )) &
+                                       + c1z*(rf_bpx(iz_ixp1  )-rf_bpx(izm1_ixp1)) + c2z*(rf_bpx(izp1_ixp1)-rf_bpx(izm2_ixp1)) &
                                      & &
                                      & & !(dpz_dx+dpx_dx)(iz+1,ix)   [iz+0.5,ix-0.5]
-                                       + c1x*(rf_pz(izp1_ix  )-rf_pz(izp1_ixm1)) +c2x*(rf_pz(izp1_ixp1)-rf_pz(izp1_ixm2)) &
-                                       + c1z*(rf_px(izp1_ix  )-rf_px(iz_ix    )) +c2z*(rf_px(izp2_ix  )-rf_px(izm1_ix  )) &
+                                       + c1x*(rf_bpz(izp1_ix  )-rf_bpz(izp1_ixm1)) + c2x*(rf_bpz(izp1_ixp1)-rf_bpz(izp1_ixm2)) &
+                                       + c1z*(rf_bpx(izp1_ix  )-rf_bpx(iz_ix    )) + c2z*(rf_bpx(izp2_ix  )-rf_bpx(izm1_ix  )) &
                                      & &
                                      & & !(dpz_dx+dpx_dx)(iz+1,ix+1) [iz+0.5,ix+0.5]
-                                       + c1x*(rf_pz(izp1_ixp1)-rf_pz(izp1_ix  )) +c2x*(rf_pz(izp1_ixp2)-rf_pz(izp1_ixm1)) &
-                                       + c1z*(rf_px(izp1_ixp1)-rf_px(iz_ixp1  )) +c2z*(rf_px(izp2_ixp1)-rf_px(izm1_ixp1))
+                                       + c1x*(rf_bpz(izp1_ixp1)-rf_bpz(izp1_ix  )) + c2x*(rf_bpz(izp1_ixp2)-rf_bpz(izp1_ixm1)) &
+                                       + c1z*(rf_bpx(izp1_ixp1)-rf_bpx(iz_ixp1  )) + c2z*(rf_bpx(izp2_ixp1)-rf_bpx(izm1_ixp1))
 
                     ! [iz-0.5,ix-0.5]   [iz+0.5,ix-0.5]   [iz-0.5,ix+0.5]     [iz+0.5,ix+0.5]
                 sf_4_es = sf_es(iz_ix) + sf_es(izp1_ix) + sf_es(iz_ixp1) + sf_es(izp1_ixp1)
 
-                grad_mu(j)=grad_mu(j) + 2*rf_dpzdz*sf_ez(i) &
-                                      + 2*rf_dpxdx*sf_ex(i) &
-                                      + 0.0625*rf_4_dpzdx_p_dpxdz*sf_4_es   !0.0625=1/16
+                grad_mu(j)=grad_mu(j) + 2*rf_dz_bpz*sf_ez(i) &
+                                      + 2*rf_dx_bpx*sf_ex(i) &
+                                      + 0.0625*rf_4_dx_bpz_p_dz_bpx*sf_4_es   !0.0625=1/16
 
                 ! grad_mu(j)=grad_mu(j) + rf_szz(i)*( ldap2mu(i)*sf_dvz_dz -    lda(i)*sf_dvx_dx) &
                 !                       + rf_sxx(i)*(-lda(i)    *sf_dvz_dz +ldap2mu(i)*sf_dvx_dx) &
