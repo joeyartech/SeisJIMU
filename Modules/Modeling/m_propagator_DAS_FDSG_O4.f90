@@ -38,7 +38,7 @@ use, intrinsic :: ieee_arithmetic
             'Required field components: pz,px,'//s_NL// &
             'Required field components: ez,ex,es'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
-            'Basic gradients: glda gmu'
+            'Basic gradients: grho(wait) glda gmu'
 
         integer :: nbndlayer=max(2,hicks_r) !minimum absorbing layer thickness
         integer :: ngrad=3 !number of basic gradients
@@ -819,7 +819,7 @@ use, intrinsic :: ieee_arithmetic
 
         if(m%is_freesurface) ifz=max(ifz,1)
 
-        call fd2d_momenta(f%pz,f%px,f%ez,f%ex,self%mu*f%es,                   &
+        call fd2d_momenta(f%pz,f%px,f%ez,f%ex,self%mu*f%es(:,:,1),            &
                         f%dez_dz,f%dex_dx,f%dex_dz,f%dez_dx,f%des_dz,f%des_dx,&
                         self%ldap2mu,self%lda,                                &
                         ifz,ilz,ifx,ilx,time_dir*self%dt)
@@ -940,7 +940,7 @@ use, intrinsic :: ieee_arithmetic
         
         if(m%is_freesurface) ifz=max(ifz,1)
 
-        call fd2d_strains(self%buoz*f%pz,self%buox*f%px,f%ez,f%ex,f%es,    &
+        call fd2d_strains(self%buoz*f%pz(:,:,1),self%buox*f%px(:,:,1),f%ez,f%ex,f%es,&
                            f%dpz_dz,f%dpx_dx,f%dpz_dx,f%dpx_dz,&
                            ifz,ilz,ifx,ilx,time_dir*self%dt)
         
@@ -1100,7 +1100,7 @@ use, intrinsic :: ieee_arithmetic
             ! sf_p_save = sf%p
             
             !inexact greadient
-            call grad2d_glda_gmu(ppg%buoz*rf%pz,ppg%buox*rf%px,&
+            call grad2d_glda_gmu(ppg%buoz*rf%pz(:,:,1),ppg%buox*rf%px(:,:,1),&
                                 sf%ez,sf%ex,sf%es,&
                                 corr%glda,corr%gmu,&
                                 ifz,ilz,ifx,ilx)

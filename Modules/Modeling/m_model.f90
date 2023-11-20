@@ -29,8 +29,6 @@ use m_smoother_laplacian_sparse
         integer,dimension(:,:),allocatable :: ibathy
         logical,dimension(:,:,:),allocatable :: is_freeze_zone
 
-        real,dimension(:,:,:,:),allocatable :: gradient, image, energy, correlate
-
         contains
         procedure :: init
         procedure :: estim_RAM
@@ -426,12 +424,6 @@ use m_smoother_laplacian_sparse
         enddo
 
         close(13)
-
-        if(allocated(self%image)) then
-            open(13,file=dir_out//'image'//suf,access='direct',recl=4*self%n,action='write')
-            write(13,rec=1) self%image
-            close(13)
-        endif
 
     end subroutine
 

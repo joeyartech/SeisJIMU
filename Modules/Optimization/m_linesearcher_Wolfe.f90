@@ -333,7 +333,7 @@ c2=setup%get_real('WOLFE_C2',o_default='0.9')
 
         if(setup%get_bool('IF_LINESEARCH_WRITE','IF_LS_WRITE',o_default='F')) then
             call sysio_write('model_Iter'//num2str(iterate)//'.LinS'//num2str(ls%isearch),m%vp,m%n)
-            call sysio_write('image_Iter'//num2str(iterate)//'.LinS'//num2str(ls%isearch),m%image,m%n)
+            ! call sysio_write('image_Iter'//num2str(iterate)//'.LinS'//num2str(ls%isearch),m%image,m%n)
             call sysio_mv( 'Ru_Shot0001.su', 'Ru_Shot0001_Iter'//num2str(iterate)//'.LinS'//num2str(ls%isearch)//'.su')
             call sysio_mv('Rdu_Shot0001.su','Rdu_Shot0001_Iter'//num2str(iterate)//'.LinS'//num2str(ls%isearch)//'.su')
         endif

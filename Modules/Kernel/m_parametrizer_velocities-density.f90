@@ -107,7 +107,7 @@ use m_Modeling
 !                     endif
 ! 
                     call hud('Gardner law is enabled: a='//num2str(a)//', b='//num2str(b)//s_NL// &
-                        'Parameter rho will passive in the inversion.')
+                        'Parameter rho will be passive in the inversion.')
 
                 elseif(list(i)%s(1:8)=='Castagna') then
                     !Castagna mudrock line vs=a*vs+b
@@ -259,32 +259,32 @@ use m_Modeling
 
         if(present(o_g)) then
             call alloc(o_g,self%n1,self%n2,self%n3,self%npars)
-            !m%gradient(:,:,:,1) = grho
-            !m%gradient(:,:,:,2) = gkpa or glda
-            !m%gradient(:,:,:,3) = gmu
+            !correlate_gradient(:,:,:,1) = grho
+            !correlate_gradient(:,:,:,2) = gkpa or glda
+            !correlate_gradient(:,:,:,3) = gmu
 
             !acoustic
             if(is_AC .and. .not. is_empirical) then
                 do i=1,param%npars
                     select case (param%pars(i)%name)
-                    case ('vp' ); o_g(:,:,:,i) = m%gradient(:,:,:,2)*2*m%rho*m%vp
-                    case ('rho'); o_g(:,:,:,i) = m%gradient(:,:,:,2)*m%vp**2 + m%gradient(:,:,:,1)
+                    case ('vp' ); o_g(:,:,:,i) = correlate_gradient(:,:,:,2)*2*m%rho*m%vp
+                    case ('rho'); o_g(:,:,:,i) = correlate_gradient(:,:,:,2)*m%vp**2 + correlate_gradient(:,:,:,1)
                     end select
                 enddo
             endif
 
             !acoustic + gardner
             if(is_AC .and. is_gardner) then
-                o_g(:,:,:,1) =(m%gradient(:,:,:,2)*(b+2)/b*m%vp**2 + m%gradient(:,:,:,1))*b*m%rho/m%vp  !m%rho has tobe updated in prior
+                o_g(:,:,:,1) =(correlate_gradient(:,:,:,2)*(b+2)/b*m%vp**2 + correlate_gradient(:,:,:,1))*b*m%rho/m%vp  !m%rho has tobe updated in prior
             endif
 
             !elastic
             if(is_EL .and. .not. is_empirical) then
                 do i=1,param%npars
                     select case (param%pars(i)%name)
-                    case ('vp' ); o_g(:,:,:,i) = m%gradient(:,:,:,2)*2*m%rho*m%vp
-                    case ('vs' ); o_g(:,:,:,i) =(m%gradient(:,:,:,2)*(-2) + m%gradient(:,:,:,3))*2*m%rho*m%vs
-                    case ('rho'); o_g(:,:,:,i) = m%gradient(:,:,:,2)*m%vp**2 + (-2*m%gradient(:,:,:,2)+m%gradient(:,:,:,3))*m%vs**2 + m%gradient(:,:,:,1)
+                    case ('vp' ); o_g(:,:,:,i) = correlate_gradient(:,:,:,2)*2*m%rho*m%vp
+                    case ('vs' ); o_g(:,:,:,i) =(correlate_gradient(:,:,:,2)*(-2) + correlate_gradient(:,:,:,3))*2*m%rho*m%vs
+                    case ('rho'); o_g(:,:,:,i) = correlate_gradient(:,:,:,2)*m%vp**2 + (-2*correlate_gradient(:,:,:,2)+correlate_gradient(:,:,:,3))*m%vs**2 + correlate_gradient(:,:,:,1)
                     end select
                 enddo
             endif
@@ -293,8 +293,8 @@ use m_Modeling
             if(is_EL .and. is_gardner) then
                 do i=1,param%npars
                     select case (param%pars(i)%name)
-                    case ('vp' ); o_g(:,:,:,i) =(m%gradient(:,:,:,2)*(b+2)/b*m%vp**2 + (-2*m%gradient(:,:,:,2)+m%gradient(:,:,:,3))*m%vs**2 + m%gradient(:,:,:,1))*b*m%rho/m%vp !m%rho has tobe updated in prior
-                    case ('vs' ); o_g(:,:,:,i) =(m%gradient(:,:,:,2)*(-2) + m%gradient(:,:,:,3))*2*m%rho*m%vs !m%rho has tobe updated in prior
+                    case ('vp' ); o_g(:,:,:,i) =(correlate_gradient(:,:,:,2)*(b+2)/b*m%vp**2 + (-2*correlate_gradient(:,:,:,2)+correlate_gradient(:,:,:,3))*m%vs**2 + correlate_gradient(:,:,:,1))*b*m%rho/m%vp !m%rho has tobe updated in prior
+                    case ('vs' ); o_g(:,:,:,i) =(correlate_gradient(:,:,:,2)*(-2) + correlate_gradient(:,:,:,3))*2*m%rho*m%vs !m%rho has tobe updated in prior
                     end select
                 enddo
             endif
@@ -304,9 +304,9 @@ use m_Modeling
                 do i=1,param%npars
                     select case (param%pars(i)%name)
                     case ('vp' )
-                        o_g(:,:,:,i) =2*m%rho*( m%gradient(:,:,:,2)*(m%vp-2*a*m%vs) + m%gradient(:,:,:,3)*a*m%vs )
+                        o_g(:,:,:,i) =2*m%rho*( correlate_gradient(:,:,:,2)*(m%vp-2*a*m%vs) + correlate_gradient(:,:,:,3)*a*m%vs )
                     case ('rho')
-                        o_g(:,:,:,i) =m%gradient(:,:,:,2)*(m%vp**2-2*m%vs**2) + m%gradient(:,:,:,3)*m%vs**2 + m%gradient(:,:,:,1)
+                        o_g(:,:,:,i) =correlate_gradient(:,:,:,2)*(m%vp**2-2*m%vs**2) + correlate_gradient(:,:,:,3)*m%vs**2 + correlate_gradient(:,:,:,1)
                     end select
                 enddo
             endif
