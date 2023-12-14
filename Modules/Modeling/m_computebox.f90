@@ -44,7 +44,7 @@ use m_shot
         real,dimension(:,:,:),allocatable :: vp,vs,rho
         real,dimension(:,:,:),allocatable :: eps,del,eta
         real,dimension(:,:,:),allocatable :: qp,qs
-        
+
         real,dimension(:,:,:,:),allocatable :: grad, imag, engy, corr
         real,dimension(:,:,:),allocatable :: tilD
         
@@ -85,9 +85,9 @@ use m_shot
 
     end subroutine
     
-    subroutine project(self,ois_background)
+    subroutine project(self,ois_background,ois_monitor)
         class(t_computebox) :: self
-        logical,optional :: ois_background
+        logical,optional :: ois_background,ois_monitor
 
         !C's origin index in model
         self%ioz=1 !always from top of model
@@ -177,12 +177,16 @@ use m_shot
 
         !models in computebox
         call m2cb(m%vp ,self%vp )
+if(either(ois_monitor,.false.,present(ois_monitor))) call m2cb(m%vpm, self%vp)
+
         call m2cb(m%vs ,self%vs )
+
         if(either(ois_background,.false.,present(ois_background))) then
             call m2cb(m%rho0, self%rho)
         else
             call m2cb(m%rho,self%rho)
         endif
+
         call m2cb(m%eps,self%eps)
         call m2cb(m%del,self%del)
         call m2cb(m%eta,self%eta)

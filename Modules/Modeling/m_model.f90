@@ -22,6 +22,9 @@ use m_smoother_laplacian_sparse
 
         real,dimension(:,:,:),allocatable :: tilD
 
+        !monitor models
+        real,dimension(:,:,:),allocatable :: vpm
+
         !prior models
         real,dimension(:,:,:),allocatable :: vp_prior,vs_prior,rho_prior
 
@@ -126,6 +129,11 @@ use m_smoother_laplacian_sparse
                 call alloc(self%vp,self%nz,self%nx,self%ny)
                 read(12,rec=i) self%vp
                 call hud('vp model is read.')
+
+case ('vpm')
+call alloc(self%vpm,self%nz,self%nx,self%ny)
+read(12,rec=i) self%vpm
+call hud('monitor vp model is read.')
 
             case ('vs')
                 call alloc(self%vs,self%nz,self%nx,self%ny)

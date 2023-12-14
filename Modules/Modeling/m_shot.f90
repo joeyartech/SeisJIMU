@@ -57,6 +57,9 @@ use m_model
         real,dimension(:,:),allocatable :: dsyn_aux !auxiliary synthetic seismogram
         !real,dimension(:,:),allocatable :: dres !residual seismogram
         real,dimension(:,:),allocatable :: dadj !adjoint source seismogram
+
+        !4D data
+        real,dimension(:,:),allocatable :: dobsb, dobsm, dsynb, dsynm, dadjb, dadjm
         
         contains
         procedure :: init

@@ -22,7 +22,9 @@ use m_preconditioner
         real,dimension(:),allocatable :: dnorm_normalizers, xnorm_normalizers
         real,dimension(:),allocatable :: dnorm_weights,     xnorm_weights
 
-        real misfit, reflection, diving
+        real misfit
+        real reflection, diving
+        real fourD, baseline
 
         contains
 
@@ -362,11 +364,16 @@ use m_preconditioner
         !     call modeling_gradient_approximate(fobj)
         ! else
         s_job=setup%get_str('JOB',o_mandatory=1)
-        if(index(s_job,'build Ip')>0) then
-            call modeling_gradient_ip!(qp%is_fitting_data)
-        else
-            call modeling_gradient_vp!(qp%is_fitting_data)
-        endif
+!         if(index(s_job,'build Ip')>0) then
+!             call modeling_gradient_ip!(qp%is_fitting_data)
+!         else
+!             call modeling_gradient_vp!(qp%is_fitting_data)
+!         endif
+! if(index(s_job,'build Ip')>0) then
+!     call modeling_gradient_Dm
+! else
+    call modeling_gradient_m0
+! endif
         ! endif
 
         ! if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'max')>0) then
