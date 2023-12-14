@@ -25,6 +25,13 @@ use m_fracderi
     real,dimension(:,:,:),allocatable :: term1, term2
 
     character(:),allocatable :: dnorm
+
+type :: t_S
+    real,dimension(:),allocatable :: scale
+end type
+type(t_S),dimension(:),allocatable,save :: S
+real,dimension(:,:),allocatable :: tmp_Esyn, gmwindow
+if(is_first_in) allocate(S(shls%nshots_per_processor)) !then can NOT randomly sample shots..
     
 
     !PFEI misfit
@@ -87,13 +94,20 @@ use m_fracderi
 
         if(setup%get_str('JOB')=='forward modeling') cycle
 
-        call hud('Converting observed seismogram (dobs) to envelope data via Hilbert transform')
-        Eobs=shot%dobs; phobs=shot%dobs
-        call hilbert_envelope(shot%dobs,Eobs, shot%nt,shot%nrcv)
-        call hilbert_phase(   shot%dobs,phobs,shot%nt,shot%nrcv)
-        if(mpiworld%is_master) then
-            call shot%write('denv_',Eobs)
-            call shot%write('dph_',phobs)
+
+        if (setup%get_bool('IS_DOBS_WAVE',o_default='T')) then
+            call hud('Converting observed seismogram (dobs) to envelope data via Hilbert transform')
+            Eobs=shot%dobs
+            phobs=shot%dobs
+            call hilbert_envelope(shot%dobs,Eobs, shot%nt,shot%nrcv)
+            call hilbert_phase(   shot%dobs,phobs,shot%nt,shot%nrcv)
+            if(mpiworld%is_master) then
+                call shot%write('denv_',Eobs)
+                call shot%write('dph_',phobs)
+            endif
+        else
+            Eobs=shot%dobs
+            phobs=Eobs; phobs=0.
         endif
 
 
@@ -112,6 +126,26 @@ use m_fracderi
                 call kernel_L2sq(shot%dadj)
                 call fld_p%ignite(o_wavelet=shot%dadj*cos(phsyn))
                 call fld_q%ignite(o_wavelet=shot%dadj*sin(phsyn))
+
+
+case('DeltaE_scaled')
+if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
+call alloc(tmp_Esyn,shot%nt,shot%nrcv)
+do j=1,shot%nrcv
+    if(is_first_in) S(i)%scale(j) = either(0., maxval(abs(Eobs(:,j))) / maxval(abs(Esyn(:,j))) , shot%rcv(j)%is_badtrace)
+    tmp_Esyn(:,j)=Esyn(:,j)*S(i)%scale(j)
+enddo
+if(is_first_in) then
+	open(12,file=dir_out//'Eobs_Esyn_max_ratio',access='direct',recl=4*shot%nrcv)
+	write(12,rec=shot%index) S(i)%scale
+	close(12)
+endif
+fobj%misfit = fobj%misfit &
+    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, Eobs-tmp_Esyn, shot%dt)
+call kernel_L2sq(shot%dadj)
+call fld_p%ignite(o_wavelet=shot%dadj*cos(phsyn))
+call fld_q%ignite(o_wavelet=shot%dadj*sin(phsyn))
+                    
 
                 case ('DeltaE*cos(phobs)')
                 fobj%misfit = fobj%misfit &
@@ -147,7 +181,8 @@ use m_fracderi
     
     call hud('        END LOOP OVER SHOTS        ')
 
-    
+is_first_in=.false.
+
     !allreduce PFEI misfit values
     call mpi_allreduce(mpi_in_place, [fobj%misfit], 1, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     call hud('Stacked EI_misfit '//num2str(fobj%misfit))

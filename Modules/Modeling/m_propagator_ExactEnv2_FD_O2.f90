@@ -724,9 +724,19 @@ use m_cpml
             call q_star_v%scale(m%cell_volume*rdt)
             call p_star_u%scale(m%cell_volume*rdt)
             
-            call correlate_stack(q_star_v%rp_ddsp        +p_star_u%rp_ddsp        , correlate_gradient(:,:,:,1)) !gikpa
-            call correlate_stack(q_star_v%grad_rp_grad_sp+p_star_u%grad_rp_grad_sp, correlate_gradient(:,:,:,2)) !gbuo
-            
+            select case (setup%get_str('GRADIENT_TERMS',o_default='pu+qv'))
+            case ('pu+qv')
+                call correlate_stack(q_star_v%rp_ddsp        +p_star_u%rp_ddsp        , correlate_gradient(:,:,:,1)) !gikpa
+                call correlate_stack(q_star_v%grad_rp_grad_sp+p_star_u%grad_rp_grad_sp, correlate_gradient(:,:,:,2)) !gbuo
+
+            case ('pu')
+                call correlate_stack(p_star_u%rp_ddsp        , correlate_gradient(:,:,:,1)) !gikpa
+                call correlate_stack(p_star_u%grad_rp_grad_sp, correlate_gradient(:,:,:,2)) !gbuo
+
+            case ('qv')
+                call correlate_stack(q_star_v%rp_ddsp        , correlate_gradient(:,:,:,1)) !gikpa
+                call correlate_stack(q_star_v%grad_rp_grad_sp, correlate_gradient(:,:,:,2)) !gbuo
+            end select
         ! endif
 
     end subroutine
