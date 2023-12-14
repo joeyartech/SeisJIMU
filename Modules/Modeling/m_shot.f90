@@ -65,6 +65,7 @@ use m_model
         procedure :: init
         procedure :: read_from_setup
         procedure :: read_from_data
+        procedure :: read_from_4Ddata
         procedure :: set_var_time
         procedure :: set_var_space
         procedure :: update_wavelet
@@ -233,6 +234,119 @@ use m_model
 
         call alloc(self%dobs,self%nt,self%nrcv)
         self%dobs=sudata%trs
+
+    end subroutine
+
+    subroutine read_from_4Ddata(self)
+        class(t_shot) :: self
+
+        type(t_suformat) :: sudata
+        character(:),allocatable :: str, zerophase, locut, hicut
+        character(:),allocatable :: fstoplo,fpasslo,fpasshi,fstophi
+        character(:),allocatable :: astoplo,apasslo,apasshi,astophi
+
+        call sudata%read(setup%get_str('FILE_DBAS_PREFIX')//self%sindex(5:8)//'.su',self%sindex)
+
+        shot%nrcv=sudata%ntr
+        if(allocated(self%rcv))deallocate(self%rcv)
+        allocate(self%rcv(shot%nrcv))
+
+        scalel=sudata%hdrs(1)%scalel !assume same scalel for all traces
+        scalco=sudata%hdrs(1)%scalco !assume same scalco for all traces
+
+        if(scalel==0.) scalel=1.
+        if(scalco==0.) scalco=1.
+
+        if(scalel<0.) scalel=-1./scalel
+        if(scalco<0.) scalco=-1./scalco
+
+        !source & receiver geometry
+        self%src%z=sudata%hdrs(1)%sdepth*scalel !assume single shot
+        self%src%x=sudata%hdrs(1)%sx    *scalco
+        self%src%y=sudata%hdrs(1)%sy    *scalco
+        
+        self%src%comp='p' !don't know which su header tells this info..
+        
+        do i=1,shot%nrcv
+            self%rcv(i)%z=-sudata%hdrs(i)%gelev*scalel
+            self%rcv(i)%x= sudata%hdrs(i)%gx   *scalco
+            self%rcv(i)%y= sudata%hdrs(i)%gy   *scalco
+
+            self%rcv(i)%is_badtrace = sudata%hdrs(i)%trid==2 .or. sudata%hdrs(i)%trid==3  !dead or dummy trace
+            
+            select case (sudata%hdrs(i)%trid)
+            case (11); self%rcv(i)%comp='p'  !pressure
+            case (12); self%rcv(i)%comp='vz' !vertical velocity
+            case (14); self%rcv(i)%comp='vx' !horizontal velocity in in-line
+            case (13); self%rcv(i)%comp='vy' !horizontal velocity in cross-line
+            case default
+                self%rcv(i)%comp='p'
+            end select
+            
+        enddo
+
+        !shift positions to be 0-based
+        !then m%oz,ox,oy is no longer of use before writing shots
+        self%src%z   =self%src%z    - m%oz
+        self%src%x   =self%src%x    - m%ox
+        self%src%y   =self%src%y    - m%oy
+        self%rcv(:)%z=self%rcv(:)%z - m%oz
+        self%rcv(:)%x=self%rcv(:)%x - m%ox
+        self%rcv(:)%y=self%rcv(:)%y - m%oy
+
+        call check_range(self)
+
+
+        !if want to filter the traces
+        str=setup%get_str('FILTER_DATA','BFILT',o_default='none')
+
+        if(str/='none') then
+            
+            !default
+            zerophase=read_key(str,'zerophase',o_default='1')
+            locut=read_key(str,'locut',o_default='1')
+            hicut=read_key(str,'hicut',o_default='1')
+            rdt = 0.5/sudata%dt
+            fstoplo=read_key(str,'fstoplo',o_default=num2str(.10*rdt))
+            fpasslo=read_key(str,'fpasslo',o_default=num2str(.15*rdt))
+            fpasshi=read_key(str,'fpasshi',o_default=num2str(.40*rdt))
+            fstophi=read_key(str,'fstophi',o_default=num2str(.55*rdt))
+
+            astoplo=read_key(str,'astoplo',o_default=num2str(.05))
+            apasslo=read_key(str,'apasslo',o_default=num2str(.95))
+            apasshi=read_key(str,'apasshi',o_default=num2str(.95))
+            astophi=read_key(str,'astophi',o_default=num2str(.05))
+
+            !butterworth filtering
+            call hud('subfilt < data > data_filt '//&
+                ' zerophase='//zerophase//' locut='//locut//' hicut='//hicut// &
+                ' fstoplo='//fstoplo//' fpasslo='//fpasslo//' fpasshi='//fpasshi//' fstophi='//fstophi// &
+                ' astoplo='//astoplo//' apasslo='//apasslo//' apasshi='//apasshi//' astophi='//astophi   )
+            
+            call butterworth(sudata%trs,sudata%ns,sudata%ntr,sudata%dt, &
+                ois_zerophase=either(.true.,.false.,zerophase=='1'),oif_locut=either(.true.,.false.,locut=='1'),oif_hicut=either(.true.,.false.,hicut=='1'),       &
+                o_fstoplo=str2real(fstoplo),o_fpasslo=str2real(fpasslo),o_fpasshi=str2real(fpasshi),o_fstophi=str2real(fstophi), &
+                o_astoplo=str2real(astoplo),o_apasslo=str2real(apasslo),o_apasshi=str2real(apasshi),o_astophi=str2real(astophi)  )
+
+            sudata%hdrs(:)%lcf=str2int(fstoplo)
+            sudata%hdrs(:)%hcf=str2int(fstophi)
+            
+            call sudata%write('dobs_filt_'//self%sindex)
+
+        endif
+
+        !load traces
+        self%nt=sudata%ns !assume all traces have same ns
+        self%dt=sudata%dt !assume all traces have same dt
+
+        call alloc(self%dobsb,self%nt,self%nrcv)
+        self%dobsb=sudata%trs
+
+        deallocate(sudata%hdrs, sudata%trs)
+        
+        call sudata%read(setup%get_str('FILE_DMON_PREFIX')//self%sindex(5:8)//'.su',self%sindex)
+        call alloc(self%dobsm,self%nt,self%nrcv)
+        self%dobsm=sudata%trs
 
     end subroutine
 

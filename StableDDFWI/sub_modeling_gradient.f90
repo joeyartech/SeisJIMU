@@ -167,7 +167,7 @@ use m_resampler
     do i=1,shls%nshots_per_processor
     
         call shot%init(shls%yield(i))
-        call shot%read_from_data
+        call shot%read_from_4Ddata
         call shot%set_var_time
         call shot%set_var_space(index(ppg%info,'FDSG')>0)
 
@@ -184,9 +184,9 @@ use m_resampler
 
         !forward modeling
         !A(m )u = s
-        call ppg%init_field(fld_ub,name='fld_um');    call fld_um%ignite
+        call ppg%init_field(fld_um,name='fld_um');    call fld_um%ignite
         call ppg%forward(fld_um)
-        call fld_um%acquire;  call shot%write('Rum_',shot%dsynm)
+        call fld_um%acquire(o_seismo=shot%dsynm);  call shot%write('Rum_',shot%dsynm)
 
         !A(m₀)u₀= s
         call cb%project
@@ -260,11 +260,6 @@ use m_resampler
 
     call hud('        END LOOP OVER SHOTS        ')
 
-    if(index(s_job,'modeling')>0) then
-        call mpiworld%final
-        stop
-    endif
-    
 
     !allreduce RWI misfit values
     call mpi_allreduce(mpi_in_place, [fobj%fourD,fobj%baseline,fobj%misfit], 3, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
@@ -304,4 +299,9 @@ use m_resampler
 
     call mpiworld%barrier
     
+    if(index(s_job,'modeling')>0) then
+        call mpiworld%final
+        stop
+    endif
+
 end subroutine

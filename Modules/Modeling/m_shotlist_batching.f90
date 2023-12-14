@@ -181,8 +181,9 @@ use m_System
 
     end subroutine
     
-    subroutine read_from_data(self)
+    subroutine read_from_data(self,ois_4D)
         class(t_shotlist) :: self
+        logical,optional :: ois_4D
 
         type(t_string),dimension(:),allocatable :: list, sublist
         integer,dimension(:),allocatable :: ishots
@@ -190,7 +191,11 @@ use m_System
         logical :: exist
         integer file_size
         
-        file=setup%get_str('FILE_DATA_PREFIX')
+        if(either(ois_4D,.false.,present(ois_4D))) then
+            file=setup%get_str('FILE_DBAS_PREFIX')
+        else
+            file=setup%get_str('FILE_DATA_PREFIX')
+        endif
         list=setup%get_strs('SHOT_INDEX','ISHOT')
         
         if(size(list)==0) then !not given

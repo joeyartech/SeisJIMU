@@ -46,7 +46,7 @@ use m_Optimization
     call ppg%check_model
 
     !shotlist
-    call shls%read_from_data
+    call shls%read_from_data(ois_4D=.true.)
     call shls%build
     ! call chp_shls%init('PFEI_shotlist_gradient',oif_fuse=.true.)
     ! if(.not.shls%is_registered(chp_shls,'sampled_shots')) then
