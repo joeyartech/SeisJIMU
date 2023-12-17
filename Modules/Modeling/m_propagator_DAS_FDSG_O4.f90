@@ -175,26 +175,30 @@ use, intrinsic :: ieee_arithmetic
 
         if_record_adjseismo=either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
 
-        call alloc(self%buoz,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(self%buox,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(self%ldap2mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(self%lda,    [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(self%mu,     [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(self%ldapmu, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(self%buoz,           [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(self%buox,           [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(self%ldap2mu,        [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(self%lda,            [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(self%mu,             [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(self%inv_ladpmu_4mu, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(self%ldapmu,         [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
 
+
+
+! print*,'!!!!!!!!!!!!!!!!!!!!!!!'
         call alloc(temp_mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-
+! print*,'!!!!!!!!!!!!!!!!!!!!!!!'
         self%ldap2mu(:,:)=cb%rho(:,:,1)*cb%vp(:,:,1)**2
              temp_mu(:,:)=cb%rho(:,:,1)*cb%vs(:,:,1)**2
-
+! print*,'!!!!!!!!!!!!!!!!!!!!!!!'
         self%lda=self%ldap2mu-2.*temp_mu
         ! if(mpiworld%is_master) then
         ! write(*,*) 'self%ldap2mu sanity:', minval(self%ldap2mu),maxval(self%ldap2mu)
         ! write(*,*) 'self%lda     sanity:', minval(self%lda),maxval(self%lda)
         ! endif
-
+! print*,'!!!!!!!!!!!!!!!!!!!!!!!'
         self%inv_ladpmu_4mu=0.25/(self%lda+temp_mu)/temp_mu
-
+! print*,'!!!!!!!!!!!!!!!!!!!!!!!'
         !interpolat mu by harmonic average
         temp_mu=1./temp_mu
 
@@ -206,7 +210,7 @@ use, intrinsic :: ieee_arithmetic
                               +temp_mu(iz  ,ix  ))
         end do
         end do
-
+! print*,'!!!!!!!!!!!!!!!!!!!!!!!'
         where( ieee_is_nan(self%mu) .or. .not.ieee_is_finite(self%mu) )
             self%mu=0.
         endwhere
@@ -900,19 +904,16 @@ use, intrinsic :: ieee_arithmetic
                     select case (shot%rcv(i)%comp)
                         case ('ez')
                         f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) +wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
-                            ! f%ex(iz,ix,1) = f%ex(iz,ix,1) +wl*self%inv_ladpmu_4mu(iz,ix)*(-self%lda(iz,ix))
-                            stop
+                        f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) +wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda(ifz:ilz,ifx:ilx)) *shot%rcv(i)%interp_coef(:,:,1)
                         case ('ex')
-                            ! f%ez(iz,ix,1) = f%ez(iz,ix,1) +wl*self%inv_ladpmu_4mu(iz,ix)*(-self%lda(iz,ix))
-                            stop
-                        f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) +wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
+                        f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) +wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda(ifz:ilz,ifx:ilx)) *shot%rcv(i)%interp_coef(:,:,1)
+                        f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) +wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1)
                         case ('es')
                         f%es(ifz:ilz,ifx:ilx,1) = f%es(ifz:ilz,ifx:ilx,1) +wl/self%mu(ifz:ilz,ifx:ilx)                                          *shot%rcv(i)%interp_coef(:,:,1)
                     endselect
                 else           
                     select case (shot%rcv(i)%comp)
                         case ('ez')
-                        !f%ez(iz,ix,1) = f%ez(iz,ix,1) +wl
                         f%ez(iz,ix,1) = f%ez(iz,ix,1) +wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
                         f%ex(iz,ix,1) = f%ex(iz,ix,1) +wl*self%inv_ladpmu_4mu(iz,ix)*(-self%lda(iz,ix))
                         case ('ex')
