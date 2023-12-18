@@ -555,6 +555,7 @@ use, intrinsic :: ieee_arithmetic
             write(*,*) 'Elapsed time to update stresses      ',tt4/mpiworld%max_threads
             write(*,*) 'Elapsed time to extract field        ',tt5/mpiworld%max_threads
             write(*,*) 'Elapsed time to save boundary        ',tt6/mpiworld%max_threads
+            write(*,*) 'Total elapsed time (min):',(tt1+tt2+tt3+tt4+tt5+tt6)/60./mpiworld%max_threads
         endif
 
         call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
@@ -707,13 +708,16 @@ use, intrinsic :: ieee_arithmetic
             write(*,*) 'Elapsed time to rm source stresses       ',tt3/mpiworld%max_threads
             write(*,*) 'Elapsed time to update velocities        ',tt7/mpiworld%max_threads
             write(*,*) 'Elapsed time to rm source velocities     ',tt8/mpiworld%max_threads
-            write(*,*) 'Elapsed time ----------------------------'
+            write(*,*) 'Total elapsed time for forward (min)',(tt1+tt2+tt3+tt7+tt8)/60./mpiworld%max_threads
+            write(*,*) ' ---------------------------- '
             write(*,*) 'Elapsed time to add adjsource stresses   ',tt4/mpiworld%max_threads
             write(*,*) 'Elapsed time to update adj stresses      ',tt5/mpiworld%max_threads
             write(*,*) 'Elapsed time to add adjsource velocities ',tt9/mpiworld%max_threads
             write(*,*) 'Elapsed time to update adj velocities    ',tt10/mpiworld%max_threads
             write(*,*) 'Elapsed time to extract&write fields     ',tt11/mpiworld%max_threads
             write(*,*) 'Elapsed time to correlate                ',tt6/mpiworld%max_threads
+            write(*,*) 'Total elapsed time for adjoint&correlate (min)',(tt4+tt5+tt9+tt10+tt11+tt6)/60./mpiworld%max_threads
+            write(*,*) 'Total elapsed time (min):',(tt1+tt2+tt3+tt7+tt8+tt4+tt5+tt9+tt10+tt11+tt6)/60./mpiworld%max_threads
 
         endif
 

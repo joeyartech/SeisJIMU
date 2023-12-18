@@ -158,7 +158,7 @@ use m_model
         self%src%y=sudata%hdrs(1)%sy    *scalco
         
         if(is_first_in) then
-            scomp=setup%get_strs('SOURCE_COMPONENT','SCOMP',o_default='p')
+            scomp=setup%get_strs('SOURCE_COMPONENT','SCOMP',o_mandatory=1)
             if(size(scomp)>1) call hud('SeisJIMU only considers the 1st component from SOURCE_COMPONENT: '//scomp(1)%s)
             self%src%comp=scomp(1)%s
 
