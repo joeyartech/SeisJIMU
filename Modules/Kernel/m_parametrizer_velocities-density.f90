@@ -239,6 +239,8 @@ use m_Modeling
                 if(is_gardner) m%rho = a*m%vp**b
                 ! + castagna
                 if(is_castagna) m%vs = a*m%vp + b
+                !
+                call m%apply_elastic_continuum
                 call m%apply_freeze_zone
 
             endif
@@ -317,12 +319,6 @@ use m_Modeling
             enddo
             
         endif
-        
-!deprecated
-!         if(present(o_pg)) then
-!             call alloc(o_pg,param%n1,param%n2,param%n3,param%npars,oif_protect=.true.)
-!             call transform_gradient(preco%preco,o_preco)
-!         endif
 
     end subroutine
 

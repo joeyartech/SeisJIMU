@@ -368,8 +368,11 @@ use m_preconditioner
         !         self%dnorms=-self%dnorms
         !         correlate_gradient =-correlate_gradient
         !     endif
-        ! endif
-        
+        ! endif    
+
+        !transform to x-domain
+        call param%transform(o_g=qp%g)
+
         qp%f = sum(self%dnorm_weights*self%dnorms) ! + sum(self%xnorm_weights*self%xnorms)
 
         if(.not. either(oif_gradient,.true.,present(oif_gradient))) return
@@ -382,16 +385,19 @@ use m_preconditioner
             if(smoothings(i)%s=='Laplacian') then
                 call hud('Laplacian smoothing')
                 call smoother_Laplacian_init([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%fpeak)
-                do j=1,ppg%ngrad
-                    call smoother_Laplacian_extend_mirror(correlate_gradient(:,:,:,j),m%ibathy)
-                    call smoother_Laplacian_pseudo_nonstationary(correlate_gradient(:,:,:,j),m%vp)
-                enddo    
+                do j=1,param%npars
+                    call smoother_Laplacian_extend_mirror(qp%g(:,:,:,j),m%ibathy)
+                    select case (param%pars(j)%name)
+                        case ('vp' ); call smoother_Laplacian_pseudo_nonstationary(qp%g(:,:,:,j),m%vp)
+                        case ('vs' ); call smoother_Laplacian_pseudo_nonstationary(qp%g(:,:,:,j),m%vs)
+                    end select
+                enddo
             endif
         enddo
 
         !freeze_zone as hard mask
         do i=1,ppg%ngrad
-            where(m%is_freeze_zone) correlate_gradient(:,:,:,i)=0.
+            where(m%is_freeze_zone) qp%g(:,:,:,i)=0.
         enddo
 
         !soft mask
@@ -401,16 +407,9 @@ use m_preconditioner
             call sysio_read(smask,mask,size(mask))
             
             do i=1,ppg%ngrad
-                correlate_gradient(:,:,:,i)=correlate_gradient(:,:,:,i)*mask
+                qp%g(:,:,:,i)=qp%g(:,:,:,i)*mask
             enddo
         endif
-
-        ! call sysio_write('grho',correlate_gradient(:,:,:,1),size(correlate_gradient(:,:,:,1)))
-        ! call sysio_write('gkpa',correlate_gradient(:,:,:,2),size(correlate_gradient(:,:,:,2)))
-
-        !!transform to x-domain
-        call param%transform(o_g=qp%g)
-        !qp%g=correlate_gradient
 
         !Regularization in x-domain
         ! if(either(oif_approx,.false.,present(oif_approx))) then

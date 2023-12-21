@@ -37,6 +37,7 @@ use m_smoother_laplacian_sparse
         procedure :: set_reference
         procedure :: write
         procedure :: apply_freeze_zone
+        procedure :: apply_elastic_continuum
 
     end type
     
@@ -346,6 +347,25 @@ use m_smoother_laplacian_sparse
         deallocate(tmp)
 
     end subroutine
+
+    subroutine apply_elastic_continuum(self)
+        class(t_model) :: self
+
+        !vp²=(K+4/3*G)/ρ; vs²=G/ρ
+        !lowest possible vp²=K/ρ=500 m/s
+        !so vp²  500² + 4/3vs²
+        !0.75(vp²-500²) >= vs²
+        
+        real,dimension(:,:,:),allocatable :: tmp
+        
+        tmp = sqrt(0.75* (self%vp**2 - 500**2))
+
+        where (tmp<self%vs) self%vs=tmp
+
+        deallocate(tmp)
+
+    end subroutine
+
 
     subroutine write(self,o_suffix)
         class(t_model) :: self
