@@ -83,7 +83,19 @@ use m_resampler
                 call kernel_L2sq(shot%dadj)
                 call fld_a%ignite(o_wavelet=shot%dadj)
                 call shot%write('dadj_',shot%dadj)
-                
+
+                case ('L2averaged')
+                length=setup%get_int('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)
+                ! scaler=setup%get_real('MOVING_AVERAGE_SCALER','MA_SCALER',o_default='1.')
+                call moving_average(shot%dsyn,length)!,scaler)
+                call shot%write('avg_dsyn_',shot%dsyn)
+                fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
+                call kernel_L2sq(shot%dadj)
+                call moving_average(shot%dadj,length)!,scaler)
+                call fld_a%ignite(o_wavelet=shot%dadj)
+                call shot%write('dadj_',shot%dadj)
+
                 case default
                 call error('No DNORM specified!')
 
@@ -157,6 +169,42 @@ use m_resampler
     !     enddo
 
     ! end function
+
+
+    contains
+
+    subroutine moving_average(data,length)
+        real,dimension(:,:) :: data
+        real,dimension(:,:),allocatable :: tmp
+        call alloc(tmp,shot%nt,shot%nrcv)
+        tmp=data
+
+        L = either( (length-1)/2 , length/2 , mod(length,2)/=0 )
+
+        do it=1,shot%nt
+            do itr=1,L
+                denom = 1./(itr+L)
+                data(it,itr) = sum(tmp(it,1:itr+L)) * denom
+            enddo
+        enddo
+
+        denom = 1./(2*L+1)
+        do it=1,shot%nt
+            do itr=L+1,shot%nrcv-L
+                data(it,itr) = sum(tmp(it,itr-L:itr+L)) * denom
+            enddo
+        enddo
+
+        do it=1,shot%nt
+            do itr=shot%nrcv-L+1,shot%nrcv
+                denom = 1./(shot%nrcv-itr+L+1)
+                data(it,itr) = sum(tmp(it,itr-L:shot%nrcv)) * denom
+            enddo
+        enddo
+
+        deallocate(tmp)
+
+    end subroutine
 
 
 end subroutine
