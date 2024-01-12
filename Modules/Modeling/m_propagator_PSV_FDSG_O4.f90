@@ -25,6 +25,8 @@ use, intrinsic :: ieee_arithmetic
     !scaling source wavelet
     real :: wavelet_scaler
 
+    character(:),allocatable :: FS_method
+
     type,public :: t_propagator
         !info
         character(i_str_xxlen) :: info = &
@@ -178,6 +180,8 @@ use, intrinsic :: ieee_arithmetic
         if_hicks=shot%if_hicks
 
         if_record_adjseismo=either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
+
+        FS_method=setup%get_str('FS_METHOD',o_default='stress image')
 
         call alloc(self%buoz,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%buox,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
@@ -815,7 +819,7 @@ use, intrinsic :: ieee_arithmetic
         ifx=f%bloom(3,it)+2
         ilx=f%bloom(4,it)-2  !-1
 
-        if(m%is_freesurface) ifz=max(ifz,1)
+        if(m%is_freesurface) ifz=max(ifz,2) !1
 
         call fd2d_velocities(f%vz,f%vx,f%szz,f%sxx,f%szx,            &
                              f%dszz_dz,f%dsxx_dx,f%dszx_dz,f%dszx_dx,&
@@ -833,12 +837,33 @@ use, intrinsic :: ieee_arithmetic
         !         -(vx(2,ix+1  )-vx(0,ix+1  ))/2dz = ( (vz(1  ,ix)+vz(2  ,ix))/2 - (vz(1  ,ix+1)+vz(2  ,ix+1))/2 )/dx
         !          (vx(0,ix+1  )-vx(2,ix+1  ))/ dz = ( (vz(1  ,ix)+vz(2  ,ix))   -  vz(1  ,ix+1)-vz(2  ,ix+1)    )/dx
         if(m%is_freesurface) then
-            dz_dx = m%dz/m%dx
+! f%vz(cb%ifz:1,:,1)=0.
+! f%vx(cb%ifz:0,:,1)=0.
 
-            do ix=ifx,ilx
-                f%vz(1,ix,1)= f%vz(2,ix,1) + self%lda(1,ix)*(f%vx(1,ix,1)-f%vx(1,ix+1,1))*dz_dx/self%ldap2mu(1,ix)
-                !f%vx(0,ix)= f%vx(2,ix) + (f%vz(1,ix)+f%vz(2,ix)-f%vz(1,ix+1)-f%vz(2,ix+1))*dz_dx/lm%ldap2mu(1,ix) !toy2del says this condition is not needed
-            enddo
+            if (FS_method=='stress image') then
+
+                dz_dx = m%dz/m%dx
+
+                do ix=ifx,ilx
+                    f%vz(1,ix,1)= f%vz(2,ix,1) + self%lda(1,ix)*(f%vx(1,ix,1)-f%vx(1,ix+1,1))*dz_dx/self%ldap2mu(1,ix)
+                    f%vx(0,ix,1)= f%vx(2,ix,1) + (f%vz(1,ix,1)+f%vz(2,ix,1)-f%vz(1,ix+1,1)-f%vz(2,ix+1,1))*dz_dx!/self%ldap2mu(1,ix) !toy2del says this condition is not needed
+                enddo
+
+            else
+
+                do ix=ifx,ilx
+                    f%vz(2,ix  ,1) = f%vz(2,ix  ,1) + self%dt   *self%buoz(2,ix  )*( &
+                        +(f%szz(2,ix  ,1)-f%szz(1,ix,1))/m%dz &
+                        +(f%szx(2,ix+1,1)-f%szx(2,ix,1))/m%dx &
+                        )
+
+                    f%vx(1,ix+1,1) = f%vx(1,ix+1,1) + self%dt*2.*self%buox(1,ix+1)*( &
+                        + f%szx(2,ix+1,1)               /m%dz & 
+                        +(f%sxx(1,ix+1,1)-f%sxx(1,ix,1))/m%dx &
+                        )
+                enddo
+
+            endif
         endif
 
     end subroutine
@@ -909,12 +934,14 @@ use, intrinsic :: ieee_arithmetic
         class(t_propagator) :: self
         type(t_field) :: f
 
+        real factor
+
         ifz=f%bloom(1,it)+2  !1
         ilz=f%bloom(2,it)-2
         ifx=f%bloom(3,it)+2  !1
         ilx=f%bloom(4,it)-2
         
-        if(m%is_freesurface) ifz=max(ifz,1)
+        if(m%is_freesurface) ifz=max(ifz,2)
 
         call fd2d_stresses(f%vz,f%vx,f%szz,f%sxx,f%szx,    &
                            f%dvz_dz,f%dvx_dx,f%dvz_dx,f%dvx_dz,&
@@ -925,10 +952,34 @@ use, intrinsic :: ieee_arithmetic
         !free surface is located at [1,ix] level
         !so explicit boundary condition: szz(1,ix)=0
         !and antisymmetric mirroring: szx[0.5,ix-0.5]=-szx[1.5,ix-0.5] -> szx(1,ix)=-szx(2,ix)
-        if(m%is_freesurface) then
-            f%szz(1,:,1)=0.
-            f%szx(1,:,1)=-f%szx(2,:,1)
-        endif
+        ! if(m%is_freesurface) then
+        !     if (FS_method=='stress image') then
+
+                ! f%szz(-2,:,1)=-f%szz(4,:,1)
+                ! f%szz(-1,:,1)=-f%szz(3,:,1)
+                ! f%szz( 0,:,1)=-f%szz(2,:,1)
+                ! f%szz( 1,:,1)=0.
+
+                ! f%szx(-1,:,1)=-f%szx(4,:,1)
+                ! f%szx( 0,:,1)=-f%szx(3,:,1)
+                ! f%szx( 1,:,1)=-f%szx(2,:,1)
+            
+        !     else
+
+                ! do ix=ifx,ilx
+                !     f%szz( 1,ix,1)=0.
+
+                !     factor=self%mu(1,ix)!/(1-self%lda(1,ix)/self%two_ldapmu(1,ix))
+                !     f%sxx(1,ix  ,1) = f%sxx(1,ix  ,1) +self%dt*factor*(f%vz(1,ix+1,1)-f%vx(1,ix,1))/m%dx
+
+                !     f%szx(2,ix+1,1) = f%szx(2,ix+1,1) +self%dt*self%mu(2,ix+1)*( &
+                !         +(f%vz(2,ix+1,1)-f%vz(2,ix  ,1))/m%dx &
+                !         +(f%vx(2,ix+1,1)-f%vx(1,ix+1,1))/m%dz &
+                !         )
+                ! enddo
+
+        !     endif
+        ! endif
 
     end subroutine
 
@@ -1239,6 +1290,36 @@ use, intrinsic :: ieee_arithmetic
         !$omp end do
         !$omp end parallel
         
+
+! do ix=ifx,ilx
+
+!     iz=1
+
+!         i=(iz-cb%ifz)+(ix-cb%ifx)*nz+1
+        
+!         izm2_ix=i-2  !iz-2,ix
+!         izm1_ix=i-1  !iz-1,ix
+!         iz_ix  =i    !iz,ix
+!         izp1_ix=i+1  !iz+1,ix
+!         izp2_ix=i+2  !iz+2,ix
+        
+!         iz_ixm2=i  -2*nz  !iz,ix-2
+!         iz_ixm1=i    -nz  !iz,ix-1
+!         iz_ixp1=i    +nz  !iz,ix+1
+!         iz_ixp2=i  +2*nz  !iz,ix+2
+        
+!         dszz_dz_= (szz(izp1_ix)-szz(iz_ix    ))/m%dz
+!         dsxx_dx_= (sxx(izp1_ix)-sxx(izp1_ixm1))/m%dx
+
+!         dszx_dz_= (szx(izp1_ix)           )/m%dz
+!         dszx_dx_= (szx(iz_ixp1)-szx(iz_ix))/m%dx
+        
+!         !velocity
+!         vz(iz_ixp1)=vz(iz_ixp1) + dt*   buoz(iz_ixp1)*(dszz_dz_+dszx_dx_)
+!         vx(iz_ix  )=vx(iz_ix  ) + dt*2.*buox(iz_ix  )*(dszx_dz_+dsxx_dx_)
+
+! enddo
+
     end subroutine
     
     subroutine fd2d_stresses(vz,vx,szz,sxx,szx,          &
