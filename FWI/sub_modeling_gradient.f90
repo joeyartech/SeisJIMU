@@ -20,6 +20,14 @@ use m_resampler
     real,dimension(3) :: grad_term_weights
     character(:),allocatable :: dnorm
     
+    type :: t_S
+        real,dimension(:),allocatable :: scale
+    end type
+    type(t_S),dimension(:),allocatable,save :: S
+    real,dimension(:,:),allocatable :: tmp_dsyn, gmwindow
+
+    if(is_first_in) allocate(S(shls%nshots_per_processor)) !then can NOT randomly sample shots..
+
 
     !misfit
     fobj%misfit=0.
@@ -95,6 +103,32 @@ use m_resampler
                 call moving_average(shot%dadj,length)!,scaler)
                 call fld_a%ignite(o_wavelet=shot%dadj)
                 call shot%write('dadj_',shot%dadj)
+
+
+                case('L2_scaled')
+                    if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
+                    call alloc(tmp_dsyn,shot%nt,shot%nrcv)
+                    do j=1,shot%nrcv
+                        if(is_first_in) S(i)%scale(j) = either(0., maxval(abs(shot%dobs(:,j))) / maxval(abs(shot%dsyn(:,j))) , shot%rcv(j)%is_badtrace)
+                        tmp_dsyn(:,j)=shot%dsyn(:,j)*S(i)%scale(j)
+                    enddo
+                    if(is_first_in) then
+                        open(12,file=dir_out//'dobs_dsyn_max_ratio',access='direct',recl=4*shot%nrcv)
+                        write(12,rec=shot%index) S(i)%scale
+                        close(12)
+                    endif
+
+                    !check if S is changing..
+        !            if(shot%index==1)   print*, 'on '//shot%sindex,i,S(i)%scale
+        !            if(shot%index==112) print*, 'on '//shot%sindex,i,S(i)%scale
+
+                    fobj%misfit = fobj%misfit &
+                        + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-tmp_dsyn, shot%dt)
+
+                    call alloc(shot%dadj,shot%nt,shot%nrcv)
+                    call kernel_L2sq(shot%dadj)
+                    call fld_a%ignite(o_wavelet=shot%dadj)
+                    call shot%write('dadj_',shot%dadj)
 
                 case default
                 call error('No DNORM specified!')

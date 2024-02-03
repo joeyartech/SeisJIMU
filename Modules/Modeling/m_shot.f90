@@ -274,6 +274,11 @@ use m_model
             if(str=='sinexp') then
                 call hud('Use filtered sinexp wavelet')
                 self%wavelet=wavelet_sinexp(self%nt,self%dt,self%fpeak)
+
+            elseif(str=='ricker') then
+                call hud('Use Ricker wavelet')
+                self%wavelet=wavelet_ricker(self%nt,self%dt,self%fpeak)
+
             elseif(str=='ricker envelope') then
                 call hud('Use Ricker envelope wavelet')
                 call alloc(tmp1,self%nt,1)
@@ -282,9 +287,7 @@ use m_model
                 call hilbert_envelope(tmp1,tmp2,self%nt,1)
                 self%wavelet=tmp2(:,1)
                 deallocate(tmp1,tmp2)
-            else
-                call hud('Use Ricker wavelet')
-                self%wavelet=wavelet_ricker(self%nt,self%dt,self%fpeak)
+
             endif
 
         else !wavelet file exists
@@ -294,6 +297,16 @@ use m_model
                             din=wavelet%dt,nin=wavelet%ns, &
                             dout=self%dt,  nout=self%nt)
 
+        endif
+
+        !source time function, which should not have dt, dx info
+        file=setup%get_str('FILE_WAVELET_PREFIX')
+        if(file/='') then
+            call alloc(self%wavelet,self%nt)
+            call wavelet%read(file//self%sindex(5:8)//'.su')
+            call resampler(wavelet%trs(:,1),self%wavelet,1,&
+                            din=wavelet%dt,nin=wavelet%ns, &
+                            dout=self%dt,  nout=self%nt)
         endif
 
         str=setup%get_str('WAVELET_SCALING')
