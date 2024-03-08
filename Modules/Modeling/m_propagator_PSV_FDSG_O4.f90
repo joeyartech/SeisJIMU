@@ -181,7 +181,7 @@ use, intrinsic :: ieee_arithmetic
 
         if_record_adjseismo=either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
 
-        FS_method=setup%get_str('FS_METHOD',o_default='stress image')
+        FS_method=setup%get_str('FS_METHOD',o_default='stress_image')
 
         call alloc(self%buoz,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%buox,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
@@ -846,25 +846,29 @@ use, intrinsic :: ieee_arithmetic
         !          (vx(0,ix+1  )-vx(2,ix+1  ))/ dz = ( (vz(1  ,ix)+vz(2  ,ix))   -  vz(1  ,ix+1)-vz(2  ,ix+1)    )/dx
         if(m%is_freesurface) then
             
-            if (FS_method=='stress image') then !Levandar & Roberttson
+            if (FS_method=='stress_image') then !Levandar & Roberttson
                 !Roberttson's 3rd method
                 f%vz(cb%ifz:1,:,1)=0.
                 f%vx(cb%ifz:0,:,1)=0.
 
-            else  !FS_method='parameter-modified' (Cao & Chen)            
+            else  !FS_method='effective_medium' (Mittet, Cao & Chen)            
+
+                !required for high-ord FD
+                f%vz(cb%ifz:1,:,1)=0.
+                f%vx(cb%ifz:0,:,1)=0.
 
                 do ix=ifx,ilx
-                    dszz_dz_= c1z*(f%szz(iz,ix,1)-f%szz(iz-1,ix,1)) +c2z*(f%szz(iz+1,ix,1)-f%szz(iz-2,ix,1))
-                    dsxx_dx_= c1x*(f%sxx(iz,ix,1)-f%sxx(iz,ix-1,1)) +c2x*(f%sxx(iz,ix+1,1)-f%sxx(iz,ix-2,1))
+                    dszz_dz_= c1z*(f%szz(2,ix,1)-f%szz(1,ix  ,1)) +c2z*(f%szz(3,ix  ,1)-f%szz(0,ix,1))
+                    dsxx_dx_= c1x*(f%sxx(1,ix,1)-f%sxx(1,ix-1,1)) +c2x*(f%sxx(1,ix+1,1)-f%sxx(1,ix-2,1))
 
-                    dszx_dz_= c1z*(f%szx(iz+1,ix,1)-f%szx(iz,ix,1)) +c2z*(f%szx(iz+2,ix,1)-f%szx(iz-1,ix,1))
-                    dszx_dx_= c1x*(f%szx(iz,ix+1,1)-f%szx(iz,ix,1)) +c2x*(f%szx(iz,ix+2,1)-f%szx(iz,ix-1,1))
+                    ! dszx_dz_= c1z*(f%szx(2,ix,1)-f%szx(1,ix,1)) +c2z*(f%szx(3,ix,1)-f%szx(0,ix,1))
+                    dszx_dx_= c1x*(f%szx(2,ix+1,1)-f%szx(2,ix,1)) +c2x*(f%szx(2,ix+2,1)-f%szx(2,ix-1,1))
                                     
                     !velocity
-                    f%vz(1,ix,1)=f%vz(1,ix,1) + self%dt*   self%buoz(1,ix)*(dszz_dz_+dszx_dx_)
+                    f%vz(2,ix,1)=f%vz(2,ix,1) + self%dt*   self%buoz(2,ix)*(dszz_dz_           +dszx_dx_)
 
                     !f%vx(i)=f%vx(i) + self%dt*2.*self%buox(i)*(dszx_dz_+dsxx_dx_)
-                    f%vx(1,ix,1)=f%vx(1,ix,1) + self%dt*2.*self%buox(1,ix)*(f%szx(iz+1,ix,1)/m%dz +dsxx_dx_)
+                    f%vx(1,ix,1)=f%vx(1,ix,1) + self%dt*2.*self%buox(1,ix)*(f%szx(2,ix,1)/m%dz +dsxx_dx_)
 
                 enddo
 
@@ -978,7 +982,7 @@ use, intrinsic :: ieee_arithmetic
         !and antisymmetric mirroring: szx[0.5,ix-0.5]=-szx[1.5,ix-0.5] -> szx(1,ix)=-szx(2,ix)
 
         if(m%is_freesurface) then
-            if (FS_method=='stress image') then !Levandar & Roberttson
+            if (FS_method=='stress_image') then !Levandar & Roberttson
 
                 ! f%szz(-2,:,1)=-f%szz(4,:,1)
                 ! f%szz(-1,:,1)=-f%szz(3,:,1)
@@ -1004,7 +1008,12 @@ use, intrinsic :: ieee_arithmetic
                 enddo
                 enddo
 
-            else !FS_method='parameter-modified' (Cao & Chen)
+            else  !FS_method='effective_medium' (Mittet, Cao & Chen)            
+
+                !required for high-ord FD
+                f%szx(cb%ifz:1,:,1)=0.
+                f%szz(cb%ifz:0,:,1)=0.
+                f%sxx(cb%ifz:0,:,1)=0.
 
                 do ix=ifx,ilx
                 
@@ -1015,6 +1024,7 @@ use, intrinsic :: ieee_arithmetic
                     f%szz(1,ix,1) = 0.
 
                     factor=-self%lda(1,ix)**2/self%ldap2mu(1,ix) + self%ldap2mu(1,ix)
+                    factor=factor/2.
                     f%sxx(1,ix,1) = f%sxx(1,ix,1) + self%dt * factor*dvx_dx_
 
 
