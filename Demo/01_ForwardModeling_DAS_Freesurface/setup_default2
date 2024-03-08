@@ -1,0 +1,26 @@
+MODEL_SIZE              '241   241   1'
+MODEL_SPACING           '5     5     1'
+MODEL_ORIGIN            '0     0     0'
+FILE_MODEL              'model'
+MODEL_ATTRIBUTES        'vp vs rho'
+
+ACQUI_GEOMETRY          spread
+FS                      ' 0   100 0'
+FR                      '30  1100 0'
+DR                      ' 0     0 0'
+NR                       1
+
+SCOMP                    vx
+RCOMP                   'vz vx p'
+
+NT           2500
+DT           0.0004
+WAVELET_TYPE ricker
+FPEAK        15
+
+SNAPSHOT     'vz vx szz sxx szx'
+
+IF_USE_CHECKPOINT   F
+
+
+#why the vz comp of dsyn is weird?
