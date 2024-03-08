@@ -359,6 +359,10 @@ use m_model
             call hicks_put_position(self%src%z,       self%src%x+halfx, self%src%y)
         ! case('vy')
         !     call hicks_put_position(self%src%z,       self%src%x,       self%src%y+halfy)
+
+        case default
+            call hicks_put_position(self%src%z,       self%src%x,       self%src%y)
+
         end select
 
         call hicks_get_position(self%src%ifz, self%src%ifx, self%src%ify,&

@@ -53,7 +53,7 @@ use, intrinsic :: ieee_arithmetic
 
         !local models shared between fields
         real,dimension(:,:),allocatable :: buoz, buox, ldap2mu, lda, mu
-        real,dimension(:,:),allocatable :: two_ldapmu, inv_ladpmu_4mu
+        real,dimension(:,:),allocatable :: ldapmu, two_ldapmu, inv_ladpmu_4mu
 
         !time frames
         integer :: nt
@@ -188,7 +188,11 @@ use, intrinsic :: ieee_arithmetic
         call alloc(self%ldap2mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%lda,    [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%mu,     [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(self%inv_ladpmu_4mu, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(self%ldapmu, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%two_ldapmu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+
+
 
         call alloc(temp_mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
 
@@ -201,8 +205,12 @@ use, intrinsic :: ieee_arithmetic
         ! write(*,*) 'self%lda     sanity:', minval(self%lda),maxval(self%lda)
         ! endif
 
-        self%two_ldapmu=2.*(self%lda+temp_mu)
+        self%ldapmu=self%lda+temp_mu
+        self%two_ldapmu=2.*self%ldapmu
 
+! print*,'!!!!!!!!!!!!!!!!!!!!!!!'
+        self%inv_ladpmu_4mu=0.25/(self%lda+temp_mu)/temp_mu
+! print*,'!!!!!!!!!!!!!!!!!!!!!!!'
         !interpolat mu by harmonic average
         temp_mu=1./temp_mu
 
@@ -819,7 +827,7 @@ use, intrinsic :: ieee_arithmetic
         ifx=f%bloom(3,it)+2
         ilx=f%bloom(4,it)-2  !-1
 
-        if(m%is_freesurface) ifz=max(ifz,2) !1
+        if(m%is_freesurface) ifz=max(ifz,2)
 
         call fd2d_velocities(f%vz,f%vx,f%szz,f%sxx,f%szx,            &
                              f%dszz_dz,f%dsxx_dx,f%dszx_dz,f%dszx_dx,&
@@ -837,33 +845,31 @@ use, intrinsic :: ieee_arithmetic
         !         -(vx(2,ix+1  )-vx(0,ix+1  ))/2dz = ( (vz(1  ,ix)+vz(2  ,ix))/2 - (vz(1  ,ix+1)+vz(2  ,ix+1))/2 )/dx
         !          (vx(0,ix+1  )-vx(2,ix+1  ))/ dz = ( (vz(1  ,ix)+vz(2  ,ix))   -  vz(1  ,ix+1)-vz(2  ,ix+1)    )/dx
         if(m%is_freesurface) then
-! f%vz(cb%ifz:1,:,1)=0.
-! f%vx(cb%ifz:0,:,1)=0.
+            
+            if (FS_method=='stress image') then !Levandar & Roberttson
+                !Roberttson's 3rd method
+                f%vz(cb%ifz:1,:,1)=0.
+                f%vx(cb%ifz:0,:,1)=0.
 
-            if (FS_method=='stress image') then
-
-                dz_dx = m%dz/m%dx
-
-                do ix=ifx,ilx
-                    f%vz(1,ix,1)= f%vz(2,ix,1) + self%lda(1,ix)*(f%vx(1,ix,1)-f%vx(1,ix+1,1))*dz_dx/self%ldap2mu(1,ix)
-                    f%vx(0,ix,1)= f%vx(2,ix,1) + (f%vz(1,ix,1)+f%vz(2,ix,1)-f%vz(1,ix+1,1)-f%vz(2,ix+1,1))*dz_dx!/self%ldap2mu(1,ix) !toy2del says this condition is not needed
-                enddo
-
-            else
+            else  !FS_method='parameter-modified' (Cao & Chen)            
 
                 do ix=ifx,ilx
-                    f%vz(2,ix  ,1) = f%vz(2,ix  ,1) + self%dt   *self%buoz(2,ix  )*( &
-                        +(f%szz(2,ix  ,1)-f%szz(1,ix,1))/m%dz &
-                        +(f%szx(2,ix+1,1)-f%szx(2,ix,1))/m%dx &
-                        )
+                    dszz_dz_= c1z*(f%szz(iz,ix,1)-f%szz(iz-1,ix,1)) +c2z*(f%szz(iz+1,ix,1)-f%szz(iz-2,ix,1))
+                    dsxx_dx_= c1x*(f%sxx(iz,ix,1)-f%sxx(iz,ix-1,1)) +c2x*(f%sxx(iz,ix+1,1)-f%sxx(iz,ix-2,1))
 
-                    f%vx(1,ix+1,1) = f%vx(1,ix+1,1) + self%dt*2.*self%buox(1,ix+1)*( &
-                        + f%szx(2,ix+1,1)               /m%dz & 
-                        +(f%sxx(1,ix+1,1)-f%sxx(1,ix,1))/m%dx &
-                        )
+                    dszx_dz_= c1z*(f%szx(iz+1,ix,1)-f%szx(iz,ix,1)) +c2z*(f%szx(iz+2,ix,1)-f%szx(iz-1,ix,1))
+                    dszx_dx_= c1x*(f%szx(iz,ix+1,1)-f%szx(iz,ix,1)) +c2x*(f%szx(iz,ix+2,1)-f%szx(iz,ix-1,1))
+                                    
+                    !velocity
+                    f%vz(1,ix,1)=f%vz(1,ix,1) + self%dt*   self%buoz(1,ix)*(dszz_dz_+dszx_dx_)
+
+                    !f%vx(i)=f%vx(i) + self%dt*2.*self%buox(i)*(dszx_dz_+dsxx_dx_)
+                    f%vx(1,ix,1)=f%vx(1,ix,1) + self%dt*2.*self%buox(1,ix)*(f%szx(iz+1,ix,1)/m%dz +dsxx_dx_)
+
                 enddo
 
             endif
+
         endif
 
     end subroutine
@@ -893,9 +899,27 @@ use, intrinsic :: ieee_arithmetic
                     f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*sn_p*self%two_ldapmu(iz,ix)
                     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*sn_p*self%two_ldapmu(iz,ix)
                 endif
-                
-            endif
 
+! select case (shot%src%comp)
+! case('szz'); f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)  !+fxx
+! case('sxx'); f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*(  -self%lda(iz,ix)) !+fxx
+! case('szx'); f%szx(iz,ix,1) = f%szx(iz,ix,1) + wl/self%mu(iz,ix)
+
+! case('fzz')
+!     f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
+!     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*(  -self%lda(iz,ix))
+! case('fxx')
+!     f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*(  -self%lda(iz,ix))
+!     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
+
+! case('fzss')
+!     f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
+!     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*(  -self%lda(iz,ix))
+!     f%szx(iz,ix,1) = f%szx(iz,ix,1) + wl/self%mu(iz,ix)
+! end select
+
+            endif
+            
             return
 
         endif
@@ -952,34 +976,59 @@ use, intrinsic :: ieee_arithmetic
         !free surface is located at [1,ix] level
         !so explicit boundary condition: szz(1,ix)=0
         !and antisymmetric mirroring: szx[0.5,ix-0.5]=-szx[1.5,ix-0.5] -> szx(1,ix)=-szx(2,ix)
-        ! if(m%is_freesurface) then
-        !     if (FS_method=='stress image') then
+
+        if(m%is_freesurface) then
+            if (FS_method=='stress image') then !Levandar & Roberttson
 
                 ! f%szz(-2,:,1)=-f%szz(4,:,1)
                 ! f%szz(-1,:,1)=-f%szz(3,:,1)
                 ! f%szz( 0,:,1)=-f%szz(2,:,1)
-                ! f%szz( 1,:,1)=0.
+                f%szz( 1,:,1)=0.
+                nnz=0-cb%ifz
+                f%szz(cb%ifz:0, :,1)=-f%szz(2+nnz:2:-1, :,1)
 
                 ! f%szx(-1,:,1)=-f%szx(4,:,1)
                 ! f%szx( 0,:,1)=-f%szx(3,:,1)
-                ! f%szx( 1,:,1)=-f%szx(2,:,1)
-            
-        !     else
+                ! f%szx( 1,:,1)=-f%szx(2,:,1)            
+                nnz=1-cb%ifz
+                f%szx(cb%ifz:1, :,1)=-f%szx(2+nnz:2:-1, :,1)
 
-                ! do ix=ifx,ilx
-                !     f%szz( 1,ix,1)=0.
+                do ix=ifx,ilx
+                do iz=cb%ifz-2,1
 
-                !     factor=self%mu(1,ix)!/(1-self%lda(1,ix)/self%two_ldapmu(1,ix))
-                !     f%sxx(1,ix  ,1) = f%sxx(1,ix  ,1) +self%dt*factor*(f%vz(1,ix+1,1)-f%vx(1,ix,1))/m%dx
+                    dvx_dx_= c1x*(f%vx(iz,ix+1,1)-f%vx(iz,ix,1))  +c2x*(f%vx(iz,ix+2,1)-f%vx(iz,ix-1,1))
+                    
+                    factor=-self%lda(iz,ix)**2/self%ldap2mu(iz,ix) + self%ldap2mu(iz,ix)
+                    f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + self%dt * factor*dvx_dx_
 
-                !     f%szx(2,ix+1,1) = f%szx(2,ix+1,1) +self%dt*self%mu(2,ix+1)*( &
-                !         +(f%vz(2,ix+1,1)-f%vz(2,ix  ,1))/m%dx &
-                !         +(f%vx(2,ix+1,1)-f%vx(1,ix+1,1))/m%dz &
-                !         )
-                ! enddo
+                enddo
+                enddo
 
-        !     endif
-        ! endif
+            else !FS_method='parameter-modified' (Cao & Chen)
+
+                do ix=ifx,ilx
+                
+                    ! dvz_dz_= c1z*(f%vz(2,ix  )-f%vz(1,ix))  +c2z*(f%vz(3,ix  )-f%vz(0,ix  ))
+                    dvx_dx_= c1x*(f%vx(1,ix+1,1)-f%vx(1,ix,1))  +c2x*(f%vx(1,ix+2,1)-f%vx(1,ix-1,1))
+                    
+                    !normal stresses
+                    f%szz(1,ix,1) = 0.
+
+                    factor=-self%lda(1,ix)**2/self%ldap2mu(1,ix) + self%ldap2mu(1,ix)
+                    f%sxx(1,ix,1) = f%sxx(1,ix,1) + self%dt * factor*dvx_dx_
+
+
+                    dvz_dx_= c1x*(f%vz(2,ix,1)-f%vz(2,ix-1,1))  +c2x*(f%vz(2,ix+1,1)-f%vz(2,ix-2,1))
+                    dvx_dz_= c1z*(f%vx(2,ix,1)-f%vx(1,ix  ,1))  +c2z*(f%vx(3,ix  ,1)-f%vx(0,ix  ,1))
+                    
+                    !shear stress
+                    f%szx(2,ix,1) = f%szx(2,ix,1) + self%dt * self%mu(2,ix)*(dvz_dx_+dvx_dz_)
+                        
+                enddo
+
+            endif
+
+        endif
 
     end subroutine
 
@@ -1008,6 +1057,14 @@ use, intrinsic :: ieee_arithmetic
                     select case (shot%rcv(i)%comp)
                         case ('p') !p[iz,ix]
                         f%seismo(i,it)=(f%szz(iz,ix,1)+f%sxx(iz,ix,1))*sn_p
+
+case ('szz')
+f%seismo(i,it)=f%szz(iz,ix,1)
+case ('sxx')
+f%seismo(i,it)=f%sxx(iz,ix,1)
+case ('szx')
+f%seismo(i,it)=f%szx(iz,ix,1)
+
                         case ('vz') !vz[iz-0.5,ix]
                         f%seismo(i,it)=f%vz(iz,ix,1)
                         case ('vx') !vx[iz,ix-0.5]
