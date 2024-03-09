@@ -827,7 +827,7 @@ use, intrinsic :: ieee_arithmetic
         ifx=f%bloom(3,it)+2
         ilx=f%bloom(4,it)-2  !-1
 
-        if(m%is_freesurface) ifz=max(ifz,2)
+        if(m%is_freesurface) ifz=max(ifz,1)
 
         call fd2d_velocities(f%vz,f%vx,f%szz,f%sxx,f%szx,            &
                              f%dszz_dz,f%dsxx_dx,f%dszx_dz,f%dszx_dx,&
@@ -844,8 +844,8 @@ use, intrinsic :: ieee_arithmetic
         !         -(vx[2,ix+0.5]-vx[0,ix+0.5])/2dz = ( (vz[0.5,ix]+vz[1.5,ix])/2 - (vz[0.5,ix+1]+vz[1.5,ix+1])/2 )/dx
         !         -(vx(2,ix+1  )-vx(0,ix+1  ))/2dz = ( (vz(1  ,ix)+vz(2  ,ix))/2 - (vz(1  ,ix+1)+vz(2  ,ix+1))/2 )/dx
         !          (vx(0,ix+1  )-vx(2,ix+1  ))/ dz = ( (vz(1  ,ix)+vz(2  ,ix))   -  vz(1  ,ix+1)-vz(2  ,ix+1)    )/dx
+        
         if(m%is_freesurface) then
-            
             if (FS_method=='stress_image') then !Levandar & Roberttson
                 !Roberttson's 3rd method
                 f%vz(cb%ifz:1,:,1)=0.
@@ -858,11 +858,11 @@ use, intrinsic :: ieee_arithmetic
                 f%vx(cb%ifz:0,:,1)=0.
 
                 do ix=ifx,ilx
-                    dszz_dz_= c1z*(f%szz(2,ix,1)-f%szz(1,ix  ,1)) +c2z*(f%szz(3,ix  ,1)-f%szz(0,ix,1))
-                    dsxx_dx_= c1x*(f%sxx(1,ix,1)-f%sxx(1,ix-1,1)) +c2x*(f%sxx(1,ix+1,1)-f%sxx(1,ix-2,1))
+                    dszz_dz_= (f%szz(2,ix,1)                )/m%dz !c1z*(f%szz(2,ix,1)-f%szz(1,ix  ,1)) +c2z*(f%szz(3,ix  ,1)-f%szz(0,ix,1))
+                    dsxx_dx_= (f%sxx(1,ix,1)-f%sxx(1,ix-1,1))/m%dx !c1x*(f%sxx(1,ix,1)-f%sxx(1,ix-1,1)) +c2x*(f%sxx(1,ix+1,1)-f%sxx(1,ix-2,1))
 
                     ! dszx_dz_= c1z*(f%szx(2,ix,1)-f%szx(1,ix,1)) +c2z*(f%szx(3,ix,1)-f%szx(0,ix,1))
-                    dszx_dx_= c1x*(f%szx(2,ix+1,1)-f%szx(2,ix,1)) +c2x*(f%szx(2,ix+2,1)-f%szx(2,ix-1,1))
+                    dszx_dx_= (f%szx(2,ix+1,1)-f%szx(2,ix,1))/m%dx !c1x*(f%szx(2,ix+1,1)-f%szx(2,ix,1)) +c2x*(f%szx(2,ix+2,1)-f%szx(2,ix-1,1))
                                     
                     !velocity
                     f%vz(2,ix,1)=f%vz(2,ix,1) + self%dt*   self%buoz(2,ix)*(dszz_dz_           +dszx_dx_)
@@ -871,6 +871,25 @@ use, intrinsic :: ieee_arithmetic
                     f%vx(1,ix,1)=f%vx(1,ix,1) + self%dt*2.*self%buox(1,ix)*(f%szx(2,ix,1)/m%dz +dsxx_dx_)
 
                 enddo
+
+                ! do ix=ifx,ilx
+
+                                    
+                !     do iz=cb%ifz,2
+                !         dszz_dz_= (f%szz(iz,ix,1)                 )/m%dz !c1z*(f%szz(2,ix,1)-f%szz(1,ix  ,1)) +c2z*(f%szz(3,ix  ,1)-f%szz(0,ix,1))
+                !         dszx_dx_= (f%szx(iz,ix+1,1)-f%szx(iz,ix,1))/m%dx !c1x*(f%szx(2,ix+1,1)-f%szx(2,ix,1)) +c2x*(f%szx(2,ix+2,1)-f%szx(2,ix-1,1))
+                !         !velocity
+                !         f%vz(iz,ix,1)=f%vz(iz,ix,1) + self%dt*   self%buoz(iz,ix)*(dszz_dz_           +dszx_dx_)
+                !     enddo
+
+                !     do iz=cb%ifz,1
+                !         ! dszx_dz_= c1z*(f%szx(2,ix,1)-f%szx(1,ix,1)) +c2z*(f%szx(3,ix,1)-f%szx(0,ix,1))
+                !         dsxx_dx_= (f%sxx(iz,ix,1)-f%sxx(iz,ix-1,1))/m%dx !c1x*(f%sxx(1,ix,1)-f%sxx(1,ix-1,1)) +c2x*(f%sxx(1,ix+1,1)-f%sxx(1,ix-2,1))
+                !         !f%vx(i)=f%vx(i) + self%dt*2.*self%buox(i)*(dszx_dz_+dsxx_dx_)
+                !         f%vx(iz,ix,1)=f%vx(iz,ix,1) + self%dt*2.*self%buox(iz,ix)*(f%szx(iz+1,ix,1)/m%dz +dsxx_dx_)
+                !     enddo
+
+                ! enddo
 
             endif
 
@@ -904,23 +923,23 @@ use, intrinsic :: ieee_arithmetic
                     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*sn_p*self%two_ldapmu(iz,ix)
                 endif
 
-! select case (shot%src%comp)
-! case('szz'); f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)  !+fxx
-! case('sxx'); f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*(  -self%lda(iz,ix)) !+fxx
-! case('szx'); f%szx(iz,ix,1) = f%szx(iz,ix,1) + wl/self%mu(iz,ix)
+                ! select case (shot%src%comp)
+                ! case('szz'); f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)  !+fxx
+                ! case('sxx'); f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*(  -self%lda(iz,ix)) !+fxx
+                ! case('szx'); f%szx(iz,ix,1) = f%szx(iz,ix,1) + wl/self%mu(iz,ix)
 
-! case('fzz')
-!     f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
-!     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*(  -self%lda(iz,ix))
-! case('fxx')
-!     f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*(  -self%lda(iz,ix))
-!     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
+                ! case('fzz')
+                !     f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
+                !     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*(  -self%lda(iz,ix))
+                ! case('fxx')
+                !     f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*(  -self%lda(iz,ix))
+                !     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
 
-! case('fzss')
-!     f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
-!     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*(  -self%lda(iz,ix))
-!     f%szx(iz,ix,1) = f%szx(iz,ix,1) + wl/self%mu(iz,ix)
-! end select
+                ! case('fzss')
+                !     f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
+                !     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*(  -self%lda(iz,ix))
+                !     f%szx(iz,ix,1) = f%szx(iz,ix,1) + wl/self%mu(iz,ix)
+                ! end select
 
             endif
             
@@ -1011,14 +1030,19 @@ use, intrinsic :: ieee_arithmetic
             else  !FS_method='effective_medium' (Mittet, Cao & Chen)            
 
                 !required for high-ord FD
-                f%szx(cb%ifz:1,:,1)=0.
-                f%szz(cb%ifz:0,:,1)=0.
+                ! f%szx(cb%ifz:1,:,1)=0.
+                ! f%szz(cb%ifz:0,:,1)=0.
+                f%szz( 1,:,1)=0.
+                nnz=0-cb%ifz
+                f%szz(cb%ifz:0, :,1)=-f%szz(2+nnz:2:-1, :,1)
+                nnz=1-cb%ifz
+                f%szx(cb%ifz:1, :,1)=-f%szx(2+nnz:2:-1, :,1)
                 f%sxx(cb%ifz:0,:,1)=0.
 
                 do ix=ifx,ilx
                 
-                    ! dvz_dz_= c1z*(f%vz(2,ix  )-f%vz(1,ix))  +c2z*(f%vz(3,ix  )-f%vz(0,ix  ))
-                    dvx_dx_= c1x*(f%vx(1,ix+1,1)-f%vx(1,ix,1))  +c2x*(f%vx(1,ix+2,1)-f%vx(1,ix-1,1))
+                    dvx_dx_= (f%vx(1,ix+1,1)-f%vx(1,ix,1))/m%dx !c1x*(f%vx(1,ix+1,1)-f%vx(1,ix,1))  +c2x*(f%vx(1,ix+2,1)-f%vx(1,ix-1,1))
+                    !dvx_dx_= c1x*(f%vx(1,ix+1,1)-f%vx(1,ix,1))  +c2x*(f%vx(1,ix+2,1)-f%vx(1,ix-1,1))
                     
                     !normal stresses
                     f%szz(1,ix,1) = 0.
@@ -1028,13 +1052,41 @@ use, intrinsic :: ieee_arithmetic
                     f%sxx(1,ix,1) = f%sxx(1,ix,1) + self%dt * factor*dvx_dx_
 
 
-                    dvz_dx_= c1x*(f%vz(2,ix,1)-f%vz(2,ix-1,1))  +c2x*(f%vz(2,ix+1,1)-f%vz(2,ix-2,1))
-                    dvx_dz_= c1z*(f%vx(2,ix,1)-f%vx(1,ix  ,1))  +c2z*(f%vx(3,ix  ,1)-f%vx(0,ix  ,1))
+                    dvz_dx_= (f%vz(2,ix,1)-f%vz(2,ix-1,1))/m%dx
+                    !dvz_dx_= c1x*(f%vz(2,ix,1)-f%vz(2,ix-1,1))  +c2x*(f%vz(2,ix+1,1)-f%vz(2,ix-2,1))
+                    dvx_dz_= (f%vx(2,ix,1)-f%vx(1,ix  ,1))/m%dz
+                    !dvx_dz_= c1z*(f%vx(2,ix,1)-f%vx(1,ix  ,1))  +c2z*(f%vx(3,ix  ,1)-f%vx(0,ix  ,1))
                     
                     !shear stress
                     f%szx(2,ix,1) = f%szx(2,ix,1) + self%dt * self%mu(2,ix)*(dvz_dx_+dvx_dz_)
                         
                 enddo
+
+                
+                ! do ix=ifx,ilx
+                
+                !     do iz=cb%ifz,1
+                !         !normal stresses
+                !         f%szz(iz,ix,1) = 0.
+                        
+                !         dvx_dx_= (f%vx(iz,ix+1,1)-f%vx(iz,ix,1))/m%dx
+
+                !         factor=-self%lda(iz,ix)**2/self%ldap2mu(iz,ix) + self%ldap2mu(iz,ix)
+                !         factor=factor/2.
+                !         f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + self%dt * factor*dvx_dx_
+
+                !     enddo
+
+                !     do iz=cb%ifz+1,2
+                !         dvz_dx_= (f%vz(iz,ix,1)-f%vz(iz  ,ix-1,1))/m%dx
+                !         dvx_dz_= (f%vx(iz,ix,1)-f%vx(iz-1,ix  ,1))/m%dz
+                        
+                !         !shear stress
+                !         f%szx(iz,ix,1) = f%szx(iz,ix,1) + self%dt * self%mu(iz,ix)*(dvz_dx_+dvx_dz_)
+
+                !     enddo
+                        
+                ! enddo
 
             endif
 

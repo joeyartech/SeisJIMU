@@ -25,6 +25,8 @@ use, intrinsic :: ieee_arithmetic
     !scaling source wavelet
     real :: wavelet_scaler
 
+    character(:),allocatable :: FS_method
+
     type,public :: t_propagator
         !info
         character(i_str_xxlen) :: info = &
@@ -174,6 +176,8 @@ use, intrinsic :: ieee_arithmetic
         if_hicks=shot%if_hicks
 
         if_record_adjseismo=either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
+
+        FS_method=setup%get_str('FS_METHOD',o_default='stress_image')
 
         call alloc(self%buoz,           [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%buox,           [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
@@ -842,14 +846,24 @@ use, intrinsic :: ieee_arithmetic
         !         -(vx[2,ix+0.5]-vx[0,ix+0.5])/2dz = ( (vz[0.5,ix]+vz[1.5,ix])/2 - (vz[0.5,ix+1]+vz[1.5,ix+1])/2 )/dx
         !         -(vx(2,ix+1  )-vx(0,ix+1  ))/2dz = ( (vz(1  ,ix)+vz(2  ,ix))/2 - (vz(1  ,ix+1)+vz(2  ,ix+1))/2 )/dx
         !          (vx(0,ix+1  )-vx(2,ix+1  ))/ dz = ( (vz(1  ,ix)+vz(2  ,ix))   -  vz(1  ,ix+1)-vz(2  ,ix+1)    )/dx
-        if(m%is_freesurface) then
-            dz_dx = m%dz/m%dx
+        !
+        ! if(m%is_freesurface) then
+        !     dz_dx = m%dz/m%dx
 
-            do ix=ifx,ilx
-                f%pz(1,ix,1)= f%pz(2,ix,1) + 1/cb%rho(1,ix,1)* &
-                self%lda(1,ix)*(self%buox(1,ix)*f%px(1,ix,1)-self%buox(1,ix+1)*f%px(1,ix+1,1))*dz_dx/self%ldap2mu(1,ix)
-                !f%px(0,ix)= f%px(2,ix) + (f%pz(1,ix)+f%pz(2,ix)-f%pz(1,ix+1)-f%pz(2,ix+1))*dz_dx/lm%ldap2mu(1,ix) !toy2del says this condition is not needed
-            enddo
+        !     do ix=ifx,ilx
+        !         f%pz(1,ix,1)= f%pz(2,ix,1) + 1/cb%rho(1,ix,1)* &
+        !         self%lda(1,ix)*(self%buox(1,ix)*f%px(1,ix,1)-self%buox(1,ix+1)*f%px(1,ix+1,1))*dz_dx/self%ldap2mu(1,ix)
+        !         !f%px(0,ix)= f%px(2,ix) + (f%pz(1,ix)+f%pz(2,ix)-f%pz(1,ix+1)-f%pz(2,ix+1))*dz_dx/lm%ldap2mu(1,ix) !toy2del says this condition is not needed
+        !     enddo
+        ! endif
+
+
+        if(m%is_freesurface) then
+            if (FS_method=='stress_image') then !Levandar & Roberttson
+                !Roberttson's 3rd method
+                f%pz(cb%ifz:1,:,1)=0.
+                f%px(cb%ifz:0,:,1)=0.
+            endif
         endif
 
     end subroutine
@@ -938,12 +952,14 @@ use, intrinsic :: ieee_arithmetic
         class(t_propagator) :: self
         type(t_field) :: f
 
+        real,dimension(:,:),allocatable :: sz, sx
+
         ifz=f%bloom(1,it)+2  !1
         ilz=f%bloom(2,it)-2
         ifx=f%bloom(3,it)+2  !1
         ilx=f%bloom(4,it)-2
         
-        if(m%is_freesurface) ifz=max(ifz,1)
+        if(m%is_freesurface) ifz=max(ifz,1) !2
 
         call fd2d_strains(self%buoz*f%pz(:,:,1),self%buox*f%px(:,:,1),f%ez,f%ex,f%es,&
                            f%dpz_dz,f%dpx_dx,f%dpz_dx,f%dpx_dz,&
@@ -953,9 +969,45 @@ use, intrinsic :: ieee_arithmetic
         !free surface is located at [1,ix] level
         !so explicit boundary condition: 0=sz(1,ix)=ldap2mu*ez(1,ix)+lda*ex(1,ix) -> ez(1,ix)=-lda(1,ix)*ex(1,ix)/ldap2mu(1,ix)
         !and antisymmetric mirroring: mu*es[0.5,ix-0.5]=-mu*es[1.5,ix-0.5] -> mu(1,ix)*es(1,ix)=-mu(2,ix)*es(2,ix)
-        if(m%is_freesurface) then
-            f%ez(1,:,1)=-self%lda(1,:)*f%ex(1,:,1)/self%ldap2mu(1,:)
-            f%es(1,:,1)=-self%mu(2,:) *f%es(2,:,1)/self%mu(1,:)
+        
+        ! if(m%is_freesurface) then
+        !     f%ez(1,:,1)=-self%lda(1,:)*f%ex(1,:,1)/self%ldap2mu(1,:)
+        !     f%es(1,:,1)=-self%mu(2,:) *f%es(2,:,1)/self%mu(1,:)
+        ! endif
+
+        if(m%is_freesurface) then !FS condition: sz=ss=0.
+
+            if (FS_method=='stress_image') then !Levandar & Roberttson
+                
+                nnz=0-cb%ifz
+                call alloc(sz,[cb%ifz,1+nnz],[cb%ifx,cb%ilx])
+                call alloc(sx,[cb%ifz,1+nnz],[cb%ifx,cb%ilx])
+                sz(1:1+nnz,:)=self%ldap2mu(1:1+nnz,:)*f%ez(1:1+nnz,:,1)+self%lda    (1:1+nnz,:)*f%ex(1:1+nnz,:,1)
+                sx(1:1+nnz,:)=self%lda    (1:1+nnz,:)*f%ez(1:1+nnz,:,1)+self%ldap2mu(1:1+nnz,:)*f%ex(1:1+nnz,:,1)
+
+                !image stress szz & sxx
+                sz(cb%ifz:0,:)=-sz(2+nnz:2:-1,:)
+                sz(1,:)=0.
+
+                sx(cb%ifz:0,:)=0.
+
+                !convert to ez & ex
+                ![sz]=[λ+2μ λ   ][ez] => [ez]=   1   [λ+2μ -λ  ][sz]
+                ![sx] [λ    λ+2μ][ex]    [ex] (λ+μ)4μ[-λ   λ+2μ][sx]
+                f%ez(cb%ifz:1,:,1) = self%inv_ladpmu_4mu(cb%ifz:1,:)*( self%ldap2mu(cb%ifz:0,:)*sz(cb%ifz:1,:)-self%lda    (cb%ifz:1,:)*sx(cb%ifz:1,:) )  !/self%ldap2mu(cb%ifz:0,:) )
+                f%ex(cb%ifz:1,:,1) = self%inv_ladpmu_4mu(cb%ifz:1,:)*(-self%lda    (cb%ifz:0,:)*sz(cb%ifz:1,:)+self%ldap2mu(cb%ifz:1,:)*sx(cb%ifz:1,:) )  !/self%ldap2mu(cb%ifz:0,:) )
+
+                ! factor=-self%lda(iz,ix)**2/self%ldap2mu(iz,ix) + self%ldap2mu(iz,ix)
+                ! f%ex(iz,ix,1) = f%ex(iz,ix,1) + self%dt * factor*dvx_dx_
+
+                !es=ss/μ=0
+                ! f%szx(-1,:,1)=-f%szx(4,:,1)
+                ! f%szx( 0,:,1)=-f%szx(3,:,1)
+                ! f%szx( 1,:,1)=-f%szx(2,:,1)            
+                nnz=1-cb%ifz
+                f%es(cb%ifz:1, :,1)=-f%es(2+nnz:2:-1, :,1)
+
+            endif
         endif
 
     end subroutine
