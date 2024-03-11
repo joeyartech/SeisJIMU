@@ -1003,6 +1003,7 @@ use, intrinsic :: ieee_arithmetic
         if(m%is_freesurface) then
             if (FS_method=='stress_image') then !Levandar & Roberttson
 
+                !image szz
                 ! f%szz(-2,:,1)=-f%szz(4,:,1)
                 ! f%szz(-1,:,1)=-f%szz(3,:,1)
                 ! f%szz( 0,:,1)=-f%szz(2,:,1)
@@ -1010,22 +1011,21 @@ use, intrinsic :: ieee_arithmetic
                 nnz=0-cb%ifz
                 f%szz(cb%ifz:0, :,1)=-f%szz(2+nnz:2:-1, :,1)
 
+                !not image on sxx
+                f%sxx(cb%ifz:0,:,1)=0.
+                do ix=ifx,ilx
+                    dvx_dx_= c1x*(f%vx(1,ix+1,1)-f%vx(1,ix,1))  +c2x*(f%vx(1,ix+2,1)-f%vx(1,ix-1,1))
+                    
+                    factor=-self%lda(1,ix)**2/self%ldap2mu(1,ix) + self%ldap2mu(1,ix)
+                    f%sxx(1,ix,1)  = f%sxx(1,ix,1) + self%dt * factor*dvx_dx_
+                enddo
+
+                !image szx
                 ! f%szx(-1,:,1)=-f%szx(4,:,1)
                 ! f%szx( 0,:,1)=-f%szx(3,:,1)
                 ! f%szx( 1,:,1)=-f%szx(2,:,1)            
                 nnz=1-cb%ifz
                 f%szx(cb%ifz:1, :,1)=-f%szx(2+nnz:2:-1, :,1)
-
-                do ix=ifx,ilx
-                do iz=cb%ifz-2,1
-
-                    dvx_dx_= c1x*(f%vx(iz,ix+1,1)-f%vx(iz,ix,1))  +c2x*(f%vx(iz,ix+2,1)-f%vx(iz,ix-1,1))
-                    
-                    factor=-self%lda(iz,ix)**2/self%ldap2mu(iz,ix) + self%ldap2mu(iz,ix)
-                    f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + self%dt * factor*dvx_dx_
-
-                enddo
-                enddo
 
             else  !FS_method='effective_medium' (Mittet, Cao & Chen)            
 
