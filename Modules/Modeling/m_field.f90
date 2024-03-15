@@ -48,6 +48,7 @@ use, intrinsic :: ieee_arithmetic
         
         real,dimension(:,:,:),allocatable :: pz,px !momenta
         real,dimension(:,:,:),allocatable :: ez,ex,es !strains
+        real,dimension(:,:,:),allocatable :: sz,sx,ss !stresses
 
         ! real,dimension(:,:,:),pointer :: p=> null(), p_prev=> null(), p_next=> null() !negated pressure
         ! !N.B. pressure is defined >0 for inward stress, but here tobe compatible with szz etc, p is defined >0 for outward stress

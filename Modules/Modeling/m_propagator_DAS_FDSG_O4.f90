@@ -311,7 +311,12 @@ use, intrinsic :: ieee_arithmetic
         call alloc(f%dex_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
         call alloc(f%des_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
         call alloc(f%des_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
-        
+
+        !needed for free surface BC
+        nnz=0-cb%ifz+1
+        call alloc(f%sz,[cb%ifz,1+nnz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(f%sx,[cb%ifz,1+nnz],[cb%ifx,cb%ilx],[1,1])
+
     end subroutine
 
     subroutine init_correlate(self,corr,name)
@@ -1010,9 +1015,6 @@ use, intrinsic :: ieee_arithmetic
         class(t_propagator) :: self
         type(t_field) :: f
 
-        real,dimension(:,:),allocatable :: sz, sx
-        real,dimension(:),allocatable,save :: sx1 !on freesurface
-
         ifz=f%bloom(1,it)+2  !1
         ilz=f%bloom(2,it)-2
         ifx=f%bloom(3,it)+2  !1
@@ -1039,28 +1041,23 @@ use, intrinsic :: ieee_arithmetic
             if (FS_method=='stress_image') then !Levandar & Roberttson
                 
                 nnz=0-cb%ifz+1
-
-                call alloc(sz,[cb%ifz,1+nnz],[cb%ifx,cb%ilx])
-                call alloc(sx,[cb%ifz,1+nnz],[cb%ifx,cb%ilx])
-                sz(2:1+nnz,:)=self%ldap2mu(2:1+nnz,:)*f%ez(2:1+nnz,:,1)+self%lda    (2:1+nnz,:)*f%ex(2:1+nnz,:,1)
-                sx(2:1+nnz,:)=self%lda    (2:1+nnz,:)*f%ez(2:1+nnz,:,1)+self%ldap2mu(2:1+nnz,:)*f%ex(2:1+nnz,:,1)
+                f%sz(2:1+nnz,:,1)=self%ldap2mu(2:1+nnz,:)*f%ez(2:1+nnz,:,1)+self%lda    (2:1+nnz,:)*f%ex(2:1+nnz,:,1)
+                f%sx(2:1+nnz,:,1)=self%lda    (2:1+nnz,:)*f%ez(2:1+nnz,:,1)+self%ldap2mu(2:1+nnz,:)*f%ex(2:1+nnz,:,1)
 
                 !image szz
-                sz(cb%ifz:0,:)=-sz(2+nnz-1:2:-1,:)
-                sz(1,:)=0.
+                f%sz(cb%ifz:0,:,1)=-f%sz(2+nnz-1:2:-1,:,1)
+                f%sz(1,:,1)=0.
 
                 !not image on sxx
-                sx(cb%ifz:0,:)=0.
+                f%sx(cb%ifz:0,:,1)=0.
 
-                call alloc(sx1,[cb%ifx,cb%ilx],oif_protect=.true.)
                 do ix=ifx,ilx
                     dvx_dx_= c1x*(self%buox(1,ix+1)*f%px(1,ix+1,1)-self%buox(1,ix  )*f%px(1,ix  ,1)) &
                             +c2x*(self%buox(1,ix+2)*f%px(1,ix+2,1)-self%buox(1,ix-1)*f%px(1,ix-1,1))
-                    factor=-self%lda(1,ix)**2/self%ldap2mu(1,ix) + self%ldap2mu(1,ix)
-                    sx1(ix) = sx1(ix) + self%dt * factor*dvx_dx_
+                    !factor = 1./(self%ldap2mu(1,ix)/self%inv_ladpmu_4mu(1,ix)) !less precise
+                    factor = -self%lda(1,ix)**2/self%ldap2mu(1,ix) + self%ldap2mu(1,ix)
+                    f%sx(1,ix,1) = f%sx(1,ix,1) + self%dt * factor*dvx_dx_
                 enddo
-
-                sx(1,:)=sx1(:)
                 
                 ! factor=-self%lda(iz,ix)**2/self%ldap2mu(iz,ix) + self%ldap2mu(iz,ix)
                 ! f%ex(iz,ix,1) = f%ex(iz,ix,1) + self%dt * factor*dvx_dx_
@@ -1076,8 +1073,8 @@ use, intrinsic :: ieee_arithmetic
                 !convert to ez & ex
                 ![sz]=[λ+2μ λ   ][ez] => [ez]=   1   [λ+2μ -λ  ][sz]
                 ![sx] [λ    λ+2μ][ex]    [ex] (λ+μ)4μ[-λ   λ+2μ][sx]
-                f%ez(cb%ifz:1,:,1) = self%inv_ladpmu_4mu(cb%ifz:1,:)*( self%ldap2mu(cb%ifz:1,:)*sz(cb%ifz:1,:)-self%lda    (cb%ifz:1,:)*sx(cb%ifz:1,:) )
-                f%ex(cb%ifz:1,:,1) = self%inv_ladpmu_4mu(cb%ifz:1,:)*(-self%lda    (cb%ifz:1,:)*sz(cb%ifz:1,:)+self%ldap2mu(cb%ifz:1,:)*sx(cb%ifz:1,:) )
+                f%ez(cb%ifz:1,:,1) = self%inv_ladpmu_4mu(cb%ifz:1,:)*( self%ldap2mu(cb%ifz:1,:)*f%sz(cb%ifz:1,:,1)-self%lda    (cb%ifz:1,:)*f%sx(cb%ifz:1,:,1) )
+                f%ex(cb%ifz:1,:,1) = self%inv_ladpmu_4mu(cb%ifz:1,:)*(-self%lda    (cb%ifz:1,:)*f%sz(cb%ifz:1,:,1)+self%ldap2mu(cb%ifz:1,:)*f%sx(cb%ifz:1,:,1) )
 
 
                 !image on szx = μ*es
