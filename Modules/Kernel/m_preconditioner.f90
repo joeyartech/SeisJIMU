@@ -69,8 +69,9 @@ use m_parametrizer
             endif
 
             if(index(list(i)%s,'respective_L1norm')>0) then
-                call hud('Will precondition the gvp & gvs by their respective L1 norm')
-                call by_resp_L1norm
+                call warn('Preconditioning by respective_L1norm is not ready yet..')
+                !call hud('Will precondition the gvp & gvs by their respective L1 norm')
+                !call by_resp_L1norm
             endif
 
         enddo

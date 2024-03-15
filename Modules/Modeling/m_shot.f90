@@ -379,7 +379,7 @@ use m_model
             call hicks_get_coefficient('antisymm', self%src%interp_coef)
         case('es')
             call hicks_get_coefficient('symmetric',self%src%interp_coef)
-        case('pz','px')
+        case('pz')
             call hicks_get_coefficient('symmetric',self%src%interp_coef)
 
         case default
@@ -412,7 +412,7 @@ use m_model
                 call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x,       self%rcv(i)%y)
             case('px')
                 call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x+halfx, self%rcv(i)%y)
-            ! case('vy')
+            ! case('py')
             !     call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y+halfy)
             end select
 
@@ -430,7 +430,7 @@ use m_model
                 call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)
             case('es')
                 call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef)
-            case('pz','px')
+            case('pz')
                 call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef)
 
             case default
