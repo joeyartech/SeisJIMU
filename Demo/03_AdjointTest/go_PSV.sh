@@ -1,6 +1,6 @@
 #!/bin/bash
 
-make cleanall; make
+# make cleanall; make
 # 
 makevel nz=100 nx=201 v000=1000 > c1
 makevel nz=101 nx=201 v000=1800 > c2
@@ -12,6 +12,16 @@ rm c1 c2 tmp
 
 cp setup_default setup
 
+echo 'p p'
+echo 'SCOMP p' >> setup
+echo 'RCOMP p' >> setup
+#echo "FS_METHOD    zero_stress" >> setup
+../../exe/AdjointTest  setup > out
+
+tail -10 out
+
+########################################
+
 echo 'vz p'
 echo 'SCOMP vz' >> setup
 echo 'RCOMP p ' >> setup
@@ -19,30 +29,56 @@ echo 'RCOMP p ' >> setup
 
 tail -10 out
 
-
-echo 'vx p'
+echo 'vx p' #not successful
 echo 'SCOMP vx' >> setup
 echo 'RCOMP p ' >> setup
 ../../exe/AdjointTest  setup > out
 
 tail -10 out
 
-
-echo 'p vz'
+echo 'p vz' #not successful
 echo 'SCOMP p ' >> setup
 echo 'RCOMP vz' >> setup
 ../../exe/AdjointTest  setup > out
 
 tail -10 out
 
-
-echo 'p vx'
+echo 'p vx' #not successful
 echo 'SCOMP p ' >> setup
 echo 'RCOMP vx' >> setup
 ../../exe/AdjointTest  setup > out
 
 tail -10 out
 
+########################################
+
+echo 'vz vz'
+echo 'SCOMP vz' >> setup
+echo 'RCOMP vz' >> setup
+../../exe/AdjointTest  setup > out
+
+tail -10 out
+
+echo 'vx vx'
+echo 'SCOMP vx' >> setup
+echo 'RCOMP vx' >> setup
+../../exe/AdjointTest  setup > out
+
+tail -10 out
+
+echo 'vz vx' #not successful
+echo 'SCOMP vz' >> setup
+echo 'RCOMP vx' >> setup
+../../exe/AdjointTest  setup > out
+
+tail -10 out
+
+echo 'vx vz' #not successful
+echo 'SCOMP vx' >> setup
+echo 'RCOMP vz' >> setup
+../../exe/AdjointTest  setup > out
+
+tail -10 out
 
 
 # suximage <  u.su  legend=1  title='u' &

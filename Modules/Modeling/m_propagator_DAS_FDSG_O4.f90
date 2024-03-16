@@ -49,7 +49,7 @@ use, intrinsic :: ieee_arithmetic
 
         !local models shared between fields
         real,dimension(:,:),allocatable :: buoz, buox, ldap2mu, lda, mu
-        real,dimension(:,:),allocatable :: inv_ladpmu_4mu, ldapmu
+        real,dimension(:,:),allocatable :: inv_ldapmu_4mu, ldapmu
 
         !time frames
         integer :: nt
@@ -184,7 +184,7 @@ use, intrinsic :: ieee_arithmetic
         call alloc(self%ldap2mu,        [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%lda,            [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%mu,             [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(self%inv_ladpmu_4mu, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(self%inv_ldapmu_4mu, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%ldapmu,         [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
 
 
@@ -201,7 +201,7 @@ use, intrinsic :: ieee_arithmetic
         ! write(*,*) 'self%lda     sanity:', minval(self%lda),maxval(self%lda)
         ! endif
 ! print*,'!!!!!!!!!!!!!!!!!!!!!!!'
-        self%inv_ladpmu_4mu=0.25/(self%lda+temp_mu)/temp_mu
+        self%inv_ldapmu_4mu=0.25/(self%lda+temp_mu)/temp_mu
 ! print*,'!!!!!!!!!!!!!!!!!!!!!!!'
         !interpolat mu by harmonic average
         temp_mu=1./temp_mu
@@ -947,24 +947,23 @@ use, intrinsic :: ieee_arithmetic
             if(if_hicks) then
                 select case (shot%src%comp)
                     case ('ez')
-                    f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
-                    f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda(ifz:ilz,ifx:ilx)) *shot%src%interp_coef(:,:,1)
+                    f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(self%ldap2mu(ifz:ilz,ifx:ilx))*shot%src%interp_coef(:,:,1)
+                    f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(   -self%lda(ifz:ilz,ifx:ilx))*shot%src%interp_coef(:,:,1)
                     case ('ex')
-                    f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda(ifz:ilz,ifx:ilx)) *shot%src%interp_coef(:,:,1)
-                    f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
+                    f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(   -self%lda(ifz:ilz,ifx:ilx))*shot%src%interp_coef(:,:,1)
+                    f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(self%ldap2mu(ifz:ilz,ifx:ilx))*shot%src%interp_coef(:,:,1)
                     case ('es')
-                    f%es(ifz:ilz,ifx:ilx,1) = f%es(ifz:ilz,ifx:ilx,1) + wl/self%mu(ifz:ilz,ifx:ilx)                                          *shot%src%interp_coef(:,:,1)
+                    f%es(ifz:ilz,ifx:ilx,1) = f%es(ifz:ilz,ifx:ilx,1) + wl/self%mu(ifz:ilz,ifx:ilx)                                            *shot%src%interp_coef(:,:,1)
                 endselect
                 
             else
                 select case (shot%src%comp)
                     case ('ez')
-                    !f%ez(iz,ix,1) = f%ez(iz,ix,1) + wl
-                    f%ez(iz,ix,1) = f%ez(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
-                    f%ex(iz,ix,1) = f%ex(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*(-self%lda(iz,ix))
+                    f%ez(iz,ix,1) = f%ez(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
+                    f%ex(iz,ix,1) = f%ex(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*( -self%lda(iz,ix))
                     case ('ex')
-                    f%ez(iz,ix,1) = f%ez(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*(-self%lda(iz,ix))
-                    f%ex(iz,ix,1) = f%ex(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
+                    f%ez(iz,ix,1) = f%ez(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*( -self%lda(iz,ix))
+                    f%ex(iz,ix,1) = f%ex(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
                     case ('es')
                     f%es(iz,ix,1) = f%es(iz,ix,1) + wl/self%mu(iz,ix)
                 endselect
@@ -984,22 +983,22 @@ use, intrinsic :: ieee_arithmetic
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
                         case ('ez')
-                        f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) +wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
-                        f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) +wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda(ifz:ilz,ifx:ilx)) *shot%rcv(i)%interp_coef(:,:,1)
+                        f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) +wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
+                        f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) +wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda(ifz:ilz,ifx:ilx)) *shot%rcv(i)%interp_coef(:,:,1)
                         case ('ex')
-                        f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) +wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda(ifz:ilz,ifx:ilx)) *shot%rcv(i)%interp_coef(:,:,1)
-                        f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) +wl*self%inv_ladpmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1)
+                        f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) +wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda(ifz:ilz,ifx:ilx)) *shot%rcv(i)%interp_coef(:,:,1)
+                        f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) +wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1)
                         case ('es')
                         f%es(ifz:ilz,ifx:ilx,1) = f%es(ifz:ilz,ifx:ilx,1) +wl/self%mu(ifz:ilz,ifx:ilx)                                          *shot%rcv(i)%interp_coef(:,:,1)
                     endselect
                 else           
                     select case (shot%rcv(i)%comp)
                         case ('ez')
-                        f%ez(iz,ix,1) = f%ez(iz,ix,1) +wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
-                        f%ex(iz,ix,1) = f%ex(iz,ix,1) +wl*self%inv_ladpmu_4mu(iz,ix)*(-self%lda(iz,ix))
+                        f%ez(iz,ix,1) = f%ez(iz,ix,1) +wl*self%inv_ldapmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
+                        f%ex(iz,ix,1) = f%ex(iz,ix,1) +wl*self%inv_ldapmu_4mu(iz,ix)*(-self%lda(iz,ix))
                         case ('ex')
-                        f%ez(iz,ix,1) = f%ez(iz,ix,1) +wl*self%inv_ladpmu_4mu(iz,ix)*(-self%lda(iz,ix))
-                        f%ex(iz,ix,1) = f%ex(iz,ix,1) +wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
+                        f%ez(iz,ix,1) = f%ez(iz,ix,1) +wl*self%inv_ldapmu_4mu(iz,ix)*(-self%lda(iz,ix))
+                        f%ex(iz,ix,1) = f%ex(iz,ix,1) +wl*self%inv_ldapmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
                         case ('es')
                         f%es(iz,ix,1) = f%es(iz,ix,1) +wl/self%mu(iz,ix)
                     endselect
@@ -1054,7 +1053,7 @@ use, intrinsic :: ieee_arithmetic
                 do ix=ifx,ilx
                     dvx_dx_= c1x*(self%buox(1,ix+1)*f%px(1,ix+1,1)-self%buox(1,ix  )*f%px(1,ix  ,1)) &
                             +c2x*(self%buox(1,ix+2)*f%px(1,ix+2,1)-self%buox(1,ix-1)*f%px(1,ix-1,1))
-                    !factor = 1./(self%ldap2mu(1,ix)/self%inv_ladpmu_4mu(1,ix)) !less precise
+                    !factor = 1./(self%ldap2mu(1,ix)/self%inv_ldapmu_4mu(1,ix)) !less precise
                     factor = -self%lda(1,ix)**2/self%ldap2mu(1,ix) + self%ldap2mu(1,ix)
                     f%sx(1,ix,1) = f%sx(1,ix,1) + self%dt * factor*dvx_dx_
                 enddo
@@ -1073,8 +1072,8 @@ use, intrinsic :: ieee_arithmetic
                 !convert to ez & ex
                 ![sz]=[λ+2μ λ   ][ez] => [ez]=   1   [λ+2μ -λ  ][sz]
                 ![sx] [λ    λ+2μ][ex]    [ex] (λ+μ)4μ[-λ   λ+2μ][sx]
-                f%ez(cb%ifz:1,:,1) = self%inv_ladpmu_4mu(cb%ifz:1,:)*( self%ldap2mu(cb%ifz:1,:)*f%sz(cb%ifz:1,:,1)-self%lda    (cb%ifz:1,:)*f%sx(cb%ifz:1,:,1) )
-                f%ex(cb%ifz:1,:,1) = self%inv_ladpmu_4mu(cb%ifz:1,:)*(-self%lda    (cb%ifz:1,:)*f%sz(cb%ifz:1,:,1)+self%ldap2mu(cb%ifz:1,:)*f%sx(cb%ifz:1,:,1) )
+                f%ez(cb%ifz:1,:,1) = self%inv_ldapmu_4mu(cb%ifz:1,:)*( self%ldap2mu(cb%ifz:1,:)*f%sz(cb%ifz:1,:,1)-self%lda    (cb%ifz:1,:)*f%sx(cb%ifz:1,:,1) )
+                f%ex(cb%ifz:1,:,1) = self%inv_ldapmu_4mu(cb%ifz:1,:)*(-self%lda    (cb%ifz:1,:)*f%sz(cb%ifz:1,:,1)+self%ldap2mu(cb%ifz:1,:)*f%sx(cb%ifz:1,:,1) )
 
 
                 !image on szx = μ*es
@@ -1196,7 +1195,7 @@ use, intrinsic :: ieee_arithmetic
         type(t_propagator) :: self
         call dealloc(self%buoz, self%buox)
         call dealloc(self%ldap2mu, self%lda, self%mu)
-        ! call dealloc(self%two_ldapmu, self%inv_ladpmu_4mu)
+        ! call dealloc(self%two_ldapmu, self%inv_ldapmu_4mu)
     end subroutine
 
     !========= gradient, imaging or other correlations ===================

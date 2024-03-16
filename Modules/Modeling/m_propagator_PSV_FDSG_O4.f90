@@ -53,7 +53,7 @@ use, intrinsic :: ieee_arithmetic
 
         !local models shared between fields
         real,dimension(:,:),allocatable :: buoz, buox, ldap2mu, lda, mu
-        real,dimension(:,:),allocatable :: ldapmu, two_ldapmu, inv_ladpmu_4mu
+        real,dimension(:,:),allocatable :: ldapmu, two_ldapmu, inv_ldapmu_4mu
 
         !time frames
         integer :: nt
@@ -77,6 +77,8 @@ use, intrinsic :: ieee_arithmetic
         procedure :: inject_stresses
         procedure :: update_velocities
         procedure :: update_stresses
+        procedure :: update_velocities_adjoint
+        procedure :: update_stresses_adjoint
         procedure :: extract
 
 
@@ -188,7 +190,7 @@ use, intrinsic :: ieee_arithmetic
         call alloc(self%ldap2mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%lda,    [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%mu,     [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(self%inv_ladpmu_4mu, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(self%inv_ldapmu_4mu, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%ldapmu, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%two_ldapmu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
 
@@ -209,7 +211,7 @@ use, intrinsic :: ieee_arithmetic
         self%two_ldapmu=2.*self%ldapmu
 
 ! print*,'!!!!!!!!!!!!!!!!!!!!!!!'
-        self%inv_ladpmu_4mu=0.25/(self%lda+temp_mu)/temp_mu
+        self%inv_ldapmu_4mu=0.25/(self%lda+temp_mu)/temp_mu
 ! print*,'!!!!!!!!!!!!!!!!!!!!!!!'
         !interpolat mu by harmonic average
         temp_mu=1./temp_mu
@@ -490,12 +492,10 @@ use, intrinsic :: ieee_arithmetic
     !N.B. Same codes for spatial FDs as in forward time marching, with a negated dt, but the RHS should use a "+" sign (regardless of the reverse time direction).
     !
     !For adjoint test:
-    !In each step of forward time marching: dsyn=RGANf
-    !f:source wavelet, N=M⁻¹dt: diagonal
-    !A:inject source into field, G:propagator, R:extract field at receivers
-    !while in each step of reverse-time adjoint marching: dadj=NAᵀGᵀRᵀdsyn=AᵀGᵀRᵀNdsyn
-    !Rᵀ:inject adjoint sources, Gᵀ:adjoint propagator, Aᵀ:extract adjoint fields
-    !
+    !Forward time marching: dsyn=RGNf
+    !f:source wavelet, N=M⁻¹dt: diagonal, G:propagator, R:extract field at receivers
+    !Reverse-time adjoint marching: Ndadj=GᵀRᵀdsyn
+    !Rᵀ:inject adjoint sources, Gᵀ:adjoint propagator
 
     subroutine forward(self,fld_u)
         class(t_propagator) :: self
@@ -834,19 +834,27 @@ use, intrinsic :: ieee_arithmetic
                              self%buoz,self%buox,                    &
                              ifz,ilz,ifx,ilx,time_dir*self%dt)
 
+        
         !apply free surface boundary condition if needed
         !free surface is located at [1,ix,1] level
-        !Δszz=0 : -(λ+2μ)∂_z vz = λ ∂ₓvx
-        !         -(λ+2μ)[1,ix]*(vz[1.5,ix]-vz[0.5,ix])/dz = λ[1,ix]*(vx[1,ix-0.5]-vx[1,ix+0.5])/dx
-        !         -(λ+2μ)(1,ix)*(vz(2  ,ix)-vz(1  ,ix))/dz = λ(1,ix)*(vx(1,ix    )-vx(1,ix+1  ))/dx
-        !          (λ+2μ)(1,ix)*(vz(1  ,ix)-vz(2  ,ix))/dz = λ(1,ix)*(vx(1,ix    )-vx(1,ix+1  ))/dx
-        !Δszx=0 : -∂_z vx = ∂ₓvz
-        !         -(vx[2,ix+0.5]-vx[0,ix+0.5])/2dz = ( (vz[0.5,ix]+vz[1.5,ix])/2 - (vz[0.5,ix+1]+vz[1.5,ix+1])/2 )/dx
-        !         -(vx(2,ix+1  )-vx(0,ix+1  ))/2dz = ( (vz(1  ,ix)+vz(2  ,ix))/2 - (vz(1  ,ix+1)+vz(2  ,ix+1))/2 )/dx
-        !          (vx(0,ix+1  )-vx(2,ix+1  ))/ dz = ( (vz(1  ,ix)+vz(2  ,ix))   -  vz(1  ,ix+1)-vz(2  ,ix+1)    )/dx
-        
         if(m%is_freesurface) then
-            if (FS_method=='stress_image') then !Levandar & Roberttson
+            if (FS_method=='zero_stress') then
+                !Δszz=0 : -(λ+2μ)∂_z vz = λ ∂ₓvx
+                !         -(λ+2μ)[1,ix]*(vz[1.5,ix]-vz[0.5,ix])/dz = λ[1,ix]*(vx[1,ix-0.5]-vx[1,ix+0.5])/dx
+                !         -(λ+2μ)(1,ix)*(vz(2  ,ix)-vz(1  ,ix))/dz = λ(1,ix)*(vx(1,ix    )-vx(1,ix+1  ))/dx
+                !          (λ+2μ)(1,ix)*(vz(1  ,ix)-vz(2  ,ix))/dz = λ(1,ix)*(vx(1,ix    )-vx(1,ix+1  ))/dx
+                !Δszx=0 : -∂_z vx = ∂ₓvz
+                !         -(vx[2,ix+0.5]-vx[0,ix+0.5])/2dz = ( (vz[0.5,ix]+vz[1.5,ix])/2 - (vz[0.5,ix+1]+vz[1.5,ix+1])/2 )/dx
+                !         -(vx(2,ix+1  )-vx(0,ix+1  ))/2dz = ( (vz(1  ,ix)+vz(2  ,ix))/2 - (vz(1  ,ix+1)+vz(2  ,ix+1))/2 )/dx
+                !          (vx(0,ix+1  )-vx(2,ix+1  ))/ dz = ( (vz(1  ,ix)+vz(2  ,ix))   -  vz(1  ,ix+1)-vz(2  ,ix+1)    )/dx
+                dz_dx = m%dz/m%dx
+
+                do ix=ifx,ilx
+                    f%vz(1,ix,1)= f%vz(2,ix,1) + self%lda(1,ix)*(f%vx(1,ix,1)-f%vx(1,ix+1,1))*dz_dx/self%ldap2mu(1,ix)
+                    !f%vx(0,ix,1)= f%vx(2,ix,1) + (f%vz(1,ix,1)+f%vz(2,ix,1)-f%vz(1,ix+1,1)-f%vz(2,ix+1,1))*dz_dx/self%ldap2mu(1,ix) !toy2del says this condition is not needed
+                enddo
+
+            elseif (FS_method=='stress_image') then !Levandar & Roberttson
                 !Roberttson's 3rd method
                 f%vz(cb%ifz:1,:,1)=0.
                 f%vx(cb%ifz:0,:,1)=0.
@@ -896,7 +904,7 @@ use, intrinsic :: ieee_arithmetic
         endif
 
     end subroutine
-    
+
     !forward: add RHS to s^it+0.5
     !adjoint: add RHS to s^it+1.5
     subroutine inject_stresses(self,f,time_dir,it)
@@ -915,6 +923,15 @@ use, intrinsic :: ieee_arithmetic
                     f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) + wl*sn_p*self%two_ldapmu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
                     f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) + wl*sn_p*self%two_ldapmu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
                 endif
+
+                if(shot%src%comp=='szz') then
+                    f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) + wl*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
+                    f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) + wl*    self%lda(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
+                endif
+                if(shot%src%comp=='sxx') then !time deri of moment tensor xx comp
+                    f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) + wl*    self%lda(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
+                    f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) + wl*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
+                endif
                 
             else
                 if(shot%src%comp=='p') then
@@ -924,20 +941,20 @@ use, intrinsic :: ieee_arithmetic
                 endif
 
                 ! select case (shot%src%comp)
-                ! case('szz'); f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)  !+fxx
-                ! case('sxx'); f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*(  -self%lda(iz,ix)) !+fxx
+                ! case('szz'); f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*self%ldap2mu(iz,ix)  !+fxx
+                ! case('sxx'); f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*(  -self%lda(iz,ix)) !+fxx
                 ! case('szx'); f%szx(iz,ix,1) = f%szx(iz,ix,1) + wl/self%mu(iz,ix)
 
-                ! case('fzz')
-                !     f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
-                !     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*(  -self%lda(iz,ix))
-                ! case('fxx')
-                !     f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*(  -self%lda(iz,ix))
-                !     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
+                ! case('mzz')
+                !     f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
+                !     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*(  -self%lda(iz,ix))
+                ! case('mxx')
+                !     f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*(  -self%lda(iz,ix))
+                !     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
 
                 ! case('fzss')
-                !     f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
-                !     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ladpmu_4mu(iz,ix)*(  -self%lda(iz,ix))
+                !     f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
+                !     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*(  -self%lda(iz,ix))
                 !     f%szx(iz,ix,1) = f%szx(iz,ix,1) + wl/self%mu(iz,ix)
                 ! end select
 
@@ -995,13 +1012,17 @@ use, intrinsic :: ieee_arithmetic
                            self%ldap2mu,self%lda,self%mu,  &
                            ifz,ilz,ifx,ilx,time_dir*self%dt)
         
+
         !apply free surface boundary condition if needed
         !free surface is located at [1,ix] level
-        !so explicit boundary condition: szz(1,ix)=0
-        !and antisymmetric mirroring: szx[0.5,ix-0.5]=-szx[1.5,ix-0.5] -> szx(1,ix)=-szx(2,ix)
-
         if(m%is_freesurface) then
-            if (FS_method=='stress_image') then !Levandar & Roberttson
+            if (FS_method=='zero_stress') then
+                !so explicit boundary condition: szz(1,ix)=0
+                !and antisymmetric mirroring: szx[0.5,ix-0.5]=-szx[1.5,ix-0.5] -> szx(1,ix)=-szx(2,ix)
+                f%szz(1,:,1)=0.
+                f%szx(1,:,1)=-f%szx(2,:,1)
+
+            elseif (FS_method=='stress_image') then !Levandar & Roberttson
 
                 !image szz
                 ! f%szz(-2,:,1)=-f%szz(4,:,1)
@@ -1013,11 +1034,11 @@ use, intrinsic :: ieee_arithmetic
 
                 !not image on sxx
                 f%sxx(cb%ifz:0,:,1)=0.
-                do ix=ifx,ilx
+                do ix=cb%ifx+1,cb%ilx-2
                     dvx_dx_= c1x*(f%vx(1,ix+1,1)-f%vx(1,ix,1))  +c2x*(f%vx(1,ix+2,1)-f%vx(1,ix-1,1))
                     
                     factor=-self%lda(1,ix)**2/self%ldap2mu(1,ix) + self%ldap2mu(1,ix)
-                    f%sxx(1,ix,1)  = f%sxx(1,ix,1) + self%dt * factor*dvx_dx_
+                    f%sxx(1,ix,1)  = f%sxx(1,ix,1) + time_dir*self%dt * factor*dvx_dx_
                 enddo
 
                 !image szx
@@ -1049,7 +1070,7 @@ use, intrinsic :: ieee_arithmetic
 
                     factor=-self%lda(1,ix)**2/self%ldap2mu(1,ix) + self%ldap2mu(1,ix)
                     factor=factor/2.
-                    f%sxx(1,ix,1) = f%sxx(1,ix,1) + self%dt * factor*dvx_dx_
+                    f%sxx(1,ix,1) = f%sxx(1,ix,1) + time_dir*self%dt * factor*dvx_dx_
 
 
                     dvz_dx_= (f%vz(2,ix,1)-f%vz(2,ix-1,1))/m%dx
@@ -1058,7 +1079,7 @@ use, intrinsic :: ieee_arithmetic
                     !dvx_dz_= c1z*(f%vx(2,ix,1)-f%vx(1,ix  ,1))  +c2z*(f%vx(3,ix  ,1)-f%vx(0,ix  ,1))
                     
                     !shear stress
-                    f%szx(2,ix,1) = f%szx(2,ix,1) + self%dt * self%mu(2,ix)*(dvz_dx_+dvx_dz_)
+                    f%szx(2,ix,1) = f%szx(2,ix,1) + time_dir*self%dt * self%mu(2,ix)*(dvz_dx_+dvx_dz_)
                         
                 enddo
 
@@ -1113,20 +1134,20 @@ use, intrinsic :: ieee_arithmetic
                         f%seismo(i,it)=sum(f%vz(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
                         case ('vx')
                         f%seismo(i,it)=sum(f%vx(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
+
+                        case ('szz')
+                        f%seismo(i,it)=sum(f%szz(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
+                        case ('sxx')
+                        f%seismo(i,it)=sum(f%sxx(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
+                        case ('szx')
+                        f%seismo(i,it)=sum(f%szx(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
+
                     end select
                     
                 else
                     select case (shot%rcv(i)%comp)
                         case ('p') !p[iz,ix]
                         f%seismo(i,it)=(f%szz(iz,ix,1)+f%sxx(iz,ix,1))*sn_p
-
-case ('szz')
-f%seismo(i,it)=f%szz(iz,ix,1)
-case ('sxx')
-f%seismo(i,it)=f%sxx(iz,ix,1)
-case ('szx')
-f%seismo(i,it)=f%szx(iz,ix,1)
-
                         case ('vz') !vz[iz-0.5,ix]
                         f%seismo(i,it)=f%vz(iz,ix,1)
                         case ('vx') !vx[iz,ix-0.5]
@@ -1178,7 +1199,7 @@ f%seismo(i,it)=f%szx(iz,ix,1)
         type(t_propagator) :: self
         call dealloc(self%buoz, self%buox)
         call dealloc(self%ldap2mu, self%lda, self%mu)
-        call dealloc(self%two_ldapmu, self%inv_ladpmu_4mu)
+        call dealloc(self%two_ldapmu, self%inv_ldapmu_4mu)
     end subroutine
 
     !========= gradient, imaging or other correlations ===================

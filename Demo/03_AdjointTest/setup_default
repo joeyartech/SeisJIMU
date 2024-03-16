@@ -3,15 +3,23 @@ MODEL_SPACING           '10 10 1'
 FILE_MODEL              'simple'
 MODEL_ATTRIBUTES        vp  #'vp rho'
 
-IS_FREESURFACE          F
+IS_FREESURFACE          T
+
+IF_HICKS        T
 
 ACQUI_GEOMETRY          spread
-FS                      '40 500 500'
+FS                      '0 500 500'
+#FS                      '5 500 500'
+#FS                      '40 500 500'
+#FS                      '505 500 500'
 DR                      '0  20 0'
 #FR                      '40 10  0'
 #FR                      '40 1500  0'
 #NR                      1
-FR                      '40 500  0'
+FR                      '0 10  0'
+#FR                      '5 10  0'
+#FR                      '40 500  0'
+#FR                      '505 500  0'
 NR                      100
 
 SCOMP                   ez
@@ -22,7 +30,7 @@ WAVELET_TYPE            ricker
 #FILE_WAVELET            'fricker_dt6000.su' 
 
 IF_BLOOM        F
-IF_HICKS        F
+
 
 IF_USE_RANDOM   F
 
@@ -32,6 +40,7 @@ FPEAK        7
 #RDT			0.006
 
 #SNAPSHOT     'pz px ez ex'
+#SNAPSHOT     'vz vx p'
 #NSNAPSHOT    50
 
 IF_USE_CHECKPOINT   F

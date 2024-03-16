@@ -119,16 +119,16 @@ use m_math
             
             select case (fold_type)
             case ('antisymm')
-                !antisymmetric folding (pressure case): subtract points at and below inquiry point by points at and above inquiry point
+                !antisymmetric folding: subtract points at and below inquiry point by points at and above inquiry point
                 !this includes the inquiry point such that coeff=0. at the inquiry point
                 z_interp_coef(iquiry:iquiry+n) = z_interp_coef(iquiry:iquiry+n) - z_interp_coef(iquiry:-r:-1)
                 
             case ('symmetric')
-                !symmetric folding (velocity case): add points above and 1 point below inquiry point to points below and at inquiry point
+                !symmetric folding: add points above and 1 point below inquiry point to points below and at inquiry point
                 !such that coeff(iquiry)=coeff(iquiry+1)
                 z_interp_coef(iquiry:iquiry+n+1) = z_interp_coef(iquiry:iquiry+n+1) + z_interp_coef(iquiry+1:-r:-1)
                 
-            case default
+            case ('truncate')
                 !clean above inquiry point
                 !note that no antisym or symmetric condition required for vx & vz
                 !so just truncate the coeff above inquiry point (ie. freesurface as they are at same depth levels of p)
