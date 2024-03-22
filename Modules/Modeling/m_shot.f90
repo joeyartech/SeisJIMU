@@ -352,7 +352,7 @@ use m_model
 
         case('szz','sxx','ez','ex') !time derivative of moment tensor, or stress tensor
             call hicks_put_position(self%src%z,       self%src%x,       self%src%y)
-        case('es')
+        case('szx','es')
             call hicks_put_position(self%src%z+halfz, self%src%x+halfx, self%src%y)
 
         case default
@@ -384,8 +384,8 @@ use m_model
         !     call hicks_get_coefficient('full', self%src%interp_coef)
         ! case('sxx','ex')
         !     call hicks_get_coefficient('full', self%src%interp_coef)
-        ! case('es')
-        !     call hicks_get_coefficient('antisymm', self%src%interp_coef)
+        case('szx','es')
+            call hicks_get_coefficient('antisymm', self%src%interp_coef)
 
         case default
             call hicks_get_coefficient('full', self%src%interp_coef)
@@ -436,8 +436,8 @@ use m_model
             case('p') !explosive source or non-vertical force
                 call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)
 
-            ! case('szz','szx')
-            !     call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)
+            case('szz','szx')
+                call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)
             ! case('sxx')
             !     call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
             
