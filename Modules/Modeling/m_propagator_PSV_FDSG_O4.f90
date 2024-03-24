@@ -759,7 +759,7 @@ use, intrinsic :: ieee_arithmetic
                     f%vz(ifz:ilz,ifx:ilx,1) = f%vz(ifz:ilz,ifx:ilx,1) + wl*self%buoz(ifz:ilz,ifx:ilx) *shot%src%interp_coef(:,:,1)
                 
                 case ('vx')
-                    ! if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
+                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                     f%vx(ifz:ilz,ifx:ilx,1) = f%vx(ifz:ilz,ifx:ilx,1) + wl*self%buox(ifz:ilz,ifx:ilx) *shot%src%interp_coef(:,:,1)
                     
                 end select
@@ -770,7 +770,7 @@ use, intrinsic :: ieee_arithmetic
                     f%vz(iz,ix,1) = f%vz(iz,ix,1) + wl*self%buoz(iz,ix)
                     
                 case ('vx') !horizontal x force on vx[iz,ix-0.5]
-                    ! if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
+                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                     f%vx(iz,ix,1) = f%vx(iz,ix,1) + wl*self%buox(iz,ix)
                     
                 end select
@@ -794,7 +794,7 @@ use, intrinsic :: ieee_arithmetic
                         f%vz(ifz:ilz,ifx:ilx,1) = f%vz(ifz:ilz,ifx:ilx,1) + wl*self%buoz(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
 
                     case ('vx') !horizontal x adjsource
-                        ! if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
+                        if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                         f%vx(ifz:ilz,ifx:ilx,1) = f%vx(ifz:ilz,ifx:ilx,1) + wl*self%buox(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
                         
                     end select
@@ -807,7 +807,7 @@ use, intrinsic :: ieee_arithmetic
 
                     case ('vx') !horizontal x adjsource
                         !vx[ix-0.5,1,iz]
-                        ! if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
+                        if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                         f%vx(iz,ix,1) = f%vx(iz,ix,1) + wl*self%buox(iz,ix) !no time_dir needed!
                         
                     end select
@@ -1086,7 +1086,7 @@ use, intrinsic :: ieee_arithmetic
                 ! f%szz(-1,:,1)=-f%szz(3,:,1)
                 ! f%szz( 0,:,1)=-f%szz(2,:,1)
                 f%szz( 1,:,1)=0.
-                f%szz(0:cb%ifz:-1, :,1)=-f%szz(2:2+cb%ifz:-1, :,1)
+                f%szz(0:cb%ifz:-1, :,1)=-f%szz(2:2+0-cb%ifz, :,1)
                 ! if(f%is_adjoint) f%szz(cb%ifz:0, :,1)=0.
 
                 !not image on sxx
@@ -1135,7 +1135,7 @@ use, intrinsic :: ieee_arithmetic
                 ! f%szx( 0,:,1)=-f%szx(3,:,1)
                 ! f%szx( 1,:,1)=-f%szx(2,:,1)            
                 !nnz=1-cb%ifz
-                f%szx(1:cb%ifz:-1, :,1)=-f%szx(2:2+cb%ifz-1, :,1)
+                f%szx(1:cb%ifz:-1, :,1)=-f%szx(2:2+1-cb%ifz, :,1)
                 ! if(f%is_adjoint) f%szx(cb%ifz:1, :,1)=0.
 
             else  !FS_method='effective_medium' (Mittet, Cao & Chen)            

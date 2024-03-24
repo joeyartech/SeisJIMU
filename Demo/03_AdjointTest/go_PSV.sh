@@ -21,7 +21,7 @@ echo 'RCOMP p' >> setup
 tail -10 out
 
 #####################################
-
+#
 # echo 'vz vz'
 # echo 'SCOMP vz' >> setup
 # echo 'RCOMP vz' >> setup
@@ -36,7 +36,7 @@ tail -10 out
 #
 # tail -10 out
 
-echo 'vz vx' #not very successful when close to free surface
+echo 'vz vx' #successful multiplying vx source by 2 when close to free surface
 echo 'SCOMP vz' >> setup
 echo 'RCOMP vx' >> setup
 ../../exe/AdjointTest  setup > out
