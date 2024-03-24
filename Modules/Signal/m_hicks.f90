@@ -109,6 +109,11 @@ use m_math
         character(*),intent(in) :: fold_type
         real,dimension(:,:,:),allocatable,intent(out) :: interp_coef
 
+        real,dimension(-r:r) :: tmp_z_interp_coef
+        
+        tmp_z_interp_coef=z_interp_coef
+
+
         !For free surface condition,
         !fold z_interp_coeff wrt inquiry point, which is
         !* freesurface point (at p(1)) in pressure case, or
@@ -121,19 +126,32 @@ use m_math
             case ('antisymm')
                 !antisymmetric folding: subtract points at and below inquiry point by points at and above inquiry point
                 !this includes the inquiry point such that coeff=0. at the inquiry point
-                z_interp_coef(iquiry:iquiry+n) = z_interp_coef(iquiry:iquiry+n) - z_interp_coef(iquiry:-r:-1)
-                
+! print*,'antisymm  tmp_z_interp_coef',tmp_z_interp_coef
+                tmp_z_interp_coef(iquiry:iquiry+n) = z_interp_coef(iquiry:iquiry+n) - z_interp_coef(iquiry:-r:-1)
+                tmp_z_interp_coef(iquiry-1:-r:-1) = 0.
+! print*,'antisymm  tmp_z_interp_coef',tmp_z_interp_coef
+            case ('antisymm_shift')
+!print*,'antisymm_shift  tmp_z_interp_coef',tmp_z_interp_coef
+                tmp_z_interp_coef(iquiry:iquiry+n+1) = z_interp_coef(iquiry:iquiry+n+1) - z_interp_coef(iquiry-1:-r:-1)
+                tmp_z_interp_coef(iquiry-1:-r:-1) = 0.
+!print*,'antisymm_shift  tmp_z_interp_coef',tmp_z_interp_coef
             case ('symmetric')
                 !symmetric folding: add points above and 1 point below inquiry point to points below and at inquiry point
                 !such that coeff(iquiry)=coeff(iquiry+1)
-                z_interp_coef(iquiry:iquiry+n+1) = z_interp_coef(iquiry:iquiry+n+1) + z_interp_coef(iquiry+1:-r:-1)
-                
+                tmp_z_interp_coef(iquiry:iquiry+n+1) = z_interp_coef(iquiry:iquiry+n+1) + z_interp_coef(iquiry+1:-r:-1)
+                tmp_z_interp_coef(iquiry-1:-r:-1) = 0.
             case ('truncate')
                 !clean above inquiry point
-                !note that no antisym or symmetric condition required for vx & vz
+                !note that no antisym or symmetric condition required for vx, vz, sxx
                 !so just truncate the coeff above inquiry point (ie. freesurface as they are at same depth levels of p)
-                z_interp_coef(iquiry-1:-r:-1)=0.
-            
+! print*,'truncate  tmp_z_interp_coef',tmp_z_interp_coef
+                tmp_z_interp_coef(iquiry-1:-r:-1)=0.
+! print*,'truncate  tmp_z_interp_coef',tmp_z_interp_coef
+!
+!             case ('truncate_sxx')
+! print*,'truncate_sxx  tmp_z_interp_coef',tmp_z_interp_coef
+!                 tmp_z_interp_coef(iquiry:-r:-1)=0.
+! print*,'truncate_sxx  tmp_z_interp_coef',tmp_z_interp_coef
             end select
 
         endif
@@ -144,7 +162,7 @@ use m_math
             do k=-r,r
             do j=-r,r
             do i=-r,r
-                interp_coef(i,j,k)=z_interp_coef(i)*x_interp_coef(j)*y_interp_coef(k)
+                interp_coef(i,j,k)=tmp_z_interp_coef(i)*x_interp_coef(j)*y_interp_coef(k)
             enddo
             enddo
             enddo
@@ -153,7 +171,7 @@ use m_math
             call alloc(interp_coef,[-r,r],[-r,r],[1,1])
             do j=-r,r
             do i=-r,r
-                interp_coef(i,j,1)=z_interp_coef(i)*x_interp_coef(j)
+                interp_coef(i,j,1)=tmp_z_interp_coef(i)*x_interp_coef(j)
             enddo
             enddo
 

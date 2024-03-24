@@ -755,22 +755,22 @@ use, intrinsic :: ieee_arithmetic
             
             if(if_hicks) then
                 select case (shot%src%comp)
-                    case ('vz')
+                case ('vz')
                     f%vz(ifz:ilz,ifx:ilx,1) = f%vz(ifz:ilz,ifx:ilx,1) + wl*self%buoz(ifz:ilz,ifx:ilx) *shot%src%interp_coef(:,:,1)
-                    
-                    case ('vx')
-                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
+                
+                case ('vx')
+                    ! if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                     f%vx(ifz:ilz,ifx:ilx,1) = f%vx(ifz:ilz,ifx:ilx,1) + wl*self%buox(ifz:ilz,ifx:ilx) *shot%src%interp_coef(:,:,1)
                     
                 end select
                 
             else
                 select case (shot%src%comp)
-                    case ('vz') !vertical force     on vz[iz-0.5,ix]
+                case ('vz') !vertical force     on vz[iz-0.5,ix]
                     f%vz(iz,ix,1) = f%vz(iz,ix,1) + wl*self%buoz(iz,ix)
                     
-                    case ('vx') !horizontal x force on vx[iz,ix-0.5]
-                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
+                case ('vx') !horizontal x force on vx[iz,ix-0.5]
+                    ! if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                     f%vx(iz,ix,1) = f%vx(iz,ix,1) + wl*self%buox(iz,ix)
                     
                 end select
@@ -790,24 +790,24 @@ use, intrinsic :: ieee_arithmetic
                 
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
-                        case ('vz') !vertical z adjsource
+                    case ('vz') !vertical z adjsource
                         f%vz(ifz:ilz,ifx:ilx,1) = f%vz(ifz:ilz,ifx:ilx,1) + wl*self%buoz(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
 
-                        case ('vx') !horizontal x adjsource
-                        if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
+                    case ('vx') !horizontal x adjsource
+                        ! if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                         f%vx(ifz:ilz,ifx:ilx,1) = f%vx(ifz:ilz,ifx:ilx,1) + wl*self%buox(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
                         
                     end select
                     
                 else
                     select case (shot%rcv(i)%comp)
-                        case ('vz') !vertical z adjsource
+                    case ('vz') !vertical z adjsource
                         !vz[ix,1,iz-0.5]
                         f%vz(iz,ix,1) = f%vz(iz,ix,1) + wl*self%buoz(iz,ix) !no time_dir needed!
 
-                        case ('vx') !horizontal x adjsource
+                    case ('vx') !horizontal x adjsource
                         !vx[ix-0.5,1,iz]
-                        if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
+                        ! if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                         f%vx(iz,ix,1) = f%vx(iz,ix,1) + wl*self%buox(iz,ix) !no time_dir needed!
                         
                     end select
@@ -955,56 +955,44 @@ use, intrinsic :: ieee_arithmetic
             wl=time_dir*f%wavelet(1,it)*wavelet_scaler
             
             if(if_hicks) then
-                if(shot%src%comp=='p') then
+                select case (shot%src%comp)
+                case ('p')
                     f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) + wl*sn_p*self%two_ldapmu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
-                    f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) + wl*sn_p*self%two_ldapmu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
-                endif
-
-                if(shot%src%comp=='szz') then
+                    f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) + wl*sn_p*self%two_ldapmu(ifz:ilz,ifx:ilx)*shot%src%interp_coef_aux(:,:,1)
+                
+                case ('szz')
                     f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) + wl*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
-                    f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) + wl*    self%lda(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
-                endif
-                if(shot%src%comp=='sxx') then !time deri of moment tensor xx comp
+                    f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) + wl*    self%lda(ifz:ilz,ifx:ilx)*shot%src%interp_coef_aux(:,:,1)
+                case ('sxx')
                     f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) + wl*    self%lda(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
-                    f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) + wl*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
-                endif
+                    f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) + wl*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef_aux(:,:,1)
 
-                if(shot%src%comp=='szx') then            
+                case ('szx')
                     f%szx(ifz:ilz,ifx:ilx,1) = f%szx(ifz:ilz,ifx:ilx,1) + wl*self%mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
-                endif
+                
+                end select
                 
             else
-                if(shot%src%comp=='p') then
+                select case (shot%src%comp)
+                case ('p')
                     !explosion on s[iz,ix,1]
                     f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*sn_p*self%two_ldapmu(iz,ix)
                     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*sn_p*self%two_ldapmu(iz,ix)
-                endif
 
-                if(shot%src%comp=='szx') then
+                case ('szz')
+                    f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%ldap2mu(iz,ix)
+                    f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*    self%lda(iz,ix)
+                case ('sxx')
+                    f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*    self%lda(iz,ix)
+                    f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%ldap2mu(iz,ix)
+
+                case ('szx')
                     f%szx(iz,ix,1) = f%szx(iz,ix,1) + wl*self%mu(iz,ix)
-                endif
                 
-
-                ! select case (shot%src%comp)
-                ! case('szz'); f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*self%ldap2mu(iz,ix)  !+fxx
-                ! case('sxx'); f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*(  -self%lda(iz,ix)) !+fxx
-                ! case('szx'); f%szx(iz,ix,1) = f%szx(iz,ix,1) + wl/self%mu(iz,ix)
-
-                ! case('mzz')
-                !     f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
-                !     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*(  -self%lda(iz,ix))
-                ! case('mxx')
-                !     f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*(  -self%lda(iz,ix))
-                !     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
-
-                ! case('fzss')
-                !     f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
-                !     f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*(  -self%lda(iz,ix))
-                !     f%szx(iz,ix,1) = f%szx(iz,ix,1) + wl/self%mu(iz,ix)
-                ! end select
-
-            endif
+                end select
             
+            endif
+
             return
 
         endif
@@ -1019,25 +1007,41 @@ use, intrinsic :: ieee_arithmetic
                 
                 if(if_hicks) then 
 
-                    if(shot%rcv(i)%comp=='p') then
+                    select case (shot%rcv(i)%comp)
+                    case ('p')
                         f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) +wl*sn_p*self%two_ldapmu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
-                        f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) +wl*sn_p*self%two_ldapmu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
-                    endif
+                        f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) +wl*sn_p*self%two_ldapmu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_aux(:,:,1) !no time_dir needed!
 
-                    if(shot%rcv(i)%comp=='szx') then
+                    case ('szz')
+                        f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) + wl*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1)
+                        f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) + wl*    self%lda(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_aux(:,:,1)
+                    case ('sxx')
+                        f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) + wl*    self%lda(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1)
+                        f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) + wl*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_aux(:,:,1)
+
+                    case ('szx')
                         f%szx(ifz:ilz,ifx:ilx,1) = f%szx(ifz:ilz,ifx:ilx,1) + wl*self%mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1)
-                    endif
+
+                    end select
 
                 else           
-                    if(shot%rcv(i)%comp=='p') then
+                    select case (shot%rcv(i)%comp)
+                    case ('p')
                         !s[iz,ix,1]
                         f%szz(iz,ix,1) = f%szz(iz,ix,1) +wl*sn_p*self%two_ldapmu(iz,ix) !no time_dir needed!
                         f%sxx(iz,ix,1) = f%sxx(iz,ix,1) +wl*sn_p*self%two_ldapmu(iz,ix) !no time_dir needed!
-                    endif
 
-                    if(shot%rcv(i)%comp=='szx') then
+                    case ('szz')
+                        f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*self%ldap2mu(iz,ix)
+                        f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*    self%lda(iz,ix)
+                    case ('sxx')
+                        f%szz(iz,ix,1) = f%szz(iz,ix,1) + wl*    self%lda(iz,ix)
+                        f%sxx(iz,ix,1) = f%sxx(iz,ix,1) + wl*self%ldap2mu(iz,ix)
+
+                    case ('szx')
                         f%szx(iz,ix,1) = f%szx(iz,ix,1) + wl*self%mu(iz,ix)
-                    endif
+
+                    end select
 
                 endif
 
@@ -1082,12 +1086,11 @@ use, intrinsic :: ieee_arithmetic
                 ! f%szz(-1,:,1)=-f%szz(3,:,1)
                 ! f%szz( 0,:,1)=-f%szz(2,:,1)
                 f%szz( 1,:,1)=0.
-                nnz=0-cb%ifz
-                f%szz(cb%ifz:0, :,1)=-f%szz(2+nnz:2:-1, :,1)
+                f%szz(0:cb%ifz:-1, :,1)=-f%szz(2:2+cb%ifz:-1, :,1)
                 ! if(f%is_adjoint) f%szz(cb%ifz:0, :,1)=0.
 
                 !not image on sxx
-                f%sxx(cb%ifz:0,:,1)=0.
+                f%sxx(0:cb%ifz:-1,:,1)=0.
                 
                 ! do ix=cb%ifx+1,cb%ilx-2
                 ! do iz=cb%ifz+1,0
@@ -1103,7 +1106,7 @@ use, intrinsic :: ieee_arithmetic
                     factor=-self%lda(1,ix)**2/self%ldap2mu(1,ix) + self%ldap2mu(1,ix)
                     f%sxx(1,ix,1)  = f%sxx(1,ix,1) + time_dir*self%dt * factor*dvx_dx_
                 enddo
-
+                
                 ! if(f%is_adjoint) then
                 !     f%sxx( 1,:,1)=0.
                 !     nnz=0-cb%ifz
@@ -1131,8 +1134,8 @@ use, intrinsic :: ieee_arithmetic
                 ! f%szx(-1,:,1)=-f%szx(4,:,1)
                 ! f%szx( 0,:,1)=-f%szx(3,:,1)
                 ! f%szx( 1,:,1)=-f%szx(2,:,1)            
-                nnz=1-cb%ifz
-                f%szx(cb%ifz:1, :,1)=-f%szx(2+nnz:2:-1, :,1)
+                !nnz=1-cb%ifz
+                f%szx(1:cb%ifz:-1, :,1)=-f%szx(2:2+cb%ifz-1, :,1)
                 ! if(f%is_adjoint) f%szx(cb%ifz:1, :,1)=0.
 
             else  !FS_method='effective_medium' (Mittet, Cao & Chen)            
@@ -1214,33 +1217,41 @@ use, intrinsic :: ieee_arithmetic
                 
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
-                        
-                        case ('p')
-                        f%seismo(i,it)=sum((f%szz(ifz:ilz,ifx:ilx,1)+f%sxx(ifz:ilz,ifx:ilx,1)) *sn_p*shot%rcv(i)%interp_coef(:,:,1) )
-                        case ('vz')
+                    case ('vz')
                         f%seismo(i,it)=sum(f%vz(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
-                        case ('vx')
+                    case ('vx')
                         f%seismo(i,it)=sum(f%vx(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
 
-                        case ('szz')
+                    case ('p')
+                        f%seismo(i,it)=sum(sn_p*(f%szz(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1)     &
+                                                +f%sxx(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef_aux(:,:,1) ))
+                    case ('szz')
                         f%seismo(i,it)=sum(f%szz(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
-                        case ('sxx')
-                        f%seismo(i,it)=sum(f%sxx(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
-                        case ('szx')
+                    case ('sxx')
+                        f%seismo(i,it)=sum(f%sxx(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef_aux(:,:,1) )
+
+                    case ('szx')
                         f%seismo(i,it)=sum(f%szx(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
 
                     end select
                     
                 else
                     select case (shot%rcv(i)%comp)
-                        case ('p') !p[iz,ix]
-                        f%seismo(i,it)=(f%szz(iz,ix,1)+f%sxx(iz,ix,1))*sn_p
-                        case ('vz') !vz[iz-0.5,ix]
+                    case ('vz') !vz[iz-0.5,ix]
                         f%seismo(i,it)=f%vz(iz,ix,1)
-                        case ('vx') !vx[iz,ix-0.5]
+                    case ('vx') !vx[iz,ix-0.5]
                         f%seismo(i,it)=f%vx(iz,ix,1)
-                        case ('szx')
+
+                    case ('p') !p[iz,ix]
+                        f%seismo(i,it)=(f%szz(iz,ix,1)+f%sxx(iz,ix,1))*sn_p
+                    case ('szz')
+                        f%seismo(i,it)=f%szz(iz,ix,1)
+                    case ('sxx')
+                        f%seismo(i,it)=f%sxx(iz,ix,1)
+
+                    case ('szx')
                         f%seismo(i,it)=f%szx(iz,ix,1)
+
                     end select
                     
                 endif
@@ -1256,32 +1267,40 @@ use, intrinsic :: ieee_arithmetic
             
             if(if_hicks) then
                 select case (shot%src%comp)
-                    case ('p')
-                    f%seismo(1,it)=sum((f%szz(ifz:ilz,ifx:ilx,1)+f%sxx(ifz:ilz,ifx:ilx,1)) *sn_p*shot%src%interp_coef(:,:,1))
-                    
-                    case ('vz')
+                case ('vz')
                     f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1))
-                    
-                    case ('vx')
+                case ('vx')
                     f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1))
 
-                    case ('szx')
-                    f%seismo(1,it)=sum(f%szx(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1))
+                case ('p')
+                    f%seismo(1,it)=sum(sn_p*(f%szz(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1)       &
+                                            +f%sxx(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef_aux(:,:,1)   ))
+                case ('szz')
+                    f%seismo(1,it)=sum(f%szz(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1) )
+                case ('sxx')
+                    f%seismo(1,it)=sum(f%sxx(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef_aux(:,:,1) )
+
+                case ('szx')
+                    f%seismo(1,it)=sum(f%szx(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1) )
                     
                 end select
                 
             else
-                select case (shot%src%comp)
-                    case ('p') !p[iz,ix,1]
-                    f%seismo(1,it)=(f%szz(iz,ix,1)+f%sxx(iz,ix,1))*sn_p
-                    
-                    case ('vz') !vz[iz-0.5,ix,1]
+                select case (shot%src%comp)                    
+                case ('vz') !vz[iz-0.5,ix,1]
                     f%seismo(1,it)=f%vz(iz,ix,1)
                     
-                    case ('vx') !vx[iz,ix-0.5,1]
+                case ('vx') !vx[iz,ix-0.5,1]
                     f%seismo(1,it)=f%vx(iz,ix,1)
 
-                    case ('szx')
+                case ('p') !p[iz,ix,1]
+                    f%seismo(1,it)=(f%szz(iz,ix,1)+f%sxx(iz,ix,1))*sn_p
+                case ('szz')
+                    f%seismo(1,it)=f%szz(iz,ix,1)
+                case ('sxx')
+                    f%seismo(1,it)=f%sxx(iz,ix,1)
+
+                case ('szx')
                     f%seismo(1,it)=f%szx(iz,ix,1)
                                         
                 end select

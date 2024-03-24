@@ -26,7 +26,7 @@ use m_model
         integer :: iz,ix,iy
         integer :: ifz,ilz,ifx,ilx,ify,ily
         character(4) :: comp
-        real,dimension(:,:,:),allocatable :: interp_coef
+        real,dimension(:,:,:),allocatable :: interp_coef, interp_coef_aux, interp_coef_aux2
     end type
 
     type,public :: t_receiver
@@ -35,7 +35,7 @@ use m_model
         integer :: ifz,ilz,ifx,ilx,ify,ily
         logical :: is_badtrace=.false.
         character(4) :: comp
-        real,dimension(:,:,:),allocatable :: interp_coef
+        real,dimension(:,:,:),allocatable :: interp_coef, interp_coef_aux, interp_coef_aux2
     end type
     
     type,public :: t_shot
@@ -332,9 +332,9 @@ use m_model
             !e.g. v(1) is actually v[0.5], v(2) is actually v[1.5],
             !thus to correctly Hicks-interpolate the recorded s/r positions of forces,
             !we need to artificially add 0.5 to the positions.
-            halfz=either(m%dz/2.,0.,is_fdsg)
-            halfx=either(m%dx/2.,0.,is_fdsg)
-            halfy=either(m%dy/2.,0.,is_fdsg)
+            halfz=either(-m%dz/2.,0.,is_fdsg)
+            halfx=either(-m%dx/2.,0.,is_fdsg)
+            halfy=either(-m%dy/2.,0.,is_fdsg)
 
         endif
 
@@ -347,12 +347,10 @@ use m_model
         case('vy','py')
             call hicks_put_position(self%src%z,       self%src%x,       self%src%y+halfy)
 
-        case('p') !explosive source
+        case('p','szz','sxx','ez','ex') !explosive source or normal stress/strain
             call hicks_put_position(self%src%z,       self%src%x,       self%src%y)
 
-        case('szz','sxx','ez','ex') !time derivative of moment tensor, or stress tensor
-            call hicks_put_position(self%src%z,       self%src%x,       self%src%y)
-        case('szx','es')
+        case('szx','es') !shear stress/strain
             call hicks_put_position(self%src%z+halfz, self%src%x+halfx, self%src%y)
 
         case default
@@ -372,23 +370,17 @@ use m_model
         case('vx','px')
             call hicks_get_coefficient('truncate', self%src%interp_coef)
 
-        case('p') !explosive source or non-vertical force
-            call hicks_get_coefficient('antisymm', self%src%interp_coef)
-        
-        ! case('szz','ez')
-        !     call hicks_get_coefficient('antisymm', self%src%interp_coef)
-        ! case('sxx','ex')
-        !     call hicks_get_coefficient('truncate', self%src%interp_coef)
+        case('p','szz','sxx','ez','ex')
+            call hicks_get_coefficient('antisymm', self%src%interp_coef)     !szz component
+            call hicks_get_coefficient('truncate', self%src%interp_coef_aux) !sxx component
+            call hicks_get_coefficient('full', self%src%interp_coef_aux2)
 
-        ! case('szz','ez')
-        !     call hicks_get_coefficient('full', self%src%interp_coef)
-        ! case('sxx','ex')
-        !     call hicks_get_coefficient('full', self%src%interp_coef)
         case('szx','es')
-            call hicks_get_coefficient('antisymm', self%src%interp_coef)
+            call hicks_get_coefficient('antisymm_shift', self%src%interp_coef)
 
         case default
             call hicks_get_coefficient('full', self%src%interp_coef)
+            call hicks_get_coefficient('full', self%src%interp_coef_aux)
         end select
 
         !set reference to balance pressure vs velocities data
@@ -401,19 +393,17 @@ use m_model
         do i=1,self%nrcv
 
             select case (self%rcv(i)%comp)
-            case('vz','pz') !vertical force
+            case('vz','pz')
                 call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x,       self%rcv(i)%y)
             case('vx','px')
                 call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x+halfx, self%rcv(i)%y)
             case('vy','py')
                 call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y+halfy)
 
-            case('p') !explosive source or non-vertical force
+            case('p','szz','sxx','ez','ex')
                 call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y)
-
-            case('szz','sxx','ez','ex') !normal stress or strain
-                call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y)
-            case('szx','es') !shear stress or strain
+            
+            case('szx','es')
                 call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x+halfx, self%rcv(i)%y)
 
             case default
@@ -433,27 +423,16 @@ use m_model
             case('vx','px')
                 call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
 
-            case('p') !explosive source or non-vertical force
-                call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)
+            case('p','szz','sxx','ez','ex')
+                call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)     !szz component
+                call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef_aux) !sxx component
 
-            case('szz','szx')
-                call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)
-            ! case('sxx')
-            !     call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
+            case('szx','es')
+                call hicks_get_coefficient('antisymm_shift', self%rcv(i)%interp_coef)
             
-
-            ! case('ez','es')
-            !     !'antisymm' has been taken care of during free surface implementation
-            !     call hicks_get_coefficient('full', self%rcv(i)%interp_coef)
-            ! case('ex')
-            !     !'truncate' has been taken care of during free surface implementation
-            !     call hicks_get_coefficient('full', self%rcv(i)%interp_coef)
-
-            ! case('pz')
-            !     call hicks_get_coefficient('truncate',self%rcv(i)%interp_coef)
-
             case default
                 call hicks_get_coefficient('full', self%rcv(i)%interp_coef)
+                call hicks_get_coefficient('full', self%rcv(i)%interp_coef_aux)
             end select
 
         enddo

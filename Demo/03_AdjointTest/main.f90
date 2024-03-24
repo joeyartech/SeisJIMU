@@ -145,7 +145,11 @@ use m_Modeling
 
     print*,'LHS = <  v|Lu> = ', LHS
     print*,'RHS = <Lᴴv| u> = ', RHS
-    print*,'relative difference = ', (LHS-RHS)/LHS
+    if (LHS>RHS) then
+        print*,'relative difference = ', (LHS-RHS)/LHS*100.,' %'
+    else
+        print*,'relative difference = ', (RHS-LHS)/RHS*100.,' %'
+    endif
 
     call mpiworld%barrier
 

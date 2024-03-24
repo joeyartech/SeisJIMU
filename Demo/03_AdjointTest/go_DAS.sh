@@ -12,42 +12,32 @@
 
 cp setup_default setup
 
-echo 'p p'
-echo 'SCOMP p' >> setup
-echo 'RCOMP p' >> setup
-# echo "FS_METHOD    zero_stress" >> setup
+echo 'pz pz'
+echo 'SCOMP pz' >> setup
+echo 'RCOMP pz' >> setup
+../../exe/AdjointTest  setup > out
+
+tail -10 out
+
+echo 'vx vx'
+echo 'SCOMP vx' >> setup
+echo 'RCOMP vx' >> setup
+../../exe/AdjointTest  setup > out
+
+tail -10 out
+
+echo 'pz vx' #not very successful
+echo 'SCOMP pz' >> setup
+echo 'RCOMP vx' >> setup
 ../../exe/AdjointTest  setup > out
 
 tail -10 out
 
 #####################################
 
-# echo 'vz vz'
-# echo 'SCOMP vz' >> setup
-# echo 'RCOMP vz' >> setup
-# ../../exe/AdjointTest  setup > out
-#
-# tail -10 out
-#
-# echo 'vx vx'
-# echo 'SCOMP vx' >> setup
-# echo 'RCOMP vx' >> setup
-# ../../exe/AdjointTest  setup > out
-#
-# tail -10 out
-
-echo 'vz vx' #not very successful
-echo 'SCOMP vz' >> setup
-echo 'RCOMP vx' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-######################################
-
-echo 'p vz' #not successful successful when close to free surface
+echo 'p pz' #not successful successful when close to free surface
 echo 'SCOMP p ' >> setup
-echo 'RCOMP vz' >> setup
+echo 'RCOMP pz' >> setup
 ../../exe/AdjointTest  setup > out
 
 tail -10 out
@@ -59,21 +49,21 @@ echo 'RCOMP vx' >> setup
 
 tail -10 out
 
-####################################
-#
-# echo 'szz szz'
-# echo 'SCOMP szz' >> setup
-# echo 'RCOMP szz'  >> setup
-# ../../exe/AdjointTest  setup > out
-#
-# tail -10 out
-#
-# echo 'sxx sxx'
-# echo 'SCOMP sxx' >> setup
-# echo 'RCOMP sxx'  >> setup
-# ../../exe/AdjointTest  setup > out
-#
-# tail -10 out
+###################################
+
+echo 'szz szz'
+echo 'SCOMP szz' >> setup
+echo 'RCOMP szz'  >> setup
+../../exe/AdjointTest  setup > out
+
+tail -10 out
+
+echo 'sxx sxx'
+echo 'SCOMP sxx' >> setup
+echo 'RCOMP sxx'  >> setup
+../../exe/AdjointTest  setup > out
+
+tail -10 out
 
 echo 'szz sxx' #fail when on the free surface
 echo 'SCOMP szz' >> setup
@@ -96,8 +86,8 @@ echo 'RCOMP sxx' >> setup
 
 tail -10 out
 
-echo 'vz szz'
-echo 'SCOMP vz'  >> setup
+echo 'pz szz'
+echo 'SCOMP pz'  >> setup
 echo 'RCOMP szz' >> setup
 ../../exe/AdjointTest  setup > out
 
@@ -110,9 +100,9 @@ echo 'RCOMP szz' >> setup
 
 tail -10 out
 
-echo 'vz sxx' #not so successful when close to free surface
-echo 'SCOMP vz'  >> setup
-echo 'RCOMP sxx' >> setup
+echo 'pz szz' #not so successful when close to free surface
+echo 'SCOMP vx'  >> setup
+echo 'RCOMP szz' >> setup
 ../../exe/AdjointTest  setup > out
 
 tail -10 out
@@ -124,17 +114,17 @@ echo 'RCOMP sxx' >> setup
 
 tail -10 out
 
-#######################################
+######################################
 
-# echo 'szx szx'
-# echo 'SCOMP szx' >> setup
-# echo 'RCOMP szx'  >> setup
-# ../../exe/AdjointTest  setup > out
-#
-# tail -10 out
+echo 'szx szx'
+echo 'SCOMP szx' >> setup
+echo 'RCOMP szx'  >> setup
+../../exe/AdjointTest  setup > out
 
-echo 'vz szx'
-echo 'SCOMP vz'  >> setup
+tail -10 out
+
+echo 'pz szx'
+echo 'SCOMP pz'  >> setup
 echo 'RCOMP szx' >> setup
 ../../exe/AdjointTest  setup > out
 
