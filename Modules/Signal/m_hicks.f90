@@ -131,10 +131,10 @@ use m_math
                 tmp_z_interp_coef(iquiry-1:-r:-1) = 0.
 ! print*,'antisymm  tmp_z_interp_coef',tmp_z_interp_coef
             case ('antisymm_shift')
-!print*,'antisymm_shift  tmp_z_interp_coef',tmp_z_interp_coef
+! print*,'antisymm_shift  tmp_z_interp_coef',tmp_z_interp_coef
                 tmp_z_interp_coef(iquiry:iquiry+n+1) = z_interp_coef(iquiry:iquiry+n+1) - z_interp_coef(iquiry-1:-r:-1)
                 tmp_z_interp_coef(iquiry-1:-r:-1) = 0.
-!print*,'antisymm_shift  tmp_z_interp_coef',tmp_z_interp_coef
+! print*,'antisymm_shift  tmp_z_interp_coef',tmp_z_interp_coef
             case ('symmetric')
                 !symmetric folding: add points above and 1 point below inquiry point to points below and at inquiry point
                 !such that coeff(iquiry)=coeff(iquiry+1)

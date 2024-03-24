@@ -7,12 +7,14 @@ IS_FREESURFACE          T
 IF_HICKS        T
 
 ACQUI_GEOMETRY          spread
-FS                      '0 500 500'
+#FS                      '0 500 500'
+FS                      '2 500 500'
 #FS                      '10 500 500'
 #FS                      '40 500 500'
 #FS                      '500 500 500'
 
-FR                      '0 10  0'
+#FR                      '0 10  0'
+FR                      '2 10  0'
 #FR                      '10 10  0'
 #FR                      '40 10  0'
 #FR                      '40 500  0'

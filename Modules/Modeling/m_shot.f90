@@ -332,9 +332,9 @@ use m_model
             !e.g. v(1) is actually v[0.5], v(2) is actually v[1.5],
             !thus to correctly Hicks-interpolate the recorded s/r positions of forces,
             !we need to artificially add 0.5 to the positions.
-            halfz=either(-m%dz/2.,0.,is_fdsg)
-            halfx=either(-m%dx/2.,0.,is_fdsg)
-            halfy=either(-m%dy/2.,0.,is_fdsg)
+            halfz=either(m%dz/2.,0.,is_fdsg)
+            halfx=either(m%dx/2.,0.,is_fdsg)
+            halfy=either(m%dy/2.,0.,is_fdsg)
 
         endif
 
@@ -373,10 +373,10 @@ use m_model
         case('p','szz','sxx','ez','ex')
             call hicks_get_coefficient('antisymm', self%src%interp_coef)     !szz component
             call hicks_get_coefficient('truncate', self%src%interp_coef_aux) !sxx component
-            call hicks_get_coefficient('full', self%src%interp_coef_aux2)
+            call hicks_get_coefficient('full',     self%src%interp_coef_aux2)
 
         case('szx','es')
-            call hicks_get_coefficient('antisymm_shift', self%src%interp_coef)
+            call hicks_get_coefficient('antisymm', self%src%interp_coef)
 
         case default
             call hicks_get_coefficient('full', self%src%interp_coef)
@@ -426,9 +426,10 @@ use m_model
             case('p','szz','sxx','ez','ex')
                 call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)     !szz component
                 call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef_aux) !sxx component
+                call hicks_get_coefficient('full',     self%rcv(i)%interp_coef_aux2)
 
             case('szx','es')
-                call hicks_get_coefficient('antisymm_shift', self%rcv(i)%interp_coef)
+                call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)
             
             case default
                 call hicks_get_coefficient('full', self%rcv(i)%interp_coef)

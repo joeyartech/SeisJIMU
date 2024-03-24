@@ -12,157 +12,120 @@
 
 cp setup_default setup
 
-echo 'pz pz'
-echo 'SCOMP pz' >> setup
-echo 'RCOMP pz' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'vx vx'
-echo 'SCOMP vx' >> setup
-echo 'RCOMP vx' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'pz vx' #not very successful
-echo 'SCOMP pz' >> setup
-echo 'RCOMP vx' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-#####################################
-
-echo 'p pz' #not successful successful when close to free surface
-echo 'SCOMP p ' >> setup
-echo 'RCOMP pz' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'p vx' #not successful successful when close to free surface
-echo 'SCOMP p ' >> setup
-echo 'RCOMP vx' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-###################################
-
-echo 'szz szz'
-echo 'SCOMP szz' >> setup
-echo 'RCOMP szz'  >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'sxx sxx'
-echo 'SCOMP sxx' >> setup
-echo 'RCOMP sxx'  >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'szz sxx' #fail when on the free surface
-echo 'SCOMP szz' >> setup
-echo 'RCOMP sxx' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'p szz' #not successful successful when close to free surface
-echo 'SCOMP p' >> setup
-echo 'RCOMP sxx' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'p sxx' #not successful successful when close to free surface
-echo 'SCOMP p' >> setup
-echo 'RCOMP sxx' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'pz szz'
-echo 'SCOMP pz'  >> setup
-echo 'RCOMP szz' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'vx szz'
-echo 'SCOMP vx'  >> setup
-echo 'RCOMP szz' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'pz szz' #not so successful when close to free surface
-echo 'SCOMP vx'  >> setup
-echo 'RCOMP szz' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'vx sxx' #not so successful when close to free surface
-echo 'SCOMP vx'  >> setup
-echo 'RCOMP sxx' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-######################################
-
-echo 'szx szx'
-echo 'SCOMP szx' >> setup
-echo 'RCOMP szx'  >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'pz szx'
-echo 'SCOMP pz'  >> setup
-echo 'RCOMP szx' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'vx szx'
-echo 'SCOMP vx'  >> setup
-echo 'RCOMP szx' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'szz szx' #fail when close to free surface
-echo 'SCOMP szz'  >> setup
-echo 'RCOMP szx' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'sxx szx' #not successful successful when close to free surface
-echo 'SCOMP sxx'  >> setup
-echo 'RCOMP szx' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'p szx' #not successful successful when close to free surfacegit
-echo 'SCOMP p' >> setup
-echo 'RCOMP szx' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-######################################
+# echo 'pz pz'
+# echo 'SCOMP pz' >> setup
+# echo 'RCOMP pz' >> setup
+# ../../exe/AdjointTest  setup > out
 #
-# suximage <  u.su  legend=1  title='u' &
-# suximage <  v.su  legend=1  title='v' &
-# suximage < Lu.su  legend=1  title='Lu' &
-# suximage < Ladj_v.su  legend=1  title='Ladj_v' &
-# sumax < Lu.su
+# tail -10 out
+#
+# echo 'px px'
+# echo 'SCOMP px' >> setup
+# echo 'RCOMP px' >> setup
+# ../../exe/AdjointTest  setup > out
+#
+# tail -10 out
+#
+# echo 'pz px' #not very successful when close to free surface
+# echo 'SCOMP pz' >> setup
+# echo 'RCOMP px' >> setup
+# ../../exe/AdjointTest  setup > out
+#
+# tail -10 out
 
+# #####################################
+#
+# echo 'ez ez'
+# echo 'SCOMP ez' >> setup
+# echo 'RCOMP ez'  >> setup
+# ../../exe/AdjointTest  setup > out
+#
+# tail -10 out
+#
+# echo 'ex ex'
+# echo 'SCOMP ex' >> setup
+# echo 'RCOMP ex'  >> setup
+# ../../exe/AdjointTest  setup > out
+#
+# tail -10 out
+#
+# echo 'ez ex' #fail when on the free surface
+# echo 'SCOMP ez' >> setup
+# echo 'RCOMP ex' >> setup
+# ../../exe/AdjointTest  setup > out
+#
+# tail -10 out
+#
+echo 'ez ez'
+echo 'SCOMP ez' >> setup
+echo 'RCOMP ez' >> setup
+../../exe/AdjointTest  setup > out
+
+tail -10 out
+
+# echo 'px ez'
+# echo 'SCOMP px'  >> setup
+# echo 'RCOMP ez' >> setup
+# ../../exe/AdjointTest  setup > out
+#
+# tail -10 out
+#
+# echo 'pz ex' #not so successful when close to free surface
+# echo 'SCOMP pz'  >> setup
+# echo 'RCOMP ex' >> setup
+# ../../exe/AdjointTest  setup > out
+#
+# tail -10 out
+#
+# echo 'px ex' #not so successful when close to free surface
+# echo 'SCOMP px'  >> setup
+# echo 'RCOMP ex' >> setup
+# ../../exe/AdjointTest  setup > out
+#
+# tail -10 out
+#
+# # ######################################
+#
+# # echo 'es es'
+# # echo 'SCOMP es' >> setup
+# # echo 'RCOMP es'  >> setup
+# # ../../exe/AdjointTest  setup > out
+# #
+# # tail -10 out
+#
+# echo 'pz es'
+# echo 'SCOMP pz'  >> setup
+# echo 'RCOMP es' >> setup
+# ../../exe/AdjointTest  setup > out
+#
+# tail -10 out
+#
+# echo 'px es'
+# echo 'SCOMP px'  >> setup
+# echo 'RCOMP es' >> setup
+# ../../exe/AdjointTest  setup > out
+#
+# tail -10 out
+# #
+# # echo 'ez es' #fail when close to free surface
+# # echo 'SCOMP ez'  >> setup
+# # echo 'RCOMP es' >> setup
+# # ../../exe/AdjointTest  setup > out
+# #
+# # tail -10 out
+# #
+# # echo 'ex es' #not successful successful when close to free surface
+# # echo 'SCOMP ex'  >> setup
+# # echo 'RCOMP es' >> setup
+# # ../../exe/AdjointTest  setup > out
+# #
+# # tail -10 out
+# #
+# # ######################################
+# #
+# # suximage <  u.su  legend=1  title='u' &
+# # suximage <  v.su  legend=1  title='v' &
+# # suximage < Lu.su  legend=1  title='Lu' &
+# # suximage < Ladj_v.su  legend=1  title='Ladj_v' &
+# # sumax < Lu.su
+#

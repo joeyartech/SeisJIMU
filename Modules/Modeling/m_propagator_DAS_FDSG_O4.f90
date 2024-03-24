@@ -167,6 +167,7 @@ use, intrinsic :: ieee_arithmetic
         logical,optional :: oif_record_adjseismo
 
         real,dimension(:,:),allocatable :: temp_mu
+        real,dimension(:,:),allocatable :: for_sz, for_sx
 
         c1x=coef(1)/m%dx; c1z=coef(1)/m%dz
         c2x=coef(2)/m%dx; c2z=coef(2)/m%dz
@@ -257,6 +258,49 @@ use, intrinsic :: ieee_arithmetic
             self%buox(:,ix)=0.5/cb%rho(:,ix,1)+0.5/cb%rho(:,ix-1,1)
         enddo
 
+
+        if(m%is_freesurface) then
+            !convert Hicks interpolation coefficients
+            !from stress-related to strain-related
+            !interp_coef is anti-symmetrically folded
+            !interp_coef_aux is truncated
+            !interp_coef_aux2 is full
+
+                if(shot%src%comp=='ez'.or.shot%src%comp=='ex') then
+                    ifz=shot%src%ifz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
+                    ifx=shot%src%ifx-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
+
+                    call alloc(for_sz,[-4,4],[-4,4]) !require r from m_hicks
+                    call alloc(for_sx,[-4,4],[-4,4]) !require r from m_hicks
+
+                    for_sz(:,:)=shot%src%interp_coef    (:,:,1)
+                    for_sx(:,:)=shot%src%interp_coef_aux(:,:,1)
+
+                    shot%src%interp_coef    (:,:,1) =self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx) *( &
+                             self%ldap2mu(ifz:ilz,ifx:ilx)*for_sz(:,:)  -self%lda    (ifz:ilz,ifx:ilx)*for_sx(:,:)  )
+                    shot%src%interp_coef_aux(:,:,1) =self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx) *( &
+                            -self%lda    (ifz:ilz,ifx:ilx)*for_sz(:,:)  +self%ldap2mu(ifz:ilz,ifx:ilx)*for_sx(:,:)  )
+                endif
+
+            do i=1,shot%nrcv
+                if(shot%rcv(i)%comp=='ez'.or.shot%rcv(i)%comp=='ex') then
+                    ifz=shot%rcv(i)%ifz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
+                    ifx=shot%rcv(i)%ifx-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
+
+                    call alloc(for_sz,[-4,4],[-4,4])
+                    call alloc(for_sx,[-4,4],[-4,4])
+
+                    for_sz(:,:)=shot%rcv(i)%interp_coef    (:,:,1)
+                    for_sx(:,:)=shot%rcv(i)%interp_coef_aux(:,:,1)
+
+                    shot%rcv(i)%interp_coef    (:,:,1)  =self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx) *( &
+                             self%ldap2mu(ifz:ilz,ifx:ilx)*for_sz(:,:)  -self%lda    (ifz:ilz,ifx:ilx)*for_sx(:,:)  )
+                    shot%rcv(i)%interp_coef_aux(:,:,1)  =self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx) *( &
+                            -self%lda    (ifz:ilz,ifx:ilx)*for_sz(:,:)  +self%ldap2mu(ifz:ilz,ifx:ilx)*for_sx(:,:)  )
+                endif
+            enddo
+
+        endif
 
 
         !initialize m_field
@@ -1029,7 +1073,10 @@ use, intrinsic :: ieee_arithmetic
 
 
                 !image on szx = μ*es
-                f%es(1:cb%ifz:-1, :,1)=-f%es(2:2+cb%ifz-1, :,1)
+                print*,cb%ifz,2+cb%ifz-1
+                print*,shape(f%es(1:cb%ifz:-1, :,1))
+                print*,shape(f%es(2:2+1-cb%ifz+1, :,1))
+                f%es(1:cb%ifz:-1, :,1)=-f%es(2:2+1-cb%ifz, :,1)
 
             endif
 
@@ -1055,9 +1102,9 @@ use, intrinsic :: ieee_arithmetic
                         f%seismo(i,it)=sum(f%px(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
                         
                     case ('ez')
-                        f%seismo(i,it)=sum(f%ez(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef_aux2(:,:,1) )
+                        f%seismo(i,it)=sum(f%ez(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
                     case ('ex')
-                        f%seismo(i,it)=sum(f%ex(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef_aux2(:,:,1) )
+                        f%seismo(i,it)=sum(f%ex(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
 
                     case ('es')
                         f%seismo(i,it)=sum(f%es(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
@@ -1100,9 +1147,9 @@ use, intrinsic :: ieee_arithmetic
                     f%seismo(1,it)=sum(f%px(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1))
                 
                 case ('ez')
-                    f%seismo(1,it)=sum(f%ez(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef_aux2(:,:,1))
+                    f%seismo(1,it)=sum(f%ez(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1))
                 case ('ex')
-                    f%seismo(1,it)=sum(f%ex(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef_aux2(:,:,1))
+                    f%seismo(1,it)=sum(f%ex(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1))
 
                 case ('es')
                     f%seismo(1,it)=sum(f%es(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1))
