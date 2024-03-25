@@ -56,6 +56,13 @@ echo 'RCOMP ex' >> setup
 
 tail -10 out
 
+echo 'pz ez' #not so successful when close to free surface
+echo 'SCOMP pz'  >> setup
+echo 'RCOMP ez' >> setup
+../../exe/AdjointTest  setup > out
+
+tail -10 out
+
 echo 'px ez' #not so successful when close to free surface
 echo 'SCOMP px'  >> setup
 echo 'RCOMP ez' >> setup
