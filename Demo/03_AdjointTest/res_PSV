@@ -1,177 +1,176 @@
 p p
- LHS = <  v|Lu> =    105549153.33136261     
- RHS = <Lᴴv| u> =    105549146.26366575     
- relative difference =    6.6961189468604508E-006  %
+ LHS = <  v|Lu> =    166770013.82988068     
+ RHS = <Lᴴv| u> =    166770503.49233708     
+ relative difference =    2.9361454582149253E-004  %
  ===================================
    SeisJIMU has finished the job   
 ===================================
- System date: 03/24/2024
-System time: 22:18:18
+ System date: 03/25/2024
+System time: 23:41:47
 System timezone: +03:00
                         
 vz vx
- LHS = <  v|Lu> =    4.4707232263909527E-016
- RHS = <Lᴴv| u> =    4.6215449534358916E-016
- relative difference =    3.2634482313714241       %
+ LHS = <  v|Lu> =    4.4707236210421463E-016
+ RHS = <Lᴴv| u> =    4.6215447331302402E-016
+ relative difference =    3.2634350806324557       %
  ===================================
    SeisJIMU has finished the job   
 ===================================
- System date: 03/24/2024
-System time: 22:18:23
+ System date: 03/25/2024
+System time: 23:41:55
 System timezone: +03:00
                         
 p vz
- LHS = <  v|Lu> =    2.0524193401824911E-004
- RHS = <Lᴴv| u> =    2.6759273332173443E-004
- relative difference =    23.300632468415785       %
+ LHS = <  v|Lu> =    3.0478744026060428E-004
+ RHS = <Lᴴv| u> =    3.2292789812260117E-004
+ relative difference =    5.6174947929428436       %
  ===================================
    SeisJIMU has finished the job   
 ===================================
- System date: 03/24/2024
-System time: 22:18:32
+ System date: 03/25/2024
+System time: 23:42:03
 System timezone: +03:00
                         
 p vx
- LHS = <  v|Lu> =    2.0606271966731738E-004
- RHS = <Lᴴv| u> =    2.8603147136895408E-004
- relative difference =    27.958025499398431       %
+ LHS = <  v|Lu> =    4.1632027948458361E-004
+ RHS = <Lᴴv| u> =    4.0139648556677314E-004
+ relative difference =    3.5846905983745390       %
  ===================================
    SeisJIMU has finished the job   
 ===================================
- System date: 03/24/2024
-System time: 22:18:40
+ System date: 03/25/2024
+System time: 23:42:11
 System timezone: +03:00
                         
 szz sxx
- LHS = <  v|Lu> =    115495588.76217204     
- RHS = <Lᴴv| u> =    15071579.693133080     
- relative difference =    86.950514859776675       %
+ LHS = <  v|Lu> =    6511884.6344997529     
+ RHS = <Lᴴv| u> =    5633775.5479769325     
+ relative difference =    13.484715037343062       %
  ===================================
    SeisJIMU has finished the job   
 ===================================
- System date: 03/24/2024
-System time: 22:18:52
+ System date: 03/25/2024
+System time: 23:42:19
 System timezone: +03:00
                         
 p szz
- LHS = <  v|Lu> =    388728036.00053489     
- RHS = <Lᴴv| u> =    296928656.56953001     
- relative difference =    23.615322520981884       %
+ LHS = <  v|Lu> =    622978864.58583546     
+ RHS = <Lᴴv| u> =    617884915.75062788     
+ relative difference =   0.81767602799721084       %
  ===================================
    SeisJIMU has finished the job   
 ===================================
- System date: 03/24/2024
-System time: 22:18:58
+ System date: 03/25/2024
+System time: 23:42:28
 System timezone: +03:00
                         
 p sxx
- LHS = <  v|Lu> =    388728036.00053489     
- RHS = <Lᴴv| u> =    296928656.56953001     
- relative difference =    23.615322520981884       %
+ LHS = <  v|Lu> =    622978864.58583546     
+ RHS = <Lᴴv| u> =    617884915.75062788     
+ relative difference =   0.81767602799721084       %
  ===================================
    SeisJIMU has finished the job   
 ===================================
- System date: 03/24/2024
-System time: 22:19:03
+ System date: 03/25/2024
+System time: 23:42:36
 System timezone: +03:00
                         
 vz szz
- LHS = <  v|Lu> =    5.7274478629842182E-006
- RHS = <Lᴴv| u> =    1.8011795186346156E-005
- relative difference =    68.201682265819286       %
+ LHS = <  v|Lu> =    5.7274482421192104E-006
+ RHS = <Lᴴv| u> =    5.4915864624885791E-006
+ relative difference =    4.1180953482237017       %
  ===================================
    SeisJIMU has finished the job   
 ===================================
- System date: 03/24/2024
-System time: 22:19:08
+ System date: 03/25/2024
+System time: 23:42:44
 System timezone: +03:00
                         
 vx szz
- LHS = <  v|Lu> =    3.1703984261614027E-006
- RHS = <Lᴴv| u> =    1.1611084120212257E-005
- relative difference =    72.695069699456752       %
+ LHS = <  v|Lu> =    3.1703980887552404E-006
+ RHS = <Lᴴv| u> =    3.0077017412070185E-006
+ relative difference =    5.1317324510531614       %
  ===================================
    SeisJIMU has finished the job   
 ===================================
- System date: 03/24/2024
-System time: 22:19:13
+ System date: 03/25/2024
+System time: 23:42:53
 System timezone: +03:00
                         
 vz sxx
- LHS = <  v|Lu> =    1.2446933336745605E-003
- RHS = <Lᴴv| u> =    7.2794536093876675E-004
- relative difference =    41.516087437397928       %
+ LHS = <  v|Lu> =    1.2446934413692240E-003
+ RHS = <Lᴴv| u> =    1.1503717255397338E-003
+ relative difference =    7.5779073540976984       %
  ===================================
    SeisJIMU has finished the job   
 ===================================
- System date: 03/24/2024
-System time: 22:19:19
+ System date: 03/25/2024
+System time: 23:43:01
 System timezone: +03:00
                         
 vx sxx
- LHS = <  v|Lu> =    1.4869919541018468E-003
- RHS = <Lᴴv| u> =    8.2921277768742668E-004
- relative difference =    44.235557199885669       %
+ LHS = <  v|Lu> =    1.4869917809054670E-003
+ RHS = <Lᴴv| u> =    1.5064218312294869E-003
+ relative difference =    1.2898147066922001       %
  ===================================
    SeisJIMU has finished the job   
 ===================================
- System date: 03/24/2024
-System time: 22:19:24
+ System date: 03/25/2024
+System time: 23:43:09
 System timezone: +03:00
                         
 vz szx
- LHS = <  v|Lu> =    8.1992637121540229E-005
- RHS = <Lᴴv| u> =    8.2138962321992199E-005
- relative difference =   0.17814347334747482       %
+ LHS = <  v|Lu> =    8.1992641525492637E-005
+ RHS = <Lᴴv| u> =    8.2138960301674055E-005
+ relative difference =   0.17813565650700783       %
  ===================================
    SeisJIMU has finished the job   
 ===================================
- System date: 03/24/2024
-System time: 22:19:29
+ System date: 03/25/2024
+System time: 23:43:18
 System timezone: +03:00
                         
 vx szx
- LHS = <  v|Lu> =    5.5578100570101308E-005
- RHS = <Lᴴv| u> =    5.5670216368674436E-005
- relative difference =   0.16546693112003355       %
+ LHS = <  v|Lu> =    5.5578097514607312E-005
+ RHS = <Lᴴv| u> =    5.5670214672340546E-005
+ relative difference =   0.16546937761136712       %
  ===================================
    SeisJIMU has finished the job   
 ===================================
- System date: 03/24/2024
-System time: 22:19:34
+ System date: 03/25/2024
+System time: 23:43:26
 System timezone: +03:00
                         
 szz szx
- LHS = <  v|Lu> =    5747797.8504213644     
- RHS = <Lᴴv| u> =    1862275.5872292651     
- relative difference =    67.600189921558510       %
+ LHS = <  v|Lu> =    2500401.3568965737     
+ RHS = <Lᴴv| u> =    2595538.2200772427     
+ relative difference =    3.6654002027308916       %
  ===================================
    SeisJIMU has finished the job   
 ===================================
- System date: 03/24/2024
-System time: 22:19:39
+ System date: 03/25/2024
+System time: 23:43:34
 System timezone: +03:00
                         
 sxx szx
- LHS = <  v|Lu> =    39866577.676821880     
- RHS = <Lᴴv| u> =    71076886.858605176     
- relative difference =    43.910630531512524       %
+ LHS = <  v|Lu> =    80016786.109090552     
+ RHS = <Lᴴv| u> =    81315061.599798977     
+ relative difference =    1.5965990373321384       %
  ===================================
    SeisJIMU has finished the job   
 ===================================
- System date: 03/24/2024
-System time: 22:19:44
+ System date: 03/25/2024
+System time: 23:43:42
 System timezone: +03:00
                         
 p szx
- LHS = <  v|Lu> =    18158957.628139589     
- RHS = <Lᴴv| u> =    24078190.145745069     
- relative difference =    24.583378076908684       %
+ LHS = <  v|Lu> =    24315803.598550964     
+ RHS = <Lᴴv| u> =    22633866.119797964     
+ relative difference =    6.9170548772372511       %
  ===================================
    SeisJIMU has finished the job   
 ===================================
- System date: 03/24/2024
-System time: 22:19:49
+ System date: 03/25/2024
+System time: 23:43:50
 System timezone: +03:00
                         
-

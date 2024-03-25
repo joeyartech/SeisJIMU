@@ -957,15 +957,16 @@ use, intrinsic :: ieee_arithmetic
             if(if_hicks) then
                 select case (shot%src%comp)
                 case ('p')
-                    f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) + wl*sn_p*self%two_ldapmu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
-                    f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) + wl*sn_p*self%two_ldapmu(ifz:ilz,ifx:ilx)*shot%src%interp_coef_aux(:,:,1)
-                
+                    f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) +wl*sn_p*( self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef_anti(:,:,1) &
+                                                                                  +self%lda    (ifz:ilz,ifx:ilx)*shot%src%interp_coef_symm(:,:,1) )
+                    f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) +wl*sn_p*( self%lda    (ifz:ilz,ifx:ilx)*shot%src%interp_coef_anti(:,:,1) &
+                                                                                  +self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef_symm(:,:,1) )
                 case ('szz')
-                    f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) + wl*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
-                    f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) + wl*    self%lda(ifz:ilz,ifx:ilx)*shot%src%interp_coef_aux(:,:,1)
+                    f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) + wl*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef_anti(:,:,1)
+                    f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) + wl*self%lda    (ifz:ilz,ifx:ilx)*shot%src%interp_coef_anti(:,:,1)
                 case ('sxx')
-                    f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) + wl*    self%lda(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
-                    f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) + wl*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef_aux(:,:,1)
+                    f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) + wl*self%lda    (ifz:ilz,ifx:ilx)*shot%src%interp_coef_symm(:,:,1)
+                    f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) + wl*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef_symm(:,:,1)
 
                 case ('szx')
                     f%szx(ifz:ilz,ifx:ilx,1) = f%szx(ifz:ilz,ifx:ilx,1) + wl*self%mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
@@ -1009,15 +1010,17 @@ use, intrinsic :: ieee_arithmetic
 
                     select case (shot%rcv(i)%comp)
                     case ('p')
-                        f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) +wl*sn_p*self%two_ldapmu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
-                        f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) +wl*sn_p*self%two_ldapmu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_aux(:,:,1) !no time_dir needed!
+                        f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) +wl*sn_p*( self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_anti(:,:,1) &
+                                                                                      +self%lda    (ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_symm(:,:,1) )
+                        f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) +wl*sn_p*( self%lda    (ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_anti(:,:,1) &
+                                                                                      +self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_symm(:,:,1) )
 
                     case ('szz')
-                        f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) + wl*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1)
-                        f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) + wl*    self%lda(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_aux(:,:,1)
+                        f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) + wl*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_anti(:,:,1)
+                        f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) + wl*    self%lda(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_anti(:,:,1)
                     case ('sxx')
-                        f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) + wl*    self%lda(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1)
-                        f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) + wl*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_aux(:,:,1)
+                        f%szz(ifz:ilz,ifx:ilx,1) = f%szz(ifz:ilz,ifx:ilx,1) + wl*    self%lda(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_symm(:,:,1)
+                        f%sxx(ifz:ilz,ifx:ilx,1) = f%sxx(ifz:ilz,ifx:ilx,1) + wl*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_symm(:,:,1)
 
                     case ('szx')
                         f%szx(ifz:ilz,ifx:ilx,1) = f%szx(ifz:ilz,ifx:ilx,1) + wl*self%mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1)
@@ -1090,7 +1093,7 @@ use, intrinsic :: ieee_arithmetic
                 ! if(f%is_adjoint) f%szz(cb%ifz:0, :,1)=0.
 
                 !not image on sxx
-                f%sxx(0:cb%ifz:-1,:,1)=0.
+                ! f%sxx(0:cb%ifz:-1,:,1)=0. !no needed
                 
                 ! do ix=cb%ifx+1,cb%ilx-2
                 ! do iz=cb%ifz+1,0
@@ -1218,17 +1221,17 @@ use, intrinsic :: ieee_arithmetic
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
                     case ('vz')
-                        f%seismo(i,it)=sum(f%vz(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
+                        f%seismo(i,it)=sum(f%vz(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1))
                     case ('vx')
-                        f%seismo(i,it)=sum(f%vx(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
+                        f%seismo(i,it)=sum(f%vx(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1))
 
                     case ('p')
-                        f%seismo(i,it)=sum(sn_p*(f%szz(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1)     &
-                                                +f%sxx(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef_aux(:,:,1) ))
+                        f%seismo(i,it)=sum(sn_p*(f%szz(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef_anti (:,:,1)&
+                                                +f%sxx(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef_trunc(:,:,1)))
                     case ('szz')
-                        f%seismo(i,it)=sum(f%szz(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
+                        f%seismo(i,it)=sum(f%szz(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef_anti (:,:,1))
                     case ('sxx')
-                        f%seismo(i,it)=sum(f%sxx(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef_aux(:,:,1) )
+                        f%seismo(i,it)=sum(f%sxx(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef_trunc(:,:,1))
 
                     case ('szx')
                         f%seismo(i,it)=sum(f%szx(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
@@ -1273,12 +1276,12 @@ use, intrinsic :: ieee_arithmetic
                     f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1))
 
                 case ('p')
-                    f%seismo(1,it)=sum(sn_p*(f%szz(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1)       &
-                                            +f%sxx(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef_aux(:,:,1)   ))
+                    f%seismo(1,it)=sum(sn_p*(f%szz(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef_anti (:,:,1)&
+                                            +f%sxx(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef_trunc(:,:,1)))
                 case ('szz')
-                    f%seismo(1,it)=sum(f%szz(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1) )
+                    f%seismo(1,it)=sum(f%szz(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef_anti (:,:,1))
                 case ('sxx')
-                    f%seismo(1,it)=sum(f%sxx(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef_aux(:,:,1) )
+                    f%seismo(1,it)=sum(f%sxx(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef_trunc(:,:,1))
 
                 case ('szx')
                     f%seismo(1,it)=sum(f%szx(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1) )

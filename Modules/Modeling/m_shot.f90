@@ -26,7 +26,7 @@ use m_model
         integer :: iz,ix,iy
         integer :: ifz,ilz,ifx,ilx,ify,ily
         character(4) :: comp
-        real,dimension(:,:,:),allocatable :: interp_coef, interp_coef_aux, interp_coef_aux2
+        real,dimension(:,:,:),allocatable :: interp_coef, interp_coef_anti, interp_coef_symm, interp_coef_trunc
     end type
 
     type,public :: t_receiver
@@ -35,7 +35,7 @@ use m_model
         integer :: ifz,ilz,ifx,ilx,ify,ily
         logical :: is_badtrace=.false.
         character(4) :: comp
-        real,dimension(:,:,:),allocatable :: interp_coef, interp_coef_aux, interp_coef_aux2
+        real,dimension(:,:,:),allocatable :: interp_coef, interp_coef_anti, interp_coef_symm, interp_coef_trunc
     end type
     
     type,public :: t_shot
@@ -371,16 +371,15 @@ use m_model
             call hicks_get_coefficient('truncate', self%src%interp_coef)
 
         case('p','szz','sxx','ez','ex')
-            call hicks_get_coefficient('antisymm', self%src%interp_coef)     !szz component
-            call hicks_get_coefficient('truncate', self%src%interp_coef_aux) !sxx component
-            call hicks_get_coefficient('full',     self%src%interp_coef_aux2)
+            call hicks_get_coefficient('antisymm', self%src%interp_coef_anti) !szz component
+            call hicks_get_coefficient('symmetric',self%src%interp_coef_symm) !inject sxx component
+            call hicks_get_coefficient('truncate', self%src%interp_coef_trunc)!extract sxx component
 
         case('szx','es')
             call hicks_get_coefficient('antisymm', self%src%interp_coef)
 
         case default
             call hicks_get_coefficient('full', self%src%interp_coef)
-            call hicks_get_coefficient('full', self%src%interp_coef_aux)
         end select
 
         !set reference to balance pressure vs velocities data
@@ -424,16 +423,15 @@ use m_model
                 call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
 
             case('p','szz','sxx','ez','ex')
-                call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)     !szz component
-                call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef_aux) !sxx component
-                call hicks_get_coefficient('full',     self%rcv(i)%interp_coef_aux2)
+                call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef_anti) !szz component
+                call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef_symm) !inject sxx component
+                call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef_trunc)!extract sxx component
 
             case('szx','es')
                 call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)
             
             case default
                 call hicks_get_coefficient('full', self%rcv(i)%interp_coef)
-                call hicks_get_coefficient('full', self%rcv(i)%interp_coef_aux)
             end select
 
         enddo
