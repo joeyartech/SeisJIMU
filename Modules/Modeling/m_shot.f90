@@ -26,7 +26,8 @@ use m_model
         integer :: iz,ix,iy
         integer :: ifz,ilz,ifx,ilx,ify,ily
         character(4) :: comp
-        real,dimension(:,:,:),allocatable :: interp_coef, interp_coef_anti, interp_coef_symm, interp_coef_trunc
+        real,dimension(:,:,:),allocatable :: interp_coef, interp_coef_full, interp_coef_anti, interp_coef_symm, interp_coef_trunc
+        real,dimension(:,:,:),allocatable :: interp_coef11, interp_coef12, interp_coef21, interp_coef22
     end type
 
     type,public :: t_receiver
@@ -35,7 +36,7 @@ use m_model
         integer :: ifz,ilz,ifx,ilx,ify,ily
         logical :: is_badtrace=.false.
         character(4) :: comp
-        real,dimension(:,:,:),allocatable :: interp_coef, interp_coef_anti, interp_coef_symm, interp_coef_trunc
+        real,dimension(:,:,:),allocatable :: interp_coef, interp_coef_full, interp_coef_anti, interp_coef_symm, interp_coef_trunc
     end type
     
     type,public :: t_shot
@@ -374,6 +375,13 @@ use m_model
             call hicks_get_coefficient('antisymm', self%src%interp_coef_anti) !szz component
             call hicks_get_coefficient('symmetric',self%src%interp_coef_symm) !inject sxx component
             call hicks_get_coefficient('truncate', self%src%interp_coef_trunc)!extract sxx component
+            call hicks_get_coefficient('full', self%src%interp_coef_full)!extract sxx component
+
+        ! case('ez','ex')
+        !     call hicks_get_coefficient('a11', self%src%interp_coef11)
+        !     call hicks_get_coefficient('a12', self%src%interp_coef12)
+        !     call hicks_get_coefficient('a21', self%src%interp_coef21)
+        !     call hicks_get_coefficient('a22', self%src%interp_coef22)
 
         case('szx','es')
             call hicks_get_coefficient('antisymm', self%src%interp_coef)
@@ -426,6 +434,7 @@ use m_model
                 call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef_anti) !szz component
                 call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef_symm) !inject sxx component
                 call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef_trunc)!extract sxx component
+                call hicks_get_coefficient('full', self%rcv(i)%interp_coef_full)!extract sxx component
 
             case('szx','es')
                 call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)

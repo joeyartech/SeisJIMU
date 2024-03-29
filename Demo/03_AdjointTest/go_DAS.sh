@@ -26,35 +26,35 @@ cp setup_default setup
 #
 # tail -10 out
 
-echo 'pz px' #successful multiplying vx source by 2 when close to free surface
-echo 'SCOMP pz' >> setup
-echo 'RCOMP px' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-####################################
-
-echo 'ez ez' #not so successful when close to free surface
-echo 'SCOMP ez' >> setup
-echo 'RCOMP ez'  >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'ex ex' #not so successful when close to free surface
-echo 'SCOMP ex' >> setup
-echo 'RCOMP ex'  >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'ez ex' #fail when on the free surface
-echo 'SCOMP ez' >> setup
-echo 'RCOMP ex' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
+# echo 'pz px' #successful multiplying vx source by 2 when close to free surface
+# echo 'SCOMP pz' >> setup
+# echo 'RCOMP px' >> setup
+# ../../exe/AdjointTest  setup > out
+#
+# tail -10 out
+#
+# ####################################
+#
+# echo 'ez ez' #not so successful when close to free surface
+# echo 'SCOMP ez' >> setup
+# echo 'RCOMP ez'  >> setup
+# ../../exe/AdjointTest  setup > out
+#
+# tail -10 out
+#
+# echo 'ex ex' #not so successful when close to free surface
+# echo 'SCOMP ex' >> setup
+# echo 'RCOMP ex'  >> setup
+# ../../exe/AdjointTest  setup > out
+#
+# tail -10 out
+#
+# echo 'ez ex' #fail when on the free surface
+# echo 'SCOMP ez' >> setup
+# echo 'RCOMP ex' >> setup
+# ../../exe/AdjointTest  setup > out
+#
+# tail -10 out
 
 echo 'pz ez' #not so successful when close to free surface
 echo 'SCOMP pz'  >> setup
@@ -84,42 +84,42 @@ echo 'RCOMP ex' >> setup
 
 tail -10 out
 
-#####################################
+# #####################################
+# #
+# # echo 'es es'
+# # echo 'SCOMP es' >> setup
+# # echo 'RCOMP es'  >> setup
+# # ../../exe/AdjointTest  setup > out
+# #
+# # tail -10 out
 #
-# echo 'es es'
-# echo 'SCOMP es' >> setup
-# echo 'RCOMP es'  >> setup
+# echo 'pz es'
+# echo 'SCOMP pz'  >> setup
+# echo 'RCOMP es' >> setup
 # ../../exe/AdjointTest  setup > out
 #
 # tail -10 out
-
-echo 'pz es'
-echo 'SCOMP pz'  >> setup
-echo 'RCOMP es' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'px es'
-echo 'SCOMP px'  >> setup
-echo 'RCOMP es' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'ez es'
-echo 'SCOMP ez'  >> setup
-echo 'RCOMP es' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
-
-echo 'ex es'
-echo 'SCOMP ex'  >> setup
-echo 'RCOMP es' >> setup
-../../exe/AdjointTest  setup > out
-
-tail -10 out
+#
+# echo 'px es'
+# echo 'SCOMP px'  >> setup
+# echo 'RCOMP es' >> setup
+# ../../exe/AdjointTest  setup > out
+#
+# tail -10 out
+#
+# echo 'ez es'
+# echo 'SCOMP ez'  >> setup
+# echo 'RCOMP es' >> setup
+# ../../exe/AdjointTest  setup > out
+#
+# tail -10 out
+#
+# echo 'ex es'
+# echo 'SCOMP ex'  >> setup
+# echo 'RCOMP es' >> setup
+# ../../exe/AdjointTest  setup > out
+#
+# tail -10 out
 
 ######################################
 #

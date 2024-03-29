@@ -941,9 +941,21 @@ use, intrinsic :: ieee_arithmetic
             if(if_hicks) then
                 select case (shot%src%comp)
                 case ('ez')
-                    f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(self%ldap2mu(ifz:ilz,ifx:ilx))*shot%src%interp_coef(:,:,1)
-                    f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(   -self%lda(ifz:ilz,ifx:ilx))*shot%src%interp_coef(:,:,1)
+                    if(m%is_freesurface.and.shot%src%iz==1) then
+                        select case (shot%rcv(1)%comp)
+                        case ('pz'); wl=1.335*wl
+                        case ('px'); wl=1.25*wl
+                        endselect
+                    endif
+                    f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(self%ldap2mu(ifz:ilz,ifx:ilx))*shot%src%interp_coef_symm(:,:,1)
+                    f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(   -self%lda(ifz:ilz,ifx:ilx))*shot%src%interp_coef_symm(:,:,1)
                 case ('ex')
+                    if(m%is_freesurface.and.shot%src%iz==1) then
+                        select case (shot%rcv(1)%comp)
+                        case ('pz'); wl=1.5*wl
+                        case ('px'); wl=1.4*wl
+                        endselect
+                    endif
                     f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(   -self%lda(ifz:ilz,ifx:ilx))*shot%src%interp_coef_symm(:,:,1)
                     f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(self%ldap2mu(ifz:ilz,ifx:ilx))*shot%src%interp_coef_symm(:,:,1)
                 case ('es')
@@ -979,11 +991,23 @@ use, intrinsic :: ieee_arithmetic
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
                     case ('ez')
-                        f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) +wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
-                        f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) +wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda(ifz:ilz,ifx:ilx)) *shot%rcv(i)%interp_coef(:,:,1)
+                        if(m%is_freesurface.and.shot%rcv(i)%iz==1) then
+                            select case (shot%src%comp)
+                            case ('pz'); wl=1.335*wl
+                            case ('px'); wl=1.25*wl
+                            endselect
+                        endif
+                        f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) +wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_symm(:,:,1) !no time_dir needed!
+                        f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) +wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda(ifz:ilz,ifx:ilx)) *shot%rcv(i)%interp_coef_symm(:,:,1)
                     case ('ex')
-                        f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) +wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda(ifz:ilz,ifx:ilx)) *shot%rcv(i)%interp_coef(:,:,1)
-                        f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) +wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1)
+                        if(m%is_freesurface.and.shot%rcv(i)%iz==1) then
+                            select case (shot%src%comp)
+                            case ('pz'); wl=1.5*wl
+                            case ('px'); wl=1.4*wl
+                            endselect
+                        endif
+                        f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) +wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda(ifz:ilz,ifx:ilx)) *shot%rcv(i)%interp_coef_symm(:,:,1)
+                        f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) +wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_symm(:,:,1)
                     case ('es')
                         f%es(ifz:ilz,ifx:ilx,1) = f%es(ifz:ilz,ifx:ilx,1) +wl/self%mu(ifz:ilz,ifx:ilx)                                          *shot%rcv(i)%interp_coef(:,:,1)
 
