@@ -24,6 +24,7 @@ use, intrinsic :: ieee_arithmetic
 
     !scaling source wavelet
     real :: wavelet_scaler
+    real :: wavelet_scaler_outer !_ez_pz=1., wavelet_scaler_outer_ez_px=1., wavelet_scaler_outer_ex_pz=1., wavelet_scaler_outer_ex_px=1.
 
     character(:),allocatable :: FS_method
 
@@ -173,6 +174,8 @@ use, intrinsic :: ieee_arithmetic
         c2x=coef(2)/m%dx; c2z=coef(2)/m%dz
         
         wavelet_scaler=self%dt/m%cell_volume
+
+        if(m%is_freesurface) wavelet_scaler_outer=setup%get_real('WAVELET_SCALER_OUTER',o_default='1')        
 
         if_hicks=shot%if_hicks
 
@@ -942,22 +945,34 @@ use, intrinsic :: ieee_arithmetic
                 select case (shot%src%comp)
                 case ('ez')
                     if(m%is_freesurface.and.shot%src%iz==1) then
-                        select case (shot%rcv(1)%comp)
-                        case ('pz'); wl=1.335*wl
-                        case ('px'); wl=1.25*wl
-                        endselect
+                        if(shot%rcv(1)%comp=='pz'.or.shot%rcv(1)%comp=='px') wl=wl*wavelet_scaler_outer
                     endif
                     f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(self%ldap2mu(ifz:ilz,ifx:ilx))*shot%src%interp_coef_symm(:,:,1)
                     f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(   -self%lda(ifz:ilz,ifx:ilx))*shot%src%interp_coef_symm(:,:,1)
+
+                    ! !similar effects as above
+                    ! f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*( &
+                    !     self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef_1pa11(:,:,1)     -self%lda(ifz:ilz,ifx:ilx)*shot%src%interp_coef_a21(:,:,1)&
+                    !     )
+                    ! f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*( &
+                    !        -self%lda(ifz:ilz,ifx:ilx)*shot%src%interp_coef_1pa11(:,:,1) +self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef_a21(:,:,1)&
+                    !     )
+
                 case ('ex')
                     if(m%is_freesurface.and.shot%src%iz==1) then
-                        select case (shot%rcv(1)%comp)
-                        case ('pz'); wl=1.5*wl
-                        case ('px'); wl=1.4*wl
-                        endselect
+                        if(shot%rcv(1)%comp=='pz'.or.shot%rcv(1)%comp=='px') wl=wl*wavelet_scaler_outer
                     endif
                     f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(   -self%lda(ifz:ilz,ifx:ilx))*shot%src%interp_coef_symm(:,:,1)
                     f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(self%ldap2mu(ifz:ilz,ifx:ilx))*shot%src%interp_coef_symm(:,:,1)
+
+                    ! !similar effects as above
+                    ! f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*( &
+                    !     self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef_a12(:,:,1)     -self%lda(ifz:ilz,ifx:ilx)*shot%src%interp_coef_1pa22(:,:,1)&
+                    !     )
+                    ! f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*( &
+                    !        -self%lda(ifz:ilz,ifx:ilx)*shot%src%interp_coef_a12(:,:,1) +self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef_1pa22(:,:,1)&
+                    !     )
+
                 case ('es')
                     f%es(ifz:ilz,ifx:ilx,1) = f%es(ifz:ilz,ifx:ilx,1) + wl/self%mu(ifz:ilz,ifx:ilx)                                            *shot%src%interp_coef(:,:,1)
                 
@@ -992,22 +1007,32 @@ use, intrinsic :: ieee_arithmetic
                     select case (shot%rcv(i)%comp)
                     case ('ez')
                         if(m%is_freesurface.and.shot%rcv(i)%iz==1) then
-                            select case (shot%src%comp)
-                            case ('pz'); wl=1.335*wl
-                            case ('px'); wl=1.25*wl
-                            endselect
+                            if(shot%src%comp=='pz'.or.shot%src%comp=='px') wl=wl*wavelet_scaler_outer
                         endif
                         f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) +wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_symm(:,:,1) !no time_dir needed!
                         f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) +wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda(ifz:ilz,ifx:ilx)) *shot%rcv(i)%interp_coef_symm(:,:,1)
+
+                        ! f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*( &
+                        !     self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_1pa11(:,:,1)     -self%lda(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_a21(:,:,1)&
+                        !     )
+                        ! f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*( &
+                        !        -self%lda(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_1pa11(:,:,1) +self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_a21(:,:,1)&
+                        !     )
+
                     case ('ex')
                         if(m%is_freesurface.and.shot%rcv(i)%iz==1) then
-                            select case (shot%src%comp)
-                            case ('pz'); wl=1.5*wl
-                            case ('px'); wl=1.4*wl
-                            endselect
+                            if(shot%src%comp=='pz'.or.shot%src%comp=='px') wl=wl*wavelet_scaler_outer
                         endif
                         f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) +wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda(ifz:ilz,ifx:ilx)) *shot%rcv(i)%interp_coef_symm(:,:,1)
                         f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) +wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_symm(:,:,1)
+
+                        ! f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*( &
+                        !     self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_a12(:,:,1)     -self%lda(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_1pa22(:,:,1)&
+                        !     )
+                        ! f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*( &
+                        !        -self%lda(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_a12(:,:,1) +self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_1pa22(:,:,1)&
+                        !     )
+
                     case ('es')
                         f%es(ifz:ilz,ifx:ilx,1) = f%es(ifz:ilz,ifx:ilx,1) +wl/self%mu(ifz:ilz,ifx:ilx)                                          *shot%rcv(i)%interp_coef(:,:,1)
 

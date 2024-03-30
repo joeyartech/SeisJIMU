@@ -130,33 +130,41 @@ use m_math
                 tmp_z_interp_coef(iquiry-1:-r:-1) = 0.
 
             case ('symmetric')
+                !symmetric folding: add points points at and below inquiry point by points at and above inquiry point
+                !this includes the inquiry point such that coeff=0. at the inquiry point
+                tmp_z_interp_coef(iquiry:iquiry+n) = z_interp_coef(iquiry:iquiry+n) + z_interp_coef(iquiry:-r:-1)
+                tmp_z_interp_coef(iquiry-1:-r:-1) = 0.
+
+            case ('symmetric_half')
                 !symmetric folding: add points above and 1 point below inquiry point to points below and at inquiry point
                 !such that coeff(iquiry)=coeff(iquiry+1)
                 tmp_z_interp_coef(iquiry:iquiry+n+1) = z_interp_coef(iquiry:iquiry+n+1) + z_interp_coef(iquiry+1:-r:-1)
                 tmp_z_interp_coef(iquiry-1:-r:-1) = 0.
-
+                
             case ('truncate')
                 !clean above inquiry point
                 !note that no antisym or symmetric condition required for vx, vz, sxx
                 !so just truncate the coeff above inquiry point (ie. freesurface as they are at same depth levels of p)
                 tmp_z_interp_coef(iquiry-1:-r:-1)=0.
             
-            case ('a11')
+            case ('1+a11')
                 tmp_z_interp_coef(iquiry:iquiry+n) = z_interp_coef(iquiry:iquiry+n) -10./8.*z_interp_coef(iquiry:-r:-1)
                 tmp_z_interp_coef(iquiry-1:-r:-1) = 0.
 
             case ('a12')
-                tmp_z_interp_coef(iquiry:iquiry+n) = z_interp_coef(iquiry:iquiry+n) - 6./8.*z_interp_coef(iquiry:-r:-1)
+                tmp_z_interp_coef(iquiry:iquiry+n) =                                -6./8.*z_interp_coef(iquiry:-r:-1)
                 tmp_z_interp_coef(iquiry-1:-r:-1) = 0.
 
             case ('a21')
-                tmp_z_interp_coef(iquiry:iquiry+n) = z_interp_coef(iquiry:iquiry+n) + 6./8.*z_interp_coef(iquiry:-r:-1)
+                tmp_z_interp_coef(iquiry:iquiry+n) =                                 6./8.*z_interp_coef(iquiry:-r:-1)
                 tmp_z_interp_coef(iquiry-1:-r:-1) = 0.
+                ! tmp_z_interp_coef(iquiry:iquiry+n+1) = 6./8.*z_interp_coef(iquiry+1:-r:-1)
+                ! tmp_z_interp_coef(iquiry-1:-r:-1) = 0.
             
-            case ('a22')
+            case ('1+a22')
                 tmp_z_interp_coef(iquiry:iquiry+n) = z_interp_coef(iquiry:iquiry+n) +10./8.*z_interp_coef(iquiry:-r:-1)
                 tmp_z_interp_coef(iquiry-1:-r:-1) = 0.
-
+                
             end select
 
         endif
