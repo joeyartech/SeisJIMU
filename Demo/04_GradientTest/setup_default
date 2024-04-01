@@ -43,9 +43,8 @@ SMOOTHING     'none'
 #LS_SCALING  'none'
 
 
-#SNAPSHOT     p
+#SNAPSHOT     vz
 #NSNAPSHOT    50
 
 IF_USE_CHECKPOINT   F
-RCOMP       pz
-RCOMP       pz
+RCOMP       px

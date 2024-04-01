@@ -1260,7 +1260,7 @@ use, intrinsic :: ieee_arithmetic
         type(t_correlate) :: corr
 
         !nonzero only when sf touches rf
-        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
+        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2) !
         ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
         ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
         ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
@@ -1472,8 +1472,8 @@ use, intrinsic :: ieee_arithmetic
             !dir$ simd
             do iz=ifz,ilz
                 
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
 
                 izm2_ix= i-2  !iz-2,ix
                 izm1_ix= i-1  !iz-1,ix
@@ -1640,8 +1640,8 @@ use, intrinsic :: ieee_arithmetic
             !dir$ simd
             do iz=ifz,ilz
                 
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
                 rp = sn_p*( rf_ez(i) + rf_ex(i) )
                 sp = sn_p*( sf_ez(i) + sf_ex(i) )
@@ -1675,8 +1675,8 @@ use, intrinsic :: ieee_arithmetic
             !dir$ simd
             do iz=ifz,ilz
                 
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
                 sp = sn_p* ( sf_ez(i) + sf_ex(i) )
                 

@@ -1375,6 +1375,52 @@ use, intrinsic :: ieee_arithmetic
     !    = __-1___[ szzᵃ((λ+2μ)∂zᶠvz -λ*∂ₓᶠvx) + sxxᵃ(-λ*∂zᶠvz +(λ+2μ)∂ₓᶠvx) + szxᵃ*2(λ+μ)(∂ₓᵇvz +∂zᵇvx) ]
     !      2(λ+μ)μ 
 
+
+    !On the free surface
+    !PDE:      A u = M ∂ₜ u - D u = f
+    !where
+    !u=[vx sxx]ᵀ,
+    !f=[fz fx fzz fxx 0]ᵀδ(x-xs) with xs source position, d is recorded data
+    !  [ρ        ]    [0  ∂ₓ]
+    !M=|  _λ+2μ__|, D=[∂ₓ 0 ]
+    !  [  4μ(λ+μ)]
+    !since 0=sz=(λ+2μ)∂zvz+λ∂ₓvx => sx=λ∂zvz+(λ+2μ)∂ₓvx=4μ(λ+μ)/(λ+2μ)*∂ₓvx
+    !
+    !K_λM M⁻¹ =  [0        ][ρ          ] = [0            ]
+    !            |  __-1__ ||  _4μ(λ+μ)_|   |  ____-μ_____|
+    !            [  4(λ+μ)²][    λ+2μ   ]   [  (λ+μ)(λ+2μ)]
+    !
+    !compare w/ the 'full-elastic' case:
+    !        __-1___[1 1 0]
+    !K_λM₃ = 4(λ+μ)²|1 1 0|
+    !               [0 0 0]
+    !
+    !             __-1___[1 1 0][λ+2μ  λ    ]   __-1__[1 1 0]
+    !K_λM₃ M₃⁻¹ = 4(λ+μ)²|1 1 0|| λ   λ+2μ  | = 2(λ+μ)|1 1 0|
+    !                    [0 0 0][          μ]         [0 0 0]
+    !
+    !
+    !K_µM M⁻¹ =  [0             ][ρ          ] = [0               ]
+    !            |  _-(λ+μ)²-μ²_||  _4μ(λ+μ)_|   |  _-4(λ+μ)²-4μ²_|
+    !            [    μ²(λ+μ)²  ][    λ+2μ   ]   [   μ(λ+μ)(λ+2μ) ]
+    !
+    !compare w/ the 'full-elastic' case
+    !        [___-1____[ λ²+2λμ+2μ² -λ²-2λμ    ]  0  ]
+    !K_µM₃ = |4(λμ+μ²)²[-λ²-2λμ      λ²+2λμ+2μ²]  0  |
+    !        [              0           0        -μ⁻²]
+    !
+    !             [___-1____[ λ²+2λμ+2μ² -λ²-2λμ    ][λ+2μ  λ    ]     ]   [__-1___[λ+2μ  -λ ]     ]
+    !K_μM₃ M₃⁻¹ = |4(λμ+μ²)²[-λ²-2λμ      λ²+2λμ+2μ²][ λ   λ+2μ  ]     | = |2(λ+μ)μ[ -λ  λ+2μ]     |
+    !             [                                                -μ⁻¹]   [                   -μ⁻¹]
+    !
+    !Therefore, 
+    !glda = ____-μ_____[ sxxᵃ * ∂ₓᶠvx ]
+    !       (λ+μ)(λ+2μ)  
+    !
+    !gmu = _-4(λ+μ)²-4μ²_[ sxxᵃ * ∂ₓᶠvx ]
+    !       μ(λ+μ)(λ+2μ)  
+
+
     
    ! subroutine gradient_density(rf,sf,it,grad)
    !     type(t_field), intent(in) :: rf, sf
@@ -1397,7 +1443,7 @@ use, intrinsic :: ieee_arithmetic
         type(t_correlate) :: corr
 
         !nonzero only when sf touches rf
-        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
+        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2) !
         ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
         ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
         ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
@@ -1407,6 +1453,10 @@ use, intrinsic :: ieee_arithmetic
                            ppg%ldap2mu,ppg%lda,ppg%two_ldapmu,&
                            corr%glda,corr%gmu,            &
                            ifz,ilz,ifx,ilx)
+
+        ! if(m%is_freesurface) call grad2d_freesurf_glda_gmu(rf%sxx,sf%vx,&
+        !                     corr%glda,corr%gmu,            &
+        !                     ifx,ilx)
         
     end subroutine
     
@@ -1424,14 +1474,26 @@ use, intrinsic :: ieee_arithmetic
         corr%glda(:,:,1) = corr%glda(:,:,1) *mhalf_inv_ldapmu
         !gmu
         corr%gmu(:,:,1) = corr%gmu(:,:,1) *mhalf_inv_ldapmu/ppg%mu(1:cb%mz,1:cb%mx)
+        
+
+        ! if(m%is_freesurface) then
+        !     corr%glda(1,:,1) = corr%glda(1,:,1)/mhalf_inv_ldapmu(1,:) *& !canceling
+        !         (-ppg%mu(1,1:cb%mx))                                /ppg%ldapmu(1,1:cb%mx)/ppg%ldap2mu(1,1:cb%mx)
+        !     corr%gmu(1,:,1)  = corr%gmu(1,:,1) /mhalf_inv_ldapmu(1,:)*ppg%mu(1,1:cb%mx) *& !canceling
+        !         (-4*ppg%ldapmu(1,1:cb%mx)**2-4*ppg%mu(1,1:cb%mx)**2)/ppg%mu(1,1:cb%mx)/ppg%ldapmu(1,1:cb%mx)/ppg%ldap2mu(1,1:cb%mx)
+
+        ! else
+            !preparing for projection back
+            corr%grho(1,:,:) = corr%grho(2,:,:)
+            corr%glda(1,:,:) = corr%glda(2,:,:)
+            corr%gmu (1,:,:) = corr%gmu (2,:,:)
+
+        ! endif
+
         where( ieee_is_nan(corr%gmu(:,:,1)) .or. .not.ieee_is_finite(corr%gmu(:,:,1)) )
             corr%gmu(:,:,1)=0.
         endwhere
 
-        !preparing for projection back
-        corr%grho(1,:,:) = corr%grho(2,:,:)
-        corr%glda(1,:,:) = corr%glda(2,:,:)
-        corr%gmu (1,:,:) = corr%gmu (2,:,:)
 
         deallocate(mhalf_inv_ldapmu)
 
@@ -1686,8 +1748,8 @@ use, intrinsic :: ieee_arithmetic
             !dir$ simd
             do iz=ifz,ilz
                 
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
 
                 izm2_ix= i-2  !iz-2,ix
                 izm1_ix= i-1  !iz-1,ix
@@ -1747,6 +1809,47 @@ use, intrinsic :: ieee_arithmetic
         !$omp end parallel
 
     end subroutine
+
+    subroutine grad2d_freesurf_glda_gmu(rf_sxx,sf_vx,         &
+                                         grad_lda,grad_mu,    &
+                                         ifx,ilx)
+        real,dimension(*) :: rf_sxx,sf_vx
+        real,dimension(*) :: grad_lda,grad_mu
+        
+        nz=cb%nz
+        
+        sf_dvx_dx=0.
+        
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,j,&
+        !$omp         iz_ix,iz_ixm1,iz_ixp1,iz_ixp2,&
+        !$omp         sf_dvx_dx)
+        !$omp do schedule(dynamic)
+        do ix=ifx,ilx
+        
+            !!!dir$ simd
+            iz=1
+                
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !corr has no boundary layers       
+                
+                iz_ix  = i    !iz  ,ix
+                iz_ixm1  = i      -nz  !iz  ,ix-1
+                iz_ixp1  = i      +nz  !iz  ,ix+1
+                iz_ixp2  = i    +2*nz  !iz  ,ix+2
+
+                sf_dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
+
+                grad_lda(j)=grad_lda(j) + rf_sxx(i)*sf_dvx_dx
+
+                grad_mu(j) =grad_mu(j)  + rf_sxx(i)*sf_dvx_dx
+            
+        end do
+        !$omp end do
+        !$omp end parallel
+
+    end subroutine
+    
     
     subroutine grad2d_density(rf_vz,rf_vx,         &
                               sf_szz,sf_sxx,sf_szx,&
@@ -1851,8 +1954,8 @@ use, intrinsic :: ieee_arithmetic
             !dir$ simd
             do iz=ifz,ilz
                 
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
                 rp = sn_p*( rf_szz(i) + rf_sxx(i) )
                 sp = sn_p*( sf_szz(i) + sf_sxx(i) )
@@ -1886,8 +1989,8 @@ use, intrinsic :: ieee_arithmetic
             !dir$ simd
             do iz=ifz,ilz
                 
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz !grad has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
                 sp = sn_p* ( sf_szz(i) + sf_sxx(i) )
                 

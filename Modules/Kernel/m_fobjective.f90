@@ -396,7 +396,7 @@ use m_preconditioner
         enddo
 
         !freeze_zone as hard mask
-        do i=1,ppg%ngrad
+        do i=1,param%npars
             where(m%is_freeze_zone) qp%g(:,:,:,i)=0.
         enddo
 
