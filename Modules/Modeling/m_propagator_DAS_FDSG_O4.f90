@@ -889,7 +889,7 @@ use, intrinsic :: ieee_arithmetic
 
         if(m%is_freesurface) ifz=max(ifz,1)
 
-        call fd2d_momenta(f%pz,f%px,f%ez,f%ex,self%mu*f%es(:,:,1),            &
+        call fd2d_momenta(f%pz,f%px,f%ez,f%ex,self%mu,f%es,            &
                         f%dez_dz,f%dex_dx,f%dex_dz,f%dez_dx,f%des_dz,f%des_dx,&
                         self%ldap2mu,self%lda,                                &
                         ifz,ilz,ifx,ilx,time_dir*self%dt)
@@ -1068,7 +1068,7 @@ use, intrinsic :: ieee_arithmetic
         
         if(m%is_freesurface) ifz=max(ifz,2)
 
-        call fd2d_strains(self%buoz*f%pz(:,:,1),self%buox*f%px(:,:,1),f%ez,f%ex,f%es,&
+        call fd2d_strains(self%buoz,f%pz,self%buox,f%px,f%ez,f%ex,f%es,&
                            f%dpz_dz,f%dpx_dx,f%dpz_dx,f%dpx_dz,&
                            ifz,ilz,ifx,ilx,time_dir*self%dt)
         
@@ -1086,16 +1086,18 @@ use, intrinsic :: ieee_arithmetic
 
             if (FS_method=='stress_image') then !Levandar & Roberttson
                 
-                nnz=0-cb%ifz+1
+                nnz=0-(-4)+1 !0-cb%ifz+1
                 f%sz(2:1+nnz,:,1)=self%ldap2mu(2:1+nnz,:)*f%ez(2:1+nnz,:,1)+self%lda    (2:1+nnz,:)*f%ex(2:1+nnz,:,1)
                 f%sx(2:1+nnz,:,1)=self%lda    (2:1+nnz,:)*f%ez(2:1+nnz,:,1)+self%ldap2mu(2:1+nnz,:)*f%ex(2:1+nnz,:,1)
 
                 !image szz
                 f%sz(1,:,1)=0.
-                f%sz(0:cb%ifz:-1, :,1)=-f%sz(2:2+0-cb%ifz, :,1)
+                f%sz(0:-4:-1, :,1)=-f%sz(2:2+0-(-4), :,1)
+                !f%sz(0:cb%ifz:-1, :,1)=-f%sz(2:2+0-cb%ifz, :,1)
 
                 !not image on sxx
-                f%sx(cb%ifz:0,:,1)=0.
+                f%sx(-4:0,:,1)=0.
+                !f%sx(cb%ifz:0,:,1)=0.
 
                 do ix=cb%ifx+1,cb%ilx-2
                     dvx_dx_= c1x*(self%buox(1,ix+1)*f%px(1,ix+1,1)-self%buox(1,ix  )*f%px(1,ix  ,1)) &
@@ -1104,27 +1106,19 @@ use, intrinsic :: ieee_arithmetic
                     factor = -self%lda(1,ix)**2/self%ldap2mu(1,ix) + self%ldap2mu(1,ix)
                     f%sx(1,ix,1) = f%sx(1,ix,1) + time_dir*self%dt * factor*dvx_dx_
                 enddo
-                
-                ! factor=-self%lda(iz,ix)**2/self%ldap2mu(iz,ix) + self%ldap2mu(iz,ix)
-                ! f%ex(iz,ix,1) = f%ex(iz,ix,1) + self%dt * factor*dvx_dx_
-                ! do ix=ifx,ilx
-                ! do iz=cb%ifz-2,1
-                !     dvx_dx_= c1x*(self%buox(iz,ix+1)*f%px(iz,ix+1,1)-self%buox(iz,ix  )*f%px(iz,ix  ,1)) &
-                !             +c2x*(self%buox(iz,ix+2)*f%px(iz,ix+2,1)-self%buox(iz,ix-1)*f%px(iz,ix-1,1))
-                !     factor=-self%lda(iz,ix)**2/self%ldap2mu(iz,ix) + self%ldap2mu(iz,ix)
-                !     sx(iz,ix) = sx(iz,ix) + self%dt * factor*dvx_dx_
-                ! enddo
-                ! enddo
 
                 !convert to ez & ex
                 ![sz]=[λ+2μ λ   ][ez] => [ez]=   1   [λ+2μ -λ  ][sz]
                 ![sx] [λ    λ+2μ][ex]    [ex] (λ+μ)4μ[-λ   λ+2μ][sx]
-                f%ez(cb%ifz:1,:,1) = self%inv_ldapmu_4mu(cb%ifz:1,:)*( self%ldap2mu(cb%ifz:1,:)*f%sz(cb%ifz:1,:,1)-self%lda    (cb%ifz:1,:)*f%sx(cb%ifz:1,:,1) )
-                f%ex(cb%ifz:1,:,1) = self%inv_ldapmu_4mu(cb%ifz:1,:)*(-self%lda    (cb%ifz:1,:)*f%sz(cb%ifz:1,:,1)+self%ldap2mu(cb%ifz:1,:)*f%sx(cb%ifz:1,:,1) )
+                f%ez(-4:1,:,1) = self%inv_ldapmu_4mu(-4:1,:)*( self%ldap2mu(-4:1,:)*f%sz(-4:1,:,1)-self%lda    (-4:1,:)*f%sx(-4:1,:,1) )
+                f%ex(-4:1,:,1) = self%inv_ldapmu_4mu(-4:1,:)*(-self%lda    (-4:1,:)*f%sz(-4:1,:,1)+self%ldap2mu(-4:1,:)*f%sx(-4:1,:,1) )
+                !f%ez(cb%ifz:1,:,1) = self%inv_ldapmu_4mu(cb%ifz:1,:)*( self%ldap2mu(cb%ifz:1,:)*f%sz(cb%ifz:1,:,1)-self%lda    (cb%ifz:1,:)*f%sx(cb%ifz:1,:,1) )
+                !f%ex(cb%ifz:1,:,1) = self%inv_ldapmu_4mu(cb%ifz:1,:)*(-self%lda    (cb%ifz:1,:)*f%sz(cb%ifz:1,:,1)+self%ldap2mu(cb%ifz:1,:)*f%sx(cb%ifz:1,:,1) )
 
 
                 !image on szx = μ*es
-                f%es(1:cb%ifz:-1, :,1)=-f%es(2:2+1-cb%ifz, :,1)
+                f%es(1:-4:-1, :,1)=-f%es(2:2+1-(-4), :,1)
+                !f%es(1:cb%ifz:-1, :,1)=-f%es(2:2+1-cb%ifz, :,1)
 
             endif
 
@@ -1299,11 +1293,11 @@ use, intrinsic :: ieee_arithmetic
 
     !========= Finite-Difference on flattened arrays ==================
     
-    subroutine fd2d_momenta(pz,px,ez,ex,mu_es,              &
+    subroutine fd2d_momenta(pz,px,ez,ex,mu,es,              &
                            dez_dz,dex_dx,dex_dz,dez_dx,des_dz,des_dx,&
                            ldap2mu,lda,&
                            ifz,ilz,ifx,ilx,dt)
-        real,dimension(*) :: pz,px,ez,ex,mu_es
+        real,dimension(*) :: pz,px,ez,ex,mu,es
         real,dimension(*) :: dez_dz,dex_dx,dex_dz,dez_dx,des_dz,des_dx
         real,dimension(*) :: ldap2mu,lda
         
@@ -1343,8 +1337,8 @@ use, intrinsic :: ieee_arithmetic
                 dex_dz_= c1z*(lda(iz_ix)*ex(iz_ix)-lda(izm1_ix)*ex(izm1_ix)) +c2z*(lda(izp1_ix)*ex(izp1_ix)-lda(izm2_ix)*ex(izm2_ix))
                 dez_dx_= c1x*(lda(iz_ix)*ez(iz_ix)-lda(iz_ixm1)*ez(iz_ixm1)) +c2x*(lda(iz_ixp1)*ez(iz_ixp1)-lda(iz_ixm2)*ez(iz_ixm2))
 
-                des_dz_= c1z*(mu_es(izp1_ix)-mu_es(iz_ix)) +c2z*(mu_es(izp2_ix)-mu_es(izm1_ix))
-                des_dx_= c1x*(mu_es(iz_ixp1)-mu_es(iz_ix)) +c2x*(mu_es(iz_ixp2)-mu_es(iz_ixm1))
+                des_dz_= c1z*(mu(izp1_ix)*es(izp1_ix)-mu(iz_ix)*es(iz_ix)) +c2z*(mu(izp2_ix)*es(izp2_ix)-mu(izm1_ix)*es(izm1_ix))
+                des_dx_= c1x*(mu(iz_ixp1)*es(iz_ixp1)-mu(iz_ix)*es(iz_ix)) +c2x*(mu(iz_ixp2)*es(iz_ixp2)-mu(iz_ixm1)*es(iz_ixm1))
                                 
                 !cpml
                 dez_dz(i)= cpml%b_z_half(iz)*dez_dz(i) + cpml%a_z_half(iz)*dez_dz_
@@ -1373,10 +1367,10 @@ use, intrinsic :: ieee_arithmetic
         
     end subroutine
     
-    subroutine fd2d_strains(bpz,bpx,ez,ex,es,              &
+    subroutine fd2d_strains(buoz,pz,buox,px,ez,ex,es,              &
                              dpz_dz,dpx_dx,dpz_dx,dpx_dz,&
                              ifz,ilz,ifx,ilx,dt)
-        real,dimension(*) :: bpz,bpx,ez,ex,es
+        real,dimension(*) :: buoz,pz,buox,px,ez,ex,es
         real,dimension(*) :: dpz_dz,dpx_dx,dpz_dx,dpx_dz
         
         nz=cb%nz
@@ -1412,8 +1406,8 @@ use, intrinsic :: ieee_arithmetic
                 iz_ixp2=i  +2*nz !iz,ix+2
                 
 
-                dpz_dz_= c1z*(bpz(izp1_ix)-bpz(iz_ix))  +c2z*(bpz(izp2_ix)-bpz(izm1_ix))
-                dpx_dx_= c1x*(bpx(iz_ixp1)-bpx(iz_ix))  +c2x*(bpx(iz_ixp2)-bpx(iz_ixm1))
+                dpz_dz_= c1z*(buoz(izp1_ix)*pz(izp1_ix)-buoz(iz_ix)*pz(iz_ix))  +c2z*(buoz(izp2_ix)*pz(izp2_ix)-buoz(izm1_ix)*pz(izm1_ix))
+                dpx_dx_= c1x*(buox(iz_ixp1)*px(iz_ixp1)-buox(iz_ix)*px(iz_ix))  +c2x*(buox(iz_ixp2)*px(iz_ixp2)-buox(iz_ixm1)*px(iz_ixm1))
                 
                 !cpml
                 dpz_dz(i)=cpml%b_z(iz)*dpz_dz(i)+cpml%a_z(iz)*dpz_dz_
@@ -1426,8 +1420,8 @@ use, intrinsic :: ieee_arithmetic
                 ez(i) = ez(i) + dt * dpz_dz_
                 ex(i) = ex(i) + dt * dpx_dx_
 
-                dpz_dx_= c1x*(bpz(iz_ix)-bpz(iz_ixm1))  +c2x*(bpz(iz_ixp1)-bpz(iz_ixm2))
-                dpx_dz_= c1z*(bpx(iz_ix)-bpx(izm1_ix))  +c2z*(bpx(izp1_ix)-bpx(izm2_ix))
+                dpz_dx_= c1x*(buoz(iz_ix)*pz(iz_ix)-buoz(iz_ixm1)*pz(iz_ixm1))  +c2x*(buoz(iz_ixp1)*pz(iz_ixp1)-buoz(iz_ixm2)*pz(iz_ixm2))
+                dpx_dz_= c1z*(buox(iz_ix)*px(iz_ix)-buox(izm1_ix)*px(izm1_ix))  +c2z*(buox(izp1_ix)*px(izp1_ix)-buox(izm2_ix)*px(izm2_ix))
 
                 !cpml
                 dpz_dx(i)=cpml%b_x_half(ix)*dpz_dx(i)+cpml%a_x_half(ix)*dpz_dx_
