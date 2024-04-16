@@ -24,7 +24,6 @@ use, intrinsic :: ieee_arithmetic
 
     !scaling source wavelet
     real :: wavelet_scaler
-    real :: wavelet_scaler_outer !_ez_pz=1., wavelet_scaler_outer_ez_px=1., wavelet_scaler_outer_ex_pz=1., wavelet_scaler_outer_ex_px=1.
 
     character(:),allocatable :: FS_method
 
@@ -72,6 +71,7 @@ use, intrinsic :: ieee_arithmetic
         
         procedure :: inject_momenta
         procedure :: inject_strains
+        procedure :: inject_strains_freesurf
         procedure :: update_momenta
         procedure :: update_strains
         procedure :: extract
@@ -175,13 +175,11 @@ use, intrinsic :: ieee_arithmetic
         
         wavelet_scaler=self%dt/m%cell_volume
 
-        if(m%is_freesurface) wavelet_scaler_outer=setup%get_real('WAVELET_SCALER_OUTER',o_default='1')        
-
         if_hicks=shot%if_hicks
 
         if_record_adjseismo=either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
 
-        FS_method=setup%get_str('FS_METHOD',o_default='stress_image')
+        FS_method=setup%get_str('FS_METHOD',o_default='strain_image')
 
         call alloc(self%buoz,           [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%buox,           [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
@@ -577,7 +575,11 @@ use, intrinsic :: ieee_arithmetic
 
             !step 3: add pressure to e^it+0.5
             call cpu_time(tic)
-            call self%inject_strains(fld_u,time_dir,it)
+            if(m%is_freesurface.and.shot%src%iz==1) then
+                call self%inject_strains_freesurf(fld_u,time_dir,it)
+            else
+                call self%inject_strains(fld_u,time_dir,it)
+            endif
             call cpu_time(toc)
             tt3=tt3+toc-tic
 
@@ -673,7 +675,11 @@ use, intrinsic :: ieee_arithmetic
 
                 !backward step 3: rm pressure from e^it+0.5
                 call cpu_time(tic)
-                call self%inject_strains(fld_u,time_dir,it)
+                if(m%is_freesurface.and.shot%src%iz==1) then
+                    call self%inject_strains_freesurf(fld_u,time_dir,it)
+                else
+                    call self%inject_strains(fld_u,time_dir,it)
+                endif
                 call cpu_time(toc)
                 tt3=tt3+toc-tic
             ! endif
@@ -682,7 +688,11 @@ use, intrinsic :: ieee_arithmetic
 
             !adjoint step 5: inject to e^it+1.5 at receivers
             call cpu_time(tic)
-            call self%inject_strains(fld_a,time_dir,it)
+            if(m%is_freesurface.and.shot%rcv(1)%iz==1) then
+                call self%inject_strains_freesurf(fld_a,time_dir,it)
+            else
+                call self%inject_strains(fld_a,time_dir,it)
+            endif
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
@@ -843,11 +853,9 @@ use, intrinsic :: ieee_arithmetic
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
                     case ('pz') !vertical z adjsource
-                        !f%pz(ifz:ilz,ifx:ilx,1) = f%pz(ifz:ilz,ifx:ilx,1) + wl*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
                         f%pz(ifz:ilz,ifx:ilx,1) = f%pz(ifz:ilz,ifx:ilx,1) + wl/self%buoz(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
 
                     case ('px') !horizontal x adjsource
-                        !f%px(ifz:ilz,ifx:ilx,1) = f%px(ifz:ilz,ifx:ilx,1) + wl*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
                         if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                         f%px(ifz:ilz,ifx:ilx,1) = f%px(ifz:ilz,ifx:ilx,1) + wl/self%buox(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
                         
@@ -857,12 +865,10 @@ use, intrinsic :: ieee_arithmetic
                     select case (shot%rcv(i)%comp)
                     case ('pz') !vertical z adjsource
                         !pz[ix,1,iz-0.5]
-                        !f%pz(iz,ix,1) = f%pz(iz,ix,1) + wl !no time_dir needed!
                         f%pz(iz,ix,1) = f%pz(iz,ix,1) + wl/self%buoz(iz,ix)  !self%buoz(iz,ix) !no time_dir needed!
 
                     case ('px') !horizontal x adjsource
                         !px[ix-0.5,1,iz]
-                        !f%px(iz,ix,1) = f%px(iz,ix,1) + wl !no time_dir needed!
                         if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl
                         f%px(iz,ix,1) = f%px(iz,ix,1) + wl/self%buox(iz,ix) !no time_dir needed!
                         
@@ -917,7 +923,7 @@ use, intrinsic :: ieee_arithmetic
 
 
         if(m%is_freesurface) then
-            if (FS_method=='stress_image') then !Levandar & Roberttson
+            if (FS_method=='stress_image'.or.FS_method=='strain_image') then !Levandar & Roberttson
                 !Roberttson's 3rd method
                 f%pz(cb%ifz:1,:,1)=0.
                 f%px(cb%ifz:0,:,1)=0.
@@ -944,9 +950,6 @@ use, intrinsic :: ieee_arithmetic
             if(if_hicks) then
                 select case (shot%src%comp)
                 case ('ez')
-                    if(m%is_freesurface.and.shot%src%iz==1) then
-                        if(shot%rcv(1)%comp=='pz'.or.shot%rcv(1)%comp=='px') wl=wl*wavelet_scaler_outer
-                    endif
                     !f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(self%ldap2mu(ifz:ilz,ifx:ilx))*shot%src%interp_coef_symm(:,:,1)
                     !f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(   -self%lda(ifz:ilz,ifx:ilx))*shot%src%interp_coef_symm(:,:,1)
 
@@ -959,9 +962,6 @@ use, intrinsic :: ieee_arithmetic
                         )
 
                 case ('ex')
-                    if(m%is_freesurface.and.shot%src%iz==1) then
-                        if(shot%rcv(1)%comp=='pz'.or.shot%rcv(1)%comp=='px') wl=wl*wavelet_scaler_outer
-                    endif
                     !f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(   -self%lda(ifz:ilz,ifx:ilx))*shot%src%interp_coef_symm(:,:,1)
                     !f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(self%ldap2mu(ifz:ilz,ifx:ilx))*shot%src%interp_coef_symm(:,:,1)
 
@@ -1006,9 +1006,6 @@ use, intrinsic :: ieee_arithmetic
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
                     case ('ez')
-                        if(m%is_freesurface.and.shot%rcv(i)%iz==1) then
-                            if(shot%src%comp=='pz'.or.shot%src%comp=='px') wl=wl*wavelet_scaler_outer
-                        endif
                         !f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) +wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_symm(:,:,1) !no time_dir needed!
                         !f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) +wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda(ifz:ilz,ifx:ilx)) *shot%rcv(i)%interp_coef_symm(:,:,1)
 
@@ -1020,9 +1017,6 @@ use, intrinsic :: ieee_arithmetic
                             )
 
                     case ('ex')
-                        if(m%is_freesurface.and.shot%rcv(i)%iz==1) then
-                            if(shot%src%comp=='pz'.or.shot%src%comp=='px') wl=wl*wavelet_scaler_outer
-                        endif
                         !f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) +wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda(ifz:ilz,ifx:ilx)) *shot%rcv(i)%interp_coef_symm(:,:,1)
                         !f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) +wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_symm(:,:,1)
 
@@ -1048,6 +1042,57 @@ use, intrinsic :: ieee_arithmetic
                     case ('es')
                         f%es(iz,ix,1) = f%es(iz,ix,1) +wl/self%mu(iz,ix)
 
+                    endselect
+                endif
+
+            enddo
+        
+    end subroutine
+
+    subroutine inject_strains_freesurf(self,f,time_dir,it)
+        class(t_propagator) :: self
+        type(t_field) :: f
+
+        if(.not. f%is_adjoint) then
+
+            ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
+            ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
+            
+            wl=time_dir*f%wavelet(1,it)*wavelet_scaler
+            
+            if(if_hicks) then
+                select case (shot%src%comp)
+                case ('ex')
+                    f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + 2*wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef_full(:,:,1)
+                endselect
+                
+            else
+                select case (shot%src%comp)
+                case ('ex')
+                    f%ex(iz,ix,1) = f%ex(iz,ix,1) + 2*wl*self%inv_ldapmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
+                endselect
+                
+            endif
+
+            return
+
+        endif
+
+            do i=1,shot%nrcv
+                ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
+                ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
+                
+                wl=f%wavelet(i,it)*wavelet_scaler
+                    
+                if(if_hicks) then
+                    select case (shot%rcv(i)%comp)
+                    case ('ex')
+                        f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + 2*wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*self%ldap2mu(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_full(:,:,1)
+                    endselect
+                else           
+                    select case (shot%rcv(i)%comp)
+                    case ('ex')
+                        f%ex(iz,ix,1) = f%ex(iz,ix,1) + 2*wl*self%inv_ldapmu_4mu(iz,ix)*self%ldap2mu(iz,ix)
                     endselect
                 endif
 
@@ -1120,6 +1165,31 @@ use, intrinsic :: ieee_arithmetic
                 f%es(1:-4:-1, :,1)=-f%es(2:2+1-(-4), :,1)
                 !f%es(1:cb%ifz:-1, :,1)=-f%es(2:2+1-cb%ifz, :,1)
 
+
+            elseif (FS_method=='strain_image') then !replicate stress_image under strain sys
+                !above FS
+                nnz=0-(-4)+1 !0-cb%ifz+1
+                f%ez(0:-4:-1,:,1) =self%inv_ldapmu_4mu(2:1+nnz,:)*( &
+                    -(self%ldap2mu(2:1+nnz,:)**2+self%lda(2:1+nnz,:)**2 ) *f%ez(2:1+nnz,:,1) &
+                    -2   *self%lda(2:1+nnz,:)   *self%ldap2mu(2:1+nnz,:)  *f%ex(2:1+nnz,:,1) &
+                    )
+                f%ex(0:-4:-1,:,1) =self%inv_ldapmu_4mu(2:1+nnz,:)*( &
+                     2   *self%lda(2:1+nnz,:)   *self%ldap2mu(2:1+nnz,:)  *f%ez(2:1+nnz,:,1) &
+                    +(self%ldap2mu(2:1+nnz,:)**2+self%lda(2:1+nnz,:)**2 ) *f%ex(2:1+nnz,:,1) &
+                    )
+                                
+                !on FS
+                do ix=cb%ifx+1,cb%ilx-2
+                    dvx_dx_= c1x*(self%buox(1,ix+1)*f%px(1,ix+1,1)-self%buox(1,ix  )*f%px(1,ix  ,1)) &
+                            +c2x*(self%buox(1,ix+2)*f%px(1,ix+2,1)-self%buox(1,ix-1)*f%px(1,ix-1,1))
+                    f%ex(1,ix,1) = f%ex(1,ix,1) + time_dir*self%dt * dvx_dx_
+                enddo
+                
+                f%ez(1,:,1) = -self%lda(1,:)/self%ldap2mu(1,:)*f%ex(1,:,1) !Poisson ratio
+
+                !image on szx = μ*es
+                f%es(1:-4:-1, :,1)=-f%es(2:2+1-(-4), :,1)
+
             endif
 
         endif
@@ -1138,6 +1208,12 @@ use, intrinsic :: ieee_arithmetic
                 
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
+
+                    case ('vz')
+                        f%seismo(i,it)=sum(self%buoz(ifz:ilz,ifx:ilx)*f%pz(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
+                    case ('vx')
+                        f%seismo(i,it)=sum(self%buox(ifz:ilz,ifx:ilx)*f%px(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
+
                     case ('pz')
                         f%seismo(i,it)=sum(f%pz(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
                     case ('px')
@@ -1155,6 +1231,11 @@ use, intrinsic :: ieee_arithmetic
                     
                 else
                     select case (shot%rcv(i)%comp)
+                    case ('vz') !pz[iz-0.5,ix]
+                        f%seismo(i,it)=self%buoz(iz,ix)*f%pz(iz,ix,1)
+                    case ('vx') !px[iz,ix-0.5]
+                        f%seismo(i,it)=self%buox(iz,ix)*f%px(iz,ix,1)
+
                     case ('pz') !pz[iz-0.5,ix]
                         f%seismo(i,it)=f%pz(iz,ix,1)
                     case ('px') !px[iz,ix-0.5]
