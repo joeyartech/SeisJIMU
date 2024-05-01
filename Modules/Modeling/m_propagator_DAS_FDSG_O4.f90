@@ -754,6 +754,11 @@ use, intrinsic :: ieee_arithmetic
                     case ('px')
                     !f%px(ifz:ilz,ifx:ilx,1) = f%px(ifz:ilz,ifx:ilx,1) + wl*shot%src%interp_coef(:,:,1)
                     f%px(ifz:ilz,ifx:ilx,1) = f%px(ifz:ilz,ifx:ilx,1) + wl/self%buox(ifz:ilz,ifx:ilx) *shot%src%interp_coef(:,:,1)
+
+                    case ('vz')
+                    f%pz(ifz:ilz,ifx:ilx,1) = f%pz(ifz:ilz,ifx:ilx,1) + wl*shot%src%interp_coef(:,:,1)
+                    case ('vx')
+                    f%px(ifz:ilz,ifx:ilx,1) = f%px(ifz:ilz,ifx:ilx,1) + wl*shot%src%interp_coef(:,:,1)
                     
                 end select
                 
@@ -791,6 +796,11 @@ use, intrinsic :: ieee_arithmetic
                         case ('px') !horizontal x adjsource
                         !f%px(ifz:ilz,ifx:ilx,1) = f%px(ifz:ilz,ifx:ilx,1) + wl*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
                         f%px(ifz:ilz,ifx:ilx,1) = f%px(ifz:ilz,ifx:ilx,1) + wl/self%buox(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
+
+                        case ('vz') !vertical z adjsource
+                        f%pz(ifz:ilz,ifx:ilx,1) = f%pz(ifz:ilz,ifx:ilx,1) + wl*shot%rcv(i)%interp_coef(:,:,1)
+                        case ('vx') !horizontal x adjsource
+                        f%px(ifz:ilz,ifx:ilx,1) = f%px(ifz:ilz,ifx:ilx,1) + wl*shot%rcv(i)%interp_coef(:,:,1)
                         
                     end select
                     
@@ -983,6 +993,12 @@ use, intrinsic :: ieee_arithmetic
                         f%seismo(i,it)=sum(f%pz(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
                         case ('px')
                         f%seismo(i,it)=sum(f%px(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
+
+                        case ('vz')
+                        f%seismo(i,it)=sum(f%pz(ifz:ilz,ifx:ilx,1)*self%buoz(ifz:ilz,ifx:ilx) *shot%rcv(i)%interp_coef(:,:,1) )
+                        case ('vx')
+                        f%seismo(i,it)=sum(f%px(ifz:ilz,ifx:ilx,1)*self%buox(ifz:ilz,ifx:ilx) *shot%rcv(i)%interp_coef(:,:,1) )
+
                     end select
                     
                 else

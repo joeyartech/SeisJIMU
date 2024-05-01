@@ -185,6 +185,8 @@ use m_resampler
         stop
     endif
 
+    is_first_in=.false.
+
     ! contains
     ! function deri(a) result(d)
     !     real,dimension(:,:),allocatable :: a,d
