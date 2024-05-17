@@ -48,6 +48,7 @@ use, intrinsic :: ieee_arithmetic
         
         real,dimension(:,:,:),allocatable :: pz,px !momenta
         real,dimension(:,:,:),allocatable :: ez,ex,es !strains
+        real,dimension(:,:,:),allocatable :: sz,sx,ss !stresses
 
         ! real,dimension(:,:,:),pointer :: p=> null(), p_prev=> null(), p_next=> null() !negated pressure
         ! !N.B. pressure is defined >0 for inward stress, but here tobe compatible with szz etc, p is defined >0 for outward stress
@@ -228,9 +229,11 @@ use, intrinsic :: ieee_arithmetic
         !save 3 grid points, for 4th order FD only
         !different indexing
         n=3*cb%mx*cb%my
+        ! if(.not. m%is_freesurface) &
         call alloc(self%bnd%vz_top,n,nt)
         call alloc(self%bnd%vz_bot,n,nt)
         if(if_shear) then
+            ! if(.not. m%is_freesurface) &
             call alloc(self%bnd%vx_top,n,nt)
             call alloc(self%bnd%vx_bot,n,nt)
         endif
@@ -527,6 +530,7 @@ use, intrinsic :: ieee_arithmetic
             ! call copy(action,self%vy,self%bnd%vy_rear(:,it), [1,nz],[1,nx],[ny-1,ny+1])
         else
             !top
+            ! if(.not. m%is_freesurface) &
             call copy(action,self%vz,self%bnd%vz_top(:,it),  [1,3],    [1,nx],[1,1])
             !bottom
             call copy(action,self%vz,self%bnd%vz_bot(:,it),  [nz-1,nz+1],[1,nx],[1,1])
@@ -541,6 +545,7 @@ use, intrinsic :: ieee_arithmetic
             if(m%is_cubic) then
             else
                 !top
+                ! if(.not. m%is_freesurface) &
                 call copy(action,self%vx,self%bnd%vx_top(:,it),  [1,3],    [1,nx],[1,1])
                 !bottom
                 call copy(action,self%vx,self%bnd%vx_bot(:,it),  [nz-2,nz  ],[1,nx],[1,1])

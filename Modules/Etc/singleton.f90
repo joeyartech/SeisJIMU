@@ -149,7 +149,7 @@ MODULE singleton
   IMPLICIT NONE
 
   PRIVATE
-  PUBLIC:: fft, fftn, fftkind, status
+  PUBLIC:: fft, fft2d, fftn, fftkind, status
 
   INTEGER, PARAMETER:: fftkind = KIND(0.d0) !--- adjust here for other precisions
   INTEGER, SAVE     :: status = 0 !--- shifted to here as ELF90 does not allow
@@ -353,7 +353,7 @@ CONTAINS
        d(1:ndim) = dim(1:ndim)
     ELSE
        ndim = SIZE(d)
-       d = (/(i, i = 1, SIZE(d))/)
+       d = [(i, i = 1, ndim)]
     END IF
 
     ntotal = PRODUCT(shape)

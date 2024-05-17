@@ -68,6 +68,12 @@ use m_parametrizer
                 call by_custom(file)
             endif
 
+            if(index(list(i)%s,'respective_L1norm')>0) then
+                call warn('Preconditioning by respective_L1norm is not ready yet..')
+                !call hud('Will precondition the gvp & gvs by their respective L1 norm')
+                !call by_resp_L1norm
+            endif
+
         enddo
 
         call alloc(preco_in_x,param%n1,param%n2,param%n3)
@@ -143,7 +149,7 @@ use m_parametrizer
         deallocate(tmp)
 
     end subroutine
-    
+
     subroutine apply(self,g,pg)
         class(t_preconditioner) :: self
         real,dimension(:,:,:,:),allocatable :: g,pg

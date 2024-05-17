@@ -377,6 +377,23 @@ use m_preconditioner
 
         if(.not. either(oif_gradient,.true.,present(oif_gradient))) return
 
+
+        !freeze_zone as hard mask
+        do i=1,param%npars
+            where(m%is_freeze_zone) qp%g(:,:,:,i)=0.
+        enddo
+
+        !soft mask
+        smask=setup%get_file('GRADIENT_SOFT_MASK','MASK')
+        if(smask/='') then
+            call alloc(mask,m%nz,m%nx,m%ny)
+            call sysio_read(smask,mask,size(mask))
+            
+            do i=1,param%npars
+                qp%g(:,:,:,i)=qp%g(:,:,:,i)*mask
+            enddo
+        endif
+
         !post-modeling smoothing in physical (model) domain
         smoothings=setup%get_strs('SMOOTHING','SMTH',o_default='Laplacian')
 
@@ -396,7 +413,7 @@ use m_preconditioner
         enddo
 
         !freeze_zone as hard mask
-        do i=1,ppg%ngrad
+        do i=1,param%npars
             where(m%is_freeze_zone) qp%g(:,:,:,i)=0.
         enddo
 
@@ -406,7 +423,7 @@ use m_preconditioner
             call alloc(mask,m%nz,m%nx,m%ny)
             call sysio_read(smask,mask,size(mask))
             
-            do i=1,ppg%ngrad
+            do i=1,param%npars
                 qp%g(:,:,:,i)=qp%g(:,:,:,i)*mask
             enddo
         endif
