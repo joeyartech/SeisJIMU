@@ -105,6 +105,27 @@ use m_resampler
                 call shot%write('dadj_',shot%dadj)
 
 
+                case ('strain_L2averaged')
+                !first goto strain
+                call derivative_x(shot%dsyn,shot)
+                call integrate_t(shot%dsyn,shot%dt)
+                !then add gauge length
+                length=setup%get_int('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)
+                ! scaler=setup%get_real('MOVING_AVERAGE_SCALER','MA_SCALER',o_default='1.')
+                call moving_average(shot%dsyn,length)!,scaler)
+                call shot%write('DAS_dsyn_',shot%dsyn)
+                fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
+                call kernel_L2sq(shot%dadj)
+                !goback to velocity adjoint src
+                call moving_average(shot%dadj,length)!,scaler)
+                call rev_integrate_t(shot%dadj,shot%dt)
+                call derivative_x(-shot%dadj,shot)
+
+                call fld_a%ignite(o_wavelet=shot%dadj)
+                call shot%write('dadj_',shot%dadj)
+
+
                 case('L2_scaled')
                     if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
                     call alloc(tmp_dsyn,shot%nt,shot%nrcv)
@@ -242,5 +263,59 @@ use m_resampler
 
     end subroutine
 
+    subroutine derivative_x(data,shot) !gradient by cdiff
+        real,dimension(:,:) :: data !nt x nrcv
+        type(t_shot) :: shot 
+
+        real,dimension(:,:), allocatable :: dout
+        call alloc(dout,shot%nt,shot%nrcv)
+
+        do ir=2,shot%nrcv-1
+            dout(:,ir) = (data(:,ir+1)-data(:,ir-1)) / (shot%rcv(ir+1)%x-shot%rcv(ir-1)%x)
+        enddo
+
+        !padding
+        dout(:,1)=dout(:,2)
+        dout(:,shot%nrcv)=dout(:,shot%nrcv-1)
+
+        data=dout
+
+    end subroutine
+
+    subroutine integrate_t(data,dt) !integrate
+        real,dimension(:,:) :: data !nt x nrcv
+        real :: dt
+
+        real,dimension(:,:), allocatable :: dout
+        call alloc(dout,shot%nt,shot%nrcv)
+
+        do ir=1,shot%nrcv
+                dout(1,ir)=data(1,ir)*dt
+            do it=2,shot%nt
+                dout(it,ir) = dout(it-1,ir) + data(it,ir)*dt
+            enddo
+        enddo
+
+        data=dout
+
+    end subroutine
+
+    subroutine rev_integrate_t(data,dt) !integrate
+        real,dimension(:,:) :: data !nt x nrcv
+        real :: dt
+
+        real,dimension(:,:), allocatable :: dout
+        call alloc(dout,shot%nt,shot%nrcv)
+
+        do ir=1,shot%nrcv
+                dout(shot%nt,ir)=data(shot%nt,ir)*dt
+            do it=shot%nt-1,1,-1
+                dout(it,ir) = dout(it+1,ir) + data(it,ir)*dt
+            enddo
+        enddo
+
+        data=dout
+
+    end subroutine
 
 end subroutine

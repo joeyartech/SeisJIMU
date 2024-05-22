@@ -762,7 +762,7 @@ use, intrinsic :: ieee_arithmetic
                 case ('px')
                     !f%px(ifz:ilz,ifx:ilx,1) = f%px(ifz:ilz,ifx:ilx,1) + wl*shot%src%interp_coef(:,:,1)
                     if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
-                    f%pz(ifz:ilz,ifx:ilx,1) = f%pz(ifz:ilz,ifx:ilx,1) + wl/self%buox(ifz:ilz,ifx:ilx) *shot%src%interp_coef(:,:,1)
+                    f%px(ifz:ilz,ifx:ilx,1) = f%px(ifz:ilz,ifx:ilx,1) + wl/self%buox(ifz:ilz,ifx:ilx) *shot%src%interp_coef(:,:,1)
 
                 case ('vz')
                     f%pz(ifz:ilz,ifx:ilx,1) = f%pz(ifz:ilz,ifx:ilx,1) + wl*shot%src%interp_coef(:,:,1)
@@ -813,7 +813,7 @@ use, intrinsic :: ieee_arithmetic
 
                     case ('px') !horizontal x adjsource
                         if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
-                        f%px(ifz:ilz,ifx:ilx,1) = f%px(ifz:ilz,ifx:ilx,1) + wl/self%buox(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_symm(:,:,1) !no time_dir needed!
+                        f%px(ifz:ilz,ifx:ilx,1) = f%px(ifz:ilz,ifx:ilx,1) + wl/self%buox(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
 
                     case ('vz') !vertical z adjsource
                         f%pz(ifz:ilz,ifx:ilx,1) = f%pz(ifz:ilz,ifx:ilx,1) + wl*shot%rcv(i)%interp_coef(:,:,1)
