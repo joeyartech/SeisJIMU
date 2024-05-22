@@ -132,7 +132,7 @@ use m_model
         class(t_shot) :: self
 
         logical,save :: is_first_in=.true.
-        type(t_string),dimension(:),allocatable :: scomp
+        type(t_string),dimension(:),allocatable :: scomp, rcomp
 
         type(t_suformat) :: sudata
         character(:),allocatable :: str, zerophase, locut, hicut
@@ -168,7 +168,7 @@ use m_model
 
         endif
         
-        scomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',o_default='p')
+        rcomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',o_default='p')
         do i=1,shot%nrcv
             self%rcv(i)%z=-sudata%hdrs(i)%gelev*scalel
             self%rcv(i)%x= sudata%hdrs(i)%gx   *scalco
@@ -193,10 +193,17 @@ use m_model
             case (34); self%rcv(i)%comp='px' !in-line momenta
             case (33); self%rcv(i)%comp='py' !cross-line momenta
             case default
-                self%rcv(i)%comp=scomp(1)%s
+                self%rcv(i)%comp=rcomp(1)%s
             end select
             
         enddo
+
+        if(setup%get_bool('IF_MUST_USE_RCOMP',o_default='F')) then
+            do i=1,shot%nrcv
+                self%rcv(i)%comp=rcomp(1)%s
+            enddo
+        endif
+
 
         !shift positions to be 0-based
         !then m%oz,ox,oy is no longer of use before writing shots
