@@ -95,32 +95,34 @@ use m_resampler
                 case ('L2averaged')
                 length=setup%get_int('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)
                 ! scaler=setup%get_real('MOVING_AVERAGE_SCALER','MA_SCALER',o_default='1.')
-                call moving_average(shot%dsyn,length)!,scaler)
+                if(length>0) call moving_average(shot%dsyn,length)!,scaler)
                 call shot%write('avg_dsyn_',shot%dsyn)
                 fobj%misfit = fobj%misfit &
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
                 call kernel_L2sq(shot%dadj)
-                call moving_average(shot%dadj,length)!,scaler)
+                if(length>0) call moving_average(shot%dadj,length)!,scaler)
                 call fld_a%ignite(o_wavelet=shot%dadj)
                 call shot%write('dadj_',shot%dadj)
 
 
                 case ('strain_L2averaged')
                 !first goto strain
-                call derivative_x(shot%dsyn,shot)
-                call integrate_t(shot%dsyn,shot%dt)
+                !call derivative_x(shot%dsyn)
+                !call integrate_t(shot%dsyn)
+                call convert_in_fk(shot%dsyn,'v2e')
                 !then add gauge length
                 length=setup%get_int('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)
                 ! scaler=setup%get_real('MOVING_AVERAGE_SCALER','MA_SCALER',o_default='1.')
-                call moving_average(shot%dsyn,length)!,scaler)
+                if(length>0) call moving_average(shot%dsyn,length)!,scaler)
                 call shot%write('DAS_dsyn_',shot%dsyn)
                 fobj%misfit = fobj%misfit &
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
                 call kernel_L2sq(shot%dadj)
                 !goback to velocity adjoint src
-                call moving_average(shot%dadj,length)!,scaler)
-                call rev_integrate_t(shot%dadj,shot%dt)
-                call derivative_x(-shot%dadj,shot)
+                if(length>0) call moving_average(shot%dadj,length)!,scaler)
+                !call rev_integrate_t(shot%dadj)
+                !call derivative_x(-shot%dadj)
+                call convert_in_fk(shot%dadj,'e2v')
 
                 call fld_a%ignite(o_wavelet=shot%dadj)
                 call shot%write('dadj_',shot%dadj)
@@ -263,9 +265,8 @@ use m_resampler
 
     end subroutine
 
-    subroutine derivative_x(data,shot) !gradient by cdiff
+    subroutine derivative_x(data) !gradient by cdiff
         real,dimension(:,:) :: data !nt x nrcv
-        type(t_shot) :: shot 
 
         real,dimension(:,:), allocatable :: dout
         call alloc(dout,shot%nt,shot%nrcv)
@@ -282,17 +283,16 @@ use m_resampler
 
     end subroutine
 
-    subroutine integrate_t(data,dt) !integrate
+    subroutine integrate_t(data) !integrate
         real,dimension(:,:) :: data !nt x nrcv
-        real :: dt
 
         real,dimension(:,:), allocatable :: dout
         call alloc(dout,shot%nt,shot%nrcv)
 
         do ir=1,shot%nrcv
-                dout(1,ir)=data(1,ir)*dt
+                dout(1,ir)=data(1,ir)*shot%dt
             do it=2,shot%nt
-                dout(it,ir) = dout(it-1,ir) + data(it,ir)*dt
+                dout(it,ir) = dout(it-1,ir) + data(it,ir)*shot%dt
             enddo
         enddo
 
@@ -300,21 +300,77 @@ use m_resampler
 
     end subroutine
 
-    subroutine rev_integrate_t(data,dt) !integrate
+    subroutine rev_integrate_t(data) !reverse-time integrate
         real,dimension(:,:) :: data !nt x nrcv
-        real :: dt
 
         real,dimension(:,:), allocatable :: dout
         call alloc(dout,shot%nt,shot%nrcv)
 
         do ir=1,shot%nrcv
-                dout(shot%nt,ir)=data(shot%nt,ir)*dt
+                dout(shot%nt,ir)=data(shot%nt,ir)*shot%dt
             do it=shot%nt-1,1,-1
-                dout(it,ir) = dout(it+1,ir) + data(it,ir)*dt
+                dout(it,ir) = dout(it+1,ir) + data(it,ir)*shot%dt
             enddo
         enddo
 
         data=dout
+
+    end subroutine
+
+    subroutine convert_in_fk(data,dir)
+    use singleton
+        real,dimension(:,:) :: data !nt x nrcv
+        character(*) :: dir
+
+        real :: w(shot%nt), k(shot%nrcv)
+
+        real,dimension(:,:),allocatable :: filter
+        complex(fftkind),dimension(:,:),allocatable :: data_fft
+
+        call alloc(filter,shot%nt,shot%nrcv)
+        if(allocated(data_fft)) deallocate(data_fft)
+        allocate(data_fft(shot%nt,shot%nrcv))
+
+        n=shot%nt
+        if(mod(n,2)==0) then !if n is even, 1 is DC; 2:n/2 are +f; n/2+1:n are -f
+            w(1:n/2    )= [(i,i=1,n/2)]-1
+            w(  n/2+1:n)= -w(n/2:1:-1)
+        else !if n is odd, 1 is DC, 2:(n+1)/2 are +f, (n+1)/2+1:n are -f
+            w(1:(n+1)/2    )= [(i,i=1,(n+1)/2)]-1
+            w(  (n+1)/2+1:n)= -w((n+1)/2:2:-1)
+        endif
+
+        n=shot%nrcv
+        if(mod(n,2)==0) then !if n is even, 1 is DC; 2:n/2 are +f; n/2+1:n are -f
+            k(1:n/2    )= [(i,i=1,n/2)]-1
+            k(  n/2+1:n)= -k(n/2:1:-1)
+        else !if n is odd, 1 is DC, 2:(n+1)/2 are +f, (n+1)/2+1:n are -f
+            k(1:(n+1)/2    )= [(i,i=1,(n+1)/2)]-1
+            k(  (n+1)/2+1:n)= -k((n+1)/2:2:-1)
+        endif
+
+        if(dir=='v2e') then
+            call hud('v2e')
+            eps=maxval(w*w)*1e-5
+            scalar=1.*shot%dt/(shot%rcv(2)%x-shot%rcv(1)%x)
+
+            do ik=1,shot%nrcv; do iw=1,shot%nt
+                filter(iw,ik) = k(ik)*w(iw) / (w(iw)*w(iw)+eps) *scalar
+            enddo; enddo
+
+        else !e2v
+            call hud('e2v')
+            eps=maxval(k*k)*1e-5
+            scalar=1./shot%dt*(shot%rcv(2)%x-shot%rcv(1)%x)
+            do ik=1,shot%nrcv; do iw=1,shot%nt
+                filter(iw,ik) = w(iw)*k(ik) / (k(ik)*k(ik)+eps) *scalar
+            enddo; enddo
+            
+        endif
+
+        data_fft = fft2d(dcmplx(data))
+        
+        data=real(fft2d(filter*data_fft,inv=.true.),kind=4)
 
     end subroutine
 
