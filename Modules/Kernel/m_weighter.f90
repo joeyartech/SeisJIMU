@@ -44,6 +44,12 @@ use m_Modeling
         do i=1,size(list)
             call alloc(weight,nt,ntr,o_init=1.)
 
+            if(index(list(i)%s,'comp')>0) then !choose components
+                sublist=split(list(i)%s,o_sep=':')
+                call hud('Will choose components '//sublist(2)%s)
+                call by_choose_components(weight,sublist(2)%s)
+            endif
+
             if(index(list(i)%s,'p*')>0) then !weight pressure components
                 sublist=split(list(i)%s,o_sep='*')
                 call hud('Will multiply pressure component by '//sublist(2)%s)
@@ -147,6 +153,26 @@ use m_Modeling
         
     end subroutine
 
+
+
+    subroutine by_choose_components(weight,comps)
+        real,dimension(:,:) :: weight
+        character(*) :: comps
+
+        type(t_string),dimension(:),allocatable :: list
+        logical :: ifchoose
+
+        list=split(comps,o_sep=',')
+
+        do i=1,shot%nrcv
+            ifchoose=.false.
+            do j=1,size(list)
+                if(shot%rcv(i)%comp==list(j)%s) ifchoose=.true.
+            enddo
+            if(.not.ifchoose) weight(:,i)=0.
+        enddo
+
+    end subroutine
 
     subroutine by_components(weight,o_p,o_vz,o_vx,o_vy)
         real,dimension(:,:) :: weight

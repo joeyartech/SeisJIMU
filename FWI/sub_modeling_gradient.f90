@@ -202,12 +202,7 @@ use m_resampler
     if(mpiworld%is_master) call sysio_write('correlate_gradient',correlate_gradient,m%n*ppg%ngrad)
 
     call mpiworld%barrier
-
-    if(setup%get_str('JOB')=='gradient') then
-        call mpiworld%final
-        stop
-    endif
-
+    
     is_first_in=.false.
 
     ! contains
