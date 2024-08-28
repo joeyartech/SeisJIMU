@@ -402,10 +402,10 @@ use m_model
             call hicks_get_coefficient('full', self%src%interp_coef_full)
             call hicks_get_coefficient('antisymm', self%src%interp_coef_anti)
             call hicks_get_coefficient('symmetric',self%src%interp_coef_symm)
-            call hicks_get_coefficient('1+a11', self%src%interp_coef_1pa11)
-            call hicks_get_coefficient(  'a12', self%src%interp_coef_a12)
-            call hicks_get_coefficient(  'a21', self%src%interp_coef_a21)
-            call hicks_get_coefficient('1+a22', self%src%interp_coef_1pa22)
+            ! call hicks_get_coefficient('1+a11', self%src%interp_coef_1pa11)
+            ! call hicks_get_coefficient(  'a12', self%src%interp_coef_a12)
+            ! call hicks_get_coefficient(  'a21', self%src%interp_coef_a21)
+            ! call hicks_get_coefficient('1+a22', self%src%interp_coef_1pa22)
 
         case('szx','es')
             call hicks_get_coefficient('antisymm', self%src%interp_coef)
@@ -464,10 +464,10 @@ use m_model
                 call hicks_get_coefficient('full', self%rcv(i)%interp_coef_full)
                 call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef_anti)
                 call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef_symm)
-                call hicks_get_coefficient('1+a11', self%rcv(i)%interp_coef_1pa11)
-                call hicks_get_coefficient(  'a12', self%rcv(i)%interp_coef_a12)
-                call hicks_get_coefficient(  'a21', self%rcv(i)%interp_coef_a21)
-                call hicks_get_coefficient('1+a22', self%rcv(i)%interp_coef_1pa22)
+                ! call hicks_get_coefficient('1+a11', self%rcv(i)%interp_coef_1pa11)
+                ! call hicks_get_coefficient(  'a12', self%rcv(i)%interp_coef_a12)
+                ! call hicks_get_coefficient(  'a21', self%rcv(i)%interp_coef_a21)
+                ! call hicks_get_coefficient('1+a22', self%rcv(i)%interp_coef_1pa22)
 
             case('szx','es')
                 call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)
@@ -1192,4 +1192,3 @@ use m_model
     end subroutine
 
 end
-

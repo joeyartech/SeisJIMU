@@ -34,8 +34,8 @@ mod :
 	(cd ../Modules/Modeling; make)
 
 exe : sub_modeling_imaging.o main.o
-	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/$(app)_$(WaveEq)_$(Solver)_$(Order)
-	(cd ../exe; ln -sf $(app)_$(WaveEq)_$(Solver)_$(Order) $(APP) )
+	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/$(app)_$(WaveEq)_$(Solver)_$(Order)_$(TAG)
+	(cd ../exe; ln -sf $(app)_$(WaveEq)_$(Solver)_$(Order)_$(TAG) $(APP) )
 
 clean :
 	-rm main.o sub_modeling_imaging.o

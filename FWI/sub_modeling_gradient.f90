@@ -352,15 +352,18 @@ use m_resampler
         if(dir=='v2e') then
             call hud('v2e')
             eps=maxval(w*w)*1e-5
+            scalar=1.*shot%dt/(shot%rcv(2)%x-shot%rcv(1)%x)
+
             do ik=1,shot%nrcv; do iw=1,shot%nt
-                filter(iw,ik) = k(ik)*w(iw) / (w(iw)*w(iw)+eps)
+                filter(iw,ik) = k(ik)*w(iw) / (w(iw)*w(iw)+eps) *scalar
             enddo; enddo
 
         else !e2v
             call hud('e2v')
             eps=maxval(k*k)*1e-5
+            scalar=1./shot%dt*(shot%rcv(2)%x-shot%rcv(1)%x)
             do ik=1,shot%nrcv; do iw=1,shot%nt
-                filter(iw,ik) = w(iw)*k(ik) / (k(ik)*k(ik)+eps)
+                filter(iw,ik) = w(iw)*k(ik) / (k(ik)*k(ik)+eps) *scalar
             enddo; enddo
             
         endif
