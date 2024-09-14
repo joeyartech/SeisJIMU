@@ -249,14 +249,14 @@ use m_cpml
         
         corr%name=name
 
-        if(name(1:1)=='g') then !gradient components
+        ! if(name(1:1)=='g') then !gradient components
             call alloc(corr%gkpa,m%nz,m%nx,m%ny)
             call alloc(corr%grho,m%nz,m%nx,m%ny)
-        else !image components
-            call alloc(corr%ipp,m%nz,m%nx,m%ny)
-            call alloc(corr%ibksc,m%nz,m%nx,m%ny)
-            call alloc(corr%ifwsc,m%nz,m%nx,m%ny)
-        endif
+        ! else !image components
+        !     call alloc(corr%ipp,m%nz,m%nx,m%ny)
+        !     call alloc(corr%ibksc,m%nz,m%nx,m%ny)
+        !     call alloc(corr%ifwsc,m%nz,m%nx,m%ny)
+        ! endif
 
     end subroutine
 
@@ -271,11 +271,11 @@ use m_cpml
         class(t_propagator) :: self
         type(t_correlate) :: corr
 
-        if(allocated(correlate_image)) then
-            call correlate_assemble(corr%ipp, correlate_image(:,:,:,1))
-            call correlate_assemble(corr%ibksc, correlate_image(:,:,:,2))
-            call correlate_assemble(corr%ifwsc, correlate_image(:,:,:,3))
-        endif
+        ! if(allocated(correlate_image)) then
+        !     call correlate_assemble(corr%ipp, correlate_image(:,:,:,1))
+        !     call correlate_assemble(corr%ibksc, correlate_image(:,:,:,2))
+        !     call correlate_assemble(corr%ifwsc, correlate_image(:,:,:,3))
+        ! endif
 
         if(allocated(correlate_gradient)) then
             call correlate_assemble(corr%grho, correlate_gradient(:,:,:,1))
@@ -1083,11 +1083,11 @@ use m_cpml
             corr%grho(1,:,:) = corr%grho(2,:,:)
         endif
 
-        if(allocated(correlate_image)) then
-            corr%ipp (1,:,:) = corr%ipp (2,:,:)
-            corr%ibksc(1,:,:) = corr%ibksc(2,:,:)
-            corr%ifwsc(1,:,:) = corr%ifwsc(2,:,:)
-        endif
+        ! if(allocated(correlate_image)) then
+        !     corr%ipp (1,:,:) = corr%ipp (2,:,:)
+        !     corr%ibksc(1,:,:) = corr%ibksc(2,:,:)
+        !     corr%ifwsc(1,:,:) = corr%ifwsc(2,:,:)
+        ! endif
 
     end subroutine
 

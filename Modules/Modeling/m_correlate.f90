@@ -5,7 +5,7 @@ use m_computebox
 
     private
 
-    public :: correlate_init, correlate_assemble
+    public :: correlate_init, correlate_assemble, correlate_add
 
     real,dimension(:,:,:,:),allocatable,public :: correlate_energy, correlate_image, correlate_gradient, correlate_pgradient
 
@@ -172,6 +172,18 @@ use m_computebox
         endif
 
     end subroutine
+
+    function correlate_add(a,b) result(c)
+        type(t_correlate) :: a,b,c
+
+        if( allocated(a%gkpa ) .and. allocated(b%gkpa ) ) allocate(c%gkpa , source=a%gkpa +b%gkpa)
+        if( allocated(a%gikpa) .and. allocated(b%gikpa) ) allocate(c%gikpa, source=a%gikpa+b%gikpa)
+        if( allocated(a%glda ) .and. allocated(b%glda ) ) allocate(c%glda , source=a%glda +b%glda )
+        if( allocated(a%gmu  ) .and. allocated(b%gmu  ) ) allocate(c%gmu  , source=a%gmu  +b%gmu  )
+        if( allocated(a%grho ) .and. allocated(b%grho ) ) allocate(c%grho , source=a%grho +b%grho )
+        if( allocated(a%gbuo ) .and. allocated(b%gbuo ) ) allocate(c%gbuo , source=a%gbuo +b%gbuo )
+        
+    end function
 
     subroutine final(self)
         type(t_correlate) :: self

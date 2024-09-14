@@ -227,15 +227,15 @@ use m_Modeling
 
         if(present(o_g)) then
             call alloc(o_g,self%n1,self%n2,self%n3,self%npars)
-            !correlate_gradient(:,:,:,1) = gkpa
-            !correlate_gradient(:,:,:,2) = grho0
+            !correlate_gradient(:,:,:,1) = grho0
+            !correlate_gradient(:,:,:,2) = gkpa
 
             !acoustic
             if(is_AC .and. .not. is_empirical) then
                 do i=1,param%npars
                     select case (param%pars(i)%name)
-                    case ('vp'); o_g(:,:,:,i) = (correlate_gradient(:,:,:,1)*m%vp - correlate_gradient(:,:,:,2)/m%vp)*m%rho
-                    case ('ip'); o_g(:,:,:,i) =  correlate_gradient(:,:,:,1)*m%vp + correlate_gradient(:,:,:,2)/m%vp
+                    case ('vp'); o_g(:,:,:,i) = (correlate_gradient(:,:,:,2)*m%vp - correlate_gradient(:,:,:,1)/m%vp)*m%rho
+                    case ('ip'); o_g(:,:,:,i) =  correlate_gradient(:,:,:,2)*m%vp + correlate_gradient(:,:,:,1)/m%vp
                     end select
                 enddo
             endif

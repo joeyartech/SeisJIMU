@@ -5,6 +5,7 @@ use m_Modeling
 use m_separator
 use m_weighter
 use m_Lpnorm
+use m_Envnorm
 use m_fobjective
 use m_matchfilter
 use m_smoother_laplacian_sparse
@@ -15,7 +16,7 @@ use m_resampler
     type(t_field) :: fld_u, fld_a
     type(t_correlate) :: a_star_u
 
-    character(:),allocatable :: s_job
+
     ! real,dimension(:,:),allocatable :: Wdres
     !real,dimension(:,:,:),allocatable :: Ddt2
     ! character(:),allocatable :: update_wavelet
@@ -46,13 +47,10 @@ use m_resampler
         call ppg%init_abslayer
 
 
-        s_job=setup%get_str('JOB',o_mandatory=1)
-
-        !forward modeling
-        !A(m )u = s
-        call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
+        call hud('----  Solving A(m)u=s  ----')
+        call ppg%init_field(fld_u, name='fld_u');    call fld_u%ignite
         call ppg%forward(fld_u)
-        call fld_u%acquire;  call shot%write('Ru_',shot%dsyn)
+        call fld_u%acquire; call shot%write('Ru_',shot%dsyn)
 
         !update wavelet
         if(setup%get_str('UPDATE_WAVELET')/='no') then
@@ -64,8 +62,8 @@ use m_resampler
             call shot%write('updated_Ru_',shot%dsyn)
         endif
 
-        call hud('---------------------------------')
-        if(index(s_job,'modeling')>0) cycle
+
+        if(setup%get_str('JOB')=='forward modeling') cycle
 
 
         call sepa%update
@@ -83,21 +81,19 @@ use m_resampler
         call kernel_L2sq(shot%dadj)
         call shot%write('dadj_',shot%dadj)
 
-        !adjoint modeling
-        !A(m)ᴴa = Rʳ(d-u)
+        call hud('----  Solving A(m)ᴴa = Rʳ(d-u)  ----')
+        call ppg%init_correlate(a_star_u,'a_star_u') !a★u
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite
-        call ppg%init_correlate(a_star_u,'a_star_u','gradient') !a★u
-        call ppg%adjoint(fld_a,fld_u,o_a_star_u=a_star_u)
+        call ppg%adjoint(fld_a,fld_u,a_star_u)
+
+        call hud('----  Assemble  ----')
+        call ppg%assemble(a_star_u)
+        
         call hud('---------------------------------')
 
     enddo
 
     call hud('        END LOOP OVER SHOTS        ')
-
-    if(index(s_job,'modeling')>0) then
-        call mpiworld%final
-        stop
-    endif
     
 
     !allreduce RWI misfit values
@@ -129,6 +125,8 @@ use m_resampler
 
     call mpiworld%barrier
 
+    is_first_in=.false.
+
 end subroutine
 
 
@@ -139,6 +137,7 @@ use m_Modeling
 use m_separator
 use m_weighter
 use m_Lpnorm
+use m_Envnorm
 use m_fobjective
 use m_matchfilter
 use m_smoother_laplacian_sparse
@@ -149,16 +148,25 @@ use m_resampler
     type(t_field) :: fld_u0, fld_u, fld_a0, fld_a
     type(t_correlate) :: a0_star_u0, a_star_u
 
-    character(:),allocatable :: s_job
-    ! real,dimension(:,:),allocatable :: Wdres
-    !real,dimension(:,:,:),allocatable :: Ddt2
+    character(:),allocatable :: s_dnorm
+    real,dimension(:,:),allocatable :: Eobs
     ! character(:),allocatable :: update_wavelet
-    ! real,dimension(:,:),allocatable :: Rmu, Rdiff
     
     !RWI misfit
     fobj%misfit=0.
     fobj%reflection=0.
     fobj%diving=0.
+
+    s_dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2sq')
+    if(s_dnorm/='L2sq'.or.s_dnorm/='Envsq') then
+        call warn("Sorry other DATA_NORM hasn't been implemented. Set DNORM to L2sq.")
+        s_dnorm='L2sq'
+    endif
+    if(s_dnorm=='Envsq') then
+        call alloc(Eobs,shot%nt,shot%nrcv)
+        call hilbert_envelope(shot%dobs,Eobs,shot%nt,shot%nrcv)
+        call shot%write('Eobs_',Eobs)
+    endif
 
     call alloc(correlate_gradient,m%nz,m%nx,m%ny,ppg%ngrad)
     
@@ -180,14 +188,12 @@ use m_resampler
         call ppg%init_abslayer
 
 
-        s_job=setup%get_str('JOB',o_default='forward modeling')
-
         call hud('----  Solving A(m)u=s  ----')
         call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
         call ppg%forward(fld_u)
         call fld_u%acquire;  call shot%write('Ru_',shot%dsyn)
 
-        call hud('----  Solving A(m₀)u₀= s  ----')
+        call hud('----  Solving A(m₀)u₀=s  ----')
         call cb%project(ois_background=.true.)
         call ppg%init
         call ppg%init_field(fld_u0,name='fld_u0');    call fld_u0%ignite
@@ -206,9 +212,7 @@ use m_resampler
             call shot%write('updated_Ru0_',shot%dsyn_aux)
         endif
 
-        call hud('---------------------------------')
-        if(index(s_job,'modeling')>0) cycle
-
+        if(setup%get_str('JOB')=='forward modeling') cycle
 
         call sepa%update
         call wei%update!('_4IMAGING')
@@ -218,37 +222,56 @@ use m_resampler
         call hud('     Update Vp model     ')
         call hud('-------------------------')
 
+        
         !reflection data
-        fobj%reflection = fobj%reflection &
-            + L2sq(0.5, shot%nrcv*shot%nt, wei%weight*(1.-sepa%nearoffset)*sepa%reflection, shot%dobs-shot%dsyn, shot%dt)
+        if(s_dnorm=='L2sq') then
+            fobj%reflection = fobj%reflection &
+                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight*(1.-sepa%nearoffset)*sepa%reflection, shot%dobs-shot%dsyn, shot%dt)
+            call kernel_L2sq(shot%dadj)
 
-        call kernel_L2sq(shot%dadj)
+        elseif(s_dnorm=='Envsq') then
+            fobj%reflection = fobj%reflection &
+                + Envsq(0.5, wei%weight*(1.-sepa%nearoffset)*sepa%reflection, shot%dsyn, Eobs, shot%dt, shot%nt, shot%nrcv)
+            call kernel_Envsq(shot%dadj,shot%nt,shot%nrcv)
+
+        endif
+
         call shot%write('dadj_rfl_',shot%dadj)
                     
-        !adjoint modeling
-        !A(m )ᴴa  = Rʳ(d-u)
+        call hud('----  Solving A(m)ᴴa = Rʳ(d-u)  ----')
         call cb%project
         call ppg%init
         call ppg%init_field(fld_a ,name='fld_a' ,ois_adjoint=.true.); call fld_a%ignite
-        call ppg%init_correlate(a_star_u,'a_star_u','gradient') !a★u
-        call ppg%adjoint(fld_a,fld_u,o_a_star_u=a_star_u)
+        call ppg%init_correlate(a_star_u,'a_star_u') !a★u
+        call ppg%adjoint(fld_a,fld_u,a_star_u)
 
         !diving waves
-        fobj%diving = fobj%diving &
-            + L2sq(0.5, shot%nrcv*shot%nt, wei%weight*(1.-sepa%nearoffset)*sepa%diving, shot%dobs-shot%dsyn, shot%dt)
-        
-        shot%dadj=-shot%dadj; call kernel_L2sq(shot%dadj,oif_stack=.true.) !diving minus reflection residuals
+
+        if(s_dnorm=='L2sq') then
+            fobj%diving = fobj%diving &
+                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight*(1.-sepa%nearoffset)*sepa%diving, shot%dobs-shot%dsyn, shot%dt)
+            shot%dadj=-shot%dadj; call kernel_L2sq(shot%dadj,oif_stack=.true.) !diving minus reflection residuals
+
+        elseif(s_dnorm=='Envsq') then
+            fobj%diving = fobj%diving &
+                + Envsq(0.5, wei%weight*(1.-sepa%nearoffset)*sepa%diving, shot%dsyn, Eobs, shot%dt, shot%nt, shot%nrcv)
+            shot%dadj=-shot%dadj; call kernel_Envsq(shot%dadj,shot%nt,shot%nrcv,oif_stack=.true.) !diving minus reflection residuals
+            
+        endif
+
         call shot%write('dadj_div-rfl_',shot%dadj)    
 
-        !adjoint modeling
-        !A(m₀)ᴴa₀ = Rᵈ(d-u)-Rʳ(d-u)
+        call hud('----  Solving A(m₀)ᴴa₀ = Rᵈ(d-u)-Rʳ(d-u)  ----')
         call cb%project(ois_background=.true.)
         call ppg%init
         call ppg%init_field(fld_a0,name='fld_a0',ois_adjoint=.true.); call fld_a0%ignite
-        call ppg%init_correlate(a0_star_u0,'a0_star_u0','gradient') !a₀★u₀                    
-        call ppg%adjoint(fld_a0,fld_u0,o_a_star_u=a0_star_u0)
+        call ppg%init_correlate(a0_star_u0,'a0_star_u0') !a₀★u₀                    
+        call ppg%adjoint(fld_a0,fld_u0,a0_star_u0)
 
-        !produce final misfit
+        call hud('----  Assemble  ----')
+        call ppg%assemble(correlate_add(a_star_u,a0_star_u0))
+
+        !produce total misfit
         fobj%misfit = fobj%reflection+fobj%diving
 
         call hud('---------------------------------')
@@ -256,11 +279,6 @@ use m_resampler
     enddo
 
     call hud('        END LOOP OVER SHOTS        ')
-
-    if(index(s_job,'modeling')>0) then
-        call mpiworld%final
-        stop
-    endif
     
 
     !allreduce RWI misfit values
@@ -281,15 +299,6 @@ use m_resampler
         call a0_star_u0%write
     endif
     
-
-    !rebuild by summation
-    !gkpa
-    correlate_gradient(:,:,:,1) = -ppg%inv_kpa(1:m%nz,1:m%nx,1:m%ny)*(a_star_u%rp_div_sv+a0_star_u0%rp_div_sv)
-    !grho0
-    correlate_gradient(:,:,:,2) = (a_star_u%rv_grad_sp+a0_star_u0%rv_grad_sp) / m%rho
-    
-
-
     !allreduce energy, gradient
     ! call mpi_allreduce(mpi_in_place, correlate_energy  , m%n          , mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     call mpi_allreduce(mpi_in_place, correlate_gradient, m%n*ppg%ngrad, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
@@ -300,5 +309,7 @@ use m_resampler
     if(mpiworld%is_master) call sysio_write('correlate_gradient',correlate_gradient,m%n*ppg%ngrad)
 
     call mpiworld%barrier
+
+    is_first_in=.false.
     
 end subroutine
