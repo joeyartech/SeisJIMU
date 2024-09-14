@@ -49,11 +49,11 @@ use m_Optimization
     !shotlist
     call shls%read_from_data
     call shls%build
-    call chp_shls%init('FWI_shotlist_gradient',oif_fuse=.true.)
-    if(.not.shls%is_registered(chp_shls,'sampled_shots')) then
+    ! call chp_shls%init('FWI_shotlist_gradient',oif_fuse=.true.)
+    ! if(.not.shls%is_registered(chp_shls,'sampled_shots')) then
         call shls%sample
-        call shls%register(chp_shls,'sampled_shots')
-    endif
+        ! call shls%register(chp_shls,'sampled_shots')
+    ! endif
     call shls%assign
 
     !if preconditioner needs energy terms
@@ -69,11 +69,11 @@ use m_Optimization
 
     !objective function and gradient
     call fobj%init
-    call chp_qp%init('FWI_querypoint_gradient')
-    if(.not.qp0%is_registered(chp_qp)) then
+    ! call chp_qp%init('FWI_querypoint_gradient')
+    ! if(.not.qp0%is_registered(chp_qp)) then
         call fobj%eval(qp0,oif_update_m=.false.)
-        call qp0%register(chp_qp)
-    endif
+        ! call qp0%register(chp_qp)
+    ! endif
     
     call sysio_write('qp0%g',qp0%g,size(qp0%g))
     call sysio_write('qp0%pg',qp0%pg,size(qp0%pg))

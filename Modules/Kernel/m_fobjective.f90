@@ -375,11 +375,31 @@ use m_preconditioner
         !         self%dnorms=-self%dnorms
         !         correlate_gradient =-correlate_gradient
         !     endif
-        ! endif
-        
+        ! endif    
+
+        !transform to x-domain
+        call param%transform(o_g=qp%g)
+
         qp%f = sum(self%dnorm_weights*self%dnorms) ! + sum(self%xnorm_weights*self%xnorms)
 
         if(.not. either(oif_gradient,.true.,present(oif_gradient))) return
+
+
+        !freeze_zone as hard mask
+        do i=1,param%npars
+            where(m%is_freeze_zone) qp%g(:,:,:,i)=0.
+        enddo
+
+        !soft mask
+        smask=setup%get_file('GRADIENT_SOFT_MASK','MASK')
+        if(smask/='') then
+            call alloc(mask,m%nz,m%nx,m%ny)
+            call sysio_read(smask,mask,size(mask))
+            
+            do i=1,param%npars
+                qp%g(:,:,:,i)=qp%g(:,:,:,i)*mask
+            enddo
+        endif
 
         !post-modeling smoothing in physical (model) domain
         smoothings=setup%get_strs('SMOOTHING','SMTH',o_default='Laplacian')
@@ -389,16 +409,19 @@ use m_preconditioner
             if(smoothings(i)%s=='Laplacian') then
                 call hud('Laplacian smoothing')
                 call smoother_Laplacian_init([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%fpeak)
-                do j=1,ppg%ngrad
-                    call smoother_Laplacian_extend_mirror(correlate_gradient(:,:,:,j),m%ibathy)
-                    call smoother_Laplacian_pseudo_nonstationary(correlate_gradient(:,:,:,j),m%vp)
-                enddo    
+                do j=1,param%npars
+                    call smoother_Laplacian_extend_mirror(qp%g(:,:,:,j),m%ibathy)
+                    select case (param%pars(j)%name)
+                        case ('vp' ); call smoother_Laplacian_pseudo_nonstationary(qp%g(:,:,:,j),m%vp)
+                        case ('vs' ); call smoother_Laplacian_pseudo_nonstationary(qp%g(:,:,:,j),m%vs)
+                    end select
+                enddo
             endif
         enddo
 
         !freeze_zone as hard mask
-        do i=1,ppg%ngrad
-            where(m%is_freeze_zone) correlate_gradient(:,:,:,i)=0.
+        do i=1,param%npars
+            where(m%is_freeze_zone) qp%g(:,:,:,i)=0.
         enddo
 
         !soft mask
@@ -407,17 +430,10 @@ use m_preconditioner
             call alloc(mask,m%nz,m%nx,m%ny)
             call sysio_read(smask,mask,size(mask))
             
-            do i=1,ppg%ngrad
-                correlate_gradient(:,:,:,i)=correlate_gradient(:,:,:,i)*mask
+            do i=1,param%npars
+                qp%g(:,:,:,i)=qp%g(:,:,:,i)*mask
             enddo
         endif
-
-        ! call sysio_write('grho',correlate_gradient(:,:,:,1),size(correlate_gradient(:,:,:,1)))
-        ! call sysio_write('gkpa',correlate_gradient(:,:,:,2),size(correlate_gradient(:,:,:,2)))
-
-        !!transform to x-domain
-        call param%transform(o_g=qp%g)
-        !qp%g=correlate_gradient
 
         !Regularization in x-domain
         ! if(either(oif_approx,.false.,present(oif_approx))) then
@@ -429,6 +445,18 @@ use m_preconditioner
         !preconditioner
         call preco%update
         call preco%apply(qp%g,qp%pg)
+
+        !scale preconditioned gvp gvs w/ their respective L2 norm
+        if(setup%get_bool('IF_PARA_SCAL')) then
+            if(param%npars==2)then
+            if(param%pars(1)%name=='vp' .and. param%pars(2)%name=='vs') then
+                gvp_norm = sum(abs(qp%pg(:,:,:,1)))
+                gvs_norm = sum(abs(qp%pg(:,:,:,2)))
+                if(gvp_norm>gvs_norm) qp%pg(:,:,:,2)=qp%pg(:,:,:,2)/gvs_norm*gvp_norm !scale on gvs
+                if(gvp_norm<gvs_norm) qp%pg(:,:,:,1)=qp%pg(:,:,:,1)/gvp_norm*gvs_norm !scale on gvp
+            endif
+            endif
+        endif
 
         !save some RAM
         !call dealloc(correlate_gradient,m%energy)

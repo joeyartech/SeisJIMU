@@ -182,13 +182,12 @@ use m_resampler
 
         s_job=setup%get_str('JOB',o_default='forward modeling')
 
-        !forward modeling
-        !A(m )u = s
+        call hud('----  Solving A(m)u=s  ----')
         call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
         call ppg%forward(fld_u)
         call fld_u%acquire;  call shot%write('Ru_',shot%dsyn)
 
-        !A(m₀)u₀= s
+        call hud('----  Solving A(m₀)u₀= s  ----')
         call cb%project(ois_background=.true.)
         call ppg%init
         call ppg%init_field(fld_u0,name='fld_u0');    call fld_u0%ignite
@@ -224,7 +223,7 @@ use m_resampler
             + L2sq(0.5, shot%nrcv*shot%nt, wei%weight*(1.-sepa%nearoffset)*sepa%reflection, shot%dobs-shot%dsyn, shot%dt)
 
         call kernel_L2sq(shot%dadj)
-        call shot%write('dadj_refl_',shot%dadj)
+        call shot%write('dadj_rfl_',shot%dadj)
                     
         !adjoint modeling
         !A(m )ᴴa  = Rʳ(d-u)
@@ -239,7 +238,7 @@ use m_resampler
             + L2sq(0.5, shot%nrcv*shot%nt, wei%weight*(1.-sepa%nearoffset)*sepa%diving, shot%dobs-shot%dsyn, shot%dt)
         
         shot%dadj=-shot%dadj; call kernel_L2sq(shot%dadj,oif_stack=.true.) !diving minus reflection residuals
-        call shot%write('dadj_div-refl_',shot%dadj)    
+        call shot%write('dadj_div-rfl_',shot%dadj)    
 
         !adjoint modeling
         !A(m₀)ᴴa₀ = Rᵈ(d-u)-Rʳ(d-u)

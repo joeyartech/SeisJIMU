@@ -1,0 +1,48 @@
+MODEL_SIZE              '187  801  1'
+MODEL_SPACING           '25   25   1'
+FILE_MODEL              'true'
+MODEL_ATTRIBUTES        'vp vs rho'
+FILE_TOPO                none
+
+IS_FREESURFACE          F
+
+ACQUI_GEOMETRY          spread
+FS                      '  0   500  0'
+DS                      '  0   500  0'
+NS                      39
+FR                      '  0     0  0'
+DR                      '  0    10  0'
+NR                      2000
+
+SCOMP                    pz
+RCOMP                   'pz px ex'
+
+NT           4000
+DT           0.0025
+
+WAVELET_TYPE	ricker
+
+
+#############
+## for FWI ##
+#############
+FILE_DATA_PREFIX    './res_obs/Ru_Shot'
+WEIGHTING           'none'
+
+FPEAK           3
+
+PARAMETER           'vp:1028:3550 vs:280:2560'
+
+SMOOTHING     'none'
+#PRECO         'z^0'
+
+JOB             gradient
+
+#SNAPSHOT     'p vz'
+#NSNAPSHOT    50
+
+MAX_ITERATE     120
+MAX_MODELING    150
+
+
+IF_USE_CHECKPOINT   F

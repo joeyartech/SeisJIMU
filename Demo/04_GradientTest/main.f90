@@ -10,9 +10,9 @@ use m_linesearcher
     !mpiworld lives in t_mpienv
     call mpiworld%init(name='MPIWorld')
 
-    call hud('======================================'//s_NL// &
-             '       WELCOME TO SeisJIMU PFEI       '//s_NL// &
-             '======================================')
+    call hud('====================================='//s_NL// &
+             '       WELCOME TO SeisJIMU FWI       '//s_NL// &
+             '=====================================')
 
     call setup%init
     call sysio_init
@@ -72,8 +72,6 @@ use m_linesearcher
         call fobj%eval(qp0,oif_update_m=.false.)
 !         call qp0%register(chp_qp)
 !     endif
-
-    call sysio_write('correlate_gradient',correlate_gradient,m%n*ppg%ngrad)
     
     call sysio_write('qp0%g',qp0%g,size(qp0%g))
     call sysio_write('qp0%pg',qp0%pg,size(qp0%pg))
