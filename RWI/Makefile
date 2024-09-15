@@ -49,8 +49,8 @@ mod :
 	(cd ../Modules/Optimization; make App=$(APP))
 
 exe : sub_modeling_gradient.o main.o
-	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/$(app)_$(WaveEq)_$(Solver)_$(Order)_$(Param)_$(LineS)_$(Optim)
-	(cd ../exe; ln -sf $(app)_$(WaveEq)_$(Solver)_$(Order)_$(Param)_$(LineS)_$(Optim) $(APP) )
+	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/$(app)_$(WaveEq)_$(Solver)_$(Order)_$(Param)_$(LineS)_$(Optim)_$(TAG)
+	(cd ../exe; ln -sf $(app)_$(WaveEq)_$(Solver)_$(Order)_$(Param)_$(LineS)_$(Optim)_$(TAG) $(APP) )
 
 clean :
 	-rm main.o sub_modeling_gradient.o

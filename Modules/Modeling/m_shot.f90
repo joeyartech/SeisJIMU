@@ -27,7 +27,6 @@ use m_model
         integer :: ifz,ilz,ifx,ilx,ify,ily
         character(4) :: comp
         real,dimension(:,:,:),allocatable :: interp_coef, interp_coef_full, interp_coef_anti, interp_coef_symm, interp_coef_trunc
-        real,dimension(:,:,:),allocatable :: interp_coef_1pa11, interp_coef_a12, interp_coef_a21, interp_coef_1pa22
     end type
 
     type,public :: t_receiver
@@ -37,7 +36,6 @@ use m_model
         logical :: is_badtrace=.false.
         character(4) :: comp
         real,dimension(:,:,:),allocatable :: interp_coef, interp_coef_full, interp_coef_anti, interp_coef_symm, interp_coef_trunc
-        real,dimension(:,:,:),allocatable :: interp_coef_1pa11, interp_coef_a12, interp_coef_a21, interp_coef_1pa22
     end type
     
     type,public :: t_shot

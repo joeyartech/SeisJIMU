@@ -129,7 +129,7 @@ use m_Modeling
             endif
 
 
-	    select case(op)
+            select case(op)
                 case ('multiply')
                 self%weight = self%weight * weight
 
@@ -397,8 +397,7 @@ use m_Modeling
                       min(max(itime        ,1),nt)
                     
                     k=it-itime_start-1
-
-		            weight(it,itr) = ( gain_old*(ntaper-k) + gain*k ) / ntaper
+                    weight(it,itr) = ( gain_old*(ntaper-k) + gain*k ) / ntaper
                 end do               
 
                 !apply constant gain from itime+1 to nt
@@ -560,9 +559,9 @@ use m_Modeling
                     dt2=(tgain(jt2)-t) / (tgain(jt2)-tgain(jt1))
                 endif
 
-		        weight(it,itr) = 1.* ( &
-                      ( table(jt1,jx1)*dt2 + table(jt2,jx1)*dt1 ) *dx2  &
-                    + ( table(jt1,jx2)*dt2 + table(jt2,jx2)*dt1 ) *dx1  )
+                weight(it,itr) = 1.* ( &
+                    ( table(jt1,jx1)*dt2 + table(jt2,jx1)*dt1 ) *dx2  &
+                  + ( table(jt1,jx2)*dt2 + table(jt2,jx2)*dt1 ) *dx1  )
 
             enddo
 

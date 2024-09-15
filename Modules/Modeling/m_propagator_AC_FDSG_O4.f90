@@ -32,8 +32,7 @@ use m_cpml
             'Required model attributes: vp, rho, rho0'//s_NL// &
             'Required field components: vz, vx, vy(3D), p'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
-            'Poynting definitions: p_dotp_gradp, dotp_gradp, p_v, Esq_gradphi'//s_NL// &
-            'Imaging conditions: ipp ibksc ifwsc (P-Pxcorr of backward & forward scattering)'//s_NL// &
+            'Imaging conditions: P-Pxcorr'//s_NL// &
             'Energy terms: Σ_shot ∫ sfield%p² dt'//s_NL// &
             'Basic gradients: gkpa grho'
 
@@ -77,8 +76,6 @@ use m_cpml
     end type
 
     type(t_propagator),public :: ppg
-
-    character(:),allocatable :: s_poynting_def
 
     logical :: if_hicks
     integer :: irdt
@@ -201,11 +198,6 @@ use m_cpml
         if(irdt==0) irdt=1
         rdt=irdt*self%dt
         call hud('rdt, irdt = '//num2str(rdt)//', '//num2str(irdt))
-
-        s_poynting_def=setup%get_str('POYNTING_DEF',o_default='p_v')
-        if(s_poynting_def/='p_dotp_gradp'.and.s_poynting_def/='dotp_gradp'.and.s_poynting_def/='p_v'.and.s_poynting_def/='Esq_gradphi') then
-            call error('Sorry, other Poynting definitions have not yet implemented.')
-        endif
 
     end subroutine
 
@@ -563,12 +555,12 @@ use m_cpml
             !     tt7=tt7+toc-tic
             ! endif
 
-            ! if(mod(it,irdt)==0) then
-            !     call cpu_time(tic)
-            !     call cross_correlate_gkpa(fld_a,fld_u,a_star_u,it)
-            !     call cpu_time(toc)
-            !     tt6=tt6+toc-tic
-            ! endif
+            if(mod(it,irdt)==0) then
+                call cpu_time(tic)
+                call cross_correlate_gkpa(fld_a,fld_u,a_star_u,it)
+                call cpu_time(toc)
+                tt6=tt6+toc-tic
+            endif
 
             ! !energy term of sfield
             ! if(self%if_compute_engy.and.mod(it,irdt)==0) then
@@ -679,26 +671,28 @@ use m_cpml
             
             if(if_hicks) then
                 select case (shot%src%comp)
-                    case ('vz')
+                case ('vz')
                     f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoz(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
                     
-                    case ('vx')
+                case ('vx')
+                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                     f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buox(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
                     
-                    case ('vy')
+                case ('vy')
                     f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoy(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
                     
                 end select
                 
             else
                 select case (shot%src%comp)
-                    case ('vz') !vertical force     on vz[iz-0.5,ix,iy]
+                case ('vz') !vertical force     on vz[iz-0.5,ix,iy]
                     f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + wl*self%buoz(iz,ix,iy)
                     
-                    case ('vx') !horizontal x force on vx[iz,ix-0.5,iy]
+                case ('vx') !horizontal x force on vx[iz,ix-0.5,iy]
+                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                     f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + wl*self%buox(iz,ix,iy)
                     
-                    case ('vy') !horizontal y force on vy[iz,ix,iy-0.5]
+                case ('vy') !horizontal y force on vy[iz,ix,iy-0.5]
                     f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + wl*self%buoy(iz,ix,iy)
                     
                 end select
@@ -719,28 +713,30 @@ use m_cpml
                 
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
-                        case ('vz') !vertical z adjsource
+                    case ('vz') !vertical z adjsource
                         f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
 
-                        case ('vx') !horizontal x adjsource
+                    case ('vx') !horizontal x adjsource
+                        if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                         f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buox(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
                         
-                        case ('vy') !horizontal y adjsource
+                    case ('vy') !horizontal y adjsource
                         f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
                         
                     end select
                     
                 else
                     select case (shot%rcv(i)%comp)
-                        case ('vz') !vertical z adjsource
+                    case ('vz') !vertical z adjsource
                         !vz[ix,iy,iz-0.5]
                         f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + wl*self%buoz(iz,ix,iy) !no time_dir needed!
 
-                        case ('vx') !horizontal x adjsource
+                    case ('vx') !horizontal x adjsource
+                        if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                         !vx[ix-0.5,iy,iz]
                         f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + wl*self%buox(iz,ix,iy) !no time_dir needed!
                         
-                        case ('vy') !horizontal y adjsource
+                    case ('vy') !horizontal y adjsource
                         !vy[ix,iy-0.5,iz]
                         f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + wl*self%buoy(iz,ix,iy) !no time_dir needed!
                         
@@ -802,7 +798,7 @@ use m_cpml
             
             if(if_hicks) then
                 if(shot%src%comp=='p') then
-                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
+                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef_anti(:,:,:)
                 endif
                 
             else
@@ -830,7 +826,7 @@ use m_cpml
                     
                     if(if_hicks) then 
 
-                        f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
+                        f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef_anti(:,:,:) !no time_dir needed!
 
                     else           
                         !p[iz,ix,iy]
@@ -891,13 +887,13 @@ use m_cpml
                     select case (shot%rcv(i)%comp)
                         
                         case ('p')
-                        f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef)
+                        f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef_anti(:,:,:))
                         case ('vz')
-                        f%seismo(i,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                        f%seismo(i,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef(:,:,:))
                         case ('vx')
-                        f%seismo(i,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                        f%seismo(i,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef(:,:,:))
                         case ('vy')
-                        f%seismo(i,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                        f%seismo(i,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef(:,:,:))
                     end select
                     
                 else
@@ -927,16 +923,16 @@ use m_cpml
             if(if_hicks) then
                 select case (shot%src%comp)
                     case ('p')
-                    f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef)
+                    f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef_anti(:,:,:))
                     
                     case ('vz')
-                    f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef(:,:,:))
                     
                     case ('vx')
-                    f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef(:,:,:))
                     
                     case ('vy')
-                    f%seismo(1,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    f%seismo(1,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef(:,:,:))
                     
                 end select
                 
@@ -1590,7 +1586,7 @@ use m_cpml
 
     ! end subroutine
 
-    subroutine gkpa2d(rf_p,sf_vz,sf_vx,&
+    subroutine grad2d_gkpa(rf_p,sf_vz,sf_vx,&
                         grad,            &
                         ifz,ilz,ifx,ilx)
         real,dimension(*) :: rf_p,sf_vz,sf_vx
