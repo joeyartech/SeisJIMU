@@ -17,6 +17,7 @@ use m_Modeling
         procedure :: by_components
         procedure :: by_aoffset
         procedure :: by_aoffset_range
+        procedure :: by_offset_range
         procedure :: by_polygon
         procedure :: by_table
         procedure :: by_custom
@@ -87,6 +88,12 @@ use m_Modeling
                 sublist=split(list(i)%s,o_sep=':')
                 call hud('Will weight traces by aoffset range:'//sublist(2)%s//':'//sublist(3)%s)
                 call self%by_aoffset_range(str2real(sublist(2)%s),str2real(sublist(3)%s))
+            endif
+
+            if (index(list(i)%s,'offset_range')>0) then !use window defined by offset
+                sublist=split(list(i)%s,o_sep=':')
+                call hud('Will weight traces by offset range:'//sublist(2)%s//':'//sublist(3)%s)
+                call self%by_offset_range(str2real(sublist(2)%s),str2real(sublist(3)%s))
             endif
             
             if (index(list(i)%s,'polygon')>0) then !polygon defined weights to multiply on traces
@@ -186,6 +193,19 @@ use m_Modeling
         do i=1,shot%nrcv    
             if (shot%rcv(i)%aoffset<aoff_min) self%weight(:,i)=0.
             if (shot%rcv(i)%aoffset>aoff_max) self%weight(:,i)=0.
+        enddo
+
+    end subroutine
+
+    subroutine by_offset_range(self,off_min,off_max)
+        class(t_weighter) :: self
+        real :: off_min,off_max
+
+        do i=1,shot%nrcv
+            offset=sqrt( (shot%src%x-shot%rcv(i)%x)**2 + (shot%src%y-shot%rcv(i)%y)**2 )
+            if (shot%rcv(i)%x < shot%src%x)  offset = -offset
+            if (offset<off_min) self%weight(:,i)=0.
+            if (offset>off_max) self%weight(:,i)=0.
         enddo
 
     end subroutine
