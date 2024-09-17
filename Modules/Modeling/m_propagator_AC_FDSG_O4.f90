@@ -476,8 +476,8 @@ use m_cpml
     subroutine adjoint(self,fld_a,fld_u,a_star_u,oif_record_adjseismo)
         class(t_propagator) :: self
         type(t_field) :: fld_a,fld_u
-        logical,optional :: oif_record_adjseismo
         type(t_correlate) :: a_star_u
+        logical,optional :: oif_record_adjseismo
         
         real,parameter :: time_dir=-1. !time direction
         logical :: if_record_adjseismo
@@ -515,7 +515,7 @@ use m_cpml
 
                 !backward step 6: retrieve v^it+1 at boundary layers (BC)
                 call cpu_time(tic)
-                call fld_a%boundary_transport_velocities('load',it)
+                call fld_u%boundary_transport_velocities('load',it)
                 call cpu_time(toc)
                 tt1=tt1+toc-tic
                 

@@ -158,14 +158,9 @@ use m_resampler
     fobj%diving=0.
 
     s_dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2sq')
-    if(s_dnorm/='L2sq'.or.s_dnorm/='Envsq') then
-        call warn("Sorry other DATA_NORM hasn't been implemented. Set DNORM to L2sq.")
+    if(s_dnorm/='L2sq'.and.s_dnorm/='Envsq') then
+        call warn("Sorry, other DATA_NORM hasn't been implemented. Set DNORM to L2sq.")
         s_dnorm='L2sq'
-    endif
-    if(s_dnorm=='Envsq') then
-        call alloc(Eobs,shot%nt,shot%nrcv)
-        call hilbert_envelope(shot%dobs,Eobs,shot%nt,shot%nrcv)
-        call shot%write('Eobs_',Eobs)
     endif
 
     call alloc(correlate_gradient,m%nz,m%nx,m%ny,ppg%ngrad)
@@ -178,6 +173,12 @@ use m_resampler
         call shot%read_from_data
         call shot%set_var_time
         call shot%set_var_space(index(ppg%info,'FDSG')>0)
+
+        if(s_dnorm=='Envsq') then
+            call alloc(Eobs,shot%nt,shot%nrcv)
+            call hilbert_envelope(shot%dobs,Eobs,shot%nt,shot%nrcv)
+            call shot%write('Eobs_',Eobs)
+        endif
 
         call hud('Modeling Shot# '//shot%sindex)
         
@@ -238,7 +239,7 @@ use m_resampler
 
         call shot%write('dadj_rfl_',shot%dadj)
                     
-        call hud('----  Solving A(m)ᴴa = Rʳ(d-u)  ----')
+        call hud('----  Solving A(m)ᴴa = RʳᴴΔdʳ  ----')
         call cb%project
         call ppg%init
         call ppg%init_field(fld_a ,name='fld_a' ,ois_adjoint=.true.); call fld_a%ignite
@@ -261,7 +262,7 @@ use m_resampler
 
         call shot%write('dadj_div-rfl_',shot%dadj)    
 
-        call hud('----  Solving A(m₀)ᴴa₀ = Rᵈ(d-u)-Rʳ(d-u)  ----')
+        call hud('----  Solving A(m₀)ᴴa₀ = RᵈᴴΔdᵈ-RʳᴴΔdʳ  ----')
         call cb%project(ois_background=.true.)
         call ppg%init
         call ppg%init_field(fld_a0,name='fld_a0',ois_adjoint=.true.); call fld_a0%ignite
