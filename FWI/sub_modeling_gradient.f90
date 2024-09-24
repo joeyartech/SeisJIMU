@@ -81,8 +81,6 @@ use m_resampler
         
         if(setup%get_str('JOB')=='forward modeling') cycle
 
-        call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
-
         call hud('----  Computing obj func & dadj  ----')
             call wei%update
             call alloc(shot%dadj,shot%nt,shot%nrcv)
@@ -127,12 +125,12 @@ use m_resampler
             end select
 
         
-        call hud('----  Solving adjoint eqn & xcorrelate  ----')
-
+        call hud('----  Solving A(m)ᴴa = RᴴΔd and a★u  ----')
+        call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
         call ppg%init_correlate(a_star_u,'a_star_u')
         call ppg%adjoint(fld_a,fld_u,a_star_u)
 
-        call hud('----  Assemble  ----')
+        call hud('----  Assemble a★u  ----')
         call ppg%assemble(a_star_u)
 
         call hud('---------------------------------')

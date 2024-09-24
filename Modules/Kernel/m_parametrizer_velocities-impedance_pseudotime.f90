@@ -23,7 +23,7 @@ use m_Modeling
         !info
         character(i_str_xxlen) :: info = &
             'Parameterization: velocities-impedance in pseudotime'//s_NL// &
-            'Allowed pars: vp, rho'
+            'Allowed pars: vp, ip'
 
         type(t_parameter),dimension(:),allocatable :: pars
         integer :: npars
@@ -81,6 +81,8 @@ use m_Modeling
                 self%pars(i)%name='vp'
                 self%npars=self%npars+1
                 index_vp=i
+                vmin=str2real(sublist(2)%s)
+                vmax=str2real(sublist(3)%s)
 
             case ('ip')
                 self%pars(i)%name='ip'
@@ -124,6 +126,7 @@ use m_Modeling
         
         real,dimension(:,:,:),allocatable :: v_t !velocity model in pseudotime domain
         real,dimension(:,:,:),allocatable :: tmp
+        real,dimension(:,:,:),allocatable :: freeze_zone_in_t !gradient in pseudotime domain
 
         if(present(o_x)) then
             call alloc(o_x,self%n1,self%n2,self%n3,self%npars,oif_protect=.true.)
@@ -135,7 +138,7 @@ use m_Modeling
                         call pseudotime_convert('z->t',m%vp,v_t)
                         o_x(:,:,:,i) = (v_t-self%pars(i)%min)/self%pars(i)%range
                     case ('ip')
-                        call pseudotime_convert('z->t',m%rho,tmp,o_v=m%vp)
+                        call pseudotime_convert('z->t',m%vp*m%rho,tmp,o_v=m%vp)
                         o_x(:,:,:,i) = (tmp-self%pars(i)%min)/self%pars(i)%range
                     end select
                 enddo
@@ -149,7 +152,8 @@ use m_Modeling
                 do i=1,self%npars
                     select case (self%pars(i)%name)
                     case ('ip')
-                        call pseudotime_convert('t->z',o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min,m%rho, o_v=v_t)
+                        call pseudotime_convert('t->z',o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min,tmp, o_v=v_t)
+                        m%rho = tmp/m%vp
                     end select
                 enddo
                 
@@ -185,6 +189,7 @@ use m_Modeling
                 case ('vp' )
                     call pseudotime_convert_gradient((correlate_gradient(:,:,:,2)*m%vp - correlate_gradient(:,:,:,1)/m%vp)*m%rho, &
                         m%vp,tmp)
+
                 case ('ip')
                     call pseudotime_convert_gradient(correlate_gradient(:,:,:,2)*m%vp + correlate_gradient(:,:,:,1)/m%vp, &
                         m%vp,tmp)
@@ -196,15 +201,18 @@ use m_Modeling
             do i=1,self%npars
                 o_g(:,:,:,i)=o_g(:,:,:,i)*self%pars(i)%range
             enddo
-            
-            !!apply bathymetry
-            !do i=1,self%npars
-            !    o_g(:,:,:,i)=o_g(:,:,:,i)*freeze_zone_in_x
-            !enddo
 
+
+            !apply bathymetry
+            call pseudotime_convert('z->t',bools2reals(m%is_freeze_zone),freeze_zone_in_t,o_v=m%vp)
+            do i=1,self%npars
+               o_g(:,:,:,i)=o_g(:,:,:,i)*(1.-freeze_zone_in_t)
+            enddo
+
+            
         endif
         
-        call dealloc(tmp,v_t)
+        call dealloc(tmp,v_t,freeze_zone_in_t)
 
     end subroutine
 

@@ -43,7 +43,12 @@ use m_mpienv
         module procedure total_size_real3
         module procedure total_size_real4
     end interface
-    
+
+    interface bools2reals
+        module procedure bools2reals_2
+        module procedure bools2reals_3
+    end interface
+
     contains
     
     subroutine alloc_int1_ubound(a,n1,old2,oif_protect,o_init)
@@ -696,6 +701,43 @@ use m_mpienv
             if(allocated(g)) n=n+size(g)
         endif
 
+    end function
+
+
+    pure function bools2reals_2(bool) result(num)
+        logical,dimension(:,:),intent(in) :: bool
+        real,dimension(:,:),allocatable :: num
+
+        integer :: n(2)
+
+        n=shape(bool)
+
+        if(allocated(num)) deallocate(num)
+        allocate(num(n(1),n(2)))
+        where(bool)
+            num=1.
+        elsewhere
+            num=0.
+        endwhere
+        
+    end function
+
+    pure function bools2reals_3(bool) result(num)
+        logical,dimension(:,:,:),intent(in) :: bool
+        real,dimension(:,:,:),allocatable :: num
+
+        integer :: n(3)
+
+        n=shape(bool)
+
+        if(allocated(num)) deallocate(num)
+        allocate(num(n(1),n(2),n(3)))
+        where(bool)
+            num=1.
+        elsewhere
+            num=0.
+        endwhere
+        
     end function
 
 

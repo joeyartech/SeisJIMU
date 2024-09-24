@@ -5,9 +5,10 @@ use m_computebox
 
     private
 
-    public :: correlate_init, correlate_assemble, correlate_add
+    public :: correlate_init, correlate_assemble, correlate_add, correlate_mask, correlate_freeze
+    public :: correlate_energy, correlate_image, correlate_gradient, correlate_pgradient
 
-    real,dimension(:,:,:,:),allocatable,public :: correlate_energy, correlate_image, correlate_gradient, correlate_pgradient
+    real,dimension(:,:,:,:),allocatable :: correlate_energy, correlate_image, correlate_gradient, correlate_pgradient
 
     !correlate
     type,public :: t_correlate
@@ -184,6 +185,27 @@ use m_computebox
         if( allocated(a%gbuo ) .and. allocated(b%gbuo ) ) allocate(c%gbuo , source=a%gbuo +b%gbuo )
         
     end function
+
+    subroutine correlate_mask(mask)
+        real,dimension(m%nz,m%nx,m%ny) :: mask
+    
+        if (allocated(correlate_gradient)) then
+            do i=1,size(correlate_gradient,4)
+                correlate_gradient(:,:,:,i)= correlate_gradient(:,:,:,i)* mask
+            enddo
+        endif
+
+    end subroutine
+
+    subroutine correlate_freeze
+        
+        if (allocated(correlate_gradient)) then
+            do i=1,size(correlate_gradient,4)
+                where(m%is_freeze_zone) correlate_gradient(:,:,:,i)=0.
+            enddo
+        endif
+
+    end subroutine
 
     subroutine final(self)
         type(t_correlate) :: self

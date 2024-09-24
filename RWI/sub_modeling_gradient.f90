@@ -81,12 +81,12 @@ use m_resampler
         call kernel_L2sq(shot%dadj)
         call shot%write('dadj_',shot%dadj)
 
-        call hud('----  Solving A(m)ᴴa = Rʳ(d-u)  ----')
-        call ppg%init_correlate(a_star_u,'a_star_u') !a★u
+        call hud('----  Solving A(m)ᴴa = RʳᴴΔdʳ and a★u  ----')
+        call ppg%init_correlate(a_star_u,'a_star_u')
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite
         call ppg%adjoint(fld_a,fld_u,a_star_u)
 
-        call hud('----  Assemble  ----')
+        call hud('----  Assemble a★u  ----')
         call ppg%assemble(a_star_u)
         
         call hud('---------------------------------')
@@ -239,11 +239,11 @@ use m_resampler
 
         call shot%write('dadj_rfl_',shot%dadj)
                     
-        call hud('----  Solving A(m)ᴴa = RʳᴴΔdʳ  ----')
+        call hud('----  Solving A(m)ᴴa = RʳᴴΔdʳ and a★u  ----')
         call cb%project
         call ppg%init
         call ppg%init_field(fld_a ,name='fld_a' ,ois_adjoint=.true.); call fld_a%ignite
-        call ppg%init_correlate(a_star_u,'a_star_u') !a★u
+        call ppg%init_correlate(a_star_u,'a_star_u')
         call ppg%adjoint(fld_a,fld_u,a_star_u)
 
         !diving waves
@@ -262,14 +262,14 @@ use m_resampler
 
         call shot%write('dadj_div-rfl_',shot%dadj)    
 
-        call hud('----  Solving A(m₀)ᴴa₀ = RᵈᴴΔdᵈ-RʳᴴΔdʳ  ----')
+        call hud('----  Solving A(m₀)ᴴa₀ = RᵈᴴΔdᵈ-RʳᴴΔdʳ and a₀★u₀  ----')
         call cb%project(ois_background=.true.)
         call ppg%init
         call ppg%init_field(fld_a0,name='fld_a0',ois_adjoint=.true.); call fld_a0%ignite
-        call ppg%init_correlate(a0_star_u0,'a0_star_u0') !a₀★u₀                    
+        call ppg%init_correlate(a0_star_u0,'a0_star_u0')
         call ppg%adjoint(fld_a0,fld_u0,a0_star_u0)
 
-        call hud('----  Assemble  ----')
+        call hud('----  Assemble a★u+a₀★u₀  ----')
         call ppg%assemble(correlate_add(a_star_u,a0_star_u0))
 
         !produce total misfit

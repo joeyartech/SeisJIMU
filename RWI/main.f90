@@ -62,6 +62,11 @@ use m_Optimization
 
     !parametrizer
     call param%init
+    if( index(setup%get_str('JOB'),'build ip')>0 .and. index(param%info,'pseudotime')>0 ) then
+        call error("It would be pointless to build Ip (perturbations) in the pseudotime domain. Stop RWI now.", &
+            "Just run RWI in the depth domain for Ip (pertubations).")
+    endif
+
 
     !initial (model) parameters as querypoint
     call qp0%init('qp0')
