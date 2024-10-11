@@ -4,9 +4,9 @@ use m_math
 use m_Hilbert
 
     public
-    private :: a, W2, v, E, DeltaE, water
-    
-    real,dimension(:,:),allocatable :: W2, v, E, DeltaE
+    private :: a, W2, u, v, E, DeltaE, water
+
+    real,dimension(:,:),allocatable :: W2, u, v, E, DeltaE
 
     contains
 
@@ -21,11 +21,13 @@ use m_Hilbert
     !         -2a*H[W²*ΔE*v/(E+ε)]
 
     !gradient = kernel*dt
-    real function Envsq(scaler,W,u,Eobs,dt,nt,ntr)
-        real,dimension(nt,ntr) :: W,u,Eobs
+    real function Envsq(scaler,nt,ntr,W,dsyn,Eobs,dt)
+        real,dimension(nt,ntr) :: W,dsyn,Eobs
 
         a=scaler
         W2=W**2
+
+        u=dsyn
 
         call alloc(v,nt,ntr)
         call hilbert_transform(u,v,nt,ntr)
@@ -36,13 +38,13 @@ use m_Hilbert
         water=maxval(E)*1e-5
 
         Envsq = a*sum( W2*DeltaE**2 )*dt
-        
+
     end function
 
     subroutine kernel_Envsq(kernel,nt,ntr,oif_stack)
         real,dimension(nt,ntr) :: kernel
         logical,optional :: oif_stack
-        
+
         real,dimension(:,:),allocatable :: tmp
 
         call alloc(tmp,nt,ntr)
@@ -56,7 +58,7 @@ use m_Hilbert
 
         endif
 
-        deallocate(W2,v,E,DeltaE,tmp)
+        deallocate(W2,u,v,E,DeltaE,tmp)
 
     end subroutine
 

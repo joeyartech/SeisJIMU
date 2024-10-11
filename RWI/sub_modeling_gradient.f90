@@ -232,7 +232,7 @@ use m_resampler
 
         elseif(s_dnorm=='Envsq') then
             fobj%reflection = fobj%reflection &
-                + Envsq(0.5, wei%weight*(1.-sepa%nearoffset)*sepa%reflection, shot%dsyn, Eobs, shot%dt, shot%nt, shot%nrcv)
+                + Envsq(0.5, shot%nt, shot%nrcv, wei%weight*(1.-sepa%nearoffset)*sepa%reflection, shot%dsyn, Eobs, shot%dt)
             call kernel_Envsq(shot%dadj,shot%nt,shot%nrcv)
 
         endif
@@ -255,7 +255,7 @@ use m_resampler
 
         elseif(s_dnorm=='Envsq') then
             fobj%diving = fobj%diving &
-                + Envsq(0.5, wei%weight*(1.-sepa%nearoffset)*sepa%diving, shot%dsyn, Eobs, shot%dt, shot%nt, shot%nrcv)
+                + Envsq(0.5, shot%nt, shot%nrcv, wei%weight*(1.-sepa%nearoffset)*sepa%diving, shot%dsyn, Eobs, shot%dt)
             shot%dadj=-shot%dadj; call kernel_Envsq(shot%dadj,shot%nt,shot%nrcv,oif_stack=.true.) !diving minus reflection residuals
             
         endif

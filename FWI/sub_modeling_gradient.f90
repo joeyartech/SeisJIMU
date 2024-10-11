@@ -8,6 +8,7 @@ use m_System
 use m_Modeling
 use m_weighter
 use m_Lpnorm
+use m_Envnorm
 use m_fobjective
 use m_matchfilter
 use m_smoother_laplacian_sparse
@@ -22,7 +23,9 @@ use m_resampler
     type(t_correlate) :: a_star_u
     real,dimension(:,:),allocatable :: tmp
     real,dimension(3) :: grad_term_weights
-    character(:),allocatable :: dnorm
+
+    character(:),allocatable :: s_dnorm
+    real,dimension(:,:),allocatable :: Eobs
     
     type :: t_S
         real,dimension(:),allocatable :: scale
@@ -36,6 +39,8 @@ use m_resampler
     !misfit
     fobj%misfit=0.
 
+    if(.not.allocated(s_dnorm)) s_dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2sq')
+
     call alloc(correlate_gradient,m%nz,m%nx,m%ny,ppg%ngrad)
     
     call hud('===== START LOOP OVER SHOTS =====')
@@ -46,6 +51,12 @@ use m_resampler
         call shot%read_from_data
         call shot%set_var_time
         call shot%set_var_space(index(ppg%info,'FDSG')>0)
+
+        if(s_dnorm=='Envsq') then
+            call alloc(Eobs,shot%nt,shot%nrcv)
+            call hilbert_envelope(shot%dobs,Eobs,shot%nt,shot%nrcv)
+            call shot%write('Eobs_',Eobs)
+        endif
 
         call hud('Modeling Shot# '//shot%sindex)
         
@@ -71,7 +82,7 @@ use m_resampler
 
         !     call shot%update_wavelet(wei_wl%weight) !call gradient_matchfilter_data
         
-        if(update_wavelet/='no') call shot%update_wavelet!(wei%weight) !call gradient_matchfilter_data
+        if(setup%get_str('UPDATE_WAVELET')/='no') call shot%update_wavelet!(wei%weight) !call gradient_matchfilter_data
         !     !write synthetic data
         !     call shot%write('updated_Ru_',shot%dsyn)
 
@@ -85,48 +96,52 @@ use m_resampler
             call wei%update
             call alloc(shot%dadj,shot%nt,shot%nrcv)
 
-            if(.not.allocated(dnorm)) dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2')
-            select case (dnorm)
-                case ('L2')
+            call hud('Using DNORM '//s_dnorm)
+            select case (s_dnorm)
+                case ('L2sq')
                 fobj%misfit = fobj%misfit &
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
                 call kernel_L2sq(shot%dadj)
-                call fld_a%ignite(o_wavelet=shot%dadj)
-                call shot%write('dadj_',shot%dadj)
 
-                case('L2_scaled')
-                    if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
-                    call alloc(tmp_dsyn,shot%nt,shot%nrcv)
-                    do j=1,shot%nrcv
-                        if(is_first_in) S(i)%scale(j) = either(0., maxval(abs(shot%dobs(:,j))) / maxval(abs(shot%dsyn(:,j))) , shot%rcv(j)%is_badtrace)
-                        tmp_dsyn(:,j)=shot%dsyn(:,j)*S(i)%scale(j)
-                    enddo
-                    if(is_first_in) then
-                        open(12,file=dir_out//'dobs_dsyn_max_ratio',access='direct',recl=4*shot%nrcv)
-                        write(12,rec=shot%index) S(i)%scale
-                        close(12)
-                    endif
+                case('L2sq_scaled')
+                if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
+                call alloc(tmp_dsyn,shot%nt,shot%nrcv)
+                do j=1,shot%nrcv
+                    if(is_first_in) S(i)%scale(j) = either(0., maxval(abs(shot%dobs(:,j))) / maxval(abs(shot%dsyn(:,j))) , shot%rcv(j)%is_badtrace)
+                    tmp_dsyn(:,j)=shot%dsyn(:,j)*S(i)%scale(j)
+                enddo
+                if(is_first_in) then
+                    open(12,file=dir_out//'dobs_dsyn_max_ratio',access='direct',recl=4*shot%nrcv)
+                    write(12,rec=shot%index) S(i)%scale
+                    close(12)
+                endif
 
-                    !check if S is changing..
-        !            if(shot%index==1)   print*, 'on '//shot%sindex,i,S(i)%scale
-        !            if(shot%index==112) print*, 'on '//shot%sindex,i,S(i)%scale
+                !check if S is changing..
+    !            if(shot%index==1)   print*, 'on '//shot%sindex,i,S(i)%scale
+    !            if(shot%index==112) print*, 'on '//shot%sindex,i,S(i)%scale
 
-                    fobj%misfit = fobj%misfit &
-                        + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-tmp_dsyn, shot%dt)
+                fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nt*shot%nrcv, wei%weight, shot%dobs-tmp_dsyn, shot%dt)
+                call kernel_L2sq(shot%dadj)
 
-                    call alloc(shot%dadj,shot%nt,shot%nrcv)
-                    call kernel_L2sq(shot%dadj)
-                    call fld_a%ignite(o_wavelet=shot%dadj)
-                    call shot%write('dadj_',shot%dadj)
+
+
+                case('Envsq')
+                fobj%misfit = fobj%misfit &
+                    + Envsq(0.5, shot%nt, shot%nrcv, wei%weight, shot%dsyn, Eobs, shot%dt)
+                call kernel_Envsq(shot%dadj,shot%nt,shot%nrcv)
+                
 
                 case default
                 call error('No DNORM specified!')
 
             end select
 
+            call shot%write('dadj_',shot%dadj)
+
         
         call hud('----  Solving A(m)ᴴa = RᴴΔd and a★u  ----')
-        call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
+        call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite
         call ppg%init_correlate(a_star_u,'a_star_u')
         call ppg%adjoint(fld_a,fld_u,a_star_u)
 
