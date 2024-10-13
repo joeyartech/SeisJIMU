@@ -132,6 +132,12 @@ use m_resampler
                 call kernel_Envsq(shot%dadj,shot%nt,shot%nrcv)
                 
 
+                case('Qsq')
+                fobj%misfit = fobj%misfit &
+                    + Qsq(0.5, shot%nt, shot%nrcv, wei%weight, shot%dsyn, shot%dobs, shot%dt)
+                call kernel_Qsq(shot%dadj,shot%nt,shot%nrcv,shot%dt)
+                
+
                 case default
                 call error('No DNORM specified!')
 
