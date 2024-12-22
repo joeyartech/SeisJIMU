@@ -19,6 +19,7 @@ obj = \
 ../Modules/Modeling/m_cpml.o \
 ../Modules/Modeling/m_propagator_$(WaveEq)_$(Solver)_$(Order).o \
 ../Modules/Modeling/m_Modeling.o \
+../Modules/Kernel/m_empirical.o \
 ../Modules/Kernel/m_parametrizer_$(Param).o \
 ../Modules/Kernel/m_querypoint.o \
 ../Modules/Kernel/m_weighter.o \

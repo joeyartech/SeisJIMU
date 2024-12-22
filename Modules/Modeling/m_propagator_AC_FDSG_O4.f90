@@ -29,12 +29,12 @@ use m_cpml
             'Cartesian O(x⁴,t²) stencil'//s_NL// &
             'CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal'//s_NL// &
             '   -> dt ≤ 0.606(for 2D) or 0.494(3D) *Vmax/dx'//s_NL// &
-            'Required model attributes: vp, rho, rho0'//s_NL// &
+            'Required model attributes: vp, rho'//s_NL// &
             'Required field components: vz, vx, vy(3D), p'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
             'Imaging conditions: P-Pxcorr'//s_NL// &
             'Energy terms: Σ_shot ∫ sfield%p² dt'//s_NL// &
-            'Basic gradients: gkpa grho'
+            'Basic gradients: grho gkpa'
 
         integer :: nbndlayer=max(2,hicks_r) !minimum absorbing layer thickness
         integer :: ngrad=2 !number of basic gradients
@@ -111,10 +111,10 @@ use m_cpml
             call warn('Constant rho model (1000 kg/m³) is allocated by propagator.')
         endif
 
-        if(index(self%info,'rho0')>0 .and. .not. allocated(m%rho0)) then
-            call alloc(m%rho0,m%nz,m%nx,m%ny,o_init=1000.)
-            call warn('Constant rho0 model (1000 kg/m³) is allocated by propagator.')
-        endif
+        ! if(index(self%info,'rho0')>0 .and. .not. allocated(m%rho0)) then
+        !     call alloc(m%rho0,m%nz,m%nx,m%ny,o_init=1000.)
+        !     call warn('Constant rho0 model (1000 kg/m³) is allocated by propagator.')
+        ! endif
                 
     end subroutine
 
@@ -242,8 +242,8 @@ use m_cpml
         corr%name=name
 
         ! if(name(1:1)=='g') then !gradient components
-            call alloc(corr%gkpa,m%nz,m%nx,m%ny)
             call alloc(corr%grho,m%nz,m%nx,m%ny)
+            call alloc(corr%gkpa,m%nz,m%nx,m%ny)
         ! else !image components
         !     call alloc(corr%ipp,m%nz,m%nx,m%ny)
         !     call alloc(corr%ibksc,m%nz,m%nx,m%ny)
@@ -976,8 +976,8 @@ use m_cpml
     !a★Du = [vzᵃ vxᵃ pᵃ] Kₘln(M) | 0   0   ∂zᵇ| |vx|
     !                            [∂ₓᶠ  ∂zᶠ  0 ] [p ]
     !In particular, we compute
+    !  grho = vᵃ ∂ₜv = vᵃ b∇p
     !  gkpa = pᵃ (-κ⁻²) ∂ₜp = pᵃ (-κ⁻¹) ∇·v
-    !  grho0= vᵃ ∂ₜv = vᵃ b∇p
     !
     !For imaging:
     !I = ∫ a u dt =: a★u
@@ -1075,8 +1075,8 @@ use m_cpml
             corr%gkpa = corr%gkpa * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my))
                     
             !preparing for projection back
-            corr%gkpa(1,:,:) = corr%gkpa(2,:,:)
             corr%grho(1,:,:) = corr%grho(2,:,:)
+            corr%gkpa(1,:,:) = corr%gkpa(2,:,:)
         endif
 
         ! if(allocated(correlate_image)) then

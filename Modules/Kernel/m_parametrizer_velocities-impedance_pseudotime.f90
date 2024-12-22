@@ -2,6 +2,7 @@ module m_parametrizer
 use m_System
 use m_pseudotime
 use m_Modeling
+use m_empirical
 
     !PARAMETERIZATION     -- ALLOWED PARAMETERS
     !velocities-impedance -- vp vs ip
@@ -11,6 +12,14 @@ use m_Modeling
     !rho0= rho      = ip/vp
     !gvp = (gkpa*vp - grho0/vp)*rho
     !gip =  gkpa*vp + grho0/vp
+
+    !P-SV:
+    !lda = rho(vp^2-2vs^2) = vp*ip - 2vs^2*ip/vp
+    !mu  = rho*vs^2        = vs^2*ip/vp
+    !rho0= rho             = ip/vp
+    !gvp = (glda*vp^2 + (2glda-gmu)vs^2 - grho0)*rho/vp
+    !gvs = (-2glda + gmu)*2vs*rho
+    !gip = (glda*vp^2 + (-2glda+gmu)*vs^2 +grho0) /vp
 
     private
 
@@ -27,9 +36,6 @@ use m_Modeling
 
         type(t_parameter),dimension(:),allocatable :: pars
         integer :: npars
-        !type(t_string),dimension(:),allocatable :: empirical
-
-        logical,dimension(:,:,:,:),allocatable :: is_freeze_zone
 
         integer :: n1,n2,n3,n
         real :: d1,d2,d3
@@ -42,11 +48,8 @@ use m_Modeling
 
     type(t_parametrizer),public :: param
 
-    integer :: index_vp !index of vp in param list
-
-    !logical :: is_empirical=.false., is_gardner=.false. !, is_castagna
-
-    real :: a,b
+    logical :: is_AC=.false., is_EL=.false.
+    integer :: i_vp=0, i_vs=0, i_ip=0
 
     contains
     
@@ -61,9 +64,9 @@ use m_Modeling
         if(allocated(sublist)) deallocate(sublist)
         
         
-        !check PDE
-        if(index(ppg%info,'EL')>0) call error('Current implementation of pseudotime does not consider elastic inversion! Sorry.')
-
+        !PDE info
+        is_AC = index(ppg%info,'AC')>0
+        is_EL = index(ppg%info,'EL')>0
 
         !read in active parameters and their allowed ranges
         list=setup%get_strs('PARAMETER',o_default='vp:1500:3400')
@@ -78,13 +81,23 @@ use m_Modeling
 
             select case (sublist(1)%s)
             case ('vp' )
+                i_vp=i
                 self%pars(i)%name='vp'
                 self%npars=self%npars+1
-                index_vp=i
                 vmin=str2real(sublist(2)%s)
                 vmax=str2real(sublist(3)%s)
 
+            case ('vs' )
+                if(is_AC) then
+                    call hud('vs in PARAMETER is neglected as the PDE is ACoustic.')
+                    cycle loop
+                endif
+                i_vs=i
+                self%pars(i)%name='vs'
+                self%npars=self%npars+1
+
             case ('ip')
+                i_ip=i
                 self%pars(i)%name='ip'
                 self%npars=self%npars+1
                 
@@ -95,9 +108,13 @@ use m_Modeling
             self%pars(i)%range=self%pars(i)%max-self%pars(i)%min
 
         enddo loop
-                
+        
         deallocate(list,sublist)
 
+        !check vp,vs,rho [min,max] is in the same range as m%ref_vp,ref_vs,ref_rho
+        !
+
+        call empirical_init
         
         call pseudotime_init('z->t',vmin,vmax,m%nx,m%ny,&
             nz_=m%nz,   Dz_=m%dz, &
@@ -132,31 +149,41 @@ use m_Modeling
             call alloc(o_x,self%n1,self%n2,self%n3,self%npars,oif_protect=.true.)
 
             if(either(o_dir,'m->x',present(o_dir))=='m->x') then !z->t
-                do i=1,self%npars
-                    select case (self%pars(i)%name)
-                    case ('vp')
-                        call pseudotime_convert('z->t',m%vp,v_t)
-                        o_x(:,:,:,i) = (v_t-self%pars(i)%min)/self%pars(i)%range
-                    case ('ip')
-                        call pseudotime_convert('z->t',m%vp*m%rho,tmp,o_v=m%vp)
-                        o_x(:,:,:,i) = (tmp-self%pars(i)%min)/self%pars(i)%range
-                    end select
-                enddo
+                if(i_vp>0) then
+                    call pseudotime_convert('z->t',m%vp,v_t)
+                    o_x(:,:,:,i_vp) = (v_t-self%pars(i_vp)%min)/self%pars(i_vp)%range
+                endif
+
+                if(i_vs>0) then
+                    call pseudotime_convert('z->t',m%vs,tmp,o_v=m%vp)
+                    o_x(:,:,:,i_vs) = (tmp-self%pars(i_vs)%min)/self%pars(i_vs)%range
+                endif
+
+                if(i_ip>0) then
+                    call pseudotime_convert('z->t',m%vp*m%rho,tmp,o_v=m%vp)
+                    o_x(:,:,:,i_ip) = (tmp-self%pars(i_ip)%min)/self%pars(i_ip)%range
+                endif
+
+                call empirical_m2x('velocities-impedance')
 
             else !x->m, t->z
                 !first convert velocity
-                v_t=o_x(:,:,:,index_vp)*self%pars(index_vp)%range +self%pars(index_vp)%min
+                v_t=o_x(:,:,:,i_vp)*self%pars(i_vp)%range +self%pars(i_vp)%min
                 call pseudotime_convert('t->z',v_t,m%vp)
-                
+
                 !then convert other parameters
-                do i=1,self%npars
-                    select case (self%pars(i)%name)
-                    case ('ip')
-                        call pseudotime_convert('t->z',o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min,tmp, o_v=v_t)
-                        m%rho = tmp/m%vp
-                    end select
-                enddo
+                if(i_vs>0) then
+                    call pseudotime_convert('t->z',o_x(:,:,:,i_vs)*self%pars(i_vs)%range +self%pars(i_vs)%min,m%vs, o_v=v_t)
+                endif
+
+                if(i_ip>0) then
+                    call pseudotime_convert('t->z',o_x(:,:,:,i_ip)*self%pars(i_ip)%range +self%pars(i_ip)%min,tmp, o_v=v_t)
+                    m%rho = tmp/m%vp
+                endif
+
+                call empirical_x2m('velocities-impedance')
                 
+                call m%apply_elastic_continuum
                 call m%apply_freeze_zone
 
             endif
@@ -180,22 +207,54 @@ use m_Modeling
 
         if(present(o_g)) then
             call alloc(o_g,self%n1,self%n2,self%n3,self%npars)
-            !correlate_gradient(:,:,:,1) = grho0
-            !correlate_gradient(:,:,:,2) = gkpa
 
-            !acoustic
-            do i=1,self%npars
-                select case (self%pars(i)%name)
-                case ('vp' )
-                    call pseudotime_convert_gradient((correlate_gradient(:,:,:,2)*m%vp - correlate_gradient(:,:,:,1)/m%vp)*m%rho, &
+            if(is_AC) then
+                !correlate_gradient(:,:,:,1) = grho0
+                !correlate_gradient(:,:,:,2) = gkpa
+                if(i_vp >0) then
+                    call pseudotime_convert_gradient( &
+                        (correlate_gradient(:,:,:,2)*m%vp - correlate_gradient(:,:,:,1)/m%vp)*m%rho, &
                         m%vp,tmp)
+                    o_g(:,:,:,i_vp)=tmp
+                endif
 
-                case ('ip')
-                    call pseudotime_convert_gradient(correlate_gradient(:,:,:,2)*m%vp + correlate_gradient(:,:,:,1)/m%vp, &
+                if(i_ip >0) then
+                    call pseudotime_convert_gradient( &
+                        correlate_gradient(:,:,:,2)*m%vp + correlate_gradient(:,:,:,1)/m%vp, &
                         m%vp,tmp)
-                end select
-                o_g(:,:,:,i) = tmp
-            enddo
+                    o_g(:,:,:,i_ip)=tmp
+                endif
+
+                call empirical_gradient('velocities-impedance',o_gvp=o_g(:,:,:,i_vp),o_gip=o_g(:,:,:,i_ip))
+            endif
+
+            if(is_EL) then
+                !correlate_gradient(:,:,:,1) = grho0
+                !correlate_gradient(:,:,:,2) = glda
+                !correlate_gradient(:,:,:,2) = gmu
+                if(i_vp >0) then
+                    call pseudotime_convert_gradient( &
+                        (correlate_gradient(:,:,:,1)*m%vp**2 + (2*correlate_gradient(:,:,:,1)-correlate_gradient(:,:,:,2))*m%vs**2 - correlate_gradient(:,:,:,3))*m%rho/m%vp, &
+                        m%vp,tmp)
+                    o_g(:,:,:,i_vp)=tmp
+                endif
+
+                if(i_vs >0) then
+                    call pseudotime_convert_gradient( &
+                        (-2*correlate_gradient(:,:,:,1) + correlate_gradient(:,:,:,2))*2*m%rho*m%vs, &
+                        m%vp,tmp)
+                    o_g(:,:,:,i_vs)=tmp
+                endif
+                
+                if(i_ip >0) then
+                    call pseudotime_convert_gradient( &
+                        (correlate_gradient(:,:,:,1)*m%vp**2 + (-2*correlate_gradient(:,:,:,1)+correlate_gradient(:,:,:,2))*m%vs**2 + correlate_gradient(:,:,:,3))/m%vp, &
+                        m%vp,tmp)
+                    o_g(:,:,:,i_ip)=tmp
+                endif
+                                
+                call empirical_gradient('velocities-impedance_pseudotime',o_gvp=o_g(:,:,:,i_vp),o_gvs=o_g(:,:,:,i_vs),o_gip=o_g(:,:,:,i_ip))
+            endif
 
             !normaliz g by allowed parameter range
             do i=1,self%npars
@@ -208,7 +267,6 @@ use m_Modeling
             do i=1,self%npars
                o_g(:,:,:,i)=o_g(:,:,:,i)*(1.-freeze_zone_in_t)
             enddo
-
             
         endif
         

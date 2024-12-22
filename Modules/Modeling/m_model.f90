@@ -379,6 +379,8 @@ use m_smoother_laplacian_sparse
         
         real,dimension(:,:,:),allocatable :: tmp
         
+        if(.not. allocated(self%vs)) return !protector
+
         tmp = sqrt(0.75* (self%vp**2 - 500**2))
 
         where (tmp<self%vs) self%vs=tmp
