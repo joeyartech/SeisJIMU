@@ -65,6 +65,43 @@ use m_Hilbert
     end subroutine
 
 
+    real function Env2sq(scaler,nt,ntr,W,dsyn,Eobs,dt)
+        real,dimension(nt,ntr) :: W,dsyn,Eobs
+
+        a=scaler
+        W2=W**2
+
+        u=dsyn
+
+        call alloc(v,nt,ntr)
+        call hilbert_transform(u,v,nt,ntr)
+
+        E = sqrt(u**2+v**2)
+        DeltaE = Eobs**2-E**2
+
+        water=maxval(E)*1e-5
+
+        Env2sq = a*sum( W2*DeltaE**2 )*dt
+
+    end function
+
+    subroutine kernel_Env2sq(kernel,nt,ntr,oif_stack)
+        real,dimension(nt,ntr) :: kernel
+        logical,optional :: oif_stack
+
+        if(either(oif_stack,.false.,present(oif_stack))) then
+            kernel = kernel + 2*a*( W2*DeltaE*u ) !simpler, just for test
+
+        else
+            kernel =        + 2*a*( W2*DeltaE*u )
+
+        endif
+
+        deallocate(W2,u,v,E,DeltaE)
+
+    end subroutine
+
+
     !Q[u] = u*∂ₜv - ∂ₜu*v
     !Qsq[u] = a*∫ W²ΔQ² dt = a*∫ W²(Q-Qobs)² dt
     !KᵤQsq = 2a*W²*ΔQ*KᵤQ

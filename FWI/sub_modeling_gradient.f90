@@ -52,7 +52,7 @@ use m_resampler
         call shot%set_var_time
         call shot%set_var_space(index(ppg%info,'FDSG')>0)
 
-        if(s_dnorm=='Envsq') then
+        if(s_dnorm=='Envsq'.or.s_dnorm=='Env2sq') then
             call alloc(Eobs,shot%nt,shot%nrcv)
             call hilbert_envelope(shot%dobs,Eobs,shot%nt,shot%nrcv)
             call shot%write('Eobs_',Eobs)
@@ -130,6 +130,11 @@ use m_resampler
                 fobj%misfit = fobj%misfit &
                     + Envsq(0.5, shot%nt, shot%nrcv, wei%weight, shot%dsyn, Eobs, shot%dt)
                 call kernel_Envsq(shot%dadj,shot%nt,shot%nrcv)
+
+case('Env2sq')
+fobj%misfit = fobj%misfit &
+    + Env2sq(0.5, shot%nt, shot%nrcv, wei%weight, shot%dsyn, Eobs, shot%dt)
+call kernel_Env2sq(shot%dadj,shot%nt,shot%nrcv)
                 
 
                 case('Qsq')
