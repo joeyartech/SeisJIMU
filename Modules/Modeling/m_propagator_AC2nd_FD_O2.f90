@@ -485,8 +485,8 @@ use m_cpml
                 call cpu_time(toc)
                 tt2=tt2+toc-tic
 
-                !set hardBC
-                call self%set_pressure(fld_dE,         it)
+                ! !set hardBC
+                ! call self%set_pressure(fld_dE,         it)
 
                 !backward step 4:
                 call cpu_time(tic)
@@ -552,11 +552,11 @@ use m_cpml
                 tt2=tt2+toc-tic
             ! endif
 
-            ! !step 3: set hardBC
-            ! call cpu_time(tic)
-            call self%set_pressure(fld_dE,it)
-            ! call cpu_time(toc)
-            ! tt3=tt3+toc-tic
+            ! ! !step 3: set hardBC
+            ! ! call cpu_time(tic)
+            ! call self%set_pressure(fld_dE,it)
+            ! ! call cpu_time(toc)
+            ! ! tt3=tt3+toc-tic
 
             !step 4: update pressure
             call cpu_time(tic)

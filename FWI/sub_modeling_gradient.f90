@@ -4,6 +4,7 @@ use m_System
 use m_Modeling
 use m_weighter
 use m_Lpnorm
+use m_Envnorm
 use m_fobjective
 use m_matchfilter
 use m_smoother_laplacian_sparse
@@ -12,23 +13,34 @@ use m_smoother_laplacian_sparse
     type(t_field) :: fld_u, fld_a
     type(t_correlate) :: u_star_u,a_star_u
     character(:),allocatable :: update_wavelet
+    real,dimension(:,:),allocatable :: tmp
+    real,dimension(3) :: grad_term_weights
 
-    character(:),allocatable :: dnorm
+    character(:),allocatable :: s_dnorm
+    real,dimension(:,:),allocatable :: Eobs
     
     fobj%misfit=0.
+
+    if(.not.allocated(s_dnorm)) s_dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2sq')
     
     call alloc(correlate_gradient,m%nz,m%nx,m%ny,ppg%ngrad)
     
     call hud('===== START LOOP OVER SHOTS =====')
-    
-    do i=1,shls%nshots_per_processor
 
+    do i=1,shls%nshots_per_processor
+    
         call shot%init(shls%yield(i))
         call shot%read_from_data
         call shot%set_var_time
         call shot%set_var_space(index(ppg%info,'FDSG')>0)
 
-        call hud('Modeling '//shot%sindex)
+        if(s_dnorm=='Envsq'.or.s_dnorm=='Env2sq') then
+            call alloc(Eobs,shot%nt,shot%nrcv)
+            call hilbert_envelope(shot%dobs,Eobs,shot%nt,shot%nrcv)
+            call shot%write('Eobs_',Eobs)
+        endif
+
+        call hud('Modeling Shot# '//shot%sindex)
         
         call cb%init(ppg%nbndlayer)
         call cb%project
@@ -66,7 +78,7 @@ use m_smoother_laplacian_sparse
         !KₘL = aᴴ KₘA u =: a★Du
 
         ! !objective function and adjoint source
-        ! call fobj%stack_dnorms
+        ! call fobj%stack_s_dnorms
         ! shot%dadj=-shot%dadj
         ! call wei%update
         ! fobj%misfit = fobj%misfit &
@@ -78,9 +90,9 @@ use m_smoother_laplacian_sparse
 
         call wei%update
         call alloc(shot%dadj,shot%nt,shot%nrcv)
-        if(.not.allocated(dnorm)) dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2sq')
+        if(.not.allocated(s_dnorm)) s_dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2sq')
 
-        select case (dnorm)
+        select case (s_dnorm)
             case ('L2sq')
             fobj%misfit = fobj%misfit &
                 + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
@@ -97,6 +109,23 @@ use m_smoother_laplacian_sparse
                 + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, abs(shot%dobs)-abs(shot%dsyn), shot%dt)
             call kernel_L2sq(shot%dadj)
             shot%dadj = shot%dadj*sgns2(shot%dsyn,  shot%dobs-(shot%dsyn)  )
+
+
+            case('Envsq')
+            fobj%misfit = fobj%misfit &
+                + Envsq(0.5, shot%nt, shot%nrcv, wei%weight, shot%dsyn, Eobs, shot%dt)
+            call kernel_Envsq(shot%dadj,shot%nt,shot%nrcv)
+            
+            case('Env2sq')
+            fobj%misfit = fobj%misfit &
+                + Env2sq(0.5, shot%nt, shot%nrcv, wei%weight, shot%dsyn, Eobs, shot%dt)
+            call kernel_Env2sq(shot%dadj,shot%nt,shot%nrcv)
+
+            case('Qsq')
+            fobj%misfit = fobj%misfit &
+                + Qsq(0.5, shot%nt, shot%nrcv, wei%weight, shot%dsyn, shot%dobs, shot%dt)
+            call kernel_Qsq(shot%dadj,shot%nt,shot%nrcv,shot%dt)
+
 
             case default
             call error('No DNORM specified!')

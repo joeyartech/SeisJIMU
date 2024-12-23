@@ -21,10 +21,10 @@ use m_computebox
         ! integer :: ifz,ilz,ifx,ilx,ify,ily,ift,ilt
 
         !wavefield components in computation domain
-        ! real,dimension(:,:,:),allocatable :: sp_sp
-        ! real,dimension(:,:,:),allocatable :: rp_sp
-        ! real,dimension(:,:,:),allocatable :: drp_dt_dsp_dt, div_rp_div_sp
-        ! real,dimension(:,:,:),allocatable :: rp_lap_sp, lap_rp_sp
+        real,dimension(:,:,:),allocatable :: sp_sp
+        real,dimension(:,:,:),allocatable :: rp_sp
+        real,dimension(:,:,:),allocatable :: drp_dt_dsp_dt, div_rp_div_sp
+        real,dimension(:,:,:),allocatable :: rp_lap_sp, lap_rp_sp
         real,dimension(:,:,:),allocatable :: rp_ddsp, grad_rp_grad_sp
 
         contains
