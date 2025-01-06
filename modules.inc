@@ -7,10 +7,13 @@
 #WaveEq=ExactEnv
 #WaveEq=BornEnv_reconstruct
 #WaveEq=BornEnv_monoD
-WaveEq=AC2nd
 #WaveEq=AC
 #WaveEq=AC_VTI
 #WaveEq=PSV
+
+WaveEq=AC2nd
+WaveEq=constrho_AC2nd_noPML
+
 Solver=FD
 #Solver=FDSG
 #Order=O4
