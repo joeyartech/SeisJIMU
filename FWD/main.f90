@@ -1,8 +1,10 @@
 program main
+use mpi
 use m_System
 use m_Modeling
 
     type(t_field) :: field
+    real :: tt1, tt2
 
     !character(:),allocatable :: job  
 
@@ -52,6 +54,8 @@ use m_Modeling
 
     call hud('===== START LOOP OVER SHOTS =====')
 
+    tt1=0.
+
     do i=1,shls%nshots_per_processor
 
         call shot%init(shls%yield(i))
@@ -72,7 +76,7 @@ use m_Modeling
         call field%ignite
 
         !forward modeling
-        call ppg%forward(field)
+        call ppg%forward(field,tt1)
 
         call field%acquire
 
@@ -80,7 +84,19 @@ use m_Modeling
         call shot%write('dsyn_',shot%dsyn)
 
     enddo
-    
+
+    call hud('----------------------------------------')
+    if(mpiworld%is_master) write(*,*) 'Elapsed time on master:',tt1,'s'
+
+    !the true elapsed time should be the maximum
+    call mpi_reduce(tt1, tt2, 1, mpi_real, mpi_max, 0, mpiworld%communicator, mpiworld%ierr)
+    if(mpiworld%is_master) then
+        write(*,*) 'Real elapsed time:',tt2,'s'
+        write(*,*) 'Performance:',GFLOP()/tt2,'GFLOPS/s'
+        write(*,*) 'Throughput:',GBRW()/tt2,'GB/s'
+    endif
+    call hud('----------------------------------------')
+
     call hud('        END LOOP OVER SHOTS        ')
     
     call mpiworld%final

@@ -3,6 +3,7 @@ use m_System
 use m_hicks, only : hicks_r
 use m_resampler
 use m_model
+use m_shotlist, only : shls
 use m_shot
 use m_computebox
 use m_field
@@ -10,6 +11,7 @@ use m_correlate
 use m_cpml
 
     private
+    public :: GBRW, GFLOP
 
     !FD coef
     real,dimension(1),parameter :: coef = 1.
@@ -28,7 +30,7 @@ use m_cpml
         character(i_str_xxlen) :: info = &
             'Time-domain ISOtropic 2D constant-density ACoustic propagation'//s_NL// &
             '2nd-order Pressure formulation'//s_NL// &
-            'Vireux-Levandar Staggered-Grid Finite-Difference (FDSG) method'//s_NL// &
+            'Regular-Grid Finite-Difference (FDRG) method'//s_NL// &
             'Cartesian O(x²,t²) stencil'//s_NL// &
             'CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal'//s_NL// &
             '   -> dt ≤ 0.5*Vmax/dx'//s_NL// &
@@ -288,7 +290,7 @@ use m_cpml
     !Step #4: pᵃ^n-1 = 2pᵃ^n -pᵃ^n+1 +laplacian of pᵃ^n
     !Step #5: (pᵃ^n,pᵃ^n+1) = (pᵃ^n-1,pᵃ^n)    
 
-    subroutine forward(self,fld_u,o_u_star_u)
+    subroutine forward(self,fld_u,tt1, o_u_star_u)
         class(t_propagator) :: self
         type(t_field) :: fld_u
         type(t_correlate),optional :: o_u_star_u
@@ -297,23 +299,26 @@ use m_cpml
 
         !seismo
         call alloc(fld_u%seismo, shot%nrcv,self%nt)
-                    
-        tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.
+#define RWs_init    cb%n
+
+!         tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.
 
         ift=1; ilt=self%nt
 
+        call cpu_time(tic)
+
         do it=ift,ilt
-            if(mod(it,500)==0 .and. mpiworld%is_master) then
-                write(*,*) 'it----',it
-                call fld_u%check_value
-            endif
+!             if(mod(it,500)==0 .and. mpiworld%is_master) then
+!                 write(*,*) 'it----',it
+!                 call fld_u%check_value
+!             endif
 
             !do forward time stepping (step# conforms with backward & adjoint time stepping)
             !step 1: add pressure
-            call cpu_time(tic)
+!             call cpu_time(tic)
             call self%inject_pressure(fld_u,time_dir,it)
-            call cpu_time(toc)
-            tt1=tt1+toc-tic
+!             call cpu_time(toc)
+!             tt1=tt1+toc-tic
 
             !step 2: save p^it in boundary layers
             ! if(fld_u%if_will_reconstruct) then
@@ -330,37 +335,40 @@ use m_cpml
             ! tt3=tt3+toc-tic
 
             !step 4: update pressure
-            call cpu_time(tic)
+!             call cpu_time(tic)
             call self%update_pressure(fld_u,time_dir,it)
-            call cpu_time(toc)
-            tt4=tt4+toc-tic
+!             call cpu_time(toc)
+!             tt4=tt4+toc-tic
 
             !step 5: evolve pressure, it -> it+1
-            call cpu_time(tic)
+!             call cpu_time(tic)
             call self%evolve_pressure(fld_u,time_dir,it)
-            call cpu_time(toc)
-            tt5=tt5+toc-tic
+!             call cpu_time(toc)
+!             tt5=tt5+toc-tic
 
             !step 6: sample p^it+1 at receivers
-            call cpu_time(tic)
+!             call cpu_time(tic)
             call self%extract(fld_u,it)
-            call cpu_time(toc)
-            tt6=tt6+toc-tic
+!             call cpu_time(toc)
+!             tt6=tt6+toc-tic
 
-            !snapshot
-            call fld_u%write(it)
+!             !snapshot
+!             call fld_u%write(it)
 
         enddo
 
-        if(mpiworld%is_master) then
-            write(*,*) 'Elapsed time to add source   ',tt1/mpiworld%max_threads
-            write(*,*) 'Elapsed time to save boundary',tt2/mpiworld%max_threads
-            ! write(*,*) 'Elapsed time to set field    ',tt3/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update field ',tt4/mpiworld%max_threads
-            write(*,*) 'Elapsed time to evolve field ',tt5/mpiworld%max_threads
-            write(*,*) 'Elapsed time to extract field',tt6/mpiworld%max_threads
-            write(*,*) 'Elapsed time to correlate    ',tt7/mpiworld%max_threads
-        endif
+        call cpu_time(toc)
+        tt1=tt1+toc-tic
+
+!         if(mpiworld%is_master) then
+!             write(*,*) 'Elapsed time to add source   ',tt1/mpiworld%max_threads
+!             write(*,*) 'Elapsed time to save boundary',tt2/mpiworld%max_threads
+!             ! write(*,*) 'Elapsed time to set field    ',tt3/mpiworld%max_threads
+!             write(*,*) 'Elapsed time to update field ',tt4/mpiworld%max_threads
+!             write(*,*) 'Elapsed time to evolve field ',tt5/mpiworld%max_threads
+!             write(*,*) 'Elapsed time to extract field',tt6/mpiworld%max_threads
+!         endif
+
 
         call hud('Viewing the snapshots (if written) with SU ximage/xmovie:')
         call hud('ximage < snap_sfield%*  n1='//num2str(cb%nz)//' perc=99')
@@ -381,29 +389,30 @@ use m_cpml
 
         if(.not. f%is_adjoint) then
 
-            if(if_hicks) then
-                ifz=shot%src%ifz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
-                ifx=shot%src%ifx-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
-                ify=shot%src%ify-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
-            else
+!             if(if_hicks) then
+!                 ifz=shot%src%ifz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
+!                 ifx=shot%src%ifx-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
+!                 ify=shot%src%ify-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
+!             else
                 iz=shot%src%iz-cb%ioz+1
                 ix=shot%src%ix-cb%iox+1
                 iy=shot%src%iy-cb%ioy+1
-            endif
-            
+!             endif
+!
             wl=time_dir*f%wavelet(1,it)*wavelet_scaler
-
-            !explosion
-            if(if_hicks) then
-                f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*cb%vp(ifz:ilz,ifx:ilx,ify:ily)**2 *shot%src%interp_coef
-            else
+!
+!             !explosion
+!             if(if_hicks) then
+!                 f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*cb%vp(ifz:ilz,ifx:ilx,ify:ily)**2 *shot%src%interp_coef
+!             else
                 f%p(iz,ix,iy)                = f%p(iz,ix,iy)                + wl*cb%vp(iz,ix,iy)**2
-            endif
+!             endif
 
             return
 
         endif
-
+#define RWs_inject    (9+3+4)
+#define FLOPs_inject  (2+5)
         ! do i=1,shot%nrcv
 
         !     if(if_hicks) then
@@ -532,27 +541,30 @@ use m_cpml
         if(.not.f%is_adjoint) then
 
             do i=1,shot%nrcv
-                ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
-                ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
-                ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
+!                 ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
+!                 ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
+!                 ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
+                iz=shot%rcv(i)%iz-cb%ioz+1;
+                ix=shot%rcv(i)%ix-cb%iox+1;
+                iy=shot%rcv(i)%iy-cb%ioy+1;
 
-                if(if_hicks) then
-                    select case (shot%rcv(i)%comp)
-                        case default
-                        !case ('p')
-                        f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef)
-
-                        ! case ('vz')
-                        ! f%seismo(i,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
-                        ! case ('vx')
-                        ! f%seismo(i,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
-                        ! case ('vy')
-                        ! f%seismo(i,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
-                    end select
-                    
-                else
-                    select case (shot%rcv(i)%comp)
-                        case default
+!                 if(if_hicks) then
+!                     select case (shot%rcv(i)%comp)
+!                         case default
+!                         !case ('p')
+!                         f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef)
+!
+!                         ! case ('vz')
+!                         ! f%seismo(i,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+!                         ! case ('vx')
+!                         ! f%seismo(i,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+!                         ! case ('vy')
+!                         ! f%seismo(i,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+!                     end select
+!
+!                 else
+!                     select case (shot%rcv(i)%comp)
+!                         case default
                         !case ('p') !p[iz,ix,iy]
                         f%seismo(i,it)=f%p(iz,ix,iy)
 
@@ -562,9 +574,9 @@ use m_cpml
                         ! f%seismo(i,it)=f%vx(iz,ix,iy)
                         ! case ('vy') !vy[iz,ix,iy-0.5]
                         ! f%seismo(i,it)=f%vy(iz,ix,iy)
-                    end select
+!                     end select
                     
-                endif
+!                 endif
 
             enddo
 
@@ -572,45 +584,48 @@ use m_cpml
 
         endif
 
-            ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
-            ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
-            ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
-            
-            if(if_hicks) then
-                select case (shot%src%comp)
-                    case default
-                    !case ('p')
-                    f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef)
-                    
-                    ! case ('vz')
-                    ! f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
-                    
-                    ! case ('vx')
-                    ! f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
-                    
-                    ! case ('vy')
-                    ! f%seismo(1,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
-                    
-                end select
-                
-            else
-                select case (shot%src%comp)
-                    case default
-                    !case ('p') !p[iz,ix,iy]
-                    f%seismo(1,it)=f%p(iz,ix,iy)
-                    
-                    ! case ('vz') !vz[iz-0.5,ix,iy]
-                    ! f%seismo(1,it)=f%vz(iz,ix,iy)
-                    
-                    ! case ('vx') !vx[iz,ix-0.5,iy]
-                    ! f%seismo(1,it)=f%vx(iz,ix,iy)
-                    
-                    ! case ('vy') !vy[iz,ix,iy-0.5]
-                    ! f%seismo(1,it)=f%vy(iz,ix,iy)
-                    
-                end select
-                
-            endif
+#define RWs_extract   (9+2)*shot%nrcv
+#define FLOPs_extract  0
+
+!             ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
+!             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
+!             ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
+!
+!             if(if_hicks) then
+!                 select case (shot%src%comp)
+!                     case default
+!                     !case ('p')
+!                     f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef)
+!
+!                     ! case ('vz')
+!                     ! f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+!
+!                     ! case ('vx')
+!                     ! f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+!
+!                     ! case ('vy')
+!                     ! f%seismo(1,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+!
+!                 end select
+!
+!             else
+!                 select case (shot%src%comp)
+!                     case default
+!                     !case ('p') !p[iz,ix,iy]
+!                     f%seismo(1,it)=f%p(iz,ix,iy)
+!
+!                     ! case ('vz') !vz[iz-0.5,ix,iy]
+!                     ! f%seismo(1,it)=f%vz(iz,ix,iy)
+!
+!                     ! case ('vx') !vx[iz,ix-0.5,iy]
+!                     ! f%seismo(1,it)=f%vx(iz,ix,iy)
+!
+!                     ! case ('vy') !vy[iz,ix,iy-0.5]
+!                     ! f%seismo(1,it)=f%vy(iz,ix,iy)
+!
+!                 end select
+!
+!             endif
         
     end subroutine
     
@@ -684,8 +699,14 @@ use m_cpml
                     pp_ixp1 = 0.
                 endif
 
+#define RWs_fd2d_1    ( 2*cb%nz + (4*cb%n-(cb%nx+cb%nz-2)*2)*2 )
+#define FLOPs_fd2d_1  0
+
                 lapz=scaled_vpz(iz_ix)*scaled_vpz(iz_ix)*( pc_izp1 +pc_izm1 -2.*pc(iz_ix) )
                 lapx=scaled_vpx(iz_ix)*scaled_vpx(iz_ix)*( pc_ixp1 +pc_ixm1 -2.*pc(iz_ix) )
+
+#define RWs_fd2d_2    4*cb%n
+#define FLOPs_fd2d_2  5*cb%n*2
 
                 !! top boundary */
                 if(m%is_freesurface) then
@@ -713,8 +734,13 @@ use m_cpml
                     lapx=scaled_vpx(iz_ix)*(pc_iz_ixm1-pc(iz_ix)-pp_iz_ixm1+pp(iz_ix));
                 endif
 
+#define RWs_fd2d_3    3*(cb%nx+cb%nz-2)*2
+#define FLOPs_fd2d_3  (4+1)*(cb%nx+cb%nz-2)*2
 
                 pn(i) = 2.*pc(i) -pp(i) +lapz +lapx; !forward in time
+
+#define RWs_fd2d_4    3*cb%n
+#define FLOPs_fd2d_4  4*cb%n
 
 
             enddo
@@ -723,5 +749,37 @@ use m_cpml
         !$omp end parallel
 
     end subroutine
+
+
+    !giga bytes of data transferred between global & local memory on device
+    pure real function GBRW()
+
+        integer(8) :: total
+
+        total = ( &
+             int(RWs_fd2d_1+RWs_fd2d_2+RWs_fd2d_3+RWs_fd2d_4, 8) *ppg%nt*shls%nlists &
+            +int(RWs_inject ,8) *ppg%nt*shls%nlists &
+            +int(RWs_extract,8) *ppg%nt*shls%nlists &
+            +int(RWs_init   ,8)        *shls%nlists &
+            )
+
+        GBRW = total*4/1e9
+
+    end function
+
+    !giga FP32 arithmics(+-*/) operations
+    pure real function GFLOP()
+
+        integer(8) :: total
+
+        total = ( &
+             int(FLOPs_fd2d_1+FLOPs_fd2d_2+FLOPs_fd2d_3+FLOPs_fd2d_4, 8) *ppg%nt*shls%nlists &
+            +int(FLOPs_inject ,8) *ppg%nt*shls%nlists &
+            +int(FLOPs_extract,8) *ppg%nt*shls%nlists &
+            )
+
+        GFLOP = total/1e9
+
+    end function
 
 end
