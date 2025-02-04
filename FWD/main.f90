@@ -5,7 +5,7 @@ use m_Modeling
 
     type(t_field) :: field
     real :: tt1, tt2
-
+integer :: values(8)
     !character(:),allocatable :: job  
 
     !mpiworld lives in t_mpienv
@@ -75,13 +75,36 @@ use m_Modeling
 
         call field%ignite
 
+! if(mpiworld%is_master) then
+! call date_and_time(values=values)
+! print*,'System values:'
+! print '(8i5)', values
+! endif
+
         !forward modeling
-        call ppg%forward(field,tt1)
+call hud('start forward modeling')
+call mpiworld%barrier ! deadlock?
+if(mpiworld%is_master) tic=wallclock_sec()
+
+        call ppg%forward(field)
+
+if(mpiworld%is_master) toc=wallclock_sec()
+if(mpiworld%is_master) tt1=toc-tic
+call hud('master finishes forward modeling')
+call mpiworld%barrier ! deadlock?
+if(mpiworld%is_master) toc=wallclock_sec()
+if(mpiworld%is_master) tt2=toc-tic
+
+! if(mpiworld%is_master) then
+! call date_and_time(values=values)
+! print*,'System values:'
+! print '(8i5)', values
+! endif
 
         call field%acquire
 
-        !write synthetic data
-        call shot%write('dsyn_',shot%dsyn)
+!         !write synthetic data
+!         call shot%write('dsyn_',shot%dsyn)
 
     enddo
 
@@ -89,11 +112,11 @@ use m_Modeling
     if(mpiworld%is_master) write(*,*) 'Elapsed time on master:',tt1,'s'
 
     !the true elapsed time should be the maximum
-    call mpi_reduce(tt1, tt2, 1, mpi_real, mpi_max, 0, mpiworld%communicator, mpiworld%ierr)
+!     call mpi_reduce(tt1, tt2, 1, mpi_real, mpi_max, 0, mpiworld%communicator, mpiworld%ierr)
     if(mpiworld%is_master) then
         write(*,*) 'Real elapsed time:',tt2,'s'
         write(*,*) 'Performance:',GFLOP()/tt2,'GFLOPS/s'
-        write(*,*) 'Throughput:',GBRW()/tt2,'GB/s'
+        write(*,*) 'Throughput (RAM):',GBRW()/tt2,'GB/s'
     endif
     call hud('----------------------------------------')
 
@@ -102,6 +125,23 @@ use m_Modeling
     call mpiworld%final
     
     ! stop
+
+    contains
+
+    function wallclock_sec() !precision upto milliseconds, can NOT used for > 60 min
+        integer :: values(8)
+        ! VALUES(1):	The year, including the century
+        ! VALUES(2):	The month of the year
+        ! VALUES(3):	The day of the month
+        ! VALUES(4):	The time difference from UTC in minutes
+        ! VALUES(5):	The hour of the day
+        ! VALUES(6):	The minutes of the hour
+        ! VALUES(7):	The seconds of the minute
+        ! VALUES(8):	The milliseconds of the second
+        call date_and_time(values=values)
+!         print '(8i5)', values
+        wallclock_sec = values(6)*60+ values(7)+ real(values(8))/1e3
+    end function
     
 end
 

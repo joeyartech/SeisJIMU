@@ -290,7 +290,7 @@ use m_cpml
     !Step #4: pᵃ^n-1 = 2pᵃ^n -pᵃ^n+1 +laplacian of pᵃ^n
     !Step #5: (pᵃ^n,pᵃ^n+1) = (pᵃ^n-1,pᵃ^n)    
 
-    subroutine forward(self,fld_u,tt1, o_u_star_u)
+    subroutine forward(self,fld_u, o_u_star_u)
         class(t_propagator) :: self
         type(t_field) :: fld_u
         type(t_correlate),optional :: o_u_star_u
@@ -305,7 +305,7 @@ use m_cpml
 
         ift=1; ilt=self%nt
 
-        call cpu_time(tic)
+!         call cpu_time(tic)
 
         do it=ift,ilt
 !             if(mod(it,500)==0 .and. mpiworld%is_master) then
@@ -357,8 +357,8 @@ use m_cpml
 
         enddo
 
-        call cpu_time(toc)
-        tt1=tt1+toc-tic
+!         call cpu_time(toc)
+!         tt1=tt1+toc-tic
 
 !         if(mpiworld%is_master) then
 !             write(*,*) 'Elapsed time to add source   ',tt1/mpiworld%max_threads
