@@ -7,7 +7,7 @@ use m_hilbert
 
     logical,save :: is_first_in=.true.
 
-    type(t_field) :: fld_v, fld_u, fld_q, fld_p
+    type(t_field) :: fld_u,fld_a
     type(t_correlate) :: a_star_u
     real,dimension(:,:),allocatable :: tmp
 
@@ -32,16 +32,9 @@ use m_hilbert
         call ppg%init_abslayer
 
         call hud('----  Solving Au=s  ----')
-        call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
+        call ppg%init_field(fld_u, name='fld_u');    call fld_u%ignite
         call ppg%forward(fld_u)
         call fld_u%acquire; call shot%write('Ru_',shot%dsyn)
-
-        call hud('----  Solving Av=H[s]  ----')
-        call shot%read_wlhilb
-        call ppg%init_field(fld_v,name='fld_v');    call fld_v%ignite
-        call ppg%forward(fld_v)
-        call fld_v%acquire; call shot%write('Rv_',shot%dsyn); shot%dsyn_aux=shot%dsyn
-        call fld_u%acquire
 
         if(setup%get_str('JOB')=='forward modeling') cycle
 
@@ -50,8 +43,7 @@ use m_hilbert
             call hud('        Imaging        ')
             call hud('-----------------------')
 
-            call ppg%init_field(fld_p,name='fld_p',ois_adjoint=.true.)
-            call ppg%init_field(fld_q,name='fld_q',ois_adjoint=.true.)
+            call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
 
             if(setup%get_str('RTM_ADJSRC',o_default='dobs')=='dobs') then
                 shot%dadj=shot%dobs
@@ -59,17 +51,13 @@ use m_hilbert
                 shot%dadj=shot%dobs-shot%dsyn
             endif
 
-            call fld_p%ignite(o_wavelet=shot%dadj)
+            call fld_a%ignite(o_wavelet=shot%dadj)
                 
-            call alloc(tmp,shot%nt,shot%nrcv)
-            call hilbert_transform(shot%dadj,tmp,shot%nt,shot%nrcv)
-            call fld_q%ignite(o_wavelet=tmp)
-
             call ppg%init_correlate(a_star_u,'a_star_u')
 
             call hud('----  Solving adjoint eqn & xcorrelate  ----')
             !Aᴴa = -Rᴴd
-            call ppg%adjoint_poynting(fld_q,fld_p,fld_v,fld_u,a_star_u)
+            call ppg%adjoint(fld_a,fld_u,a_star_u)
 
             call hud('----  Assemble  ----')
             call ppg%assemble(a_star_u)
@@ -98,7 +86,6 @@ use m_hilbert
     !write correlate
     if(mpiworld%is_master) then
         call a_star_u%write
-
     endif
 
     ! if(ppg%if_compute_engy) then

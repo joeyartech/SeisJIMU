@@ -38,7 +38,7 @@ use m_cpml
 
         integer :: nbndlayer=max(2,hicks_r) !minimum absorbing layer thickness
         integer :: ngrad=2 !number of basic gradients
-        integer :: nimag=3 !number of basic images
+        integer :: nimag=4 !number of basic images
         integer :: nengy=1 !number of energy terms
 
         logical :: if_compute_engy=.false.
@@ -242,12 +242,13 @@ use m_cpml
         corr%name=name
 
         ! if(name(1:1)=='g') then !gradient components
-            call alloc(corr%grho,m%nz,m%nx,m%ny)
-            call alloc(corr%gkpa,m%nz,m%nx,m%ny)
+        !    call alloc(corr%grho,m%nz,m%nx,m%ny)
+        !    call alloc(corr%gkpa,m%nz,m%nx,m%ny)
         ! else !image components
-        !     call alloc(corr%ipp,m%nz,m%nx,m%ny)
-        !     call alloc(corr%ibksc,m%nz,m%nx,m%ny)
-        !     call alloc(corr%ifwsc,m%nz,m%nx,m%ny)
+             call alloc(corr%ipp,m%nz,m%nx,m%ny)
+             call alloc(corr%idpdp,m%nz,m%nx,m%ny)
+             call alloc(corr%id2pd2p,m%nz,m%nx,m%ny)
+             call alloc(corr%id3pd3p,m%nz,m%nx,m%ny)
         ! endif
 
     end subroutine
@@ -263,11 +264,12 @@ use m_cpml
         class(t_propagator) :: self
         type(t_correlate) :: corr
 
-        ! if(allocated(correlate_image)) then
-        !     call correlate_assemble(corr%ipp, correlate_image(:,:,:,1))
-        !     call correlate_assemble(corr%ibksc, correlate_image(:,:,:,2))
-        !     call correlate_assemble(corr%ifwsc, correlate_image(:,:,:,3))
-        ! endif
+        if(allocated(correlate_image)) then
+            call correlate_assemble(corr%ipp, correlate_image(:,:,:,1))
+            call correlate_assemble(corr%idpdp, correlate_image(:,:,:,2))
+            call correlate_assemble(corr%id2pd2pc, correlate_image(:,:,:,3))
+            call correlate_assemble(corr%id3pd3pc, correlate_image(:,:,:,4))
+        endif
 
         if(allocated(correlate_gradient)) then
             call correlate_assemble(corr%grho, correlate_gradient(:,:,:,1))
@@ -558,6 +560,7 @@ use m_cpml
             if(mod(it,irdt)==0) then
                 call cpu_time(tic)
                 call cross_correlate_gkpa(fld_a,fld_u,a_star_u,it)
+                call cross_correlate_imag(fld_a,fld_u,a_star_u,it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             endif
@@ -1036,35 +1039,38 @@ use m_cpml
         
     end subroutine
 
-    ! subroutine cross_correlate_image(rf,sf,corr,it)
-    !     type(t_field), intent(in) :: rf, sf
-    !     type(t_correlate) :: corr
-        
-    !     !nonzero only when sf touches rf
-    !     ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
-    !     ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
-    !     ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
-    !     ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
-    !     ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
-    !     ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
-        
-    !     ! if(m%is_cubic) then
-    !     !     call imag3d_xcorr(rf%p,sf%p,&
-    !     !                       imag,                  &
-    !     !                       ifz,ilz,ifx,ilx,ify,ily)
-    !     ! else
-    !         call imag2d(rf%p,sf%p,&
-    !                     rf%poynz,rf%poynx,sf%poynz,sf%poynx, &
-    !                     corr%ipp,corr%ibksc,corr%ifwsc, &
-    !                     ifz,ilz,ifx,ilx)
-    !     ! endif
+    subroutine cross_correlate_imag(rf,sf,corr,it)
+        type(t_field), intent(in) :: rf, sf
+        type(t_correlate) :: corr
 
-    !     ! call imag2d_xcorr(rf%p,rf%vz,rf%vx,&
-    !     !                   sf%p,sf%vz,sf%vx,&
-    !     !                   imag,            &
-    !     !                   ifz,ilz,ifx,ilx)
+        !nonzero only when sf touches rf
+        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
+        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
+        ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
+        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
+        ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
+        ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
 
-    ! end subroutine
+        ! if(m%is_cubic) then
+        !     call imag3d_xcorr(rf%p,sf%p,&
+        !                       imag,                  &
+        !                       ifz,ilz,ifx,ilx,ify,ily)
+        ! else
+!             call imag2d(rf%p,sf%p,
+!                         corr%ipp, &
+!                         ifz,ilz,ifx,ilx)
+
+            call imag2d_Fourier(rf%p,sf%p,
+                        corr%ipp, corr%idpdp, corr%id2pd2p, corr%id3pd3p, &
+                        ifz,ilz,ifx,ilx)
+        ! endif
+
+        ! call imag2d_xcorr(rf%p,rf%vz,rf%vx,&
+        !                   sf%p,sf%vz,sf%vx,&
+        !                   imag,            &
+        !                   ifz,ilz,ifx,ilx)
+
+    end subroutine
 
     subroutine cross_correlate_postprocess(corr)
         type(t_correlate) :: corr
@@ -1840,22 +1846,23 @@ use m_cpml
 
     ! end subroutine
 
-    subroutine imag2d(rf_p,sf_p,&
-                        rf_poynz,rf_poynx,sf_poynz,sf_poynx,&
-                        ipp, ibksc, ifwsc,&
-                        ifz,ilz,ifx,ilx)
+    subroutine imag2d_Fourier(rf_p,sf_p,&
+                      ipp, idpdp, id2pd2p, id3pd3p,&
+                      ifz,ilz,ifx,ilx)
         real,dimension(*) :: rf_p,sf_p
-        real,dimension(*) :: rf_poynz,rf_poynx,sf_poynz,sf_poynx
-        real,dimension(*) :: ipp, ibksc, ifwsc
+        real,dimension(*) :: ipp, idpdp, id2pd2p, id3pd3p
         
         nz=cb%nz
         
-        rp=0.
-        sp=0.
+        dzrp=0.; dxrp=0.; dz2rp=0.; dx2rp=0.; dzdxrp=0.
+        dzsp=0.; dxsp=0.; dz2sp=0.; dx2sp=0.; dzdxsp=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
-        !$omp         rp,sp)
+        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
+        !$omp         iz_ixm2,iz_ixm1,      iz_ixp1,iz_ixp2,&
+        !$omp         dzrp,dxrp,dz2rp,dx2rp,dzdxrp,&
+        !$omp         dzsp,dxsp,dz2sp,dx2sp,dzdxsp)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
         
@@ -1865,13 +1872,41 @@ use m_cpml
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
                 j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
+                izm2_ix=i-2  !iz-2,ix
+                izm1_ix=i-1  !iz-1,ix
+                iz_ix  =i    !iz,ix
+                izp1_ix=i+1  !iz+1,ix
+                izp2_ix=i+2  !iz+2,ix
+
+                iz_ixm2=i  -2*nz  !iz,ix-2
+                iz_ixm1=i    -nz  !iz,ix-1
+                iz_ixp1=i    +nz  !iz,ix+1
+                iz_ixp2=i  +2*nz  !iz,ix+2
+
+                !0th order
                 ipp(j)=ipp(j) + rf_p(i)*sf_p(i)
 
-                if(rf_poynz(i)*sf_poynz(i)+rf_poynx(i)*sf_poynx(i) < 0.) then !backward scattering
-                    ibksc(j)=ibksc(j) + rf_p(i)*sf_p(i)
-                else
-                    ifwsc(j)=ifwsc(j) + rf_p(i)*sf_p(i)
-                endif
+                !1st order
+                dzrp = rf_p(izp1_ix)-rf_p(izm1_ix) !/2h
+                dxrp = rf_p(iz_ixp1)-rf_p(iz_ixm1) !/2h
+
+                dzsp = sf_p(izp1_ix)-sf_p(izm1_ix) !/2h
+                dxsp = sf_p(iz_ixp1)-sf_p(iz_ixm1) !/2h
+
+                idpdp(j)=idpdp(j) + 0.25*(dzrp*dzsp + dxrp*dxsp )
+
+                !2nd order
+                dz2rp = rf_p(izp1_ix)-2*rf_p(iz_ix)+rf_p(izm1_ix) !/h^2
+                dx2rp = rf_p(iz_ixp1)-2*rf_p(iz_ix)+rf_p(iz_ixm1) !/h^2
+
+                dz2sp = sf_p(izp1_ix)-2*sf_p(iz_ix)+sf_p(izm1_ix) !/h^2
+                dx2sp = sf_p(iz_ixp1)-2*sf_p(iz_ix)+sf_p(iz_ixm1) !/h^2
+
+                dzdxrp = (rf_p(izp1_ixp1)-rf_p(izm1_ixp1)) - (rf_p(izp1_ixm1)-rf_p(izm1_ixm1)) !/h^2
+                dzdxsp = (sf_p(izp1_ixp1)-sf_p(izm1_ixp1)) - (sf_p(izp1_ixm1)-sf_p(izm1_ixm1)) !/h^2
+
+                id2pd2p(j)=id2pd2p(j) + (dz2rp*dz2sp + dx2rp*dx2sp + dzdxrp*dzdxsp)
+
                 
             end do
             
