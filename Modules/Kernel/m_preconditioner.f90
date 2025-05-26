@@ -45,16 +45,16 @@ use m_parametrizer
                 call by_depth(o_factor=str2real(sublist(2)%s))
             endif
             
-            if(index(list(i)%s,'energy')>0) then
-                sublist=split(list(i)%s,o_sep=':')
-                iengy=either(str2int(sublist(2)%s),1,len(sublist(2)%s)>0)
-                call hud('Will precondition the gradient by '//num2str(iengy)//"'th energy term")
-                if((iengy) > size(m%energy,4)) then
-                    call warn('The chosen energy term does NOT exist! Use instead the 1st term provided from propagator.')
-                    iengy=1
-                endif
-                call by_energy(iengy)
-            endif
+            ! if(index(list(i)%s,'energy')>0) then
+            !     sublist=split(list(i)%s,o_sep=':')
+            !     iengy=either(str2int(sublist(2)%s),1,len(sublist(2)%s)>0)
+            !     call hud('Will precondition the gradient by '//num2str(iengy)//"'th energy term")
+            !     if((iengy) > size(m%energy,4)) then
+            !         call warn('The chosen energy term does NOT exist! Use instead the 1st term provided from propagator.')
+            !         iengy=1
+            !     endif
+            !     call by_energy(iengy)
+            ! endif
 
             if(index(list(i)%s,'custom')>0) then
                 sublist=split(list(i)%s,o_sep=':')
@@ -66,6 +66,12 @@ use m_parametrizer
 
                 call hud('Will precondition the gradient in a custom way defined in '//file)
                 call by_custom(file)
+            endif
+
+            if(index(list(i)%s,'respective_L1norm')>0) then
+                call warn('Preconditioning by respective_L1norm is not ready yet..')
+                !call hud('Will precondition the gvp & gvs by their respective L1 norm')
+                !call by_resp_L1norm
             endif
 
         enddo
@@ -96,7 +102,7 @@ use m_parametrizer
 
     subroutine by_energy(iengy)
 
-        preco_in_m=1./m%energy(:,:,:,iengy)
+        preco_in_m=1.!/m%energy(:,:,:,iengy)
 
         ! !convert gradient wrt model to gradient wrt parameters
         ! call param%transform_gradient('m->x',fobj%gradient)
@@ -143,7 +149,7 @@ use m_parametrizer
         deallocate(tmp)
 
     end subroutine
-    
+
     subroutine apply(self,g,pg)
         class(t_preconditioner) :: self
         real,dimension(:,:,:,:),allocatable :: g,pg

@@ -128,7 +128,7 @@ use m_arrayop
             v=>din
         endif
 
-        if(dir=='z->t') then !convertding model to parameter
+        if(dir=='z->t') then !from model to parameter
 
             call alloc(dout,nt,nx,ny)
 
@@ -151,7 +151,7 @@ use m_arrayop
 
         endif
 
-        if(dir=='t->z') then !converting parameter to model
+        if(dir=='t->z') then !from parameter to model
 
             call alloc(dout,nz,nx,ny)
 

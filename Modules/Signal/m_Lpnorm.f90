@@ -26,21 +26,21 @@ use m_math
     !gradient = kernel*dt
     real function L1(scaler,size,W,u,sampling)
         integer size
-        real,dimension(*) :: W,u
+        real,dimension(size) :: W,u
 
         a=scaler
         n=size
         d=sampling
 
         call alloc(Wpu,n)
-        Wpu=W(1:n)*u(1:n)
+        Wpu=W*u
 
         L1 = a*sum(abs(Wpu))*d
 
     end function
 
     subroutine kernel_L1(kernel,oif_stack)
-        real,dimension(*) :: kernel
+        real,dimension(n) :: kernel
         logical,optional :: oif_stack
 
         if(either(oif_stack,.false.,present(oif_stack))) then
@@ -70,27 +70,28 @@ use m_math
     !gradient = kernel*dt
     real function L2sq(scaler,size,W,u,sampling)
         integer size
-        real,dimension(*) :: W,u
-
+        real,dimension(size) :: W,u
+        
         a=scaler
         n=size
         d=sampling
-        
+
         call alloc(Wpu,n)
-        Wpu=W(1:n)*W(1:n)*u(1:n)
-        
-        L2sq = a*sum(Wpu*u(1:n))*d
-        
+
+        Wpu=W*W*u
+
+        L2sq = a*sum(Wpu*u)*d
+
     end function
 
     subroutine kernel_L2sq(kernel,oif_stack)
-        real,dimension(*) :: kernel
+        real,dimension(n) :: kernel
         logical,optional :: oif_stack
         
         if(either(oif_stack,.false.,present(oif_stack))) then
-            kernel(1:n) = kernel(1:n) +2.*a*Wpu
+            kernel = kernel +2.*a*Wpu
         else
-            kernel(1:n) =             2.*a*Wpu
+            kernel =         2.*a*Wpu
         endif
 
         deallocate(Wpu)

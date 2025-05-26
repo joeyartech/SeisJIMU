@@ -2,7 +2,8 @@ program main
 use m_System
 use m_Modeling
 
-    type(t_field) :: field
+    !type(t_field) :: field
+    type(t_field) :: fld_u, fld_v
 
     !character(:),allocatable :: job  
 
@@ -66,18 +67,31 @@ use m_Modeling
 
         call ppg%check_discretization
         call ppg%init
-        call ppg%init_field(field,name='field')
+        ! call ppg%init_field(field,name='field')
         call ppg%init_abslayer
 
-        call field%ignite
+        ! call field%ignite
 
-        !forward modeling
-        call ppg%forward(field)
+        ! !forward modeling
+        ! call ppg%forward(field)
 
-        call field%acquire
+        ! call field%acquire
 
-        !write synthetic data
-        call shot%write('dsyn_',shot%dsyn)
+        ! !write synthetic data
+        ! call shot%write('dsyn_',shot%dsyn)
+
+
+        call hud('----  Solving Au=s  ----')
+        call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
+        call ppg%forward(fld_u)
+        call fld_u%acquire; call shot%write('Ru_',shot%dsyn)
+
+        ! call hud('----  Solving Av=H[s]  ----')
+        ! call shot%read_wlhilb
+        ! call ppg%init_field(fld_v,name='fld_v');    call fld_v%ignite
+        ! call ppg%forward(fld_v)
+        ! call fld_v%acquire; call shot%write('Rv_',shot%dsyn)
+
 
     enddo
     

@@ -15,6 +15,7 @@ use m_mpienv
         module procedure alloc_real1
         module procedure alloc_real2
         module procedure alloc_real3
+        module procedure alloc_real3_pointer
         module procedure alloc_real4
     end interface
 
@@ -42,7 +43,12 @@ use m_mpienv
         module procedure total_size_real3
         module procedure total_size_real4
     end interface
-    
+
+    interface bools2reals
+        module procedure bools2reals_2
+        module procedure bools2reals_3
+    end interface
+
     contains
     
     subroutine alloc_int1_ubound(a,n1,old2,oif_protect,o_init)
@@ -365,6 +371,41 @@ use m_mpienv
         
     end subroutine
 
+    subroutine alloc_real3_pointer(a,n1,n2,n3,old2,oif_protect,o_init)
+        integer,dimension(2) :: n1,n2,n3
+        real,dimension(:,:,:),pointer :: a
+        real,dimension(:,:,:),optional :: old2
+        logical,optional :: oif_protect
+        real,optional :: o_init
+        
+        if(n1(1)>n1(2)) then
+            if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n1=',n1
+            error stop
+        endif
+        
+        if(n2(1)>n2(2)) then
+            if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n2=',n2
+            error stop
+        endif
+        
+        if(n3(1)>n3(2)) then
+            if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n3=',n3
+            error stop
+        endif
+        
+        if (associated(a)) then
+            if(either(oif_protect,.false.,present(oif_protect))) return
+            
+            if(present(old2)) then
+                old2=a
+            endif
+            deallocate(a)
+        endif
+
+        allocate(a(n1(1):n1(2),n2(1):n2(2),n3(1):n3(2)),source=either(o_init,0.,present(o_init)))
+        
+    end subroutine
+
     subroutine alloc_real4(a,n1,n2,n3,n4,old2,oif_protect,o_init)
         integer,dimension(2) :: n1,n2,n3,n4
         real,dimension(:,:,:,:),allocatable :: a
@@ -660,6 +701,43 @@ use m_mpienv
             if(allocated(g)) n=n+size(g)
         endif
 
+    end function
+
+
+    pure function bools2reals_2(bool) result(num)
+        logical,dimension(:,:),intent(in) :: bool
+        real,dimension(:,:),allocatable :: num
+
+        integer :: n(2)
+
+        n=shape(bool)
+
+        if(allocated(num)) deallocate(num)
+        allocate(num(n(1),n(2)))
+        where(bool)
+            num=1.
+        elsewhere
+            num=0.
+        endwhere
+        
+    end function
+
+    pure function bools2reals_3(bool) result(num)
+        logical,dimension(:,:,:),intent(in) :: bool
+        real,dimension(:,:,:),allocatable :: num
+
+        integer :: n(3)
+
+        n=shape(bool)
+
+        if(allocated(num)) deallocate(num)
+        allocate(num(n(1),n(2),n(3)))
+        where(bool)
+            num=1.
+        elsewhere
+            num=0.
+        endwhere
+        
     end function
 
 

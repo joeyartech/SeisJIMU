@@ -19,6 +19,7 @@ obj = \
 ../Modules/Modeling/m_cpml.o \
 ../Modules/Modeling/m_propagator_$(WaveEq)_$(Solver)_$(Order).o \
 ../Modules/Modeling/m_Modeling.o \
+../Modules/Kernel/m_empirical.o \
 ../Modules/Kernel/m_parametrizer_$(Param).o \
 ../Modules/Kernel/m_querypoint.o \
 ../Modules/Kernel/m_separator.o \
@@ -49,8 +50,8 @@ mod :
 	(cd ../Modules/Optimization; make App=$(APP))
 
 exe : sub_modeling_gradient.o main.o
-	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/$(app)_$(WaveEq)_$(Solver)_$(Order)_$(LineS)_$(Optim)
-	(cd ../exe; ln -sf $(app)_$(WaveEq)_$(Solver)_$(Order)_$(LineS)_$(Optim) $(APP) )
+	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/$(app)_$(WaveEq)_$(Solver)_$(Order)_$(Param)_$(LineS)_$(Optim)_$(TAG)
+	(cd ../exe; ln -sf $(app)_$(WaveEq)_$(Solver)_$(Order)_$(Param)_$(LineS)_$(Optim)_$(TAG) $(APP) )
 
 clean :
 	-rm main.o sub_modeling_gradient.o

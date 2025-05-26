@@ -19,7 +19,7 @@ use m_Kernel
                                    'Steplength (alpha) judged by Wolfe conditions'
 
     !Wolfe conditions parameters (Nocedal value)
-    real,parameter :: c1=1e-4, c2=0.9 !c2=0.9 for (quasi-)Newton method, 0.1 for NLCG
+    real :: c1=1e-4 , c2=0.9 !c2=0.9 for (quasi-)Newton method, 0.1 for NLCG
     !Bracketting parameter (Gilbert value)
     real,parameter :: multiplier=10.
     
@@ -68,6 +68,9 @@ use m_Kernel
 
         !read setup        
         self%max_search=setup%get_int('MAX_SEARCH',o_default='12')
+
+	c1=setup%get_real('WOLFE_C1',o_default='1e-4')
+        c2=setup%get_real('WOLFE_C2',o_default='0.9')
 
     end subroutine
     
@@ -330,7 +333,7 @@ use m_Kernel
 
         if(setup%get_bool('IF_LINESEARCH_WRITE','IF_LS_WRITE',o_default='F')) then
             call sysio_write('model_Iter'//num2str(iterate)//'.LinS'//num2str(ls%isearch),m%vp,m%n)
-            call sysio_write('image_Iter'//num2str(iterate)//'.LinS'//num2str(ls%isearch),m%image,m%n)
+            ! call sysio_write('image_Iter'//num2str(iterate)//'.LinS'//num2str(ls%isearch),m%image,m%n)
             call sysio_mv( 'Ru_Shot0001.su', 'Ru_Shot0001_Iter'//num2str(iterate)//'.LinS'//num2str(ls%isearch)//'.su')
             call sysio_mv('Rdu_Shot0001.su','Rdu_Shot0001_Iter'//num2str(iterate)//'.LinS'//num2str(ls%isearch)//'.su')
         endif

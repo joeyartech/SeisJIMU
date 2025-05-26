@@ -349,7 +349,7 @@ use m_preconditioner
         character(:),allocatable :: s_job
 
         type(t_string),dimension(:),allocatable :: smoothings
-        character(:),allocatable :: smask
+        character(:),allocatable :: file_mask
         real,dimension(:,:,:),allocatable :: mask
 
         real,dimension(:,:,:),allocatable :: freeze_zone_in_m, freeze_zone_in_x
@@ -376,19 +376,20 @@ use m_preconditioner
 ! endif
         ! endif
 
-        ! if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'max')>0) then
-        !     if(setup%get_bool('IF_FLIP_PROBLEM',o_default='T')) then
-        !         call hud('flip problem sign due to maximization')
-        !         self%dnorms=-self%dnorms
-        !         correlate_gradient =-correlate_gradient
-        !     endif
-        ! endif
-        
-        qp%f = sum(self%dnorm_weights*self%dnorms) ! + sum(self%xnorm_weights*self%xnorms)
 
-        if(.not. either(oif_gradient,.true.,present(oif_gradient))) return
+        !soft mask on gradient
+        file_mask=setup%get_file('GRADIENT_SOFT_MASK','MASK')
+        if(file_mask/='') then
+            call alloc(mask,m%nz,m%nx,m%ny)
+            call sysio_read(file_mask,mask,size(mask))
+            
+            call correlate_mask(mask)
+        endif
 
-        !post-modeling smoothing in physical (model) domain
+        !freeze gradient
+        call correlate_freeze
+
+        !linear smoothing in the physical (model) domain
         smoothings=setup%get_strs('SMOOTHING','SMTH',o_default='Laplacian')
 
         do i=1,size(smoothings)
@@ -398,33 +399,22 @@ use m_preconditioner
                 call smoother_Laplacian_init([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%fpeak)
                 do j=1,ppg%ngrad
                     call smoother_Laplacian_extend_mirror(correlate_gradient(:,:,:,j),m%ibathy)
-                    call smoother_Laplacian_pseudo_nonstationary(correlate_gradient(:,:,:,j),m%vp)
-                enddo    
+                    call smoother_Laplacian_pseudo_nonstationary(correlate_gradient(:,:,:,j),m%vp) !wavelength based on Vp, even for Vs gradient
+                enddo
             endif
         enddo
 
-        !freeze_zone as hard mask
-        do i=1,ppg%ngrad
-            where(m%is_freeze_zone) correlate_gradient(:,:,:,i)=0.
-        enddo
+        !freeze in case of 'leakage'
+        call correlate_freeze
 
-        !soft mask
-        smask=setup%get_file('GRADIENT_SOFT_MASK','MASK')
-        if(smask/='') then
-            call alloc(mask,m%nz,m%nx,m%ny)
-            call sysio_read(smask,mask,size(mask))
-            
-            do i=1,ppg%ngrad
-                correlate_gradient(:,:,:,i)=correlate_gradient(:,:,:,i)*mask
-            enddo
-        endif
 
-        ! call sysio_write('grho',correlate_gradient(:,:,:,1),size(correlate_gradient(:,:,:,1)))
-        ! call sysio_write('gkpa',correlate_gradient(:,:,:,2),size(correlate_gradient(:,:,:,2)))
-
-        !!transform to x-domain
+        !transform to the parameter x-domain
         call param%transform(o_g=qp%g)
-        !qp%g=correlate_gradient
+
+        qp%f = sum(self%dnorm_weights*self%dnorms) ! + sum(self%xnorm_weights*self%xnorms)
+
+        if(.not. either(oif_gradient,.true.,present(oif_gradient))) return
+
 
         !Regularization in x-domain
         ! if(either(oif_approx,.false.,present(oif_approx))) then
@@ -436,6 +426,18 @@ use m_preconditioner
         !preconditioner
         call preco%update
         call preco%apply(qp%g,qp%pg)
+
+        !scale preconditioned gvp gvs w/ their respective L2 norm
+        if(param%npars>1)then
+            if(setup%get_bool('IF_PARA_SCAL',o_default='T')) then
+            if(param%pars(1)%name=='vp' .and. param%pars(2)%name=='vs') then
+                gvp_norm = sum(abs(qp%pg(:,:,:,1)))
+                gvs_norm = sum(abs(qp%pg(:,:,:,2)))
+                if(gvp_norm>gvs_norm) qp%pg(:,:,:,2)=qp%pg(:,:,:,2)/gvs_norm*gvp_norm !scale on gvs
+                if(gvp_norm<gvs_norm) qp%pg(:,:,:,1)=qp%pg(:,:,:,1)/gvp_norm*gvs_norm !scale on gvp
+            endif
+            endif
+        endif
 
         !save some RAM
         !call dealloc(correlate_gradient,m%energy)

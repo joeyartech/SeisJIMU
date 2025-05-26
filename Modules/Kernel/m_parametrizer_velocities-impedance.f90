@@ -1,6 +1,7 @@
 module m_parametrizer
 use m_System
 use m_Modeling
+use m_empirical
 
     !PARAMETERIZATION     -- ALLOWED PARAMETERS
     !velocities-impedance -- vp vs ip
@@ -30,17 +31,13 @@ use m_Modeling
         !info
         character(i_str_xxlen) :: info = &
             'Parameterization: velocities-impedance'//s_NL// &
-            'Allowed pars: vp, vs, ip'//s_NL// &
-            'Available empirical laws: Gardner'
+            'Allowed pars: vp, vs, ip'
 
         type(t_parameter),dimension(:),allocatable :: pars
         integer :: npars
-        type(t_string),dimension(:),allocatable :: empirical
-
-        logical,dimension(:,:,:,:),allocatable :: is_freeze_zone
 
         integer :: n1,n2,n3,n
-        real :: d1,d2,d3,cell_volume_in_Pa
+        real :: d1,d2,d3
         
         contains
         procedure :: init
@@ -50,65 +47,21 @@ use m_Modeling
 
     type(t_parametrizer),public :: param
 
-    logical :: is_empirical=.false., is_gardner=.false.
     logical :: is_AC=.false., is_EL=.false.
-
-    real :: a,b
+    integer :: i_vp=0, i_vs=0, i_ip=0
 
     contains
     
     subroutine init(self)
         class(t_parametrizer) :: self
-        
+
         type(t_string),dimension(:),allocatable :: list,sublist
 
         call hud('Invoked parametrizer module info : '//s_NL//self%info)
 
-        !read in empirical law
-        list=setup%get_strs('EMPIRICAL_LAW')
-
-        is_empirical=size(list)>0
-
-        if(is_empirical) then
-            do i=1,size(list)
-                if(index(list(i)%s,'Gardner')>0) then
-                    !Gardner law rho=a*vp^b
-                    !passive rho will be updated according to vp
-                    !https://wiki.seg.org/wiki/Dictionary:Gardner%E2%80%99s_equation
-                    !http://www.subsurfwiki.org/wiki/Gardner%27s_equation
-                    !https://en.wikipedia.org/wiki/Gardner%27s_relation
-                    is_gardner=.true.
-!                     if(len(list(i)%s)<=7) then
-                        a=either(310.,0.31,m%ref_rho<1000.)
-                        b=0.25
-                        
-!                     else
-!                         sublist=split(list(i)%s,o_sep=',') !ifort generates 'catastropic error ... internal compiler error' and lets me report...
-!                         a=str2real(sublist(2)%s)
-!                         b=str2real(sublist(3)%s)
-                        
-!                     endif
-! 
-                    call hud('Gardner law is enabled: a='//num2str(a)//', b='//num2str(b)//s_NL// &
-                        'Parameter rho will not be active in the inversion.')
-
-                elseif(list(i)%s(1:8)=='Castagna') then
-                    ! !Castagna mudrock line vp=a*vp+b
-                    ! !passive vs will be updated according to vp
-                    ! !https://en.wikipedia.org/wiki/Mudrock_line
-                    ! if(ia_castagna) then
-                    !     c=1/1.16; d=-1.36/1.16
-                    ! endif
-
-                endif
-
-            enddo
-
-        endif
-
         if(allocated(   list)) deallocate(   list)
         if(allocated(sublist)) deallocate(sublist)
-
+        
         
         !PDE info
         is_AC = index(ppg%info,'AC')>0
@@ -127,22 +80,21 @@ use m_Modeling
 
             select case (sublist(1)%s)
             case ('vp' )
+                i_vp=i
                 self%pars(i)%name='vp'
                 self%npars=self%npars+1
 
-            ! case ('vs' )
-            !     if(is_AC) then
-            !         call hud('vs in PARAMETER is neglected as the PDE is ACoustic.')
-            !         cycle loop
-            !     endif
-            !     self%pars(i)%name='vs'
-            !     self%npars=self%npars+1
-
-            case ('ip')
-                if(is_empirical) then
-                    call hud('ip in PARAMETER is neglected as EMPIRICAL_LAW is read (ip becomes a passive parameter).')
+            case ('vs' )
+                if(is_AC) then
+                    call hud('vs in PARAMETER is neglected as the PDE is ACoustic.')
                     cycle loop
                 endif
+                i_vs=i
+                self%pars(i)%name='vs'
+                self%npars=self%npars+1
+
+            case ('ip')
+                i_ip=i
                 self%pars(i)%name='ip'
                 self%npars=self%npars+1
                 
@@ -159,6 +111,8 @@ use m_Modeling
         !check vp,vs,rho [min,max] is in the same range as m%ref_vp,ref_vs,ref_rho
         !
 
+        call empirical_init
+
         self%n1=m%nz
         self%n2=m%nx
         self%n3=m%ny
@@ -169,7 +123,7 @@ use m_Modeling
         self%d3=m%dy
 
     end subroutine
-
+    
 
     subroutine transform(self,o_dir,o_x,o_xprior,o_g)
         class(t_parametrizer) :: self
@@ -182,89 +136,66 @@ use m_Modeling
             call alloc(o_x,self%n1,self%n2,self%n3,self%npars,oif_protect=.true.)
 
             if(either(o_dir,'m->x',present(o_dir))=='m->x') then
-                do i=1,self%npars
-                        select case (self%pars(i)%name)
-                        case ('vp'); o_x(:,:,:,i) = (m%vp      -self%pars(i)%min)/self%pars(i)%range
-                        ! case ('vs'); o_x(:,:,:,i) = (m%vs      -self%pars(i)%min)/self%pars(i)%range
-                        case ('ip'); o_x(:,:,:,i) = (m%vp*m%rho-self%pars(i)%min)/self%pars(i)%range
-                        end select
-                enddo
+                if(i_vp >0) o_x(:,:,:,i_vp ) = (m%vp      -self%pars(i_vp)%min)/self%pars(i_vp)%range 
+                if(i_vs >0) o_x(:,:,:,i_vs ) = (m%vs      -self%pars(i_vs)%min)/self%pars(i_vs)%range 
+                if(i_ip >0) o_x(:,:,:,i_ip ) = (m%vp*m%rho-self%pars(i_ip)%min)/self%pars(i_ip)%range 
+
+                call empirical_m2x('velocities-impedance')
 
             else !x->m
-                do i=1,self%npars
-                    select case (self%pars(i)%name)
-                    case ('vp')
-                        tmp_vp = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min  !implicit allocation
-                        m%rho = m%vp*m%rho / tmp_vp
-                        m%rho0= m%vp*m%rho0/ tmp_vp
-                        m%vp  = tmp_vp
-                        deallocate(tmp_vp)
-                    ! case ('vs'); m%vs = o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min
-                    case ('ip'); m%rho = (o_x(:,:,:,i)*self%pars(i)%range +self%pars(i)%min)/m%vp
-                    end select
-                enddo
 
-                ! + gardner
-                if(is_gardner) m%rho = a*m%vp**b
+                if(i_vp >0) then
+                    tmp_vp = o_x(:,:,:,i_vp)*self%pars(i_vp)%range +self%pars(i_vp)%min  !implicit allocation
+                    m%rho = m%vp*m%rho / tmp_vp
+                    m%rho0= m%vp*m%rho0/ tmp_vp !rho0 in m%rho0 has diff meaning from grho0
+                    m%vp  = tmp_vp
+                    deallocate(tmp_vp)
+                endif
+                if(i_vs >0) m%vs  =  o_x(:,:,:,i_vs)*self%pars(i_vs)%range +self%pars(i_vs)%min
+                if(i_ip >0) m%rho = (o_x(:,:,:,i_ip)*self%pars(i_ip)%range +self%pars(i_ip)%min)/m%vp
+
+                call empirical_x2m('velocities-impedance')
+                
+                call m%apply_elastic_continuum
                 call m%apply_freeze_zone
 
             endif
 
         endif
 
-        ! if(present(o_xprior)) then
-        !     call alloc(o_xprior,self%n1,self%n2,self%n3,self%npars)
+        if(present(o_xprior)) then
+            call alloc(o_xprior,self%n1,self%n2,self%n3,self%npars)
 
-        !     do i=1,self%npars
-        !         select case (self%pars(i)%name)
-        !         case ('vp'); o_x(:,:,:,i) = (m%vp_prior            -self%pars(i)%min)/self%pars(i)%range
-        !         ! case ('vs'); o_x(:,:,:,i) = (m%vs_prior            -self%pars(i)%min)/self%pars(i)%range
-        !         case ('ip'); o_x(:,:,:,i) = (m%vp_prior*m%rho_prior-self%pars(i)%min)/self%pars(i)%range
-        !         end select
-        !     enddo
+            if(i_vp >0) o_x(:,:,:,i_vp ) = (m%vp_prior            -self%pars(i_vp)%min)/self%pars(i_vp)%range
+            if(i_vs >0) o_x(:,:,:,i_vs ) = (m%vs_prior            -self%pars(i_vs)%min)/self%pars(i_vs)%range
+            if(i_ip >0) o_x(:,:,:,i_ip ) = (m%vp_prior*m%rho_prior-self%pars(i_ip)%min)/self%pars(i_ip)%range
 
-        ! endif
+            call empirical_m2x('velocities-impedance')
+
+        endif
 
         if(present(o_g)) then
             call alloc(o_g,self%n1,self%n2,self%n3,self%npars)
-            !correlate_gradient(:,:,:,1) = gkpa
-            !correlate_gradient(:,:,:,2) = grho0
 
-            !acoustic
-            if(is_AC .and. .not. is_empirical) then
-                do i=1,param%npars
-                    select case (param%pars(i)%name)
-                    case ('vp'); o_g(:,:,:,i) = (correlate_gradient(:,:,:,1)*m%vp - correlate_gradient(:,:,:,2)/m%vp)*m%rho
-                    case ('ip'); o_g(:,:,:,i) =  correlate_gradient(:,:,:,1)*m%vp + correlate_gradient(:,:,:,2)/m%vp
-                    end select
-                enddo
+            if(is_AC) then
+                !correlate_gradient(:,:,:,1) = grho0
+                !correlate_gradient(:,:,:,2) = gkpa
+                if(i_vp >0) o_g(:,:,:,i_vp ) = (correlate_gradient(:,:,:,2)*m%vp - correlate_gradient(:,:,:,1)/m%vp)*m%rho
+                if(i_ip >0) o_g(:,:,:,i_ip ) =  correlate_gradient(:,:,:,2)*m%vp + correlate_gradient(:,:,:,1)/m%vp
+
+                call empirical_gradient('velocities-impedance',o_gvp=o_g(:,:,:,i_vp),o_gip=o_g(:,:,:,i_ip))
             endif
 
-            ! !acoustic + gardner
-            ! if(is_AC .and. is_gardner) then
-            !     o_g(:,:,:,1) =(correlate_gradient(:,:,:,2)*(b+2)/b*m%vp**2 + correlate_gradient(:,:,:,1))*a*b*m%vp**(b-1)
-            ! endif
+            if(is_EL) then
+                !correlate_gradient(:,:,:,1) = grho0
+                !correlate_gradient(:,:,:,2) = glda
+                !correlate_gradient(:,:,:,2) = gmu
+                if(i_vp >0) o_g(:,:,:,i_vp ) =(correlate_gradient(:,:,:,1)*m%vp**2 + (2*correlate_gradient(:,:,:,1)-correlate_gradient(:,:,:,2))*m%vs**2 - correlate_gradient(:,:,:,3))*m%rho/m%vp
+                if(i_vs >0) o_g(:,:,:,i_vs ) =(-2*correlate_gradient(:,:,:,1) + correlate_gradient(:,:,:,2))*2*m%rho*m%vs
+                if(i_ip >0) o_g(:,:,:,i_ip ) =(correlate_gradient(:,:,:,1)*m%vp**2 + (-2*correlate_gradient(:,:,:,1)+correlate_gradient(:,:,:,2))*m%vs**2 + correlate_gradient(:,:,:,3))/m%vp
 
-            ! !elastic
-            ! if(is_EL .and. .not. is_empirical) then
-            !     do i=1,param%npars
-            !         select case (param%pars(i)%name)
-            !         case ('vp' ); o_g(:,:,:,i) =(correlate_gradient(:,:,:,1)*m%vp**2 + (2*correlate_gradient(:,:,:,1)-correlate_gradient(:,:,:,2))*m%vs**2 - correlate_gradient(:,:,:,3))*m%rho/m%vp
-            !         case ('vs' ); o_g(:,:,:,i) =(-2*correlate_gradient(:,:,:,1) + correlate_gradient(:,:,:,2))*2*m%rho*m%vs
-            !         case ('ip' ); o_g(:,:,:,i) =(correlate_gradient(:,:,:,1)*m%vp**2 + (-2*correlate_gradient(:,:,:,1)+correlate_gradient(:,:,:,2))*m%vs**2 + correlate_gradient(:,:,:,3))/m%vp
-            !         end select
-            !     enddo
-            ! endif
-
-            ! !elastic + gardner
-            ! if(is_EL .and. is_gardner) then
-            !     do i=1,param%npars
-            !         select case (param%pars(i)%name)
-            !         case ('vp' ); o_g(:,:,:,i) =(correlate_gradient(:,:,:,2)*(b+2)/b*m%vp + (-2*correlate_gradient(:,:,:,2)+correlate_gradient(:,:,:,3))*m%vs**2 + correlate_gradient(:,:,:,1))*a*b*m%vp**(b-1)
-            !         case ('vs' ); o_g(:,:,:,i) =(correlate_gradient(:,:,:,2)*(-2) + correlate_gradient(:,:,:,3))*2*a*m%vp**b*m%vs
-            !         end select
-            !     enddo
-            ! endif
+                call empirical_gradient('velocities-impedance',o_gvp=o_g(:,:,:,i_vp),o_gvs=o_g(:,:,:,i_vs),o_gip=o_g(:,:,:,i_ip))
+            endif
 
             !normaliz g by allowed parameter range
             !s.t. g is in unit [Nm]
@@ -272,14 +203,7 @@ use m_Modeling
                 o_g(:,:,:,i)=o_g(:,:,:,i)*param%pars(i)%range
             enddo
             
-            ! where (param%is_freeze_zone) g=0.
         endif
-        
-!deprecated
-!         if(present(o_pg)) then
-!             call alloc(o_pg,param%n1,param%n2,param%n3,param%npars,oif_protect=.true.)
-!             call transform_gradient(preco%preco,o_preco)
-!         endif
 
     end subroutine
 
@@ -290,5 +214,5 @@ use m_Modeling
 
         preco_in_x=preco_in_m
     end subroutine
-    
+
 end module

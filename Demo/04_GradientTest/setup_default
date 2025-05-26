@@ -12,11 +12,12 @@ DR                      '0  20 0'
 FR                      '40 0  0'
 NR                      100
 
-SCOMP                   p
-RCOMP                   p #'p vz'
+SCOMP                   vz
+RCOMP                   vz #'p vz'
 
-#IF_HICKS        F
-#IF_BLOOM        F
+WAVELET_TYPE            ricker
+#T0                      0.5
+#FILE_WAVELET            'fricker_dt6000.su'
 
 NT           400
 DT           0.006
@@ -40,27 +41,14 @@ PARAMETER           'vp:1500:2000'
 SMOOTHING     'none'
 #PRECO         'z^0'
 
-#JOB             'forward modeling'
-#JOB             'estimate wavelet'
-JOB             'build tilD gradient'
-#JOB             'update velocity gradient'
-
-#DNORMALIZERS    '1 1'
-#MREF            '1 1'
 
 #DESCENT_DIR     'random'  #'-curr%pg'
-#ALPHAS          '1e-5 1e-3 1e-1 1 1e1'
-#ALPHAS          '1e-3 5e-3 1e-2 5e-2 1e-1 5e-1 1'
-#ALPHAS          '0.'
-#ALPHAS          '-1e-3 -1e-2 -1e-1 -1 -1e1'
-#ALPHAS          '1 1e1 1e2 1e3 1e4'
-#ALPHAS          '0.125 0.25 0.5 1. 2. 4. 8.'
 
 #LS_SCALING  'none'
 
 
-SNAPSHOT     p
+#SNAPSHOT     vz
 #NSNAPSHOT    50
 
 IF_USE_CHECKPOINT   F
-
+RCOMP       px

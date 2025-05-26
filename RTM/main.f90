@@ -1,18 +1,15 @@
 program main
 use m_System
 use m_Modeling
-use m_Kernel
-use m_Optimization
 
-    type(t_checkpoint) :: chp_shls, chp_qp
-    type(t_querypoint),target :: qp0
+    type(t_checkpoint) :: chp_shls
     character(:),allocatable :: job
 
     !mpiworld lives in t_mpienv
     call mpiworld%init(name='MPIWorld')
 
     call hud('======================================'//s_NL// &
-             '       WELCOME TO SeisJIMU PFEI       '//s_NL// &
+             '       WELCOME TO SeisJIMU RTM        '//s_NL// &
              '======================================')
 
     call setup%init
@@ -49,54 +46,18 @@ use m_Optimization
     !shotlist
     call shls%read_from_data
     call shls%build
-    ! call chp_shls%init('PFEI_shotlist_gradient',oif_fuse=.true.)
-    ! if(.not.shls%is_registered(chp_shls,'sampled_shots')) then
+    call chp_shls%init('FWI_shotlist_gradient',oif_fuse=.true.)
+    if(.not.shls%is_registered(chp_shls,'sampled_shots')) then
         call shls%sample
-        ! call shls%register(chp_shls,'sampled_shots')
-    ! endif
+        call shls%register(chp_shls,'sampled_shots')
+    endif
     call shls%assign
 
-    !if preconditioner needs energy terms
-    if(index(setup%get_str('PRECONDITIONING','PRECO'),'energy')>0) then
-        ppg%if_compute_engy=.true.
-    endif
-
-    !parametrizer
-    call param%init
-
-    !initial (model) parameters as querypoint
-    call qp0%init('qp0')
-
-    !objective function and gradient
-    call fobj%init
-    ! call chp_qp%init('PFWI_querypoint_gradient')
-    ! if(.not.qp0%is_registered(chp_qp)) then
-        call fobj%eval(qp0,oif_update_m=.false.)
-        ! call qp0%register(chp_qp)
+    call modeling_imaging
+    ! !if preconditioner needs energy terms
+    ! if(index(setup%get_str('PRECONDITIONING','PRECO'),'energy')>0) then
+    !     ppg%if_compute_engy=.true.
     ! endif
-    
-    call sysio_write('qp0%g',qp0%g,size(qp0%g))
-    call sysio_write('qp0%pg',qp0%pg,size(qp0%pg))
-
-    ! if(index(param%info,'pseudotime')>0) then
-    !     call sysio_write('m0%gradient',m%gradient,size(m%gradient))
-    ! endif
-
-    !scale problem by linesearcher
-    call ls%init
-    call ls%scale(qp0)
-    
-    call hud('qp0%f, ║g║₁ = '//num2str(qp0%f)//', '//num2str(sum(abs(qp0%g))))
-
-    !if just estimate the wavelet or compute the gradient then this is it.
-    if(index(setup%get_str('JOB'),'gradient')>0) then
-        call mpiworld%final
-        stop
-    endif
-    
-    !optimization
-    call optimizer_init(qp0)
-    call optimizer_loop
     
     call mpiworld%final
     
