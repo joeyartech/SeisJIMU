@@ -67,10 +67,12 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:,:),allocatable :: dszz_dz,dsxx_dx,dszx_dz,dszx_dx
 
         real,dimension(:,:,:),allocatable :: dpz_dz,dpx_dx,dpz_dx,dpx_dz
-        real,dimension(:,:,:),allocatable :: dez_dz,dex_dx,dex_dz,dez_dx,des_dz,des_dx
+        real,dimension(:,:,:),allocatable :: dez_dz,dex_dx,dex_dz,dez_dx,des_dz,des_dx        
 
-        
         !real,dimension(:,:,:),allocatable :: lapz,lapx,laps
+
+        !for Fourier-series imaging condition
+        real,dimension(:,:,:),allocatable :: s_p, s2_p, s3_p
 
         !source time function
         ! real,dimension(:,:),allocatable :: fz,fx,fy !forces

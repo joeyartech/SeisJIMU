@@ -51,13 +51,14 @@ use m_hilbert
                 shot%dadj=shot%dobs-shot%dsyn
             endif
 
-            call fld_a%ignite(o_wavelet=shot%dadj)
-                
+            call hud('----  Solving A(m)ᴴa = RᴴΔd and a★u  ----')
+
+            call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite
+
             call ppg%init_correlate(a_star_u,'a_star_u')
 
-            call hud('----  Solving adjoint eqn & xcorrelate  ----')
-            !Aᴴa = -Rᴴd
             call ppg%adjoint(fld_a,fld_u,a_star_u)
+            
 
             call hud('----  Assemble  ----')
             call ppg%assemble(a_star_u)

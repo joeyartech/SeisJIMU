@@ -176,7 +176,7 @@ use m_shot
 
         !models in computebox
         call m2cb(m%vp ,self%vp )
-if(either(ois_monitor,.false.,present(ois_monitor))) call m2cb(m%vpm, self%vp)
+! if(either(ois_monitor,.false.,present(ois_monitor))) call m2cb(m%vpm, self%vp)
 
         call m2cb(m%vs ,self%vs )
 

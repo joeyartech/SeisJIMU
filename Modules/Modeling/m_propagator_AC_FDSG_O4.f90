@@ -231,6 +231,11 @@ use m_cpml
         call alloc(f%dp_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%dp_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%dp_dy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+
+        !for Fourier-series imaging condition
+        call alloc(f%s_p,  [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%s2_p, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%s3_p, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
                 
     end subroutine
 
@@ -246,9 +251,9 @@ use m_cpml
         !    call alloc(corr%gkpa,m%nz,m%nx,m%ny)
         ! else !image components
              call alloc(corr%ipp,m%nz,m%nx,m%ny)
-             call alloc(corr%idpdp,m%nz,m%nx,m%ny)
-             call alloc(corr%id2pd2p,m%nz,m%nx,m%ny)
-             call alloc(corr%id3pd3p,m%nz,m%nx,m%ny)
+             call alloc(corr%ipp1,m%nz,m%nx,m%ny)
+             call alloc(corr%ipp2,m%nz,m%nx,m%ny)
+             call alloc(corr%ipp3,m%nz,m%nx,m%ny)
         ! endif
 
     end subroutine
@@ -266,9 +271,9 @@ use m_cpml
 
         if(allocated(correlate_image)) then
             call correlate_assemble(corr%ipp, correlate_image(:,:,:,1))
-            call correlate_assemble(corr%idpdp, correlate_image(:,:,:,2))
-            call correlate_assemble(corr%id2pd2pc, correlate_image(:,:,:,3))
-            call correlate_assemble(corr%id3pd3pc, correlate_image(:,:,:,4))
+            call correlate_assemble(corr%ipp1, correlate_image(:,:,:,2))
+            call correlate_assemble(corr%ipp2, correlate_image(:,:,:,3))
+            call correlate_assemble(corr%ipp3, correlate_image(:,:,:,4))
         endif
 
         if(allocated(correlate_gradient)) then
@@ -405,6 +410,8 @@ use m_cpml
 
         !seismo
         call alloc(fld_u%seismo,shot%nrcv,self%nt)
+
+        fld_u%s_p=0.; fld_u%s2_p=0.; fld_u%s3_p=0.
             
         tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.; tt7=0.
 
@@ -438,6 +445,9 @@ use m_cpml
             !step 4: from s^it+0.5 to s^it+1.5 by differences of v^it+1
             call cpu_time(tic)
             call self%update_stresses(fld_u,time_dir,it)
+            fld_u%s_p  = fld_u%s_p  + fld_u%p
+            fld_u%s2_p = fld_u%s2_p + fld_u%s_p
+            fld_u%s3_p = fld_u%s3_p + fld_u%s2_p
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
@@ -492,6 +502,8 @@ use m_cpml
         !reinitialize absorbing boundary for incident wavefield reconstruction
         call fld_u%reinit
 
+        fld_a%s_p=0.; fld_a%s2_p=0.; fld_a%s3_p=0.
+
         !timing
         tt1=0.; tt2=0.; tt3=0.
         tt4=0.; tt5=0.; tt6=0.
@@ -520,10 +532,13 @@ use m_cpml
                 call fld_u%boundary_transport_velocities('load',it)
                 call cpu_time(toc)
                 tt1=tt1+toc-tic
-                
+
                 !backward step 4: s^it+1.5 -> s^it+0.5 by FD of v^it+1
                 call cpu_time(tic)
                 call self%update_stresses(fld_u,time_dir,it)
+                fld_u%s_p  = fld_u%s_p  - fld_u%p
+                fld_u%s2_p = fld_u%s2_p - fld_u%s_p
+                fld_u%s3_p = fld_u%s3_p - fld_u%s2_p
                 call cpu_time(toc)
                 tt2=tt2+toc-tic
 
@@ -545,6 +560,9 @@ use m_cpml
             !adjoint step 4: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
             call cpu_time(tic)
             call self%update_stresses(fld_a,time_dir,it)
+            fld_a%s_p  = fld_a%s_p  + fld_a%p
+            fld_a%s2_p = fld_a%s2_p + fld_a%s_p
+            fld_a%s3_p = fld_a%s3_p + fld_a%s2_p
             call cpu_time(toc)
             tt5=tt5+toc-tic
             
@@ -559,7 +577,7 @@ use m_cpml
 
             if(mod(it,irdt)==0) then
                 call cpu_time(tic)
-                call cross_correlate_gkpa(fld_a,fld_u,a_star_u,it)
+                ! call cross_correlate_gkpa(fld_a,fld_u,a_star_u,it)
                 call cross_correlate_imag(fld_a,fld_u,a_star_u,it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
@@ -611,14 +629,14 @@ use m_cpml
             !     tt12=tt12+toc-tic
             ! endif
             
-            !grho: sfield%v_dt^it \dot rfield%v^it
-            !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
-            if(mod(it,irdt)==0) then
-                call cpu_time(tic)
-                call cross_correlate_grho(fld_a,fld_u,a_star_u,it)
-                call cpu_time(toc)
-                tt6=tt6+toc-tic
-            endif
+            ! !grho: sfield%v_dt^it \dot rfield%v^it
+            ! !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
+            ! if(mod(it,irdt)==0) then
+            !     call cpu_time(tic)
+            !     call cross_correlate_grho(fld_a,fld_u,a_star_u,it)
+            !     call cpu_time(toc)
+            !     tt6=tt6+toc-tic
+            ! endif
             
             !snapshot
             call fld_a%write(it,o_suffix='_rev')
@@ -869,7 +887,7 @@ use m_cpml
                                self%kpa,                       &
                                ifz,ilz,ifx,ilx,time_dir*self%dt)
         endif
-        
+
         !apply free surface boundary condition if needed
         if(m%is_freesurface) call fd_freesurface_stresses(f%p)
 
@@ -1060,9 +1078,9 @@ use m_cpml
 !                         corr%ipp, &
 !                         ifz,ilz,ifx,ilx)
 
-            call imag2d_Fourier(rf%p,sf%p,
-                        corr%ipp, corr%idpdp, corr%id2pd2p, corr%id3pd3p, &
-                        ifz,ilz,ifx,ilx)
+            call imag2d_Fourier(rf%p,sf%p, rf%s_p,sf%s_p, rf%s2_p,sf%s2_p, rf%s3_p,sf%s3_p, &
+                                corr%ipp,  corr%ipp1,    corr%ipp2,    corr%ipp3, &
+                                ifz,ilz,ifx,ilx)
         ! endif
 
         ! call imag2d_xcorr(rf%p,rf%vz,rf%vx,&
@@ -1085,11 +1103,12 @@ use m_cpml
             corr%gkpa(1,:,:) = corr%gkpa(2,:,:)
         endif
 
-        ! if(allocated(correlate_image)) then
-        !     corr%ipp (1,:,:) = corr%ipp (2,:,:)
-        !     corr%ibksc(1,:,:) = corr%ibksc(2,:,:)
-        !     corr%ifwsc(1,:,:) = corr%ifwsc(2,:,:)
-        ! endif
+        if(allocated(correlate_image)) then
+            corr%ipp (1,:,:) = corr%ipp (2,:,:)
+            corr%ipp1(1,:,:) = corr%ipp1(2,:,:)
+            corr%ipp2(1,:,:) = corr%ipp3(2,:,:)
+            corr%ipp3(1,:,:) = corr%ipp3(2,:,:)
+        endif
 
     end subroutine
 
@@ -1846,11 +1865,11 @@ use m_cpml
 
     ! end subroutine
 
-    subroutine imag2d_Fourier(rf_p,sf_p,&
-                      ipp, idpdp, id2pd2p, id3pd3p,&
-                      ifz,ilz,ifx,ilx)
-        real,dimension(*) :: rf_p,sf_p
-        real,dimension(*) :: ipp, idpdp, id2pd2p, id3pd3p
+    subroutine imag2d_Fourier(rp0,sp0, rp1,sp1, rp2,sp2, rp3,sp3, &
+                              ipp0, ipp1, ipp2, ipp3, &
+                              ifz,ilz,ifx,ilx)
+        real,dimension(*) :: rp0,sp0, rp1,sp1, rp2,sp2, rp3,sp3
+        real,dimension(*) :: ipp0,    ipp1,    ipp2,    ipp3
         
         nz=cb%nz
         
@@ -1884,28 +1903,40 @@ use m_cpml
                 iz_ixp2=i  +2*nz  !iz,ix+2
 
                 !0th order
-                ipp(j)=ipp(j) + rf_p(i)*sf_p(i)
+                ipp0(j)=ipp0(j) + rp0(i)*sp0(i)
 
                 !1st order
-                dzrp = rf_p(izp1_ix)-rf_p(izm1_ix) !/2h
-                dxrp = rf_p(iz_ixp1)-rf_p(iz_ixm1) !/2h
+                dzrp = rp1(izp1_ix)-rp1(izm1_ix) !/2h
+                dxrp = rp1(iz_ixp1)-rp1(iz_ixm1) !/2h
 
-                dzsp = sf_p(izp1_ix)-sf_p(izm1_ix) !/2h
-                dxsp = sf_p(iz_ixp1)-sf_p(iz_ixm1) !/2h
+                dzsp = sp1(izp1_ix)-sp1(izm1_ix) !/2h
+                dxsp = sp1(iz_ixp1)-sp1(iz_ixm1) !/2h
 
-                idpdp(j)=idpdp(j) + 0.25*(dzrp*dzsp + dxrp*dxsp )
+                ipp1(j)=ipp1(j) + 0.25*(dzrp*dzsp + dxrp*dxsp )
 
                 !2nd order
-                dz2rp = rf_p(izp1_ix)-2*rf_p(iz_ix)+rf_p(izm1_ix) !/h^2
-                dx2rp = rf_p(iz_ixp1)-2*rf_p(iz_ix)+rf_p(iz_ixm1) !/h^2
+                dz2rp = rp2(izp1_ix)-2*rp2(iz_ix)+rp2(izm1_ix) !/h^2
+                dx2rp = rp2(iz_ixp1)-2*rp2(iz_ix)+rp2(iz_ixm1) !/h^2
 
-                dz2sp = sf_p(izp1_ix)-2*sf_p(iz_ix)+sf_p(izm1_ix) !/h^2
-                dx2sp = sf_p(iz_ixp1)-2*sf_p(iz_ix)+sf_p(iz_ixm1) !/h^2
+                dz2sp = sp2(izp1_ix)-2*sp2(iz_ix)+sp2(izm1_ix) !/h^2
+                dx2sp = sp2(iz_ixp1)-2*sp2(iz_ix)+sp2(iz_ixm1) !/h^2
 
-                dzdxrp = (rf_p(izp1_ixp1)-rf_p(izm1_ixp1)) - (rf_p(izp1_ixm1)-rf_p(izm1_ixm1)) !/h^2
-                dzdxsp = (sf_p(izp1_ixp1)-sf_p(izm1_ixp1)) - (sf_p(izp1_ixm1)-sf_p(izm1_ixm1)) !/h^2
+                dzdxrp = (rp2(izp1_ixp1)-rp2(izm1_ixp1)) - (rp2(izp1_ixm1)-rp2(izm1_ixm1)) !/h^2
+                dzdxsp = (sp2(izp1_ixp1)-sp2(izm1_ixp1)) - (sp2(izp1_ixm1)-sp2(izm1_ixm1)) !/h^2
 
-                id2pd2p(j)=id2pd2p(j) + (dz2rp*dz2sp + dx2rp*dx2sp + dzdxrp*dzdxsp)
+                ipp2(j)=ipp2(j) + (dz2rp*dz2sp + dx2rp*dx2sp + dzdxrp*dzdxsp)
+
+                ! !3rd order
+                ! dz3rp = rp2(izp1_ix)-2*rp2(iz_ix)+rp2(izm1_ix) !/h^2
+                ! dx3rp = rp2(iz_ixp1)-2*rp2(iz_ix)+rp2(iz_ixm1) !/h^2
+
+                ! dz3sp = sp2(izp1_ix)-2*sp2(iz_ix)+sp2(izm1_ix) !/h^2
+                ! dx3sp = sp2(iz_ixp1)-2*sp2(iz_ix)+sp2(iz_ixm1) !/h^2
+
+                ! dzdxrp = (rp2(izp1_ixp1)-rp2(izm1_ixp1)) - (rp2(izp1_ixm1)-rp2(izm1_ixm1)) !/h^2
+                ! dzdxsp = (sp2(izp1_ixp1)-sp2(izm1_ixp1)) - (sp2(izp1_ixm1)-sp2(izm1_ixm1)) !/h^2
+
+                ! ipp3(j)=ipp3(j) + (dz2rp*dz2sp + dx2rp*dx2sp + dzdxrp*dzdxsp)
 
                 
             end do

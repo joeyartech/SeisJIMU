@@ -27,7 +27,7 @@ use m_computebox
         real,dimension(:,:,:),allocatable :: grho, gbuo
 
         !image components
-        real,dimension(:,:,:),allocatable :: ipp, idpdp, id2pd2p, id3pd3p
+        real,dimension(:,:,:),allocatable :: ipp, ipp1, ipp2, ipp3
 
         real,dimension(:,:,:),allocatable :: rp_div_sv, rv_grad_sp
         
@@ -142,10 +142,10 @@ use m_computebox
             if(allocated(self%gkpa))   call sysio_write(self%name//'%gkpa'//suf  ,self%gkpa,  m%n)
             if(allocated(self%gikpa))  call sysio_write(self%name//'%gikpa'//suf ,self%gikpa, m%n)
 
-            if(allocated(self%ipp))    call sysio_write(self%name//'%ipp'//suf   ,self%ipp,   m%n)
-            if(allocated(self%idpdp))  call sysio_write('snap_'//self%name//'%idpdp'//suf ,self%idpdp, m%n
-            if(allocated(self%id2pd2p))  call sysio_write('snap_'//self%name//'%id2pd2p'//suf ,self%id2pd2p, m%n)
-            if(allocated(self%id3pd3p))  call sysio_write('snap_'//self%name//'%id3pd3p'//suf ,self%id3pd3p, m%n)
+            if(allocated(self%ipp))   call sysio_write(self%name//'%ipp'//suf  ,self%ipp,  m%n)
+            if(allocated(self%ipp1))  call sysio_write(self%name//'%ipp1'//suf ,self%ipp1, m%n)
+            if(allocated(self%ipp2))  call sysio_write(self%name//'%ipp2'//suf ,self%ipp2, m%n)
+            if(allocated(self%ipp3))  call sysio_write(self%name//'%ipp3'//suf ,self%ipp3, m%n)
 
             return
 
@@ -161,10 +161,10 @@ use m_computebox
                 if(allocated(self%gkpa))  call sysio_write('snap_'//self%name//'%gkpa'//suf, self%gkpa, m%n,o_mode='append')
                 if(allocated(self%gikpa)) call sysio_write('snap_'//self%name//'%gikpa'//suf,self%gikpa,m%n,o_mode='append')
   
-                if(allocated(self%ipp))    call sysio_write('snap_'//self%name//'%ipp'//suf   ,self%ipp,   m%n,o_mode='append')
-                if(allocated(self%idpdp))  call sysio_write('snap_'//self%name//'%idpdp'//suf ,self%idpdp, m%n,o_mode='append')
-                if(allocated(self%id2pd2p))  call sysio_write('snap_'//self%name//'%id2pd2p'//suf ,self%id2pd2p, m%n,o_mode='append')
-                if(allocated(self%id3pd3p))  call sysio_write('snap_'//self%name//'%id3pd3p'//suf ,self%id3pd3p, m%n,o_mode='append')
+                if(allocated(self%ipp))   call sysio_write('snap_'//self%name//'%ipp'//suf  ,self%ipp,  m%n,o_mode='append')
+                if(allocated(self%ipp1))  call sysio_write('snap_'//self%name//'%ipp1'//suf ,self%ipp1, m%n,o_mode='append')
+                if(allocated(self%ipp2))  call sysio_write('snap_'//self%name//'%ipp2'//suf ,self%ipp2, m%n,o_mode='append')
+                if(allocated(self%ipp3))  call sysio_write('snap_'//self%name//'%ipp3'//suf ,self%ipp3, m%n,o_mode='append')
 
                 if(allocated(self%rp_div_sv )) call sysio_write('snap_'//self%name//'%rp_div_sv' ,self%rp_div_sv ,m%n,o_mode='append')
                 if(allocated(self%rv_grad_sp)) call sysio_write('snap_'//self%name//'%rv_grad_sp',self%rv_grad_sp,m%n,o_mode='append')
@@ -215,7 +215,8 @@ use m_computebox
         call dealloc(self%glda, self%gmu)
         call dealloc(self%gkpa, self%gikpa)
 
-        call dealloc(self%ipp,self%ibksc,self%ifwsc)
+        ! call dealloc(self%ipp,self%ibksc,self%ifwsc)
+        call dealloc(self%ipp,self%ipp1,self%ipp2,self%ipp3)
 
         call dealloc(self%rp_div_sv,self%rv_grad_sp)
 
