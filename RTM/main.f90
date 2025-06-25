@@ -54,10 +54,6 @@ use m_Modeling
     call shls%assign
 
     call modeling_imaging
-    ! !if preconditioner needs energy terms
-    ! if(index(setup%get_str('PRECONDITIONING','PRECO'),'energy')>0) then
-    !     ppg%if_compute_engy=.true.
-    ! endif
     
     call mpiworld%final
     
