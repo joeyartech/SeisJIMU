@@ -18,7 +18,8 @@ obj = \
 ../Modules/Modeling/m_field.o \
 ../Modules/Modeling/m_cpml.o \
 ../Modules/Modeling/m_propagator_$(WaveEq)_$(Solver)_$(Order).o \
-../Modules/Modeling/m_Modeling.o 
+../Modules/Modeling/m_Modeling.o \
+../Modules/Kernel/m_weighter.o
 
 
 all : mod exe
@@ -32,6 +33,8 @@ mod :
 	(cd ../Modules/Signal; make)
 	#Modeling
 	(cd ../Modules/Modeling; make)
+	#Kernel
+	(cd ../Modules/Kernel; make App=$(APP))
 
 exe : sub_modeling_imaging.o main.o
 	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/$(app)_$(WaveEq)_$(Solver)_$(Order)_$(TAG)
@@ -49,5 +52,7 @@ cleanall :
 	(cd ../Modules/Signal; make clean)
 	#Modeling
 	(cd ../Modules/Modeling; make clean)
+	#Kernel
+	(cd ../Modules/Kernel; make clean)
 	#$(APP)
 	make clean
