@@ -130,7 +130,7 @@ use m_smoother_laplacian_sparse
     integer,dimension(:),allocatable :: ix_CIG
     real,dimension(:,:,:),allocatable :: CIGs
 
-    off_shift = 5e3
+    off_shift = 0 !5e3
 
     call alloc(correlate_image,m%nz,m%nx,m%ny,ppg%nimag)
     call alloc(correlate_energy,m%nz,m%nx,m%ny,ppg%nengy)
