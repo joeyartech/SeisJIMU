@@ -130,13 +130,13 @@ use m_smoother_laplacian_sparse
     integer,dimension(:),allocatable :: ix_CIG
     real,dimension(:,:,:),allocatable :: CIGs
 
-    off_shift = 5e3
+    off_shift = 0 !5e3
 
     call alloc(correlate_image,m%nz,m%nx,m%ny,ppg%nimag)
     call alloc(correlate_energy,m%nz,m%nx,m%ny,ppg%nengy)
 
     !CIG positions
-    ix_CIG=nint(setup%get_reals('CIG_X')/m%dx-m%ox)
+    ix_CIG=nint(setup%get_reals('CIG_X',o_default=num2str(shot%src%x))/m%dx-m%ox)+1
     call hud('ix_CIG:'//strcat(nums2strs(ix_CIG)))
     nx_CIG=size(ix_CIG)
 
@@ -215,7 +215,7 @@ use m_smoother_laplacian_sparse
 
         call hud('----  Assemble  ----')
         call correlate_assemble(a_star_u%ipp,correlate_image(:,:,:,1))
-        call correlate_assemble(u_star_u%ipp,correlate_energy(:,:,:,1))
+        call correlate_assemble(u_star_u%epp,correlate_energy(:,:,:,1))
 
         call hud('---------------------------------')
         
@@ -248,6 +248,7 @@ use m_smoother_laplacian_sparse
 
     call sysio_write('image',correlate_image, size(correlate_image))
     call sysio_write('illum',correlate_energy,size(correlate_energy))
+    call sysio_write('CIGs',CIGs,size(CIGs))
 
     !scale by shotlist
 !    call shls%scale(m%n*ppg%ngrad,o_from_sampled=correlate_gradient)
@@ -265,10 +266,12 @@ use m_smoother_laplacian_sparse
             dadj(:,ir)=dadj(:,ir)*(shot%rcv(ir)%aoffset+off_shift)
         enddo
 
+print*,shot%rcv(:)%aoffset+off_shift
+
     end subroutine
 
     subroutine compute_cig()
-        
+    use m_math
         real,dimension(:,:),allocatable :: imag1, imag2, offset_map
 
         !compute the regularized LS division of a_star_u (RTM image) & a2_star_u (attribute image)
@@ -278,7 +281,6 @@ use m_smoother_laplacian_sparse
         imag2=proc_imag(a2_star_u%ipp)
 
         offset_map = imag1 * imag2 / (imag1 * imag1 + r_eps) - off_shift
-        offset_map = offset_map
 
         call dealloc(imag1,imag2)
 
@@ -286,8 +288,8 @@ use m_smoother_laplacian_sparse
         do ix=1,nx_CIG
         do iz=1,m%nz
             ! if(abs(offset_map(iz,ix)-shot%rcv(ir)%aoffset) <= 2*avg_daoffset) then !found binned offsets
-            ih=nint(offset_map(iz,ix)/m%dx)
-
+            ih=nint(offset_map(iz,ix)/m%dx)+1
+print*,iz,ix,offset_map(iz,ix),ih
             if(ih<=nh_CIG) CIGs(iz,ix,ih) = CIGs(iz,ix,ih) + a_star_u%ipp(iz,ix_CIG(ix),1)
             
         enddo
@@ -298,14 +300,16 @@ use m_smoother_laplacian_sparse
     function proc_imag(ipp) result(res)
     use m_hilbert
         real,dimension(m%nz,m%nx) :: ipp
-        real,dimension(:,:),allocatable :: env, res
+        real,dimension(:,:),allocatable :: env,res
 
         integer,parameter :: jfx=-2,jlx=2 !window of the moving average in x dir, window length=5
         integer,parameter :: jfz=-2,jlz=2 !window of the moving average in z dir, window length=5
         
+        env=ipp
         call hilbert_envelope(ipp,env,m%nz,m%nx)
 
         !moving average
+        res=env
         do ix=1-jfx, m%nx-jlx
         do iz=1-jfz, m%nz-jlz
             res(iz,ix) = sum(env(iz+jfz:iz+jlz, ix+jfx:ix+jlx))

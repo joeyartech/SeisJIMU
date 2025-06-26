@@ -1,0 +1,38 @@
+MODEL_SIZE              '101 101 1'
+MODEL_SPACING            '20 20 1'
+FILE_MODEL              'true'
+MODEL_ATTRIBUTES        'vp rho'
+FILE_TOPO               'topo'
+
+IS_FREESURFACE          F
+
+ACQUI_GEOMETRY          spread
+FS                      '20  20 0'
+FR                      '20  20 0'
+DR                      '0   20  0'
+NR                      100
+
+IF_HICKS                F
+
+SCOMP                   p
+RCOMP                   p #'p vz'
+
+NT               500
+DT               0.004
+
+
+FPEAK            10
+WAVELET_TYPE        'ricker'
+
+
+#SNAPSHOT      'p'
+
+
+## for RTM ##
+FILE_DATA_PREFIX    'results_obs/Ru_Shot'
+RTM_ADJSRC          'dres'
+
+JOB           imaging
+
+IF_USE_CHECKPOINT   F
+
