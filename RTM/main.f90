@@ -53,7 +53,8 @@ use m_Modeling
     endif
     call shls%assign
 
-    call modeling_imaging
+    ! call modeling_imaging
+    call modeling_imagegathers
     
     call mpiworld%final
     

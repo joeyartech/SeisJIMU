@@ -135,18 +135,19 @@ use m_smoother_laplacian_sparse
     call alloc(correlate_image,m%nz,m%nx,m%ny,ppg%nimag)
     call alloc(correlate_energy,m%nz,m%nx,m%ny,ppg%nengy)
 
+    !max offset
+    ! amax_offset=setup%get_real('CIG_MAX_OFFSET',o_default=num2str(m%nx*m%dx/2))
+    amax_offset=setup%get_real('CIG_MAX_OFFSET',o_default=num2str(m%nx*m%dx))
+    nh_CIG=floor(amax_offset/m%dx)
+
     !CIG positions
-    ix_CIG=nint(setup%get_reals('CIG_X')/m%dx-m%ox)
+    ix_CIG=nint(setup%get_reals('CIG_X',o_default=num2str(shot%src%x))/m%dx-m%ox)+1
     call hud('ix_CIG:'//strcat(nums2strs(ix_CIG)))
     nx_CIG=size(ix_CIG)
 
-    !max offset
-    amax_offset=setup%get_real('CIG_MAX_OFFSET',o_default=num2str(m%nx*m%dx/2))
-    nh_CIG=floor(amax_offset/m%dx)
+    call hud('nh_CIG, nx_CIG = '//num2str(nh_CIG)//', '//num2str(nx_CIG))
 
-    call hud('nx_CIG, nh_CIG = '//num2str(nx_CIG)//', '//num2str(nh_CIG))
-
-    call alloc(CIGs,m%nz,nx_CIG,nh_CIG)
+    call alloc(CIGs,m%nz,nh_CIG,nx_CIG)
 
     
     call hud('===== START LOOP OVER SHOTS =====')
@@ -215,7 +216,7 @@ use m_smoother_laplacian_sparse
 
         call hud('----  Assemble  ----')
         call correlate_assemble(a_star_u%ipp,correlate_image(:,:,:,1))
-        call correlate_assemble(u_star_u%ipp,correlate_energy(:,:,:,1))
+        call correlate_assemble(u_star_u%epp,correlate_energy(:,:,:,1))
 
         call hud('---------------------------------')
         
@@ -248,6 +249,7 @@ use m_smoother_laplacian_sparse
 
     call sysio_write('image',correlate_image, size(correlate_image))
     call sysio_write('illum',correlate_energy,size(correlate_energy))
+    call sysio_write('CIGs',CIGs,size(CIGs))
 
     !scale by shotlist
 !    call shls%scale(m%n*ppg%ngrad,o_from_sampled=correlate_gradient)
@@ -262,13 +264,15 @@ use m_smoother_laplacian_sparse
         real,dimension(shot%nt,shot%nrcv) :: dadj
 
         do ir=1,shot%nrcv    
-            dadj(:,ir)=dadj(:,ir)*(shot%rcv(ir)%aoffset+off_shift)
+            dadj(:,ir)=dadj(:,ir)*(shot%rcv(ir)%aoffset +off_shift)
         enddo
+
+print*,shot%rcv(:)%aoffset+off_shift
 
     end subroutine
 
     subroutine compute_cig()
-        
+    use m_math
         real,dimension(:,:),allocatable :: imag1, imag2, offset_map
 
         !compute the regularized LS division of a_star_u (RTM image) & a2_star_u (attribute image)
@@ -277,20 +281,35 @@ use m_smoother_laplacian_sparse
         imag1=proc_imag( a_star_u%ipp)
         imag2=proc_imag(a2_star_u%ipp)
 
-        offset_map = imag1 * imag2 / (imag1 * imag1 + r_eps) - off_shift
-        offset_map = offset_map
+call sysio_write('imag1',imag1,size(imag1))
+call sysio_write('imag2',imag2,size(imag2))
 
-        call dealloc(imag1,imag2)
+        thres1=1e-6*maxval(imag1)
+        thres2=1e-6*maxval(imag2)
+
+        offset_map = (imag1*imag2 +1e-5) / (imag1*imag1 +1e-5) -off_shift
+
+call sysio_write('offset_map',offset_map,size(offset_map))
+
+        ! call dealloc(imag1,imag2)
 
         !transform RTM image into surface-offset CIGs
         do ix=1,nx_CIG
-        do iz=1,m%nz
-            ! if(abs(offset_map(iz,ix)-shot%rcv(ir)%aoffset) <= 2*avg_daoffset) then !found binned offsets
-            ih=nint(offset_map(iz,ix)/m%dx)
+            do iz=1,m%nz
 
-            if(ih<=nh_CIG) CIGs(iz,ix,ih) = CIGs(iz,ix,ih) + a_star_u%ipp(iz,ix_CIG(ix),1)
+                if(imag1(iz,ix_CIG(ix))>thres1 .and. imag2(iz,ix_CIG(ix))>thres2) then
+
+                    ! if(abs(offset_map(iz,ix)-shot%rcv(ir)%aoffset) <= 2*avg_daoffset) then !found binned offsets
+                    ih=nint(abs(offset_map(iz,ix_CIG(ix)))/m%dx)+1
+                    if(ih<=nh_CIG) then
+print*,iz,ix,offset_map(iz,ix_CIG(ix)),ih
+                        CIGs(iz,ih,ix) = CIGs(iz,ih,ix) + a_star_u%ipp(iz,ix_CIG(ix),1)
+
+                    endif
+
+                endif
             
-        enddo
+            enddo
         enddo
 
     end subroutine
@@ -298,21 +317,23 @@ use m_smoother_laplacian_sparse
     function proc_imag(ipp) result(res)
     use m_hilbert
         real,dimension(m%nz,m%nx) :: ipp
-        real,dimension(:,:),allocatable :: env, res
+        real,dimension(:,:),allocatable :: env,res
 
         integer,parameter :: jfx=-2,jlx=2 !window of the moving average in x dir, window length=5
         integer,parameter :: jfz=-2,jlz=2 !window of the moving average in z dir, window length=5
         
+        env=ipp
         call hilbert_envelope(ipp,env,m%nz,m%nx)
 
         !moving average
+        scal=1./(jlx-jfx+1)/(jlz-jfz+1)
+
+        res=env
         do ix=1-jfx, m%nx-jlx
         do iz=1-jfz, m%nz-jlz
-            res(iz,ix) = sum(env(iz+jfz:iz+jlz, ix+jfx:ix+jlx))
+            res(iz,ix) = sum(env(iz+jfz:iz+jlz, ix+jfx:ix+jlx))*scal
         enddo
         enddo
-
-        res = res/(jlx-jfx+1)/(jlz-jfz+1)
 
         call dealloc(env)
 

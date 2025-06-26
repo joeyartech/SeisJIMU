@@ -251,14 +251,14 @@ use m_cpml
         
         corr%name=name
 
-        if(name(1:1)=='g') then !basic gradients
-            call alloc(corr%gkpa,m%nz,m%nx,m%ny)
-            call alloc(corr%grho,m%nz,m%nx,m%ny)
-        elseif(name(1:1)=='i') then !imaging conditions
+        ! if(name(1:1)=='g') then !basic gradients
+        !     call alloc(corr%gkpa,m%nz,m%nx,m%ny)
+        !     call alloc(corr%grho,m%nz,m%nx,m%ny)
+        ! elseif(name(1:1)=='i') then !imaging conditions
             call alloc(corr%ipp,m%nz,m%nx,m%ny)
-        else !energy terms
+        ! else !energy terms
             call alloc(corr%epp,m%nz,m%nx,m%ny)
-        endif
+        ! endif
 
     end subroutine
 
