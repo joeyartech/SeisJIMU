@@ -1,3 +1,9 @@
+!References
+!for SOCIG:
+!M Giboli, R Baina, L Nicoletis & B Duquet, 2012, "Reverse Time Migration surface offset gathers part 1: a new method to produce ‘classical’ common image gathers", SEG expanded abstracts.
+!R Baina et al, 2017, Method of processing seismic data by providing surface offset common image gathers. US Patent 9,632,192 B2
+!https://github.com/slimgroup/ImageGather.jl/tree/main
+!
 subroutine modeling_imaging
 use mpi
 use m_System
@@ -130,7 +136,8 @@ use m_smoother_laplacian_sparse
     integer,dimension(:),allocatable :: ix_CIG
     real,dimension(:,:,:),allocatable :: CIGs
 
-    off_shift = 0 !5e3
+    off_shift = 5e3 !https://github.com/slimgroup/ImageGather.jl/blob/main/src/surface_gather.jl#L74
+    call hud('off_shift = '//num2str(off_shift))
 
     call alloc(correlate_image,m%nz,m%nx,m%ny,ppg%nimag)
     call alloc(correlate_energy,m%nz,m%nx,m%ny,ppg%nengy)
@@ -215,9 +222,11 @@ use m_smoother_laplacian_sparse
         call compute_cig() !,ext='surface_offset')
 
         call hud('----  Assemble  ----')
-        call correlate_assemble(a_star_u%ipp,correlate_image(:,:,:,1))
-        call correlate_assemble(u_star_u%epp,correlate_energy(:,:,:,1))
-
+        ! call ppg%assemble(a_star_u)
+        ! call ppg%assemble(u_star_u)
+        correlate_image(:,:,:,1) =correlate_image(:,:,:,1) +a_star_u%ipp
+        correlate_energy(:,:,:,1)=correlate_energy(:,:,:,1)+u_star_u%epp
+        
         call hud('---------------------------------')
         
     enddo
@@ -243,10 +252,8 @@ use m_smoother_laplacian_sparse
 
     !postprocess correlation image
     call laplacian_filter(correlate_image)
-    where (correlate_image(:,:,:,1) > 0)
-        correlate_image(:,:,:,1) = correlate_image(:,:,:,1) / correlate_energy(:,:,:,1)
-    endwhere
-
+    correlate_image(:,:,:,1) = correlate_image(:,:,:,1) / (correlate_energy(:,:,:,1)+r_eps)
+    
     call sysio_write('image',correlate_image, size(correlate_image))
     call sysio_write('illum',correlate_energy,size(correlate_energy))
     call sysio_write('CIGs',CIGs,size(CIGs))
@@ -261,13 +268,34 @@ use m_smoother_laplacian_sparse
     contains
 
     subroutine add_attribute(dadj)
+use m_math
         real,dimension(shot%nt,shot%nrcv) :: dadj
-
         do ir=1,shot%nrcv    
-            dadj(:,ir)=dadj(:,ir)*(shot%rcv(ir)%aoffset +off_shift)
+            ! dadj(:,ir)=dadj(:,ir)*(shot%rcv(ir)%aoffset +off_shift)
+            dadj(:,ir)=dadj(:,ir)*(shot%rcv(ir)%x - shot%src%x +off_shift)
         enddo
 
-print*,shot%rcv(:)%aoffset+off_shift
+        ! do ir=0,9
+        !     dadj(:,ir)          = dadj(:,ir)          *exp(-(9.-ir))!cos((9-ir)/9.*r_pi/2)
+        ! enddo
+
+        ! do ir=0,9
+        !     dadj(:,shot%nrcv-ir)= dadj(:,shot%nrcv-ir)*exp(-(9.-ir))!cos((9-ir)/9.*r_pi/2)
+        ! enddo
+
+! ! print*,(shot%rcv(:)%aoffset+off_shift)
+! print*, (shot%rcv(:)%x - shot%src%x)
+
+        ! do ir=1,shot%nrcv
+        !     offset=shot%rcv(ir)%x - shot%src%x
+        !     if(offset>0) then
+        !         offset=floor(offset/m%dx/3)*3*m%dx
+        !     else
+        !         offset=ceiling(offset/m%dx/3)*3*m%dx
+        !     endif
+        !     print*, ir, (shot%rcv(ir)%x - shot%src%x), offset
+        !     dadj(:,ir)=dadj(:,ir)*offset
+        ! enddo
 
     end subroutine
 
