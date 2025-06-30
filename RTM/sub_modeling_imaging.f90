@@ -136,7 +136,7 @@ use m_smoother_laplacian_sparse
     integer,dimension(:),allocatable :: ix_CIG
     real,dimension(:,:,:),allocatable :: CIGs
 
-    off_shift = 5e3 !https://github.com/slimgroup/ImageGather.jl/blob/main/src/surface_gather.jl#L74
+    off_shift = 0. !5e3 !https://github.com/slimgroup/ImageGather.jl/blob/main/src/surface_gather.jl#L74
     call hud('off_shift = '//num2str(off_shift))
 
     call alloc(correlate_image,m%nz,m%nx,m%ny,ppg%nimag)
