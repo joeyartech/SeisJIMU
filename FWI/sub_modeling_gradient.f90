@@ -59,23 +59,16 @@ use m_resampler
         call fld_u%acquire; call shot%write('Ru_',shot%dsyn)
 
 
-        ! if(index(setup%get_str('JOB',o_default='gradient'),'estimate wavelet')>0) then
-        !     call hud('--------------------------------')
-        !     call hud('        Estimate wavelet        ')
-        !     call hud('--------------------------------')
-
-        !     call wei_wl%update
-
-        !     call shot%update_wavelet(wei_wl%weight) !call gradient_matchfilter_data
-        
-        !     !write synthetic data
-        !     call shot%write('updated_Ru_',shot%dsyn)
-
-        !     cycle
-
-        ! endif
-        
         if(setup%get_str('JOB')=='forward modeling') cycle
+
+        if(setup%get_str('UPDATE_WAVELET')/='') then
+            call hud('----  Update Wavelet  ----')    
+            call wei_wl%update(o_suffix='_4WAVELET')
+            call shot%update_wavelet(wei_wl%weight) !call gradient_matchfilter_data    
+            call shot%write('updated_Ru_',shot%dsyn)
+            call suformat_write('updated_wavelet_'//shot%sindex,shot%wavelet,shot%nt,1,shot%dt)
+        endif
+         
 
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
 

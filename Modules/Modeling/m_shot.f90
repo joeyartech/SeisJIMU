@@ -528,10 +528,6 @@ use m_model
         call sudata%init(self%nt,1,o_dt=self%dt,o_data=self%wavelet)
         sudata%hdrs%fldr=self%index
 
-        open(12,file=dir_out//'updated_wavelet.su',action='write',access='direct',recl=4*(60+self%nt))
-        write(12,rec=self%index) sudata%hdrs, sudata%trs
-        close(12)
-
     end subroutine
     
     subroutine update_adjsource(self)

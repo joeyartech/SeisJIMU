@@ -92,6 +92,12 @@ use m_Modeling
                 call by_aoffset_range(weight,str2real(sublist(2)%s),str2real(sublist(3)%s))
             endif
 
+            if (index(list(i)%s,'rz_range')>0) then !use window defined by aoffset
+                sublist=split(list(i)%s,o_sep=':')
+                call hud('Will weight traces by rz range:'//sublist(2)%s//':'//sublist(3)%s)
+                call by_rz_range(weight,str2real(sublist(2)%s),str2real(sublist(3)%s))
+            endif
+
             if (index(list(i)%s,'time^')>0) then !weight traces by power of time
                 sublist=split(list(i)%s,o_sep='^')
                 call hud('Will weight traces by time^'//sublist(2)%s)
@@ -260,6 +266,17 @@ use m_Modeling
         enddo
 
     end subroutine
+
+    subroutine by_rz_range(weight,zmin,zmax)
+        real,dimension(:,:) :: weight
+
+        do i=1,shot%nrcv    
+            if (shot%rcv(i)%z<zmin) weight(:,i)=0.
+            if (shot%rcv(i)%z>zmax) weight(:,i)=0.
+        enddo
+
+    end subroutine
+
 
     ! Modified from sumute.c in Seismic Unix
     ! dir: SeisUnix/src/su/main/windowing_sorting_muting
