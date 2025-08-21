@@ -2,6 +2,7 @@
 GIT_COMMIT:=$(shell git rev-parse --short HEAD)
 GIT_BRANCH:=$(shell git rev-parse --abbrev-ref HEAD)
 
+SED=sed
 F90=mpif90
 F77=mpif77
 
@@ -10,14 +11,20 @@ FLAGF90= -Ofast -fopenmp -ffree-line-length-none -fbacktrace  -fno-unsafe-math-o
 #FLAGF77= -g -Wall -fopenmp -fcheck=all                         -fbacktrace
 #FLAGF90= -g -Wall -fopenmp -fcheck=all -ffree-line-length-none -fbacktrace -fno-strict-aliasing
 
-FPP=-cpp -Dgfortran -D"git_commit='$(GIT_COMMIT)'" -D"git_branch='$(GIT_BRANCH)'"
+FPP=-Dgfortran -D"git_commit='$(GIT_COMMIT)'" -D"git_branch='$(GIT_BRANCH)'"
 
 MOD=-J $(mod_dir)
 
 
-.SUFFIX : %.f %.f90 %.o
+.SUFFIX : %.f %.F %.f90 %.F90 %.o
 
-%.o : %.f90
+%.F90 : %.f90
+	@$(SED) -f $(root_dir)symbols.inc $^ > $@
+
+%.F : %.f
+	@$(SED) -f $(root_dir)symbols.inc $^ > $@
+
+%.o : %.F90
 	$(F90) $(FPP) $(FLAGF90) $(MOD) -c $^ -o $@
 	@printf "\n"	
 

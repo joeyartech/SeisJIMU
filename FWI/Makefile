@@ -1,3 +1,4 @@
+root_dir=../
 mod_dir=../mod/
 include ../compiler.inc
 include ../modules.inc
