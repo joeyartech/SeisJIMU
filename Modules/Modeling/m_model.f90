@@ -6,7 +6,7 @@ use m_smoother_laplacian_sparse
 
     type,public :: t_model
         integer :: nx,ny,nz, n
-        real    :: dx,dy,dz, dmin
+        real    :: Δx,Δy,Δz, dmin
         real    :: ox,oy,oz
 
         real :: cell_volume, cell_diagonal, rev_cell_diagonal
@@ -24,7 +24,7 @@ use m_smoother_laplacian_sparse
         real,dimension(:,:,:),allocatable :: vp_prior,vs_prior,rho_prior
 
         !reference values
-        real :: ref_inv_vp, ref_rho
+        real :: ref_vp⁻¹, ref_rho
 
         integer,dimension(:,:),allocatable :: ibathy
         logical,dimension(:,:,:),allocatable :: is_freeze_zone
@@ -66,32 +66,32 @@ use m_smoother_laplacian_sparse
         self%n=self%nz*self%nx*self%ny
 
         rtmp=setup%get_reals('MODEL_SPACING','DZXY',o_mandatory=3)
-        self%dz=rtmp(1); self%dx=rtmp(2); self%dy=rtmp(3)
+        self%Δz=rtmp(1); self%Δx=rtmp(2); self%Δy=rtmp(3)
 
         if(self%ny==1) then
             call hud('2D geometry')
             self%is_cubic=.false.
-            self%dy=1.
+            self%Δy=1.
         else
             call hud('3D geometry')
             self%is_cubic=.true.
         endif
 
-        self%dmin=min(self%dz,self%dx)
-        if(self%is_cubic) self%dmin=min(self%dmin,self%dy)
+        self%dmin=min(self%Δz,self%Δx)
+        if(self%is_cubic) self%dmin=min(self%dmin,self%Δy)
 
         rtmp=setup%get_reals('MODEL_ORIGIN','OZXY',o_default='0. 0. 0.')
         rtmp=0.
         self%oz=rtmp(1); self%ox=rtmp(2); self%oy=rtmp(3)
 
         !discretization of the model
-        self%cell_volume = self%dz*self%dx*self%dy
+        self%cell_volume = self%Δz*self%Δx*self%Δy
         if(self%is_cubic) then
-            self%cell_diagonal=sqrt(self%dz**2+self%dx**2+self%dy**2)
-            self%rev_cell_diagonal=sqrt(self%dz**(-2) + self%dx**(-2) + self%dy**(-2))
+            self%cell_diagonal=sqrt(self%Δz**2+self%Δx**2+self%Δy**2)
+            self%rev_cell_diagonal=sqrt(self%Δz**(-2) + self%Δx**(-2) + self%Δy**(-2))
         else
-            self%cell_diagonal=sqrt(self%dz**2+self%dx**2)
-            self%rev_cell_diagonal=sqrt(self%dz**(-2) + self%dx**(-2))
+            self%cell_diagonal=sqrt(self%Δz**2+self%Δx**2)
+            self%rev_cell_diagonal=sqrt(self%Δz**(-2) + self%Δx**(-2))
         endif
 
         self%file=setup%get_file('FILE_MODEL') 
@@ -181,10 +181,10 @@ use m_smoother_laplacian_sparse
             call alloc(tmp,self%nx,self%ny,1)
             call sysio_read(file,tmp,self%n)
             call hud('bathy minmax value: '//num2str(minval(tmp))//' , '//num2str(maxval(tmp)))
-            call hud('water or air layer is from #1 to #(floor(bathy/dz)+1) grid points in depth')
+            call hud('water or air layer is from #1 to #(floor(bathy/Δz)+1) grid points in depth')
 
             do iy=1,self%ny; do ix=1,self%nx    
-                self%ibathy(ix,iy)=floor(tmp(ix,iy,1)/self%dz)+1
+                self%ibathy(ix,iy)=floor(tmp(ix,iy,1)/self%Δz)+1
             enddo; enddo
 
             do iy=1,self%ny; do ix=1,self%nx    
@@ -275,24 +275,24 @@ use m_smoother_laplacian_sparse
 
             if(setup%check('MODEL_REFERENCE','MREF')) then
                 tmp=setup%get_reals('MODEL_REFERENCE','MREF',o_mandatory=2)
-                self%ref_inv_vp=1./tmp(1)
-                self%ref_rho   =tmp(2)
+                self%ref_vp⁻¹=1./tmp(1)
+                self%ref_rho =tmp(2)
 
             else
-                self%ref_inv_vp=1./self%vp (iz,ix,iy)
-                self%ref_rho   =   self%rho(iz,ix,iy)
+                self%ref_vp⁻¹=1./self%vp (iz,ix,iy)
+                self%ref_rho =   self%rho(iz,ix,iy)
 
             endif
 
-            write(*,*) 'Reference vp value =',1./self%ref_inv_vp
+            write(*,*) 'Reference vp value =',1./self%ref_vp⁻¹
             write(*,*) 'Reference rho value =',self%ref_rho
         
         endif
         
-        call mpi_bcast(self%ref_inv_vp,1,mpi_real,0,mpiworld%communicator,mpiworld%ierr)
-        call mpi_bcast(self%ref_rho   ,1,mpi_real,0,mpiworld%communicator,mpiworld%ierr)
+        call mpi_bcast(self%ref_vp⁻¹,1,mpi_real,0,mpiworld%communicator,mpiworld%ierr)
+        call mpi_bcast(self%ref_rho ,1,mpi_real,0,mpiworld%communicator,mpiworld%ierr)
 
-        !ref_inv_vp & _rho should also be checkpointed
+        !ref_vp⁻¹ & _rho should also be checkpointed
     end subroutine
 
     subroutine apply_freeze_zone(self)

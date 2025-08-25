@@ -18,7 +18,7 @@ use m_cpml
     real :: c2x, c2y, c2z
 
     !local const
-    real :: dt2, inv_2dt, inv_2dz, inv_2dx
+    real :: Δt², inv_2Δt, inv_2Δz, inv_2Δx
 
 
     !scaling source wavelet
@@ -30,16 +30,15 @@ use m_cpml
             'Time-domain ISOtropic 2D/3D ACoustic propagation'//s_NL// &
             '1st-order Velocity-Stress formulation'//s_NL// &
             'Vireux-Levandar Staggered-Grid Finite-Difference (FDSG) method'//s_NL// &
-            'Cartesian O(x⁴,t²) stencil'//s_NL// &
-            'CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal'//s_NL// &
-            '   -> dt ≤ 0.606(for 2D) or 0.494(3D) *Vmax/dx'//s_NL// &
+            'Cartesian O(`Δx⁴,Δt`²) stencil'//s_NL// &
+            'CFL = Σ|coef| *Vmax *`Δt /rev_cell_diagonal'//s_NL// &
+            '   -> `Δt ≤ 0.606(for 2D) or 0.494(3D) *Vmax/`Δx'//s_NL// &
             'Required model attributes: vp, rho'//s_NL// &
             'Required field components: vz, vx, vy(3D), p'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
-            'Poynting definitions: p_dotp_gradp, dotp_gradp, p_v, Esq_gradphi'//s_NL// &
             'Imaging conditions: ipp ibksc ifwsc (P-Pxcorr of backward & forward scattering)'//s_NL// &
             'Energy terms: Σ_shot ∫ sfield%p² dt'//s_NL// &
-            'Basic gradients: grho gkpa'
+            'Basic gradients: gρ gκ'
 
         integer :: nbndlayer=max(2,hicks_r) !minimum absorbing layer thickness
         integer :: ngrad=2 !number of basic gradients
@@ -49,11 +48,11 @@ use m_cpml
         logical :: if_compute_engy=.false.
 
         !local models shared between fields
-        real,dimension(:,:,:),allocatable :: buoz, buox, buoy, kpa, inv_kpa
+        real,dimension(:,:,:),allocatable :: buoz, buox, buoy, κ, κ⁻¹
 
         !time frames
         integer :: nt
-        real :: dt
+        real :: Δt
 
         contains
         procedure :: print_info
@@ -83,17 +82,13 @@ use m_cpml
 
     type(t_propagator),public :: ppg
 
-    character(:),allocatable :: s_poynting_def
-
     logical :: if_hicks
-    integer :: irdt
-    real :: rdt
-
-    ! real,dimension(:,:,:),allocatable :: sf_p_save
+    integer :: irΔt
+    real :: rΔt
 
     contains
     
-    !========= for FDSG O(dx4,dt2) ===================  
+    !========= for FDSG O(Δx4,Δt²) ===================  
 
     subroutine print_info(self)
         class(t_propagator) :: self
@@ -116,8 +111,8 @@ use m_cpml
             call warn('Constant vp model (1500 m/s) is allocated by propagator.')
         endif
 
-        if(index(self%info,'rho')>0 .and. .not. allocated(m%rho)) then
-            call alloc(m%rho,m%nz,m%nx,m%ny,o_init=1000.)
+        if(index(self%info,'rho')>0 .and. .not. allocated(m%ρ)) then
+            call alloc(m%ρ,m%nz,m%nx,m%ny,o_init=1000.)
             call warn('Constant rho model (1000 kg/m³) is allocated by propagator.')
         endif
                 
@@ -129,27 +124,27 @@ use m_cpml
         !grid dispersion condition
         if (5.*m%dmin > cb%velmin/shot%fmax) then  !O(x4) rule: 5 points per wavelength
             call warn(shot%sindex//' can have grid dispersion!'//s_NL// &
-                ' 5*dz, velmin, fmax = '//num2str(5.*m%dmin)//', '//num2str(cb%velmin)//', '//num2str(shot%fmax))
+                ' 5*`Δz, velmin, fmax = '//num2str(5.*m%dmin)//', '//num2str(cb%velmin)//', '//num2str(shot%fmax))
         endif
         
         !time frames
         self%nt=shot%nt
-        self%dt=shot%dt
-        time_window=(shot%nt-1)*shot%dt
+        self%Δt=shot%Δt
+        time_window=(shot%nt-1)*shot%Δt
 
         sumcoef=sum(abs(coef))
 
-        CFL = sumcoef*cb%velmax*self%dt*m%rev_cell_diagonal !R. Courant, K. O. Friedrichs & H. Lewy (1928)
+        CFL = sumcoef*cb%velmax*self%Δt*m%rev_cell_diagonal !R. Courant, K. O. Friedrichs & H. Lewy (1928)
 
         call hud('CFL value: '//num2str(CFL))
         
         if(CFL>1.) then
-            self%dt = setup%get_real('CFL',o_default='0.9')/(sumcoef*cb%velmax*m%rev_cell_diagonal)
-            self%nt=nint(time_window/self%dt)+1
+            self%Δt = setup%get_real('CFL',o_default='0.9')/(sumcoef*cb%velmax*m%rev_cell_diagonal)
+            self%nt=nint(time_window/self%Δt)+1
 
             call warn('CFL > 1 on '//shot%sindex//'!'//s_NL//&
-                'vmax, dt, 1/dx = '//num2str(cb%velmax)//', '//num2str(self%dt)//', '//num2str(m%rev_cell_diagonal) //s_NL//&
-                'Adjusted dt, nt = '//num2str(self%dt)//', '//num2str(self%nt))
+                'vmax, `Δt, 1/`Δx = '//num2str(cb%velmax)//', '//num2str(self%Δt)//', '//num2str(m%rev_cell_diagonal) //s_NL//&
+                'Adjusted `Δt, nt = '//num2str(self%Δt)//', '//num2str(self%nt))
 
         endif       
         
@@ -158,54 +153,54 @@ use m_cpml
     subroutine init(self)
         class(t_propagator) :: self
 
-        c1x=coef(1)/m%dx; c1y=coef(1)/m%dy; c1z=coef(1)/m%dz
-        c2x=coef(2)/m%dx; c2y=coef(2)/m%dy; c2z=coef(2)/m%dz
+        c1x=coef(1)/m%Δx; c1y=coef(1)/m%dy; c1z=coef(1)/m%Δz
+        c2x=coef(2)/m%Δx; c2y=coef(2)/m%dy; c2z=coef(2)/m%Δz
 
-        inv_2dz =1./2/m%dz
-        inv_2dx =1./2/m%dx
+        inv_2Δz =1./2/m%Δz
+        inv_2Δx =1./2/m%Δx
         
-        wavelet_scaler=self%dt/m%cell_volume
+        wavelet_scaler=self%Δt/m%cell_volume
 
         if_hicks=shot%if_hicks
 
-        call alloc(self%buoz,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(self%buox,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(self%buoy,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(self%kpa,    [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(self%inv_kpa,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(self%buoz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(self%buox, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(self%buoy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(self%κ,    [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(self%κ⁻¹,  [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
-        self%kpa=cb%rho*cb%vp**2
-        self%inv_kpa=1./self%kpa
+        self%κ=cb%ρ*cb%vp**2
+        self%κ⁻¹=1./self%κ
 
-        self%buoz(cb%ifz,:,:)=1./cb%rho(cb%ifz,:,:)
-        self%buox(:,cb%ifx,:)=1./cb%rho(:,cb%ifx,:)
-        self%buoy(:,:,cb%ify)=1./cb%rho(:,:,cb%ify)
+        self%buoz(cb%ifz,:,:)=1./cb%ρ(cb%ifz,:,:)
+        self%buox(:,cb%ifx,:)=1./cb%ρ(:,cb%ifx,:)
+        self%buoy(:,:,cb%ify)=1./cb%ρ(:,:,cb%ify)
 
         do iz=cb%ifz+1,cb%ilz
-            self%buoz(iz,:,:)=0.5/cb%rho(iz,:,:)+0.5/cb%rho(iz-1,:,:)
+            self%buoz(iz,:,:)=0.5/cb%ρ(iz,:,:)+0.5/cb%ρ(iz-1,:,:)
         enddo
         
         do ix=cb%ifx+1,cb%ilx
-            self%buox(:,ix,:)=0.5/cb%rho(:,ix,:)+0.5/cb%rho(:,ix-1,:)
+            self%buox(:,ix,:)=0.5/cb%ρ(:,ix,:)+0.5/cb%ρ(:,ix-1,:)
         enddo
 
         do iy=cb%ify+1,cb%ily
-            self%buoy(:,:,iy)=0.5/cb%rho(:,:,iy)+0.5/cb%rho(:,:,iy-1)
+            self%buoy(:,:,iy)=0.5/cb%ρ(:,:,iy)+0.5/cb%ρ(:,:,iy-1)
         enddo
 
         !initialize m_field
-        call field_init(.false.,self%nt,self%dt)
+        call field_init(.false.,self%nt,self%Δt)
 
         !initialize m_correlate
-        call correlate_init(ppg%nt,ppg%dt)
+        call correlate_init(ppg%nt,ppg%Δt)
 
         !rectified interval for time integration
-        !default to Nyquist, and must be a multiple of dt
-        rdt=setup%get_real('REF_RECT_TIME_INTEVAL','RDT',o_default=num2str(0.5/shot%fmax))
-        irdt=floor(rdt/self%dt)
-        if(irdt==0) irdt=1
-        rdt=irdt*self%dt
-        call hud('rdt, irdt = '//num2str(rdt)//', '//num2str(irdt))
+        !default to Nyquist, and must be a multiple of Δt
+        rΔt=setup%get_real('REF_RECT_TIME_INTEVAL','RDT',o_default=num2str(0.5/shot%fmax))
+        irΔt=floor(rΔt/self%Δt)
+        if(irΔt==0) irΔt=1
+        rΔt=irΔt*self%Δt
+        call hud('r`Δt, ir`Δt = '//num2str(rΔt)//', '//num2str(irΔt))
 
         s_poynting_def=setup%get_str('POYNTING_DEF',o_default='p_v')
         if(s_poynting_def/='p_dotp_gradp'.and.s_poynting_def/='dotp_gradp'.and.s_poynting_def/='p_v'.and.s_poynting_def/='Esq_gradphi') then
@@ -238,11 +233,11 @@ use m_cpml
         call alloc(f%vy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%p, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
-        call alloc(f%dvz_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dvx_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dvy_dy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dp_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dp_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%∂zvz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%∂ₓvx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%∂ᵧvy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dp_Δz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dp_Δx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%dp_dy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
         call alloc(f%poynz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -339,10 +334,10 @@ use m_cpml
     !
     !Convention for half-integer index:
     !(array index)  =>    (real index)     
-    ! vz(iz,ix,iy)  =>  vz[iz-½,ix,  iy  ]^n   :=vz((iz-½)*dz,ix*dx,iy*dy,n*dt)
+    ! vz(iz,ix,iy)  =>  vz[iz-½,ix,  iy  ]^n   :=vz((iz-½)*Δz,ix*Δx,iy*dy,n*Δt)
     ! vx(iz,ix,iy)  =>  vx[iz,  ix-½,iy  ]^n  
     ! vy(iz,ix,iy)  =>  vy[iz,  ix,  iy-½]^n  
-    !  p(iz,ix,iy)  =>   p[iz,  ix,  iy  ]^n+½ :=p(iz*dz,ix*dx,iy*dy,(n+½)*dt)
+    !  p(iz,ix,iy)  =>   p[iz,  ix,  iy  ]^n+½ :=p(iz*Δz,ix*Δx,iy*dy,(n+½)*Δt)
     !
     !Forward:
     !FD eqn:
@@ -350,13 +345,13 @@ use m_cpml
     !M ∂ₜᶠ |vx^n  | = | 0     0    ∂ₓᵇ||vx^n+1| +f = |∂ₓᵇ p^n+½              | +f
     !      [ p^n+1]   [∂zᶠ   ∂ₓᶠ    0 ][ p^n+½]      [∂zᶠ vz^n+1 + ∂ₓᶠ vx^n+1]
     !where
-    !∂ₜᶠ*dt := v^n+1 - v^n                               ~O(t²)
-    !∂zᵇ*dz := c₁(p(iz  )-p(iz-1)) +c₂(p(iz+1)-p(iz-2))  ~O(x⁴)
-    !∂zᶠ*dz := c₁(v(iz+1)-v(iz  )) +c₂(v(iz+2)-v(iz-1))  ~O(x⁴)
+    !∂ₜᶠ*Δt := v^n+1 - v^n                               ~O(t²)
+    !∂zᵇ*Δz := c₁(p(iz  )-p(iz-1)) +c₂(p(iz+1)-p(iz-2))  ~O(x⁴)
+    !∂zᶠ*Δz := c₁(v(iz+1)-v(iz  )) +c₂(v(iz+2)-v(iz-1))  ~O(x⁴)
     !
     !Time marching:
     ![vz^n+1 ]   [vz^n  ]      [∂zᵇ p^n+½              ]
-    !|vx^n+1 | = |vx^n  | + M⁻¹|∂ₓᵇ p^n+½              |dt  +M⁻¹f*dt
+    !|vx^n+1 | = |vx^n  | + M⁻¹|∂ₓᵇ p^n+½              |Δt  +M⁻¹f*Δt
     ![ p^n+1½]   [ p^n+½]      [∂zᶠ vz^n+1 + ∂ₓᶠ vx^n+1]
     !Step #1: v^n += src
     !Step #2: v^n+1 = v^n + spatial FD(p^n+½)
@@ -367,14 +362,14 @@ use m_cpml
     !
     !Reverse time marching (for wavefield reconstruction)
     ![ p^n+½]   [ p^n+1½]      [∂zᶠ vz^n+1 + ∂ₓᶠ vx^n+1]
-    !|vx^n  | = |vx^n+1 | - M⁻¹|∂ₓᵇ p^n+½              |dt  -M⁻¹f*dt
+    !|vx^n  | = |vx^n+1 | - M⁻¹|∂ₓᵇ p^n+½              |Δt  -M⁻¹f*Δt
     ![vz^n  ]   [vz^n+1 ]      [∂zᵇ p^n+½              ]
     !Step #6: load boundary values for v^n+1
     !Step #4: p^n+½ = p^n+1½ - spatial FD(v^n+1)
     !Step #3: p^n+½ -= src
     !Step #2: v^n+1 = v^n - spatial FD(p^n+½)
     !Step #1: v^n -= src
-    !N.B. Same codes for spatial FDs as in forward time marching, with a negated dt.
+    !N.B. Same codes for spatial FDs as in forward time marching, with a negated Δt.
     !
     !Adjoint:
     !FD eqn:
@@ -391,21 +386,21 @@ use m_cpml
     !
     !Time marching:
     ![vzᵃ^n+1 ]   [vzᵃ^n  ]      [∂zᵇ pᵃ^n+½               ]
-    !|vxᵃ^n+1 | = |vxᵃ^n  | + M⁻¹|∂ₓᵇ pᵃ^n+½               |dt  -M⁻¹d*dt
+    !|vxᵃ^n+1 | = |vxᵃ^n  | + M⁻¹|∂ₓᵇ pᵃ^n+½               |Δt  -M⁻¹d*Δt
     ![ pᵃ^n+1½]   [ pᵃ^n+½]      [∂zᶠ vzᵃ^n+1 + ∂ₓᶠ vxᵃ^n+1]
     !but we have to do it in reverse time:
     ![ pᵃ^n+½]   [ pᵃ^n+1½]      [∂zᶠ vzᵃ^n+1 + ∂ₓᶠ vxᵃ^n+1]
-    !|vxᵃ^n  | = |vxᵃ^n+1 | - M⁻¹|∂ₓᵇ pᵃ^n+½               |dt  +M⁻¹d*dt
+    !|vxᵃ^n  | = |vxᵃ^n+1 | - M⁻¹|∂ₓᵇ pᵃ^n+½               |Δt  +M⁻¹d*Δt
     ![vzᵃ^n  ]   [vzᵃ^n+1 ]      [∂zᵇ pᵃ^n+½               ]
     !Step #5: pᵃ^n+1½ += adjsrc
     !Step #4: pᵃ^n+½ = pᵃ^n+1½ - spatial FD(vᵃ^n+1)
     !Step #3: vᵃ^n+1 += adjsrc
     !Step #2: vᵃ^n = vᵃ^n+1 - spatial FD(pᵃ^n+½)
-    !N.B. Same codes for spatial FDs as in forward time marching, with a negated dt, but the RHS should use a "+" sign (regardless of the reverse time direction).
+    !N.B. Same codes for spatial FDs as in forward time marching, with a negated Δt, but the RHS should use a "+" sign (regardless of the reverse time direction).
     !
     !For adjoint test:
     !In each step of forward time marching: dsyn=RGANf
-    !f:source wavelet, N=M⁻¹dt: diagonal
+    !f:source wavelet, N=M⁻¹Δt: diagonal
     !A:inject source into field, G:propagator, R:extract field at receivers
     !while in each step of reverse-time adjoint marching: dadj=NAᵀGᵀRᵀdsyn=AᵀGᵀRᵀNdsyn
     !Rᵀ:inject adjoint sources, Gᵀ:adjoint propagator, Aᵀ:extract adjoint fields
@@ -575,17 +570,17 @@ use m_cpml
             call cpu_time(toc)
             tt6=tt6+toc-tic
             
-            !gkpa: rf%s^it+0.5 star D sf%s_dt^it+0.5
-            !use sf%v^it+1 to compute sf%s_dt^it+0.5, as backward step
+            !gkpa: rf%s^it+0.5 star D sf%s_Δt^it+0.5
+            !use sf%v^it+1 to compute sf%s_Δt^it+0.5, as backward step
 
-            if(mod(it,irdt)==0) then
+            if(mod(it,irΔt)==0) then
                 call cpu_time(tic)
                 call cross_correlate_image(fld_p,fld_u,a_star_u,it)
                 call cpu_time(toc)
                 tt7=tt7+toc-tic
             endif
 
-            ! if(mod(it,irdt)==0) then
+            ! if(mod(it,irΔt)==0) then
             !     call cpu_time(tic)
             !     call cross_correlate_gkpa(fld_a,fld_u,a_star_u,it)
             !     call cpu_time(toc)
@@ -593,7 +588,7 @@ use m_cpml
             ! endif
 
             ! !energy term of sfield
-            ! if(self%if_compute_engy.and.mod(it,irdt)==0) then
+            ! if(self%if_compute_engy.and.mod(it,irΔt)==0) then
             !     call cpu_time(tic)
             !     call energy(fld_u,it,cb%engy)
             !     call cpu_time(toc)
@@ -642,9 +637,9 @@ use m_cpml
             !     tt12=tt12+toc-tic
             ! endif
             
-            ! !grho: sfield%v_dt^it \dot rfield%v^it
-            ! !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
-            ! if(mod(it,irdt)==0) then
+            ! !grho: sfield%v_Δt^it \dot rfield%v^it
+            ! !use sfield%s^it+0.5 to compute sfield%v_Δt^it, as backward step 2
+            ! if(mod(it,irΔt)==0) then
             !     call cpu_time(tic)
             !     call cross_correlate_grho(fld_a,fld_u,a_star_u,it)
             !     call cpu_time(toc)
@@ -661,7 +656,7 @@ use m_cpml
 
         !postprocess
         call cross_correlate_postprocess(a_star_u)
-        call a_star_u%scale(m%cell_volume*rdt)
+        call a_star_u%scale(m%cell_volume*rΔt)
 
         if(mpiworld%is_master) then
             write(*,*) 'Elapsed time to load boundary            ',tt1/mpiworld%max_threads
@@ -795,15 +790,15 @@ use m_cpml
 
         if(m%is_cubic) then
             call fd3d_velocities(f%vz,f%vx,f%vy,f%p,                     &
-                                 f%dp_dz,f%dp_dx,f%dp_dy,                &
+                                 f%dp_Δz,f%dp_Δx,f%dp_dy,                &
                                  self%buoz,self%buox,self%buoy,          &
-                                 ifz,ilz,ifx,ilx,ify,ily,time_dir*self%dt)
+                                 ifz,ilz,ifx,ilx,ify,ily,time_dir*self%Δt)
         else
 
             call fd2d_velocities(f%vz,f%vx,f%p,                  &
-                                 f%dp_dz,f%dp_dx,                &
+                                 f%dp_Δz,f%dp_Δx,                &
                                  self%buoz,self%buox,            &
-                                 ifz,ilz,ifx,ilx,time_dir*self%dt)
+                                 ifz,ilz,ifx,ilx,time_dir*self%Δt)
 
         endif
 
@@ -828,13 +823,13 @@ use m_cpml
             
             if(if_hicks) then
                 if(shot%src%comp=='p') then
-                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
+                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%κ(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
                 endif
                 
             else
                 if(shot%src%comp=='p') then
                     !explosion on s[iz,ix,iy]
-                    f%p(iz,ix,iy) = f%p(iz,ix,iy) + wl*self%kpa(iz,ix,iy)
+                    f%p(iz,ix,iy) = f%p(iz,ix,iy) + wl*self%κ(iz,ix,iy)
                 endif
                 
             endif
@@ -856,11 +851,11 @@ use m_cpml
                     
                     if(if_hicks) then 
 
-                        f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
+                        f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%κ(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
 
                     else           
                         !p[iz,ix,iy]
-                        f%p(iz,ix,iy) = f%p(iz,ix,iy) +wl*self%kpa(iz,ix,iy) !no time_dir needed!
+                        f%p(iz,ix,iy) = f%p(iz,ix,iy) +wl*self%κ(iz,ix,iy) !no time_dir needed!
 
                     endif
 
@@ -887,14 +882,14 @@ use m_cpml
 
         if(m%is_cubic) then
             call fd3d_stresses(f%vz,f%vx,f%vy,f%p,                     &
-                               f%dvz_dz,f%dvx_dx,f%dvy_dy,             &
-                               self%kpa,                               &
-                               ifz,ilz,ifx,ilx,ify,ily,time_dir*self%dt)
+                               f%∂zvz,f%∂ₓvx,f%∂ᵧvy,             &
+                               self%κ,                               &
+                               ifz,ilz,ifx,ilx,ify,ily,time_dir*self%Δt)
         else
             call fd2d_stresses(f%vz,f%vx,f%p,                  &
-                               f%dvz_dz,f%dvx_dx,              &
-                               self%kpa,                       &
-                               ifz,ilz,ifx,ilx,time_dir*self%dt)
+                               f%∂zvz,f%∂ₓvx,              &
+                               self%κ,                       &
+                               ifz,ilz,ifx,ilx,time_dir*self%Δt)
         endif
         
         !apply free surface boundary condition if needed
@@ -943,15 +938,15 @@ use m_cpml
 
                 !$omp parallel default (shared)&
                 !$omp private(iz,ix,&
-                !$omp         dph_dz,dph_dx)
+                !$omp         dph_Δz,dph_Δx)
                 !$omp do schedule(dynamic)
                 do ix=ifx,ilx
                 do iz=ifz,ilz
-                    dph_dz = asin(sin(ph(iz+1,ix,1) - ph(iz-1,ix,1)))*inv_2dz
-                    dph_dx = asin(sin(ph(iz,ix+1,1) - ph(iz,ix-1,1)))*inv_2dx
+                    dph_Δz = asin(sin(ph(iz+1,ix,1) - ph(iz-1,ix,1)))*inv_2dz
+                    dph_Δx = asin(sin(ph(iz,ix+1,1) - ph(iz,ix-1,1)))*inv_2Δx
 
                     u%poynz(iz,ix,1)=E2(iz,ix,1)*dph_dz
-                    u%poynx(iz,ix,1)=E2(iz,ix,1)*dph_dx
+                    u%poynx(iz,ix,1)=E2(iz,ix,1)*dph_Δx
 
                 enddo
                 enddo
@@ -1050,7 +1045,7 @@ use m_cpml
     
     subroutine final(self)
         type(t_propagator) :: self
-        call dealloc(self%buoz, self%buox, self%buoy, self%kpa, self%inv_kpa)
+        call dealloc(self%buoz, self%buox, self%buoy, self%κ, self%κ⁻¹)
     end subroutine
 
     !========= gradient, imaging or other correlations ===================
@@ -1163,7 +1158,7 @@ use m_cpml
         
         if(allocated(correlate_gradient)) then
             !scaling gradients by model parameters
-            corr%grho = corr%grho / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
+            corr%grho = corr%grho / cb%ρ(1:cb%mz,1:cb%mx,1:cb%my)
             corr%gkpa = corr%gkpa * (-ppg%inv_kpa(1:cb%mz,1:cb%mx,1:cb%my))
                     
             !preparing for projection back
@@ -1217,7 +1212,7 @@ use m_cpml
         !$omp private(iz,ix,i,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,&
         !$omp         iz_ixm2,iz_ixm1,iz_ixp1,&
-        !$omp         dp_dz_,dp_dx_)
+        !$omp         dp_dz_,dp_Δx_)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
 
@@ -1237,14 +1232,14 @@ use m_cpml
                 iz_ixp2=i  +2*nz  !iz,ix+2
 
                 dvz_dz= c1z*(vz(izp1_ix)-vz(iz_ix))  +c2z*(vz(izp2_ix)-vz(izm1_ix))
-                dvx_dx= c1x*(vx(iz_ixp1)-vx(iz_ix))  +c2x*(vx(iz_ixp2)-vx(iz_ixm1))
+                ∂ₓvx= c1x*(vx(iz_ixp1)-vx(iz_ix))  +c2x*(vx(iz_ixp2)-vx(iz_ixm1))
 
                 dp_dz= c1z*(p(iz_ix)-p(izm1_ix)) +c2z*(p(izp1_ix)-p(izm2_ix))
-                dp_dx= c1x*(p(iz_ix)-p(iz_ixm1)) +c2x*(p(iz_ixp1)-p(iz_ixm2))
+                dp_Δx= c1x*(p(iz_ix)-p(iz_ixm1)) +c2x*(p(iz_ixp1)-p(iz_ixm2))
 
                 !s := dotP*nabP = kpa*divv *nabP
-                poynz(iz_ix)= kpa(iz_ix)*(dvz_dz+dvx_dx) *dp_dz
-                poynx(iz_ix)= kpa(iz_ix)*(dvz_dz+dvx_dx) *dp_dx
+                poynz(iz_ix)= kpa(iz_ix)*(dvz_dz+∂ₓvx) *dp_dz
+                poynx(iz_ix)= kpa(iz_ix)*(dvz_dz+∂ₓvx) *dp_Δx
 
             enddo
             
@@ -1255,25 +1250,25 @@ use m_cpml
     end subroutine
 
     subroutine fd3d_velocities(vz,vx,vy,p,               &
-                               dp_dz,dp_dx,dp_dy,        &
+                               dp_dz,dp_Δx,dp_dy,        &
                                buoz,buox,buoy,           &
-                               ifz,ilz,ifx,ilx,ify,ily,dt)
+                               ifz,ilz,ifx,ilx,ify,ily,Δt)
         real,dimension(*) :: vz,vx,vy,p
-        real,dimension(*) :: dp_dz,dp_dx,dp_dy
+        real,dimension(*) :: dp_dz,dp_Δx,dp_dy
         real,dimension(*) :: buoz,buox,buoy
         
         nz=cb%nz
         nx=cb%nx
         ny=cb%ny
         
-        dp_dz_=0.;dp_dx_=0.;dp_dy_=0.
+        dp_dz_=0.;dp_Δx_=0.;dp_dy_=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,iy,i,&
         !$omp         izm2_ix_iy,izm1_ix_iy,iz_ix_iy,izp1_ix_iy,&
         !$omp         iz_ixm2_iy,iz_ixm1_iy,iz_ixp1_iy,&
         !$omp         iz_ix_iym2,iz_ix_iym1,iz_ix_iyp1,&
-        !$omp         dp_dz_,dp_dx_,dp_dy_)
+        !$omp         dp_dz_,dp_Δx_,dp_dy_)
         !$omp do schedule(dynamic) collapse(2)
         do iy=ify,ily
         do ix=ifx,ilx
@@ -1297,12 +1292,12 @@ use m_cpml
                 iz_ix_iyp1=i    +nz*nx  !iz,ix,iy+1
                 
                 dp_dz_= c1z*(p(iz_ix_iy)-p(izm1_ix_iy)) +c2z*(p(izp1_ix_iy)-p(izm2_ix_iy))
-                dp_dx_= c1x*(p(iz_ix_iy)-p(iz_ixm1_iy)) +c2x*(p(iz_ixp1_iy)-p(iz_ixm2_iy))
+                dp_Δx_= c1x*(p(iz_ix_iy)-p(iz_ixm1_iy)) +c2x*(p(iz_ixp1_iy)-p(iz_ixm2_iy))
                 dp_dy_= c1y*(p(iz_ix_iy)-p(iz_ix_iym1)) +c2y*(p(iz_ix_iyp1)-p(iz_ix_iym2))
                 
                 !cpml
                 dp_dz(iz_ix_iy)= cpml%b_z_half(iz)*dp_dz(iz_ix_iy) + cpml%a_z_half(iz)*dp_dz_
-                dp_dx(iz_ix_iy)= cpml%b_x_half(ix)*dp_dx(iz_ix_iy) + cpml%a_x_half(ix)*dp_dx_
+                dp_Δx(iz_ix_iy)= cpml%b_x_half(ix)*dp_Δx(iz_ix_iy) + cpml%a_x_half(ix)*dp_dx_
                 dp_dy(iz_ix_iy)= cpml%b_y_half(iy)*dp_dy(iz_ix_iy) + cpml%a_y_half(iy)*dp_dy_
 
                 dp_dz_ = dp_dz_*cpml%kpa_z_half(iz) + dp_dz(iz_ix_iy)
@@ -1310,9 +1305,9 @@ use m_cpml
                 dp_dy_ = dp_dy_*cpml%kpa_y_half(iy) + dp_dy(iz_ix_iy)
                 
                 !velocity
-                vz(iz_ix_iy)=vz(iz_ix_iy) + dt*buoz(iz_ix_iy)*dp_dz_
-                vx(iz_ix_iy)=vx(iz_ix_iy) + dt*buox(iz_ix_iy)*dp_dx_
-                vy(iz_ix_iy)=vy(iz_ix_iy) + dt*buoy(iz_ix_iy)*dp_dy_
+                vz(iz_ix_iy)=vz(iz_ix_iy) + Δt*buoz(iz_ix_iy)*dp_dz_
+                vx(iz_ix_iy)=vx(iz_ix_iy) + Δt*buox(iz_ix_iy)*dp_dx_
+                vy(iz_ix_iy)=vy(iz_ix_iy) + Δt*buoy(iz_ix_iy)*dp_dy_
                 
             enddo
             
@@ -1326,7 +1321,7 @@ use m_cpml
     subroutine fd2d_velocities(vz,vx,p,          &
                                dp_dz,dp_dx,      &
                                buoz,buox,        &
-                               ifz,ilz,ifx,ilx,dt)
+                               ifz,ilz,ifx,ilx,Δt)
         real,dimension(*) :: vz,vx,p
         real,dimension(*) :: dp_dz,dp_dx
         real,dimension(*) :: buoz,buox
@@ -1369,8 +1364,8 @@ use m_cpml
                 dp_dx_=dp_dx_*cpml%kpa_x_half(ix) + dp_dx(iz_ix)
 
                 !velocity
-                vz(iz_ix)=vz(iz_ix) + dt*buoz(iz_ix)*dp_dz_
-                vx(iz_ix)=vx(iz_ix) + dt*buox(iz_ix)*dp_dx_
+                vz(iz_ix)=vz(iz_ix) + Δt*buoz(iz_ix)*dp_dz_
+                vx(iz_ix)=vx(iz_ix) + Δt*buox(iz_ix)*dp_dx_
 
             enddo
             
@@ -1381,25 +1376,25 @@ use m_cpml
     end subroutine
     
     subroutine fd3d_stresses(vz,vx,vy,p,               &
-                             dvz_dz,dvx_dx,dvy_dy,     &
+                             dvz_dz,dvx_dx,∂ᵧvy,     &
                              kpa,                      &
-                             ifz,ilz,ifx,ilx,ify,ily,dt)
+                             ifz,ilz,ifx,ilx,ify,ily,Δt)
         real,dimension(*) :: vz,vx,vy,p
-        real,dimension(*) :: dvz_dz,dvx_dx,dvy_dy
+        real,dimension(*) :: dvz_dz,dvx_dx,∂ᵧvy
         real,dimension(*) :: kpa
         
         nz=cb%nz
         nx=cb%nx
         ny=cb%ny
         
-        dvz_dz_=0.;dvx_dx_=0.;dvy_dy_=0.
+        dvz_dz_=0.;dvx_dx_=0.;∂ᵧvy_=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,iy,i,&
         !$omp         izm1_ix_iy,iz_ix_iy,izp1_ix_iy,izp2_ix_iy,&
         !$omp         iz_ixm1_iy,iz_ixp1_iy,iz_ixp2_iy,&
         !$omp         iz_ix_iym1,iz_ix_iyp1,iz_ix_iyp2,&
-        !$omp         dvz_dz_,dvx_dx_,dvy_dy_)
+        !$omp         dvz_dz_,dvx_dx_,∂ᵧvy_)
         !$omp do schedule(dynamic) collapse(2)
         do iy=ify,ily
         do ix=ifx,ilx
@@ -1423,20 +1418,20 @@ use m_cpml
                 iz_ix_iyp2=i  +2*nz*nx  !iz,ix,iy+2
                 
                 dvx_dx_= c1x*(vx(iz_ixp1_iy)-vx(iz_ix_iy))  +c2x*(vx(iz_ixp2_iy)-vx(iz_ixm1_iy))
-                dvy_dy_= c1y*(vy(iz_ix_iyp1)-vy(iz_ix_iy))  +c2y*(vy(iz_ix_iyp2)-vy(iz_ix_iym1))
+                ∂ᵧvy_= c1y*(vy(iz_ix_iyp1)-vy(iz_ix_iy))  +c2y*(vy(iz_ix_iyp2)-vy(iz_ix_iym1))
                 dvz_dz_= c1z*(vz(izp1_ix_iy)-vz(iz_ix_iy))  +c2z*(vz(izp2_ix_iy)-vz(izm1_ix_iy))
                 
                 !cpml
                 dvz_dz(iz_ix_iy)=cpml%b_z(iz)*dvz_dz(iz_ix_iy)+cpml%a_z(iz)*dvz_dz_
                 dvx_dx(iz_ix_iy)=cpml%b_x(ix)*dvx_dx(iz_ix_iy)+cpml%a_x(ix)*dvx_dx_
-                dvy_dy(iz_ix_iy)=cpml%b_y(iy)*dvy_dy(iz_ix_iy)+cpml%a_y(iy)*dvy_dy_
+                ∂ᵧvy(iz_ix_iy)=cpml%b_y(iy)*∂ᵧvy(iz_ix_iy)+cpml%a_y(iy)*∂ᵧvy_
 
                 dvz_dz_=dvz_dz_*cpml%kpa_z(iz) + dvz_dz(iz_ix_iy)
                 dvx_dx_=dvx_dx_*cpml%kpa_x(ix) + dvx_dx(iz_ix_iy)
-                dvy_dy_=dvy_dy_*cpml%kpa_y(iy) + dvy_dy(iz_ix_iy)
+                ∂ᵧvy_=∂ᵧvy_*cpml%kpa_y(iy) + ∂ᵧvy(iz_ix_iy)
                 
                 !pressure
-                p(iz_ix_iy) = p(iz_ix_iy) + dt * kpa(iz_ix_iy)*(dvz_dz_+dvx_dx_+dvy_dy_)
+                p(iz_ix_iy) = p(iz_ix_iy) + Δt * kpa(iz_ix_iy)*(dvz_dz_+dvx_dx_+∂ᵧvy_)
                 
             enddo
             
@@ -1450,7 +1445,7 @@ use m_cpml
     subroutine fd2d_stresses(vz,vx,p,          &
                              dvz_dz,dvx_dx,    &
                              kpa,              &
-                             ifz,ilz,ifx,ilx,dt)
+                             ifz,ilz,ifx,ilx,Δt)
         real,dimension(*) :: vz,vx,p
         real,dimension(*) :: dvz_dz,dvx_dx
         real,dimension(*) :: kpa
@@ -1493,7 +1488,7 @@ use m_cpml
                 dvx_dx_=dvx_dx_*cpml%kpa_x(ix) + dvx_dx(iz_ix)
                 
                 !pressure
-                p(iz_ix) = p(iz_ix) + dt * kpa(iz_ix)*(dvz_dz_+dvx_dx_)
+                p(iz_ix) = p(iz_ix) + Δt * kpa(iz_ix)*(dvz_dz_+dvx_dx_)
                 
             enddo
             
@@ -1572,7 +1567,7 @@ use m_cpml
         !$omp         izm1_ix_iy,iz_ix_iy,izp1_ix_iy,izp2_ix_iy,&
         !$omp         iz_ixm1_iy,iz_ixp1_iy,iz_ixp2_iy,&
         !$omp         iz_ix_iym1,iz_ix_iyp1,iz_ix_iyp2,&
-        !$omp         dvz_dz,dvx_dx,dvy_dy,&
+        !$omp         dvz_dz,dvx_dx,∂ᵧvy,&
         !$omp         rp,dsp)
         !$omp do schedule(dynamic) collapse(2)
         do iy=ify,ily
@@ -1599,10 +1594,10 @@ use m_cpml
                 
                 dvz_dz = c1z*(sf_vz(izp1_ix_iy)-sf_vz(iz_ix_iy)) +c2z*(sf_vz(izp2_ix_iy)-sf_vz(izm1_ix_iy))
                 dvx_dx = c1x*(sf_vx(iz_ixp1_iy)-sf_vx(iz_ix_iy)) +c2x*(sf_vx(iz_ixp2_iy)-sf_vx(iz_ixm1_iy))
-                dvy_dy = c1y*(sf_vy(iz_ix_iyp1)-sf_vy(iz_ix_iy)) +c2y*(sf_vy(iz_ix_iyp2)-sf_vy(iz_ix_iym1))
+                ∂ᵧvy = c1y*(sf_vy(iz_ix_iyp1)-sf_vy(iz_ix_iy)) +c2y*(sf_vy(iz_ix_iyp2)-sf_vy(iz_ix_iym1))
                 
                  rp = rf_p(i)
-                dsp = dvz_dz +dvx_dx +dvy_dy
+                dsp = dvz_dz +dvx_dx +∂ᵧvy
                 
                 grad(j)=grad(j) + rp*dsp
                 

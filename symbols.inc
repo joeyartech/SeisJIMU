@@ -32,8 +32,9 @@ s/ω/omga_/g ; s/`omga_/ω/g
 #Math
 #s/⁺/pls_/g
 #s/⁻/mns_/g
+s/˙/dot_/g  ; s/`dot_/˙/g #U+02D9 dot on top
 s/·/cdot_/g ; s/`cdot_/·/g  #U+00B7
-#s/⨯/times_/g #U+2A2F
+s/⨯/times_/g; s/`times_/⨯/g #U+2A2F
 #s/±/pm_/g
 s/∂/part_/g ; s/`part_/∂/g
 s/∇/nbla_/g ; s/`nbla_/∇/g
@@ -42,9 +43,12 @@ s/ᵃ/adj_/g  ; s/`adj_/ᵃ/g
 s/⁻¹/inv_/g ; s/`inv_/⁻¹/g
 s/²/sq_/g   ; s/`sq_/²/g  
 s/³/cbc_/g  ; s/`cbc_/³/g 
+#s/⁴/forth_/g;
 s/√/sqrt_/g ; s/`sqrt_/√/g
 s/ₓ/x_/g    ; s/`x_/ₓ/g      #U+2093
 s/ᵧ/y_/g    ; s/`y_/ᵧ/g
+
+s/★/star_/g ; s/`star_/★/g 
 
 ##Arrows
 #s/←/left_/g
