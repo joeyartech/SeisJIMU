@@ -1,5 +1,6 @@
 module m_model
 use m_System
+use m_smoother_laplacian_sparse
 
     private
 
@@ -105,7 +106,7 @@ use m_System
         class(t_model) :: self
 
         real,dimension(:,:,:),allocatable :: tmp
-        character(:),allocatable :: file
+        character(:),allocatable :: file, str
 
         if(self%file=='') then !no read
             !freesurface

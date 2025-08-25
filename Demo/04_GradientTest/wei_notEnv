@@ -1,0 +1,5 @@
+#define a polygon that amplifies reflections vs direct waves"
+0    10000    #offsets of vertices"
+1.6  1.6     #time instants of vertices (bottom of direct waves)"
+5   0.1      #weight=5 below this polygon (0.1s transition)"
+END          #end of file"

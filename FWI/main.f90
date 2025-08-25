@@ -14,7 +14,7 @@ use m_Optimization
     call hud('======================================'//s_NL// &
              '       WELCOME TO SeisJIMU FWI        '//s_NL// &
              '======================================')
-
+    
     call setup%init
     call sysio_init
     
@@ -79,7 +79,7 @@ use m_Optimization
     call sysio_write('qp0%pg',qp0%pg,size(qp0%pg))
 
     ! if(index(param%info,'pseudotime')>0) then
-        call sysio_write('m0%gradient',m%gradient,size(m%gradient))
+        ! call sysio_write('m0%gradient',m%gradient,size(m%gradient))
     ! endif
 
     !scale problem by linesearcher

@@ -4,9 +4,11 @@
 ############
 # Modeling #
 ############
-WaveEq=AC
-# WaveEq=AC_VTI
-# WaveEq=PSV
+#WaveEq=AC2nd
+#WaveEq=AC
+WaveEq=VisAC2nd
+#WaveEq=AC_VTI
+#WaveEq=PSV
 Solver=FDSG
 Order=O4
 ShotDec=batching
@@ -14,6 +16,7 @@ ShotDec=batching
 ##########
 # Kernel #
 ##########
+#Param=vp-rho
 Param=velocities-density
 #Param=velocities-density_pseudotime
 #Param=velocities-impedance
@@ -25,6 +28,6 @@ App=FWI
 ################
 LineS=Wolfe
 #LineS=enumerate
-Optim=SD
-#Optim=NLCG
+#Optim=SD
+Optim=NLCG
 #Optim=lBFGS

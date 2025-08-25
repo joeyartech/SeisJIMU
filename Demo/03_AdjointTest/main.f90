@@ -51,7 +51,7 @@ use m_Modeling
 
     logical :: if_use_random
 
-    call alloc(m%gradient,m%nz,m%nx,m%ny,ppg%ngrad)
+!     call alloc(m%gradient,m%nz,m%nx,m%ny,ppg%ngrad)
             
     call hud('===== START LOOP OVER SHOTS =====')
     
@@ -115,24 +115,24 @@ use m_Modeling
         call rfield%ignite(o_wavelet=v)
 
         !adjoint modeling
-        call ppg%adjoint(rfield,sfield,oif_record_adjseismo=.true.,oif_compute_grad=.true.)
+        call ppg%adjoint(rfield,sfield,oif_record_adjseismo=.true.)
 
         call rfield%acquire(o_seismo=Ladj_v)
         call suformat_write('Ladj_v',Ladj_v,ppg%nt,1,o_dt=ppg%dt)
         
-        call cb%project_back
+!         call cb%project_back
         
     enddo
     
     call hud('        END LOOP OVER SHOTS        ')
 
-    call sysio_write('gradient',m%gradient,size(m%gradient))
+!     call sysio_write('gradient',m%gradient,size(m%gradient))
 
-    print*,'shape(u)=',     shape(u),    '║u║₂',      norm2(u)*sqrt(ppg%dt)
-    !||u||=sqrt(int u^2*dt) = sqrt(sum(u^2)*dt) = norm2(u)*sqrt(dt)
-    print*,'shape(v)=',     shape(v),    '║v║₂=',      norm2(v)*sqrt(ppg%dt)
-    print*,'shape(Lu)=',    shape(Lu),   '║Lu║₂=',     norm2(Lu)*sqrt(ppg%dt)
-    print*,'shape(Lᴴv)=',   shape(Ladj_v),'║Lᴴv_v║₂=', norm2(Ladj_v)*sqrt(ppg%dt)
+    print*,'shape(u)=',     shape(u),    ', ║u║₂=',      norm2(u)*sqrt(ppg%dt)
+    print*,'shape(v)=',     shape(v),    ', ║v║₂=',      norm2(v)*sqrt(ppg%dt)
+    print*,'shape(Lu)=',    shape(Lu),   ', ║Lu║₂=',     norm2(Lu)*sqrt(ppg%dt)
+    print*,'shape(Lᴴv)=',   shape(Ladj_v),', ║Lᴴv║₂=', norm2(Ladj_v)*sqrt(ppg%dt)
+    print*,'Remind that ║u║₂ := √ (∫ u² dt) = norm2(u)*sqrt(dt)'
 
     !<v|Lu> =?= <L^Tv|u>
     !<v|Lu>=int v*Lu*dt = sum(v*Lu)*dt

@@ -1,0 +1,307 @@
+ MPIWorld info:
+  MPI_INIT_THREAD level:           0
+  Number of MPI processors:          10
+  Max number of OMP threads / processor:          10
+ Working directory: (pwd)
+/home/g202321550/Mycodes/SeisJIMU_VisAC_git_manage/SeisJIMU/Demo/11_Marmousi
+ Using executable: (ls -l $exe)
+lrwxrwxrwx 1 g202321550 g202321550 21 Aug 24 22:17 ../../exe/FWD -> fwd_VisAC2nd_FDSG_O4_
+ Git Commit: df7f215
+ Git Branch: Poynting
+ Compiler: gfortran v13.3.0
+ Version: 13.3.0
+ Endianness:         1234
+ System date: 08/24/2025
+System time: 22:27:49
+System timezone: +03:00
+                        
+ ======================================
+   WELCOME TO SeisJIMU FWD MODELING   
+======================================
+ Setup file: setup_fwd.in
+ DIR_IN is NOT found, take default: ./
+ Input directory: ./
+ DIR_OUT : ./results_fwd
+ Output directory:./results_fwd/
+ Invoked field & propagator modules info : 
+Time-domain ISOtropic 2D/3D ACoustic propagation
+2nd-order Pressure formulation
+Vireux-Levandar Staggered-Grid Finite-Difference (FDSG) method
+Cartesian O(x⁴,t²) stencil
+CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal
+   -> dt ≤ 0.5*Vmax/dx
+Required model attributes: vp, rho
+Required field components: p, p_prev, p_next
+Required boundary layer thickness: 2
+Poynting definitions: Esq_gradphi
+Imaging conditions: ipp ibksc ifwsc (P-Pxcorr of backward & forward scattering)
+Energy terms: Σ_shot ∫ sfield%p² dt
+ FDSG Coef : 1.12500000, -4.16666679E-02
+ IF_CHECKPOINT is NOT found, take default: F
+ IF_USE_CHECKPOINT : F
+ DIR_CHECKPOINT (DIR_CHP) is NOT found, take default: ./checkpoints/
+ MODEL_SIZE (NZXY) : 281 1361 1
+ MODEL_SPACING (DZXY) : 12.5 12.5 1
+ 2D geometry
+ MODEL_ORIGIN (OZXY) is NOT found, take default: 0. 0. 0.
+ FILE_MODEL : true
+ MODEL_ATTRIBUTES : vp rho
+ MODEL_ATTRIBUTES_WRITE is NOT found, take default: vp rho
+ vp model is read.
+ rho model is read.
+ IS_FREESURFACE : F
+ FILE_BATHYMETRY (FILE_BATHY) is NOT found, take 0, '' or F
+ FILE_TOPOGRAPHY (FILE_TOPO) : topo
+ bathy minmax value: 450.000000 , 450.000000
+ water or air layer is from #1 to #(floor(bathy/dz)+1) grid points in depth
+ Freeze zone is set from FILE_BATHYMETRY or FILE_TOPOGRAPHY.
+ FILE_FREEZE_ZONE is NOT found, take 0, '' or F
+ ACQUI_GEOMETRY : spread
+ NUMBER_SOURCE (NS) : 1
+ Will compute 1 synthetic shots.
+ FILE_SHOT_BATCH is NOT found, take 0, '' or F
+ SHOT_BATCH_SIZE (NBATCH) is NOT found, take default: 10
+ SHOT_SAMPLE_METHOD is NOT found, take default: cyclic
+ Proc0001 has 1 assigned shots
+ See file "shotlist.log" for details.
+ ===== START LOOP OVER SHOTS =====
+ TIME_STEP (NT) : 4600
+ TIME_INTERVAL (DT) : 0.0015
+ SOURCE_COMPONENT (SCOMP) : p
+ ACQUI_GEOMETRY : spread
+ SOURCE_FIRST (FS) : 200  1200  0
+ RECEIVER_FIRST (FR) : 200     0  0
+ SOURCE_SPACING (DS) : 0   400  0
+ RECEIVER_SPACING (DR) : 0    25  0
+ NUMBER_RECEIVER (NR) : 600
+ RECEIVER_COMPONENT (RCOMP) : p
+ PEAK_FREQUENCY (FPEAK) : 6.4
+ MAX_FREQUENCY (FMAX) is NOT found, take default: 12.8000002
+ FILE_SRC_TIME_FUNC (FILE_WAVELET) is NOT found, take 0, '' or F
+ WAVELET_TYPE : ricker
+ Use Ricker wavelet
+ RICKER_DELAYTIME (T0) is NOT found, take default: 0.156250000
+ WAVELET_SCALING is NOT found, take 0, '' or F
+ SU data write success.
+ IF_HICKS is NOT found, take default: T
+ MODEL_REFERENCE is NOT found in setup_fwd.in
+ Reference vp value =   2500.00000    
+ Reference rho value =   1009.99927    
+ =================================
+ Shot0001 info:
+ =================================
+   nt,dt:        4600   1.50000001E-03
+ ---------------------------------
+ S/R positions after removing m%oz,ox,iy,
+   sz,iz:   200.000000              17
+   sx,ix:   1200.00000              97
+   sy,iy:   0.00000000               1
+   ifz,ilz:          13          21
+   ifx,ilx:          93         101
+   ify,ily:           1           1
+ ---------------------------------
+   minmax rz,iz:   200.000000       200.000000              17          17
+   minmax rx,ix:   0.00000000       14975.0000               1        1199
+   minmax ry,iy:   0.00000000       0.00000000               1           1
+   minmax ifz,ilz:          13          13          21          21
+   minmax ifx,ilx:          -3        1195           5        1203
+   minmax ify,ily:           1           1           1           1
+   nrcv:         600
+ ---------------------------------
+ Modeling Shot# Shot0001
+ ADD_APERTURE is NOT found, take default: -99999 99999 -99999 99999
+ REF_BNDLAYER_THICKNESS (NCPML) is NOT found, take default: 20
+ Computebox Size = [ifz,ilz] x [ifx,ilx] x [ify,ily] =       463561
+   [ifz,ilz],nz:         -23         305         329
+   [ifx,ilx],nx:         -23        1385        1409
+   [ify,ilx],ny:           1           1           1
+ Inner area of Computebox:
+   ioz,mz:           1         281
+   iox,mx:           1        1361
+   ioy,my:           1           1
+ Computebox value ranges:
+ vp   2064.12427       5699.97461    
+ rho   1009.99927       2626.96997    
+ ip   2524998.25       14973662.0    
+ CFL value: 1.12853742
+ CFL is NOT found, take default: 0.9
+ [40m[33m[1mWARNING:[0m CFL > 1 on Shot0001!
+vmax, dt, 1/dx = 5699.97461, 1.19623868E-03, 0.113137081
+Adjusted dt, nt = 1.19623868E-03, 5768
+ SNAPSHOT : p
+ REF_NUMBER_SNAPSHOT (NSNAPSHOT) is NOT found, take default: 50
+ SNAPSHOT : p
+ REF_NUMBER_SNAPSHOT (NSNAPSHOT) is NOT found, take default: 50
+ REF_RECT_TIME_INTEVAL (RDT) is NOT found, take default: 3.90625000E-02
+ rdt, irdt = 3.82796377E-02, 32
+ POYNTING_DEF is NOT found, take default: Esq_gradphi
+ ----  Solving Au=s  ----
+ IF_BLOOM is NOT found, take default: T
+ IF_BLOOM is NOT found, take default: T
+ spectrum_p shape:         155         229
+ spectrum shape         155         229 spectrum_filted         155         229
+ spectrum_p shape:         155         229
+ spectrum shape         155         229 spectrum_filted         155         229
+ spectrum_p shape:         264         344
+ spectrum shape         264         344 spectrum_filted         264         344
+ spectrum_p shape:         264         344
+ spectrum shape         264         344 spectrum_filted         264         344
+ it----         500
+ fld_u minmax values:  -54.1273460       44.8607559    
+ fld_v minmax values:  -35.5311508       58.0111046    
+ spectrum_p shape:         329         453
+ spectrum shape         329         453 spectrum_filted         329         453
+ spectrum_p shape:         329         453
+ spectrum shape         329         453 spectrum_filted         329         453
+ spectrum_p shape:         329         562
+ spectrum shape         329         562 spectrum_filted         329         562
+ spectrum_p shape:         329         562
+ spectrum shape         329         562 spectrum_filted         329         562
+ it----        1000
+ fld_u minmax values:  -36.9012184       37.7873917    
+ fld_v minmax values:  -41.0039482       29.4408607    
+ spectrum_p shape:         329         671
+ spectrum shape         329         671 spectrum_filted         329         671
+ spectrum_p shape:         329         671
+ spectrum shape         329         671 spectrum_filted         329         671
+ spectrum_p shape:         329         781
+ spectrum shape         329         781 spectrum_filted         329         781
+ spectrum_p shape:         329         781
+ spectrum shape         329         781 spectrum_filted         329         781
+ spectrum_p shape:         329         890
+ spectrum shape         329         890 spectrum_filted         329         890
+ spectrum_p shape:         329         890
+ spectrum shape         329         890 spectrum_filted         329         890
+ it----        1500
+ fld_u minmax values:  -29.1450958       29.8247967    
+ fld_v minmax values:  -24.8466549       30.9802284    
+ spectrum_p shape:         329         999
+ spectrum shape         329         999 spectrum_filted         329         999
+ spectrum_p shape:         329         999
+ spectrum shape         329         999 spectrum_filted         329         999
+ spectrum_p shape:         329        1108
+ spectrum shape         329        1108 spectrum_filted         329        1108
+ spectrum_p shape:         329        1108
+ spectrum shape         329        1108 spectrum_filted         329        1108
+ it----        2000
+ fld_u minmax values:  -15.4936514       16.5527096    
+ fld_v minmax values:  -16.9603291       15.4999075    
+ spectrum_p shape:         329        1217
+ spectrum shape         329        1217 spectrum_filted         329        1217
+ spectrum_p shape:         329        1217
+ spectrum shape         329        1217 spectrum_filted         329        1217
+ spectrum_p shape:         329        1326
+ spectrum shape         329        1326 spectrum_filted         329        1326
+ spectrum_p shape:         329        1326
+ spectrum shape         329        1326 spectrum_filted         329        1326
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ it----        2500
+ fld_u minmax values:  -11.5668430       12.2548742    
+ fld_v minmax values:  -11.6669626       12.0228300    
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ it----        3000
+ fld_u minmax values:  -6.81419516       6.51777983    
+ fld_v minmax values:  -6.64051390       6.53901625    
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ it----        3500
+ fld_u minmax values:  -4.01553631       4.15424728    
+ fld_v minmax values:  -3.83277607       4.35987902    
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ it----        4000
+ fld_u minmax values:  -3.10910010       2.78066945    
+ fld_v minmax values:  -3.07593632       2.77611589    
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ it----        4500
+ fld_u minmax values:  -2.59543037       2.16908693    
+ fld_v minmax values:  -2.25965405       2.47296572    
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ it----        5000
+ fld_u minmax values:  -1.90054083       1.78358352    
+ fld_v minmax values:  -1.84999037       1.90805817    
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ it----        5500
+ fld_u minmax values:  -1.01063609       1.03090966    
+ fld_v minmax values:  -1.09590447      0.938555956    
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ spectrum_p shape:         329        1409
+ spectrum shape         329        1409 spectrum_filted         329        1409
+ Elapsed time to add source                 9.71221947E-04
+ Elapsed time to save boundary              1.88415535E-02
+ Elapsed time to update field               9.48725700    
+ Elapsed time to evolve field               4.25720209E-04
+ Elapsed time to extract field              3.26202400E-02
+ Viewing the snapshots (if written) with SU ximage/xmovie:
+ ximage < snap_sfield%*  n1=329 perc=99
+ xmovie < snap_sfield%*  n1=329 n2=1409 clip=?e-?? loop=2 title=%g
+ DATA_FORMAT is NOT found, take default: su
+ Found proper SU scalel = 1.00000000
+ SU_SCALEL is NOT found, take default: 1.00000000
+ Found proper SU scalco = 1.00000000
+ SU_SCALCO is NOT found, take default: 1.00000000
+ SU data write success.
+         END LOOP OVER SHOTS        
+ ===================================
+   SeisJIMU has finished the job   
+===================================
+ System date: 08/24/2025
+System time: 22:29:23
+System timezone: +03:00
+                        

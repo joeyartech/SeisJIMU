@@ -1,34 +1,37 @@
 MODEL_SIZE              '101 101 1'
 MODEL_SPACING           '20 20 1'
 FILE_MODEL              'simple'
-MODEL_ATTRIBUTES        'vp rho'
+MODEL_ATTRIBUTES        vp  #'vp rho'
 
 IS_FREESURFACE          F
 
 ACQUI_GEOMETRY          spread
-FS                      '50 505 500'
-FR                      '40 10  0'
+FS                      '40 500 500'
 DR                      '0  20 0'
+#FR                      '40 10  0'
+#FR                      '40 1500  0'
+#NR                      1
+FR                      '40 500  0'
 NR                      100
 
-SCOMP                   vz
+SCOMP                   p
 RCOMP                   p #'p vz'
 
-#WAVELET_TYPE            ricker                                                              
+WAVELET_TYPE            ricker
 #T0                      0.5                                                                 
 #FILE_WAVELET            'fricker_dt6000.su' 
 
 IF_BLOOM        F
 IF_HICKS        F
 
-#IF_USE_RANDOM   F
+IF_USE_RANDOM   F
 
 NT           500
 DT           0.006
 FPEAK        7
 #RDT			0.006
 
-#SNAPSHOT     'p vz'
+SNAPSHOT     p
 #NSNAPSHOT    50
 
 IF_USE_CHECKPOINT   F

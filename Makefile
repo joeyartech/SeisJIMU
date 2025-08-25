@@ -34,9 +34,13 @@ fwi :
 	(cd FWI; make)
 	@printf "\n"
 
+rtm :
+	(cd RTM; make)
+	@printf "\n"
+
 
 clean :
-	-rm FWD/*.o FWI/*.o WPI/*.o
+	-rm FWD/*.o FWI/*.o RTM/*.o
 
 cleanmod :
 	(cd Modules/System; make clean)

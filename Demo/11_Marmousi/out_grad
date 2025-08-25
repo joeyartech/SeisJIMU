@@ -1,0 +1,645 @@
+ MPIWorld info:
+  MPI_INIT_THREAD level:           0
+  Number of MPI processors:          10
+  Max number of OMP threads / processor:          10
+ Working directory: (pwd)
+/home/g202321550/Mycodes/SeisJIMU_VisAC/SeisJIMU/Demo/11_Marmousi
+ Using executable: (ls -l $exe)
+lrwxrwxrwx 1 g202321550 g202321550 50 Jun 24 13:41 ../../exe/FWI -> fwi_VisAC2nd_FDSG_O4_velocities-density_Wolfe_NLCG
+ Git Commit: df7f215
+ Git Branch: Poynting
+ Compiler: gfortran v13.3.0
+ Version: 13.3.0
+ Endianness:         1234
+ System date: 06/24/2025
+System time: 14:05:29
+System timezone: +03:00
+                        
+ ======================================
+       WELCOME TO SeisJIMU FWI        
+======================================
+ Setup file: setup_grad.in
+ DIR_IN is NOT found, take default: ./
+ Input directory: ./
+ DIR_OUT : ./results_grad
+ Output directory:./results_grad/
+ Invoked field & propagator modules info : 
+Time-domain ISOtropic 2D/3D ACoustic propagation
+2nd-order Pressure formulation
+Vireux-Levandar Staggered-Grid Finite-Difference (FDSG) method
+Cartesian O(x⁴,t²) stencil
+CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal
+   -> dt ≤ 0.5*Vmax/dx
+Required model attributes: vp, rho
+Required field components: p, p_prev, p_next
+Required boundary layer thickness: 2
+Poynting definitions: Esq_gradphi
+Imaging conditions: ipp ibksc ifwsc (P-Pxcorr of backward & forward scattering)
+Energy terms: Σ_shot ∫ sfield%p² dt
+ FDSG Coef : 1.12500000, -4.16666679E-02
+ IF_CHECKPOINT is NOT found, take default: F
+ IF_USE_CHECKPOINT : F
+ DIR_CHECKPOINT (DIR_CHP) is NOT found, take default: ./checkpoints/
+ MODEL_SIZE (NZXY) : 281 1361 1
+ MODEL_SPACING (DZXY) : 12.5 12.5 1
+ 2D geometry
+ MODEL_ORIGIN (OZXY) is NOT found, take default: 0. 0. 0.
+ FILE_MODEL : init2
+ MODEL_ATTRIBUTES : vp
+ MODEL_ATTRIBUTES_WRITE is NOT found, take default: vp
+ vp model is read.
+ IS_FREESURFACE : F
+ FILE_BATHYMETRY (FILE_BATHY) is NOT found, take 0, '' or F
+ FILE_TOPOGRAPHY (FILE_TOPO) : topo
+ bathy minmax value: 450.000000 , 450.000000
+ water or air layer is from #1 to #(floor(bathy/dz)+1) grid points in depth
+ Freeze zone is set from FILE_BATHYMETRY or FILE_TOPOGRAPHY.
+ FILE_FREEZE_ZONE is NOT found, take 0, '' or F
+ [40m[33m[1mWARNING:[0m Constant rho model (1000 kg/m³) is allocated by propagator.
+ FILE_DATA_PREFIX : ./results_fwd/Ru_Shot
+ SHOT_INDEX (ISHOT) : 1:1:30
+ Number of processors = 10
+Number of shots = 30
+ FILE_SHOT_BATCH is NOT found, take 0, '' or F
+ SHOT_BATCH_SIZE (NBATCH) : 30
+ SHOT_SAMPLE_METHOD is NOT found, take default: cyclic
+ Proc0001 has 3 assigned shots
+ See file "shotlist.log" for details.
+ PRECONDITIONING (PRECO) is NOT found, take 0, '' or F
+ Invoked parametrizer module info : 
+Parameterization: velocities-density
+Allowed pars: vp, vs, rho
+Available empirical law: Gardner, Castagna, Poisson                                                                                                                                                                                                                                                                                                                                                                                                              
+ EMPIRICAL_LAW is NOT found, take 0, '' or F
+ PARAMETER : vp:1028:4700
+ DATA_NORMS (DNORMS) is NOT found, take default: L1 L2sq
+ DATA_NORM_WEIGHTS (DWEIGHTS) is NOT found, take default: 0. 1.
+ DATA_NORM_NORMALIZERS is NOT found in setup_grad.in
+ PARAMETER_NORMS (XNORMS) is NOT found, take default: none
+ PARAMETER_NORM_WEIGHTS (XWEIGHTS) is NOT found, take default: 0.
+ FILE_PRIOR_MODEL is NOT found, take 0, '' or F
+ ===== START LOOP OVER SHOTS =====
+ FILE_DATA_PREFIX : ./results_fwd/Ru_Shot
+ ntr, ns, file_size = 600, 4600, 2796000
+ Shot0004 will read 600 traces, each trace has 4600 samples.
+ Shot0003 will read 600 traces, each trace has 4600 samples.
+ Shot0010 will read 600 traces, each trace has 4600 samples.
+ Shot0008 will read 600 traces, each trace has 4600 samples.
+ Shot0009 will read 600 traces, each trace has 4600 samples.
+ Shot0001 will read 600 traces, each trace has 4600 samples.
+ Shot0007 will read 600 traces, each trace has 4600 samples.
+ Shot0005 will read 600 traces, each trace has 4600 samples.
+ Shot0006 will read 600 traces, each trace has 4600 samples.
+ Shot0002 will read 600 traces, each trace has 4600 samples.
+ SU data read success.
+ FILTER_DATA (BFILT) is NOT found, take default: none
+ PEAK_FREQUENCY (FPEAK) : 6.4
+ MAX_FREQUENCY (FMAX) is NOT found, take default: 12.8000002
+ FILE_SRC_TIME_FUNC (FILE_WAVELET) is NOT found, take 0, '' or F
+ WAVELET_TYPE : ricker
+ Use Ricker wavelet
+ RICKER_DELAYTIME (T0) is NOT found, take default: 0.156250000
+ WAVELET_SCALING is NOT found, take 0, '' or F
+ SU data write success.
+ IF_HICKS is NOT found, take default: T
+ MODEL_REFERENCE is NOT found in setup_grad.in
+ Reference vp value =   1695.27393    
+ Reference rho value =   1000.00000    
+ =================================
+ Shot0001 info:
+ =================================
+   nt,dt:        4600   1.50000001E-03
+ ---------------------------------
+ S/R positions after removing m%oz,ox,iy,
+   sz,iz:   200.000000              17
+   sx,ix:   1200.00000              97
+   sy,iy:   0.00000000               1
+   ifz,ilz:          13          21
+   ifx,ilx:          93         101
+   ify,ily:           1           1
+ ---------------------------------
+   minmax rz,iz:   200.000000       200.000000              17          17
+   minmax rx,ix:   0.00000000       14975.0000               1        1199
+   minmax ry,iy:   0.00000000       0.00000000               1           1
+   minmax ifz,ilz:          13          13          21          21
+   minmax ifx,ilx:          -3        1195           5        1203
+   minmax ify,ily:           1           1           1           1
+   nrcv:         600
+ ---------------------------------
+ Modeling Shot# Shot0001
+ ADD_APERTURE is NOT found, take default: -99999 99999 -99999 99999
+ REF_BNDLAYER_THICKNESS (NCPML) is NOT found, take default: 20
+ Computebox Size = [ifz,ilz] x [ifx,ilx] x [ify,ily] =       463561
+   [ifz,ilz],nz:         -23         305         329
+   [ifx,ilx],nx:         -23        1385        1409
+   [ify,ilx],ny:           1           1           1
+ Inner area of Computebox:
+   ioz,mz:           1         281
+   iox,mx:           1        1361
+   ioy,my:           1           1
+ Computebox value ranges:
+ vp   1500.00000       4307.16943    
+ rho   1000.00000       1000.00000    
+ ip   1500000.00       4307169.50    
+ CFL value: 0.852775991
+ SNAPSHOT : p
+ REF_NUMBER_SNAPSHOT (NSNAPSHOT) is NOT found, take default: 50
+ SNAPSHOT : p
+ REF_NUMBER_SNAPSHOT (NSNAPSHOT) is NOT found, take default: 50
+ REF_RECT_TIME_INTEVAL (RDT) is NOT found, take default: 3.90625000E-02
+ rdt, irdt = 3.90000008E-02, 26
+ POYNTING_DEF is NOT found, take default: Esq_gradphi
+ ----  Solving Au=s  ----
+ IF_BLOOM is NOT found, take default: T
+ IF_BLOOM is NOT found, take default: T
+ it----         500
+ fld_u minmax values:  -21.2526474       41.5254784    
+ fld_v minmax values:  -31.1726990       37.5027390    
+ it----        1000
+ fld_u minmax values:  -32.6741409       39.0352707    
+ fld_v minmax values:  -26.4052353       42.0784187    
+ it----        1500
+ fld_u minmax values:  -58.7705650       42.5073166    
+ fld_v minmax values:  -44.9646683       57.6510468    
+ it----        2000
+ fld_u minmax values:  -31.8029613       23.3283024    
+ fld_v minmax values:  -28.1909409       30.5164719    
+ it----        2500
+ fld_u minmax values:  -21.5864086       22.0155354    
+ fld_v minmax values:  -24.1362743       16.1636906    
+ it----        3000
+ fld_u minmax values:  -6.19770336       8.26901436    
+ fld_v minmax values:  -8.07634640       6.71327209    
+ it----        3500
+ fld_u minmax values:  -6.37440109       4.42896128    
+ fld_v minmax values:  -5.79890060       5.74742365    
+ it----        4000
+ fld_u minmax values:  -1.49891198       1.61079931    
+ fld_v minmax values:  -1.63849187       1.39465642    
+ it----        4500
+ fld_u minmax values:  -1.15409386      0.925871193    
+ fld_v minmax values:  -1.06467664       1.09144878    
+ Elapsed time to add source                 3.39202886E-03
+ Elapsed time to save boundary              9.45083648E-02
+ Elapsed time to update field               15.6369953    
+ Elapsed time to evolve field               9.56726086E-04
+ Elapsed time to extract field             0.100741580    
+ Viewing the snapshots (if written) with SU ximage/xmovie:
+ ximage < snap_sfield%*  n1=329 perc=99
+ xmovie < snap_sfield%*  n1=329 n2=1409 clip=?e-?? loop=2 title=%g
+ DATA_FORMAT is NOT found, take default: su
+ Found proper SU scalel = 1.00000000
+ SU_SCALEL is NOT found, take default: 1.00000000
+ Found proper SU scalco = 1.00000000
+ SU_SCALCO is NOT found, take default: 1.00000000
+ SU data write success.
+ JOB : gradient
+ IF_BLOOM is NOT found, take default: T
+ IF_BLOOM is NOT found, take default: T
+ ----  Computing obj func & dadj  ----
+ WEIGHTING (WEI) : none
+ WEIGHTING_OPERATIONS (WEI_OP) is NOT found, take default: multiply
+ SU data write success.
+ DATA_NORM (DNORM) is NOT found, take default: L2
+ SU data write success.
+ ----  Solving adjoint eqn & xcorrelate  ----
+ it----        4500
+ fld_q minmax values:  -7238.52783       7014.71875    
+ fld_p minmax values:  -4494.80957       9741.87500    
+ fld_v minmax values:  -1.04404855       1.07306492    
+ fld_u minmax values:  -1.13391221      0.911883473    
+ it----        4000
+ fld_q minmax values:  -26088.8125       22341.4609    
+ fld_p minmax values:  -28463.3203       19225.3125    
+ fld_v minmax values:  -1.63326061       1.34819484    
+ fld_u minmax values:  -1.64905596       1.49610305    
+ Shot0019 will read 600 traces, each trace has 4600 samples.
+ Shot0020 will read 600 traces, each trace has 4600 samples.
+ it----        3500
+ fld_q minmax values:  -36044.5898       33224.0117    
+ fld_p minmax values:  -32076.2754       30593.2910    
+ fld_v minmax values:  -5.83701801       6.20473576    
+ fld_u minmax values:  -6.74126244       4.43868256    
+ it----        3000
+ fld_q minmax values:  -34747.3477       40907.7695    
+ fld_p minmax values:  -37905.7930       41623.2695    
+ fld_v minmax values:  -7.35876131       6.81488180    
+ fld_u minmax values:  -5.25009727       8.08703423    
+ it----        2500
+ fld_q minmax values:  -52310.3555       53569.9141    
+ fld_p minmax values:  -68240.2734       38130.6758    
+ fld_v minmax values:  -27.7917976       22.5662556    
+ fld_u minmax values:  -27.4658623       22.6542301    
+ it----        2000
+ fld_q minmax values:  -70991.9297       77057.3750    
+ fld_p minmax values:  -72935.8438       85097.0781    
+ fld_v minmax values:  -27.9055843       35.1677361    
+ fld_u minmax values:  -31.5032787       33.6024437    
+ it----        1500
+ fld_q minmax values:  -130738.914       124602.633    
+ fld_p minmax values:  -138486.531       114997.500    
+ fld_v minmax values:  -46.7536583       61.5514336    
+ fld_u minmax values:  -47.0660019       60.8852921    
+ Shot0029 will read 600 traces, each trace has 4600 samples.
+ Shot0030 will read 600 traces, each trace has 4600 samples.
+ it----        1000
+ fld_q minmax values:  -100774.719       151848.859    
+ fld_p minmax values:  -139839.047       132739.344    
+ fld_v minmax values:  -43.9495468       35.0339661    
+ fld_u minmax values:  -28.8601475       47.6134682    
+ it----         500
+ fld_q minmax values:  -175104.984       134252.359    
+ fld_p minmax values:  -157127.359       148124.312    
+ fld_v minmax values:  -124.755722       119.912155    
+ fld_u minmax values:  -174.011627       184.871094    
+ Elapsed time to evolve field           6.83593738E-04
+ Elapsed time to load boundary          7.78869614E-02
+ Elapsed time to update field           18.0498962    
+ Elapsed time to rm source              4.12597647E-03
+ Elapsed time -----------------------
+ Elapsed time to add adj & virtual src      0.305444330    
+ Elapsed time to update adj field            23.4230537    
+ Elapsed time to evolve adj field            9.46044922E-04
+ Elapsed time to extract fields              0.00000000    
+ Elapsed time to compute Poynting vectors    0.00000000    
+ Elapsed time to correlate                   9.61669907E-02
+ Viewing the snapshots (if written) with SU ximage/xmovie:
+ ximage < snap_rfield%*  n1=329 perc=99
+ xmovie < snap_rfield%*  n1=329 n2=1409 clip=?e-?? loop=2 title=%g
+ ximage < snap_*  n1=281 perc=99
+ xmovie < snap_*  n1=281 n2=1361 clip=?e-?? loop=2 title=%g
+ ----  Assemble  ----
+ ---------------------------------
+ FILE_DATA_PREFIX : ./results_fwd/Ru_Shot
+ ntr, ns, file_size = 600, 4600, 2796000
+ Shot0011 will read 600 traces, each trace has 4600 samples.
+ SU data read success.
+ FILTER_DATA (BFILT) is NOT found, take default: none
+ PEAK_FREQUENCY (FPEAK) : 6.4
+ MAX_FREQUENCY (FMAX) is NOT found, take default: 12.8000002
+ FILE_SRC_TIME_FUNC (FILE_WAVELET) is NOT found, take 0, '' or F
+ WAVELET_TYPE : ricker
+ Use Ricker wavelet
+ RICKER_DELAYTIME (T0) is NOT found, take default: 0.156250000
+ WAVELET_SCALING is NOT found, take 0, '' or F
+ SU data write success.
+ =================================
+ Shot0011 info:
+ =================================
+   nt,dt:        4600   1.50000001E-03
+ ---------------------------------
+ S/R positions after removing m%oz,ox,iy,
+   sz,iz:   200.000000              17
+   sx,ix:   5200.00000             417
+   sy,iy:   0.00000000               1
+   ifz,ilz:          13          21
+   ifx,ilx:         413         421
+   ify,ily:           1           1
+ ---------------------------------
+   minmax rz,iz:   200.000000       200.000000              17          17
+   minmax rx,ix:   0.00000000       14975.0000               1        1199
+   minmax ry,iy:   0.00000000       0.00000000               1           1
+   minmax ifz,ilz:          13          13          21          21
+   minmax ifx,ilx:          -3        1195           5        1203
+   minmax ify,ily:           1           1           1           1
+   nrcv:         600
+ ---------------------------------
+ Modeling Shot# Shot0011
+ ADD_APERTURE is NOT found, take default: -99999 99999 -99999 99999
+ REF_BNDLAYER_THICKNESS (NCPML) is NOT found, take default: 20
+ Computebox Size = [ifz,ilz] x [ifx,ilx] x [ify,ily] =       463561
+   [ifz,ilz],nz:         -23         305         329
+   [ifx,ilx],nx:         -23        1385        1409
+   [ify,ilx],ny:           1           1           1
+ Inner area of Computebox:
+   ioz,mz:           1         281
+   iox,mx:           1        1361
+   ioy,my:           1           1
+ Computebox value ranges:
+ vp   1500.00000       4307.16943    
+ rho   1000.00000       1000.00000    
+ ip   1500000.00       4307169.50    
+ CFL value: 0.852775991
+ SNAPSHOT : p
+ REF_NUMBER_SNAPSHOT (NSNAPSHOT) is NOT found, take default: 50
+ SNAPSHOT : p
+ REF_NUMBER_SNAPSHOT (NSNAPSHOT) is NOT found, take default: 50
+ REF_RECT_TIME_INTEVAL (RDT) is NOT found, take default: 3.90625000E-02
+ rdt, irdt = 3.90000008E-02, 26
+ POYNTING_DEF is NOT found, take default: Esq_gradphi
+ ----  Solving Au=s  ----
+ IF_BLOOM is NOT found, take default: T
+ IF_BLOOM is NOT found, take default: T
+ it----         500
+ fld_u minmax values:  -21.4753075       42.0683746    
+ fld_v minmax values:  -32.0357780       37.9101067    
+ Shot0013 will read 600 traces, each trace has 4600 samples.
+ Shot0012 will read 600 traces, each trace has 4600 samples.
+ Shot0015 will read 600 traces, each trace has 4600 samples.
+ it----        1000
+ fld_u minmax values:  -35.1916313       42.4191093    
+ fld_v minmax values:  -28.6972389       45.3923683    
+ Shot0018 will read 600 traces, each trace has 4600 samples.
+ Shot0017 will read 600 traces, each trace has 4600 samples.
+ Shot0014 will read 600 traces, each trace has 4600 samples.
+ Shot0016 will read 600 traces, each trace has 4600 samples.
+ it----        1500
+ fld_u minmax values:  -57.8141823       41.8048210    
+ fld_v minmax values:  -44.3152084       56.6918144    
+ it----        2000
+ fld_u minmax values:  -34.1066933       25.8136253    
+ fld_v minmax values:  -29.3010731       33.3246231    
+ it----        2500
+ fld_u minmax values:  -10.5990419       9.48226357    
+ fld_v minmax values:  -11.2286501       7.50406218    
+ it----        3000
+ fld_u minmax values:  -1.88497686       2.10840607    
+ fld_v minmax values:  -1.82932448       1.86646974    
+ it----        3500
+ fld_u minmax values:  -1.27773094       1.24151468    
+ fld_v minmax values:  -1.39614737       1.18143559    
+ it----        4000
+ fld_u minmax values: -0.566102684      0.468774527    
+ fld_v minmax values: -0.540878356      0.436834723    
+ it----        4500
+ fld_u minmax values: -0.293060035      0.303707153    
+ fld_v minmax values: -0.346228331      0.318514466    
+ Elapsed time to add source                 3.19824228E-03
+ Elapsed time to save boundary              9.15039033E-02
+ Elapsed time to update field               17.0916557    
+ Elapsed time to evolve field               1.06811523E-03
+ Elapsed time to extract field             0.102246091    
+ Viewing the snapshots (if written) with SU ximage/xmovie:
+ ximage < snap_sfield%*  n1=329 perc=99
+ xmovie < snap_sfield%*  n1=329 n2=1409 clip=?e-?? loop=2 title=%g
+ SU data write success.
+ JOB : gradient
+ IF_BLOOM is NOT found, take default: T
+ IF_BLOOM is NOT found, take default: T
+ ----  Computing obj func & dadj  ----
+ WEIGHTING (WEI) : none
+ WEIGHTING_OPERATIONS (WEI_OP) is NOT found, take default: multiply
+ SU data write success.
+ SU data write success.
+ ----  Solving adjoint eqn & xcorrelate  ----
+ it----        4500
+ fld_q minmax values:  -1277.88220       5116.01025    
+ fld_p minmax values:  -1447.18762       1295.47473    
+ fld_v minmax values: -0.314598441      0.297569811    
+ fld_u minmax values: -0.294677496      0.283441573    
+ it----        4000
+ fld_q minmax values:  -3462.92798       3360.71167    
+ fld_p minmax values:  -2674.94482       2896.83960    
+ fld_v minmax values: -0.489684016      0.437483728    
+ fld_u minmax values: -0.623210311      0.422421038    
+ it----        3500
+ fld_q minmax values:  -9360.91797       9019.46582    
+ fld_p minmax values:  -9320.26367       8585.51172    
+ fld_v minmax values:  -1.48502827       1.18045807    
+ fld_u minmax values:  -1.44768608       1.19119477    
+ it----        3000
+ fld_q minmax values:  -19727.2832       22667.6094    
+ fld_p minmax values:  -20953.1602       20445.2305    
+ fld_v minmax values:  -1.98785889       1.66946721    
+ fld_u minmax values:  -1.49825227       1.99094272    
+ it----        2500
+ fld_q minmax values:  -29336.3223       24705.2676    
+ fld_p minmax values:  -27609.7676       27213.4180    
+ fld_v minmax values:  -10.4910898       7.12839651    
+ fld_u minmax values:  -8.71172428       9.32608891    
+ it----        2000
+ fld_q minmax values:  -71348.4688       67190.6094    
+ fld_p minmax values:  -65873.8047       70306.5156    
+ fld_v minmax values:  -28.1904736       33.8730965    
+ fld_u minmax values:  -34.0624008       26.9537277    
+ it----        1500
+ fld_q minmax values:  -127661.289       122848.875    
+ fld_p minmax values:  -136375.656       97717.4453    
+ fld_v minmax values:  -32.3733292       57.2941551    
+ fld_u minmax values:  -50.1985474       49.1816978    
+ it----        1000
+ fld_q minmax values:  -114066.914       162175.000    
+ fld_p minmax values:  -136192.953       154286.688    
+ fld_v minmax values:  -42.8672142       35.5675354    
+ fld_u minmax values:  -26.5972633       47.3582115    
+ it----         500
+ fld_q minmax values:  -160993.438       139862.688    
+ fld_p minmax values:  -156854.031       132638.062    
+ fld_v minmax values:  -56.6861572       37.3698311    
+ fld_u minmax values:  -51.3857117       50.0605698    
+ Elapsed time to evolve field           6.34765602E-04
+ Elapsed time to load boundary          6.71508759E-02
+ Elapsed time to update field           17.4186516    
+ Elapsed time to rm source              3.49121098E-03
+ Elapsed time -----------------------
+ Elapsed time to add adj & virtual src      0.279101551    
+ Elapsed time to update adj field            20.3232422    
+ Elapsed time to evolve adj field            9.03320324E-04
+ Elapsed time to extract fields              0.00000000    
+ Elapsed time to compute Poynting vectors    0.00000000    
+ Elapsed time to correlate                   9.03442353E-02
+ Viewing the snapshots (if written) with SU ximage/xmovie:
+ ximage < snap_rfield%*  n1=329 perc=99
+ xmovie < snap_rfield%*  n1=329 n2=1409 clip=?e-?? loop=2 title=%g
+ ximage < snap_*  n1=281 perc=99
+ xmovie < snap_*  n1=281 n2=1361 clip=?e-?? loop=2 title=%g
+ ----  Assemble  ----
+ ---------------------------------
+ FILE_DATA_PREFIX : ./results_fwd/Ru_Shot
+ ntr, ns, file_size = 600, 4600, 2796000
+ Shot0021 will read 600 traces, each trace has 4600 samples.
+ SU data read success.
+ FILTER_DATA (BFILT) is NOT found, take default: none
+ PEAK_FREQUENCY (FPEAK) : 6.4
+ MAX_FREQUENCY (FMAX) is NOT found, take default: 12.8000002
+ FILE_SRC_TIME_FUNC (FILE_WAVELET) is NOT found, take 0, '' or F
+ WAVELET_TYPE : ricker
+ Use Ricker wavelet
+ RICKER_DELAYTIME (T0) is NOT found, take default: 0.156250000
+ WAVELET_SCALING is NOT found, take 0, '' or F
+ SU data write success.
+ =================================
+ Shot0021 info:
+ =================================
+   nt,dt:        4600   1.50000001E-03
+ ---------------------------------
+ S/R positions after removing m%oz,ox,iy,
+   sz,iz:   200.000000              17
+   sx,ix:   9200.00000             737
+   sy,iy:   0.00000000               1
+   ifz,ilz:          13          21
+   ifx,ilx:         733         741
+   ify,ily:           1           1
+ ---------------------------------
+   minmax rz,iz:   200.000000       200.000000              17          17
+   minmax rx,ix:   0.00000000       14975.0000               1        1199
+   minmax ry,iy:   0.00000000       0.00000000               1           1
+   minmax ifz,ilz:          13          13          21          21
+   minmax ifx,ilx:          -3        1195           5        1203
+   minmax ify,ily:           1           1           1           1
+   nrcv:         600
+ ---------------------------------
+ Modeling Shot# Shot0021
+ ADD_APERTURE is NOT found, take default: -99999 99999 -99999 99999
+ REF_BNDLAYER_THICKNESS (NCPML) is NOT found, take default: 20
+ Computebox Size = [ifz,ilz] x [ifx,ilx] x [ify,ily] =       463561
+   [ifz,ilz],nz:         -23         305         329
+   [ifx,ilx],nx:         -23        1385        1409
+   [ify,ilx],ny:           1           1           1
+ Inner area of Computebox:
+   ioz,mz:           1         281
+   iox,mx:           1        1361
+   ioy,my:           1           1
+ Computebox value ranges:
+ vp   1500.00000       4307.16943    
+ rho   1000.00000       1000.00000    
+ ip   1500000.00       4307169.50    
+ CFL value: 0.852775991
+ SNAPSHOT : p
+ REF_NUMBER_SNAPSHOT (NSNAPSHOT) is NOT found, take default: 50
+ SNAPSHOT : p
+ REF_NUMBER_SNAPSHOT (NSNAPSHOT) is NOT found, take default: 50
+ REF_RECT_TIME_INTEVAL (RDT) is NOT found, take default: 3.90625000E-02
+ rdt, irdt = 3.90000008E-02, 26
+ POYNTING_DEF is NOT found, take default: Esq_gradphi
+ ----  Solving Au=s  ----
+ IF_BLOOM is NOT found, take default: T
+ IF_BLOOM is NOT found, take default: T
+ it----         500
+ fld_u minmax values:  -23.9538670       47.4557152    
+ fld_v minmax values:  -35.1421890       42.6666985    
+ Shot0023 will read 600 traces, each trace has 4600 samples.
+ Shot0025 will read 600 traces, each trace has 4600 samples.
+ it----        1000
+ fld_u minmax values:  -37.8394356       40.1146584    
+ fld_v minmax values:  -25.8202705       45.7904320    
+ Shot0022 will read 600 traces, each trace has 4600 samples.
+ Shot0028 will read 600 traces, each trace has 4600 samples.
+ Shot0027 will read 600 traces, each trace has 4600 samples.
+ it----        1500
+ fld_u minmax values:  -38.3818588       25.5356312    
+ fld_v minmax values:  -36.1329803       31.9964867    
+ Shot0026 will read 600 traces, each trace has 4600 samples.
+ Shot0024 will read 600 traces, each trace has 4600 samples.
+ it----        2000
+ fld_u minmax values:  -9.82507706       14.2442188    
+ fld_v minmax values:  -12.7522202       13.3176012    
+ it----        2500
+ fld_u minmax values:  -8.00608349       8.68749142    
+ fld_v minmax values:  -6.75437212       9.72230244    
+ it----        3000
+ fld_u minmax values:  -9.82362080       8.56746960    
+ fld_v minmax values:  -7.66671085       10.1599607    
+ it----        3500
+ fld_u minmax values:  -10.3676414       7.25738382    
+ fld_v minmax values:  -9.40450096       9.28647327    
+ it----        4000
+ fld_u minmax values:  -1.56693983       1.44528973    
+ fld_v minmax values:  -1.35451233       1.13375330    
+ it----        4500
+ fld_u minmax values: -0.272569388      0.259942830    
+ fld_v minmax values: -0.278784633      0.265540272    
+ Elapsed time to add source                 2.78320303E-03
+ Elapsed time to save boundary              8.05053711E-02
+ Elapsed time to update field               15.6788940    
+ Elapsed time to evolve field               9.15527344E-04
+ Elapsed time to extract field              9.06860381E-02
+ Viewing the snapshots (if written) with SU ximage/xmovie:
+ ximage < snap_sfield%*  n1=329 perc=99
+ xmovie < snap_sfield%*  n1=329 n2=1409 clip=?e-?? loop=2 title=%g
+ SU data write success.
+ JOB : gradient
+ IF_BLOOM is NOT found, take default: T
+ IF_BLOOM is NOT found, take default: T
+ ----  Computing obj func & dadj  ----
+ WEIGHTING (WEI) : none
+ WEIGHTING_OPERATIONS (WEI_OP) is NOT found, take default: multiply
+ SU data write success.
+ SU data write success.
+ ----  Solving adjoint eqn & xcorrelate  ----
+ it----        4500
+ fld_q minmax values:  -2916.40405       3430.32129    
+ fld_p minmax values:  -1678.99048       2622.92114    
+ fld_v minmax values: -0.261855364      0.262670875    
+ fld_u minmax values: -0.249345094      0.274334162    
+ it----        4000
+ fld_q minmax values:  -12454.8809       9986.32617    
+ fld_p minmax values:  -8732.64355       10380.2285    
+ fld_v minmax values:  -1.24068272       1.13397038    
+ fld_u minmax values: -0.761958957      0.978535831    
+ it----        3500
+ fld_q minmax values:  -33376.4180       42332.7891    
+ fld_p minmax values:  -43153.6328       30290.9746    
+ fld_v minmax values:  -8.58950996       9.51172256    
+ fld_u minmax values:  -9.97019100       7.29571104    
+ it----        3000
+ fld_q minmax values:  -38274.5820       58318.0586    
+ fld_p minmax values:  -48990.2031       54443.2500    
+ fld_v minmax values:  -7.80959940       10.1523199    
+ fld_u minmax values:  -8.34846210       9.80353737    
+ it----        2500
+ fld_q minmax values:  -68380.6328       73203.2266    
+ fld_p minmax values:  -69304.4141       62817.0625    
+ fld_v minmax values:  -8.42885303       6.39837503    
+ fld_u minmax values:  -6.97039461       8.06438446    
+ it----        2000
+ fld_q minmax values:  -89104.1953       62746.5352    
+ fld_p minmax values:  -84128.6250       77281.0156    
+ fld_v minmax values:  -13.2007990       13.4226046    
+ fld_u minmax values:  -14.6248226       10.5596094    
+ it----        1500
+ fld_q minmax values:  -163918.969       124068.477    
+ fld_p minmax values:  -162672.453       125557.547    
+ fld_v minmax values:  -30.5927372       54.3225784    
+ fld_u minmax values:  -47.1641769       46.8843880    
+ it----        1000
+ fld_q minmax values:  -207711.719       253920.953    
+ fld_p minmax values:  -251747.422       202893.234    
+ fld_v minmax values:  -45.1924324       37.5938148    
+ fld_u minmax values:  -39.8750114       41.8478241    
+ it----         500
+ fld_q minmax values:  -233767.094       285144.062    
+ fld_p minmax values:  -189053.203       281076.938    
+ fld_v minmax values:  -104.679436       113.442177    
+ fld_u minmax values:  -178.998535       174.553864    
+ Elapsed time to evolve field           4.76074230E-04
+ Elapsed time to load boundary          6.77124038E-02
+ Elapsed time to update field           17.8403206    
+ Elapsed time to rm source              3.72314453E-03
+ Elapsed time -----------------------
+ Elapsed time to add adj & virtual src      0.277075201    
+ Elapsed time to update adj field            20.2697144    
+ Elapsed time to evolve adj field            6.71386719E-04
+ Elapsed time to extract fields              0.00000000    
+ Elapsed time to compute Poynting vectors    0.00000000    
+ Elapsed time to correlate                   9.18334946E-02
+ Viewing the snapshots (if written) with SU ximage/xmovie:
+ ximage < snap_rfield%*  n1=329 perc=99
+ xmovie < snap_rfield%*  n1=329 n2=1409 clip=?e-?? loop=2 title=%g
+ ximage < snap_*  n1=281 perc=99
+ xmovie < snap_*  n1=281 n2=1361 clip=?e-?? loop=2 title=%g
+ ----  Assemble  ----
+ ---------------------------------
+         END LOOP OVER SHOTS        
+ Stacked misfit 146933.188
+ Stacked but not yet linesearch-scaled fobj%dnorms :  L1=    146933.188      L2sq=    146933.188    
+ SMOOTHING (SMTH) : none
+ GRADIENT_SOFT_MASK (MASK) is NOT found, take 0, '' or F
+ PRECONDITIONING (PRECO) is NOT found, take default: z^1
+ Will precondition the gradient by z^1
+ Linesearch based on a bracketing - dichotomy algoritm
+Steplength (alpha) judged by Wolfe conditions
+ Wolfe condition parameters: c1=9.99999975E-05, c2=0.899999976
+ MAX_SEARCH is NOT found, take default: 12
+ WOLFE_C2 is NOT found, take default: 0.9
+ LINESEARCHER_SCALING (LS_SCALING) is NOT found, take default: by total_volume/||pg(1)||1
+ Linesearch scaler= 2.12926648E-06
+ qp0%f, ║g║₁ = 0.312859923, 104.156418
+ JOB : gradient
+ ===================================
+   SeisJIMU has finished the job   
+===================================
+ System date: 06/24/2025
+System time: 14:24:07
+System timezone: +03:00
+                        

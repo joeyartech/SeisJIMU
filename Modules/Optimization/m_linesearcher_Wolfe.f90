@@ -19,7 +19,8 @@ use m_Kernel
                                    'Steplength (alpha) judged by Wolfe conditions'
 
     !Wolfe conditions parameters (Nocedal value)
-    real,parameter :: c1=1e-4, c2=0.9 !c2=0.9 for (quasi-)Newton method, 0.1 for NLCG
+    real,parameter :: c1=1e-4 !, c2=0.9 !c2=0.9 for (quasi-)Newton method, 0.1 for NLCG
+real :: c2=0.9
     !Bracketting parameter (Gilbert value)
     real,parameter :: multiplier=10.
     
@@ -68,6 +69,8 @@ use m_Kernel
 
         !read setup        
         self%max_search=setup%get_int('MAX_SEARCH',o_default='12')
+
+c2=setup%get_real('WOLFE_C2',o_default='0.9')
 
     end subroutine
     
@@ -147,13 +150,7 @@ use m_Kernel
             !if_1st_cond = (pert%f <= curr%f)
             if_2nd_cond = (abs(pert%g_dot_d) <= c2*abs(curr%g_dot_d)) !strong curvature condition
             !if_2nd_cond = (pert%g_dot_d >= c2*curr%g_dot_d) !weak curvature condition (note the diff of inequal sign..)
-            if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'max')>0) then
-                if(setup%get_bool('IF_FLIP_CURVATURE_CONDITION',o_default='T')) then
-                    call hud('flip curvature condition due to maximization')
-                    if_2nd_cond = .not.if_2nd_cond
-                endif
-            endif
-
+            
             !occasionally optimizers on processors don't have same behavior
             !try to avoid this by broadcast controlling logicals.
             call mpi_bcast(if_1st_cond, 1, mpi_logical, 0, mpiworld%communicator, mpiworld%ierr)

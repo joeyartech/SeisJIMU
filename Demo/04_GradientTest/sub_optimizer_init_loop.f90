@@ -18,6 +18,18 @@ use m_linesearcher
         
         if(str=='-curr%pg') then !steepest descent
             curr%d=-curr%pg
+
+        elseif(str=='stack') then !stacking -curr%pg
+            call alloc(curr%d,param%n1,param%n2,param%n3,param%npars)
+            do ipar=1,param%npars
+            do i1=1,param%n1
+                tmp=-sum(curr%pg(i1,:,:,ipar))
+                curr%d(i1,:,:,ipar)=tmp
+            enddo
+            enddo
+
+            call sysio_write('curr%d',curr%d,size(curr%d))
+
             
         elseif(str=='random') then !random descent
             allocate(curr%d,source=curr%pg)

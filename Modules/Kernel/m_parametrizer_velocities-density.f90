@@ -38,6 +38,10 @@ use m_Modeling
     !gvp = 2rho( glda*(vp-2a*vs) + gmu*a*vs
     !grho= glda*(vp^2-2vs^2) +gmu*vs^2 + grho0
 
+    !P-SV + poisson:
+    !since Vp/Vs=const., gvs is scaled of gvp
+    !gvp = glda*2rho*vp
+
     private
 
     type t_parameter
@@ -50,7 +54,7 @@ use m_Modeling
         character(i_str_xxlen) :: info = &
             'Parameterization: velocities-density'//s_NL// &
             'Allowed pars: vp, vs, rho'//s_NL// &
-            'Available empirical law: Gardner, Castagna'
+            'Available empirical law: Gardner, Castagna, Poisson'
 
         type(t_parameter),dimension(:),allocatable :: pars
         integer :: npars
@@ -67,7 +71,7 @@ use m_Modeling
 
     type(t_parametrizer),public :: param
 
-    logical :: is_empirical=.false., is_gardner=.false., is_castagna=.false.
+    logical :: is_empirical=.false., is_gardner=.false., is_castagna=.false., is_poisson=.false.
     logical :: is_AC=.false., is_EL=.false.
 
     real :: a,b
@@ -107,10 +111,10 @@ use m_Modeling
 !                     endif
 ! 
                     call hud('Gardner law is enabled: a='//num2str(a)//', b='//num2str(b)//s_NL// &
-                        'Parameter rho will passive in the inversion.')
+                        'Parameter rho will be passive in the inversion.')
 
                 elseif(list(i)%s(1:8)=='Castagna') then
-                    !Castagna mudrock line vs=a*vs+b
+                    !Castagna mudrock line vs=a*vp+b
                     !passive vs will be updated according to vp
                     !https://en.wikipedia.org/wiki/Mudrock_line
                     is_castagna=.true.
@@ -120,9 +124,18 @@ use m_Modeling
                     call hud('Castagna law is enabled: a='//num2str(a)//', b='//num2str(b)//s_NL// &
                         'Parameter vs will be passive in the inversion.')
 
-                    if(is_gardner) then
-                        call error("Sorry. Hasn't implemented both Gardner & Castagna's laws")
-                    endif
+                    if(is_gardner) call error("Sorry. Hasn't implemented both Gardner & Castagna's laws")
+
+                elseif(list(i)%s(1:7)=='Poisson') then
+                    !Poisson solid vs=a*vp
+                    !passive vs will be updated according to vp
+                    is_poisson=.true.
+                        a=1./sqrt(3.)
+
+                    call hud('Poisson solid is enabled: a='//num2str(a)//s_NL// &
+                        'Parameter vs will be passive in the inversion.')
+
+                    if(is_gardner) call error("Sorry. Hasn't implemented both Gardner & Poisson's laws")
 
                 endif
 
@@ -159,8 +172,8 @@ use m_Modeling
                     call hud('vs in PARAMETER is neglected as the PDE is ACoustic.')
                     cycle loop
                 endif
-                if(is_castagna) then
-                    call hud('vs in PARAMETER is neglected and becomes passive as Castagna law is used.')
+                if(is_castagna.or.is_poisson) then
+                    call hud('vs in PARAMETER is neglected and becomes passive as Castagna/Poisson law is used.')
                     cycle loop
                 endif
                 self%pars(i)%name='vs'
@@ -168,7 +181,7 @@ use m_Modeling
 
             case ('rho')
                 if(is_gardner) then
-                    call hud('rho in PARAMETER is neglected and becomes passive as Gardner law is used')
+                    call hud('rho in PARAMETER is neglected and becomes passive as Gardner/Poisson law is used')
                     cycle loop
                 endif
                 self%pars(i)%name='rho'
@@ -239,6 +252,10 @@ use m_Modeling
                 if(is_gardner) m%rho = a*m%vp**b
                 ! + castagna
                 if(is_castagna) m%vs = a*m%vp + b
+                ! + poisson
+                if(is_poisson) m%vs = a*m%vp
+                !
+                ! call m%apply_elastic_continuum
                 call m%apply_freeze_zone
 
             endif
@@ -259,32 +276,40 @@ use m_Modeling
 
         if(present(o_g)) then
             call alloc(o_g,self%n1,self%n2,self%n3,self%npars)
-            !m%gradient(:,:,:,1) = grho
-            !m%gradient(:,:,:,2) = gkpa or glda
-            !m%gradient(:,:,:,3) = gmu
+            !!correlate_gradient(:,:,:,1) = grho
+            !!correlate_gradient(:,:,:,2) = gkpa or glda
+            !!correlate_gradient(:,:,:,3) = gmu
+
+            !ikpa(vp,rho) = 1/(rho*vp^2)
+            !irho0(vp,rho)=1/rho
+            !gvp = gikpa*(-2/rho/vp^3)
+            !grho= gikpa*(-1/vp^2/rho^2) + gbuo*(-1/rho^2)
+            !correlate_gradient(:,:,:,1) = gikpa
+            !correlate_gradient(:,:,:,2) = gbuo
+            
 
             !acoustic
             if(is_AC .and. .not. is_empirical) then
                 do i=1,param%npars
                     select case (param%pars(i)%name)
-                    case ('vp' ); o_g(:,:,:,i) = m%gradient(:,:,:,2)*2*m%rho*m%vp
-                    case ('rho'); o_g(:,:,:,i) = m%gradient(:,:,:,2)*m%vp**2 + m%gradient(:,:,:,1)
+                    case ('vp' ); o_g(:,:,:,i) = correlate_gradient(:,:,:,1)*(-2/m%rho/m%vp**3)
+                    case ('rho'); o_g(:,:,:,i) = correlate_gradient(:,:,:,1)*(-1/m%vp**2/m%rho**2) + correlate_gradient(:,:,:,2)*(-1/m%rho**2)
                     end select
                 enddo
             endif
 
             !acoustic + gardner
             if(is_AC .and. is_gardner) then
-                o_g(:,:,:,1) =(m%gradient(:,:,:,2)*(b+2)/b*m%vp**2 + m%gradient(:,:,:,1))*b*m%rho/m%vp  !m%rho has tobe updated in prior
+                o_g(:,:,:,1) =(correlate_gradient(:,:,:,2)*(b+2)/b*m%vp**2 + correlate_gradient(:,:,:,1))*b*m%rho/m%vp  !m%rho has tobe updated in prior
             endif
 
             !elastic
             if(is_EL .and. .not. is_empirical) then
                 do i=1,param%npars
                     select case (param%pars(i)%name)
-                    case ('vp' ); o_g(:,:,:,i) = m%gradient(:,:,:,2)*2*m%rho*m%vp
-                    case ('vs' ); o_g(:,:,:,i) =(m%gradient(:,:,:,2)*(-2) + m%gradient(:,:,:,3))*2*m%rho*m%vs
-                    case ('rho'); o_g(:,:,:,i) = m%gradient(:,:,:,2)*m%vp**2 + (-2*m%gradient(:,:,:,2)+m%gradient(:,:,:,3))*m%vs**2 + m%gradient(:,:,:,1)
+                    case ('vp' ); o_g(:,:,:,i) = correlate_gradient(:,:,:,2)*2*m%rho*m%vp
+                    case ('vs' ); o_g(:,:,:,i) =(correlate_gradient(:,:,:,2)*(-2) + correlate_gradient(:,:,:,3))*2*m%rho*m%vs
+                    case ('rho'); o_g(:,:,:,i) = correlate_gradient(:,:,:,2)*m%vp**2 + (-2*correlate_gradient(:,:,:,2)+correlate_gradient(:,:,:,3))*m%vs**2 + correlate_gradient(:,:,:,1)
                     end select
                 enddo
             endif
@@ -293,8 +318,8 @@ use m_Modeling
             if(is_EL .and. is_gardner) then
                 do i=1,param%npars
                     select case (param%pars(i)%name)
-                    case ('vp' ); o_g(:,:,:,i) =(m%gradient(:,:,:,2)*(b+2)/b*m%vp**2 + (-2*m%gradient(:,:,:,2)+m%gradient(:,:,:,3))*m%vs**2 + m%gradient(:,:,:,1))*b*m%rho/m%vp !m%rho has tobe updated in prior
-                    case ('vs' ); o_g(:,:,:,i) =(m%gradient(:,:,:,2)*(-2) + m%gradient(:,:,:,3))*2*m%rho*m%vs !m%rho has tobe updated in prior
+                    case ('vp' ); o_g(:,:,:,i) =(correlate_gradient(:,:,:,2)*(b+2)/b*m%vp**2 + (-2*correlate_gradient(:,:,:,2)+correlate_gradient(:,:,:,3))*m%vs**2 + correlate_gradient(:,:,:,1))*b*m%rho/m%vp !m%rho has tobe updated in prior
+                    case ('vs' ); o_g(:,:,:,i) =(correlate_gradient(:,:,:,2)*(-2) + correlate_gradient(:,:,:,3))*2*m%rho*m%vs !m%rho has tobe updated in prior
                     end select
                 enddo
             endif
@@ -304,9 +329,19 @@ use m_Modeling
                 do i=1,param%npars
                     select case (param%pars(i)%name)
                     case ('vp' )
-                        o_g(:,:,:,i) =2*m%rho*( m%gradient(:,:,:,2)*(m%vp-2*a*m%vs) + m%gradient(:,:,:,3)*a*m%vs )
+                        o_g(:,:,:,i) =2*m%rho*( correlate_gradient(:,:,:,2)*(m%vp-2*a*m%vs) + correlate_gradient(:,:,:,3)*a*m%vs )
                     case ('rho')
-                        o_g(:,:,:,i) =m%gradient(:,:,:,2)*(m%vp**2-2*m%vs**2) + m%gradient(:,:,:,3)*m%vs**2 + m%gradient(:,:,:,1)
+                        o_g(:,:,:,i) =correlate_gradient(:,:,:,2)*(m%vp**2-2*m%vs**2) + correlate_gradient(:,:,:,3)*m%vs**2 + correlate_gradient(:,:,:,1)
+                    end select
+                enddo
+            endif
+
+            !elastic + poisson
+            if(is_EL .and. is_poisson) then
+                do i=1,param%npars
+                    select case (param%pars(i)%name)
+                    case ('vp' )
+                        o_g(:,:,:,i) =2*m%rho*m%vp*( correlate_gradient(:,:,:,2) ) !not exact, but doesn't matter..
                     end select
                 enddo
             endif
@@ -317,12 +352,6 @@ use m_Modeling
             enddo
             
         endif
-        
-!deprecated
-!         if(present(o_pg)) then
-!             call alloc(o_pg,param%n1,param%n2,param%n3,param%npars,oif_protect=.true.)
-!             call transform_gradient(preco%preco,o_preco)
-!         endif
 
     end subroutine
 

@@ -1,0 +1,16 @@
+MODEL_SIZE              '2560    2560   1' 
+MODEL_SPACING           '20    20   1' 
+FILE_MODEL              model 
+MODEL_ATTRIBUTES        vp 
+ 
+IS_FREESURFACE          F 
+IF_BLOOM                F 
+IF_HICKS                  F 
+ 
+NUMBER_SOURCE       40 
+ 
+NT           5000 
+DT           0.004 
+FPEAK        7 
+ 
+IF_USE_CHECKPOINT   F 
