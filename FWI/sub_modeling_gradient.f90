@@ -62,11 +62,13 @@ use m_resampler
         if(setup%get_str('JOB')=='forward modeling') cycle
 
         if(setup%get_str('UPDATE_WAVELET')/='') then
+        if(setup%get_str('UPDATE_WAVELET')/='none') then
             call hud('----  Update Wavelet  ----')    
             call wei_wl%update(o_suffix='_4WAVELET')
             call shot%update_wavelet(wei_wl%weight) !call gradient_matchfilter_data    
             call shot%write('updated_Ru_',shot%dsyn)
             call suformat_write('updated_wavelet_'//shot%sindex,shot%wavelet,shot%nt,1,shot%dt)
+        endif
         endif
          
 
@@ -156,6 +158,8 @@ use m_resampler
 
         call ppg%init_correlate(a_star_u,'a_star_u')
         call ppg%adjoint(fld_a,fld_u,a_star_u)
+
+call sysio_write('glda_'//shot%sindex,a_star_u%glda,size(a_star_u%glda))
 
         call hud('----  Assemble  ----')
         call ppg%assemble(a_star_u)

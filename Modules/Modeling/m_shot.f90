@@ -148,6 +148,9 @@ use m_model
         scalel=sudata%hdrs(1)%scalel !assume same scalel for all traces
         scalco=sudata%hdrs(1)%scalco !assume same scalco for all traces
 
+        ! if(scalel>0.) scalel=scalel !no need
+        ! if(scalco>0.) scalco=scalco
+
         if(scalel==0.) scalel=1.
         if(scalco==0.) scalco=1.
 
@@ -515,18 +518,23 @@ use m_model
 
     subroutine update_wavelet(self,weight)
         class(t_shot) :: self
-        real,dimension(self%nt,self%nrcv) :: weight
+       real,dimension(self%nt,self%nrcv) :: weight
 
         type(t_suformat) :: sudata
 
-        call matchfilter_estimate(self%dsyn*weight,self%dobs*weight,self%nt,self%nrcv)!,self%index)
+!        call matchfilter_estimate(self%dsyn*weight,self%dobs*weight,self%nt,self%nrcv)!,self%index)
+!        call matchfilter_estimate(self%dsyn,self%dobs,self%nt,self%nrcv)!,self%index)
         
+        if(setup%get_str('UPDATE_WAVELET')=='per shot') then
+            call matchfilter_estimate(self%dsyn*weight,self%dobs*weight,self%nt,self%nrcv)
+        else
+            call hud('Will average wavelet over diff shots. If some MPI processors are idle, then MPI communication will be stuck.')
+            call matchfilter_estimate(self%dsyn*weight,self%dobs*weight,self%nt,self%nrcv,oif_stack=.true.)
+        endif
+
         call matchfilter_apply_to_wavelet(self%wavelet)
         
         call matchfilter_apply_to_data(self%dsyn)
-
-        call sudata%init(self%nt,1,o_dt=self%dt,o_data=self%wavelet)
-        sudata%hdrs%fldr=self%index
 
     end subroutine
     
@@ -991,8 +999,17 @@ use m_model
                 scalco=setup%get_real('SU_SCALCO',o_default=num2str(find_proper_scalco()))
             endif
 
-            sudata%hdrs(:)%scalel=int(-scalel)
-            sudata%hdrs(:)%scalco=int(-scalco)
+            if(scalel>0.) scalel=1./scalel
+            if(scalco>0.) scalco=1./scalco
+
+            if(scalel==0.) scalel=1.
+            if(scalco==0.) scalco=1.
+
+            if(scalel<0.) scalel=-scalel
+            if(scalco<0.) scalco=-scalco
+
+            sudata%hdrs(:)%scalel=int(scalel)
+            sudata%hdrs(:)%scalco=int(scalco)
 
             do i=1,self%nrcv
                 sudata%hdrs(i)%tracl=i
