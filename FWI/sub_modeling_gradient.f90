@@ -11,7 +11,7 @@ use m_resampler
 
     logical,save :: is_first_in=.true.
 
-    character(:),allocatable :: update_wavelet
+    character(:),allocatable :: s_update_wavelet
     type(t_weighter) :: wei_wl
 
     type(t_field) :: fld_u,fld_a
@@ -61,14 +61,13 @@ use m_resampler
 
         if(setup%get_str('JOB')=='forward modeling') cycle
 
-        if(setup%get_str('UPDATE_WAVELET')/='') then
-        if(setup%get_str('UPDATE_WAVELET')/='none') then
+        s_update_wavelet=setup%get_str('UPDATE_WAVELET')
+        if(s_update_wavelet/='') then
             call hud('----  Update Wavelet  ----')    
             call wei_wl%update(o_suffix='_4WAVELET')
             call shot%update_wavelet(wei_wl%weight) !call gradient_matchfilter_data    
             call shot%write('updated_Ru_',shot%dsyn)
             call suformat_write('updated_wavelet_'//shot%sindex,shot%wavelet,shot%nt,1,shot%dt)
-        endif
         endif
          
 
@@ -80,14 +79,50 @@ use m_resampler
 
             if(.not.allocated(dnorm)) dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2')
             select case (dnorm)
-                case ('L2')
+            case ('L2')
                 fobj%misfit = fobj%misfit &
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
-                call kernel_L2sq(shot%dadj)
+                call kernel_L2sq(shot%dadj)            
+if(s_update_wavelet/='') then
+call hud('update adjoint source.')
+call shot%update_adjsource
+endif
                 call fld_a%ignite(o_wavelet=shot%dadj)
                 call shot%write('dadj_',shot%dadj)
 
-                case ('L2averaged')
+            case('L2_scaled')
+                if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
+                call alloc(tmp_dsyn,shot%nt,shot%nrcv)
+                do j=1,shot%nrcv
+                    if(is_first_in) S(i)%scale(j) = either(0., maxval(abs(shot%dobs(:,j))) / maxval(abs(shot%dsyn(:,j))) , shot%rcv(j)%is_badtrace)
+                    tmp_dsyn(:,j)=shot%dsyn(:,j)*S(i)%scale(j)
+                enddo
+                if(is_first_in) then
+                    open(12,file=dir_out//'dobs_dsyn_max_ratio',access='direct',recl=4*shot%nrcv)
+                    write(12,rec=shot%index) S(i)%scale
+                    close(12)
+                endif
+
+                !check if S is changing..
+    !            if(shot%index==1)   print*, 'on '//shot%sindex,i,S(i)%scale
+    !            if(shot%index==112) print*, 'on '//shot%sindex,i,S(i)%scale
+
+                fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-tmp_dsyn, shot%dt)
+
+                call alloc(shot%dadj,shot%nt,shot%nrcv)
+                call kernel_L2sq(shot%dadj)
+do j=1,shot%nrcv 
+    shot%dadj(:,j)=shot%dadj(:,j)*S(i)%scale(j)
+enddo
+if(s_update_wavelet/='') then
+call hud('update adjoint source.')
+call shot%update_adjsource
+endif
+                call fld_a%ignite(o_wavelet=shot%dadj)
+                call shot%write('dadj_',shot%dadj)
+
+            case ('L2averaged')
                 length=setup%get_int('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)
                 ! scaler=setup%get_real('MOVING_AVERAGE_SCALER','MA_SCALER',o_default='1.')
                 if(length>0) call moving_average(shot%dsyn,length)!,scaler)
@@ -100,7 +135,7 @@ use m_resampler
                 call shot%write('dadj_',shot%dadj)
 
 
-                case ('strain_L2averaged')
+            case ('strain_L2averaged')
                 !first goto strain
                 !call derivative_x(shot%dsyn)
                 !call integrate_t(shot%dsyn)
@@ -122,37 +157,10 @@ use m_resampler
                 call fld_a%ignite(o_wavelet=shot%dadj)
                 call shot%write('dadj_',shot%dadj)
 
-
-                case('L2_scaled')
-                    if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
-                    call alloc(tmp_dsyn,shot%nt,shot%nrcv)
-                    do j=1,shot%nrcv
-                        if(is_first_in) S(i)%scale(j) = either(0., maxval(abs(shot%dobs(:,j))) / maxval(abs(shot%dsyn(:,j))) , shot%rcv(j)%is_badtrace)
-                        tmp_dsyn(:,j)=shot%dsyn(:,j)*S(i)%scale(j)
-                    enddo
-                    if(is_first_in) then
-                        open(12,file=dir_out//'dobs_dsyn_max_ratio',access='direct',recl=4*shot%nrcv)
-                        write(12,rec=shot%index) S(i)%scale
-                        close(12)
-                    endif
-
-                    !check if S is changing..
-        !            if(shot%index==1)   print*, 'on '//shot%sindex,i,S(i)%scale
-        !            if(shot%index==112) print*, 'on '//shot%sindex,i,S(i)%scale
-
-                    fobj%misfit = fobj%misfit &
-                        + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-tmp_dsyn, shot%dt)
-
-                    call alloc(shot%dadj,shot%nt,shot%nrcv)
-                    call kernel_L2sq(shot%dadj)
-                    call fld_a%ignite(o_wavelet=shot%dadj)
-                    call shot%write('dadj_',shot%dadj)
-
-                case default
+            case default
                 call error('No DNORM specified!')
 
             end select
-
         
         call hud('----  Solving adjoint eqn & xcorrelate  ----')
 
