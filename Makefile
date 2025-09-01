@@ -34,6 +34,10 @@ fwi :
 	(cd FWI; make)
 	@printf "\n"
 
+fwialter :
+	(cd FWIalter; make)
+	@printf "\n"
+
 rtm :
 	(cd RTM; make)
 	@printf "\n"
