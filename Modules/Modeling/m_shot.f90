@@ -31,7 +31,7 @@ use m_model
     end type
 
     type,public :: t_receiver
-        real    :: z,x,y, aoffset
+        real    :: z,x,y, aoffset, adist
         integer :: iz,ix,iy
         integer :: ifz,ilz,ifx,ilx,ify,ily
         logical :: is_badtrace=.false.
@@ -343,9 +343,15 @@ use m_model
 
         !absolute offset
         do ir=1,self%nrcv
-            self%rcv(ir)%aoffset=sqrt( (self%src%z-self%rcv(ir)%z)**2 &
-                                      +(self%src%x-self%rcv(ir)%x)**2 &
+            self%rcv(ir)%aoffset=sqrt( (self%src%x-self%rcv(ir)%x)**2 &
                                       +(self%src%y-self%rcv(ir)%y)**2 )
+        enddo
+
+        !absolute distance
+        do ir=1,self%nrcv
+            self%rcv(ir)%adist=sqrt( (self%src%z-self%rcv(ir)%z)**2 &
+                                    +(self%src%x-self%rcv(ir)%x)**2 &
+                                    +(self%src%y-self%rcv(ir)%y)**2 )
         enddo
 
         if(is_first_in) then
