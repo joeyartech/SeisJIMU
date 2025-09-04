@@ -5,7 +5,8 @@
 # Modeling #
 ############
 #WaveEq=PSV
-WaveEq=DAS
+#WaveEq=DAS
+WaveEq=DASAC
 Solver=FDSG
 Order=O4
 ShotDec=batching

@@ -59,43 +59,58 @@ use m_resampler
         call fld_u%acquire; call shot%write('Ru_',shot%dsyn)
 
 
-        if(setup%get_str('JOB')=='forward modeling') cycle
-
-        s_update_wavelet=setup%get_str('UPDATE_WAVELET')
-        if(s_update_wavelet/='') then
-            call hud('----  Update Wavelet  ----')    
-            call wei_wl%update(o_suffix='_4WAVELET')
-            call shot%update_wavelet(wei_wl%weight) !call gradient_matchfilter_data    
-            call shot%write('updated_Ru_',shot%dsyn)
-            call suformat_write('updated_wavelet_'//shot%sindex,shot%wavelet,shot%nt,1,shot%dt)
-        endif
-         
+        if(setup%get_str('JOB')=='forward') cycle
 
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
 
+        s_update_wavelet=setup%get_str('UPDATE_WAVELET')
+
+
+        ! s_update_wavelet=setup%get_str('UPDATE_WAVELET')
+        ! if(s_update_wavelet/='') then
+        !     call hud('----  Update Wavelet  ----')    
+        !     call wei_wl%update(o_suffix='_4WAVELET')
+        !     call shot%update_wavelet(wei_wl%weight) !call gradient_matchfilter_data    
+        !     call shot%write('updated_Ru_',shot%dsyn)
+        !     call suformat_write('updated_wavelet_'//shot%sindex,shot%wavelet,shot%nt,1,shot%dt)
+        ! endif
+         
+
         call hud('----  Computing obj func & dadj  ----')
-            call wei%update
-            call alloc(shot%dadj,shot%nt,shot%nrcv)
 
             if(.not.allocated(dnorm)) dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2')
             select case (dnorm)
             case ('L2')
+call hud('0.5|| W₂(f*W₁u - d)||² => adjsrc = W₁f★ W₂W₂(f*W₁u - d)')
+
+if(s_update_wavelet/='') then
+call hud('----  Update Wavelet  ----')    
+call wei_wl%update(o_suffix='_4WAVELET')
+call shot%update_wavelet(wei_wl%weight) !call gradient_matchfilter_data    
+call shot%write('updated_Ru_',shot%dsyn)
+call suformat_write('updated_wavelet_'//shot%sindex,shot%wavelet,shot%nt,1,shot%dt)
+endif
+
+                call wei%update
+                call alloc(shot%dadj,shot%nt,shot%nrcv)
+
                 fobj%misfit = fobj%misfit &
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
                 call kernel_L2sq(shot%dadj)            
 if(s_update_wavelet/='') then
 call hud('update adjoint source.')
 call shot%update_adjsource
+shot%dadj=shot%dadj*wei_wl%weight
 endif
                 call fld_a%ignite(o_wavelet=shot%dadj)
                 call shot%write('dadj_',shot%dadj)
 
             case('L2_scaled')
+call hud('0.5|| W(Su - d)||² => adjsrc = WW(Su - d)')
                 if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
-                call alloc(tmp_dsyn,shot%nt,shot%nrcv)
                 do j=1,shot%nrcv
                     if(is_first_in) S(i)%scale(j) = either(0., maxval(abs(shot%dobs(:,j))) / maxval(abs(shot%dsyn(:,j))) , shot%rcv(j)%is_badtrace)
-                    tmp_dsyn(:,j)=shot%dsyn(:,j)*S(i)%scale(j)
+                    shot%dsyn(:,j)=shot%dsyn(:,j)*S(i)%scale(j)
                 enddo
                 if(is_first_in) then
                     open(12,file=dir_out//'dobs_dsyn_max_ratio',access='direct',recl=4*shot%nrcv)
@@ -107,14 +122,44 @@ endif
     !            if(shot%index==1)   print*, 'on '//shot%sindex,i,S(i)%scale
     !            if(shot%index==112) print*, 'on '//shot%sindex,i,S(i)%scale
 
-                fobj%misfit = fobj%misfit &
-                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-tmp_dsyn, shot%dt)
-
+                call wei%update
                 call alloc(shot%dadj,shot%nt,shot%nrcv)
+
+                fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
                 call kernel_L2sq(shot%dadj)
-do j=1,shot%nrcv 
-    shot%dadj(:,j)=shot%dadj(:,j)*S(i)%scale(j)
-enddo
+
+                call fld_a%ignite(o_wavelet=shot%dadj)
+                call shot%write('dadj_',shot%dadj)
+
+            case('L2_scaled_filtered')
+call hud('0.5|| W(f*Su - d)||² => adjsrc ~= f★WW(f*Su - d)')
+                if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
+                do j=1,shot%nrcv
+                    if(is_first_in) S(i)%scale(j) = either(0., maxval(abs(shot%dobs(:,j))) / maxval(abs(shot%dsyn(:,j))) , shot%rcv(j)%is_badtrace)
+                    shot%dsyn(:,j)=shot%dsyn(:,j)*S(i)%scale(j)
+                enddo
+                if(is_first_in) then
+                    open(12,file=dir_out//'dobs_dsyn_max_ratio',access='direct',recl=4*shot%nrcv)
+                    write(12,rec=shot%index) S(i)%scale
+                    close(12)
+                endif
+
+if(s_update_wavelet/='') then
+call hud('----  Update Wavelet  ----')    
+call wei_wl%update(o_suffix='_4WAVELET')
+call shot%update_wavelet(wei_wl%weight) !call gradient_matchfilter_data    
+call shot%write('updated_Ru_',shot%dsyn)
+call suformat_write('updated_wavelet_'//shot%sindex,shot%wavelet,shot%nt,1,shot%dt)
+endif
+
+                call wei%update
+                call alloc(shot%dadj,shot%nt,shot%nrcv)
+
+                fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
+                call kernel_L2sq(shot%dadj)
+
 if(s_update_wavelet/='') then
 call hud('update adjoint source.')
 call shot%update_adjsource
@@ -167,7 +212,7 @@ endif
         call ppg%init_correlate(a_star_u,'a_star_u')
         call ppg%adjoint(fld_a,fld_u,a_star_u)
 
-call sysio_write('glda_'//shot%sindex,a_star_u%glda,size(a_star_u%glda))
+call sysio_write('gkpa_'//shot%sindex,a_star_u%gkpa,size(a_star_u%gkpa))
 
         call hud('----  Assemble  ----')
         call ppg%assemble(a_star_u)
