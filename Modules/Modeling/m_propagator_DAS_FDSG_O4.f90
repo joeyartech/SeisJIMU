@@ -1296,8 +1296,8 @@ use, intrinsic :: ieee_arithmetic
 
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
-        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,&
-        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,&
+        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
+        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
         !$omp         dez_dz_,dex_dx_,dex_dz_,dez_dx_,des_dz_,des_dx_)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
