@@ -47,7 +47,7 @@ use, intrinsic :: ieee_arithmetic
         ! real,dimension(:,:,:),allocatable :: p !negated pressure
         
         real,dimension(:,:,:),allocatable :: pz,px !momenta
-        real,dimension(:,:,:),allocatable :: ez,ex,es !strains
+        real,dimension(:,:,:),allocatable :: ez,ex,es,thta !strains
         real,dimension(:,:,:),allocatable :: sz,sx,ss !stresses
 
         ! real,dimension(:,:,:),pointer :: p=> null(), p_prev=> null(), p_next=> null() !negated pressure
@@ -66,6 +66,7 @@ use, intrinsic :: ieee_arithmetic
 
         real,dimension(:,:,:),allocatable :: dpz_dz,dpx_dx,dpz_dx,dpx_dz
         real,dimension(:,:,:),allocatable :: dez_dz,dex_dx,dex_dz,dez_dx,des_dz,des_dx
+        real,dimension(:,:,:),allocatable :: dthta_dz,dthta_dx
 
         
         !real,dimension(:,:,:),allocatable :: lapz,lapx,laps

@@ -162,7 +162,7 @@ use m_Modeling
         enddo
 
         ! if(mpiworld%is_master) call suformat_write('weights'//suf,self%weight,nt,ntr,o_dt=dt)
-        call suformat_write('weights'//suf//'_'//shot%sindex,self%weight,nt,ntr,o_dt=dt)
+        call suformat_write('weight'//suf//'_'//shot%sindex,self%weight,nt,ntr,o_dt=dt)
         
     end subroutine
 
