@@ -1,6 +1,13 @@
 program main
 use m_System
-use m_Modeling
+use m_model
+use m_shotlist
+use m_shot
+use m_computebox
+use m_field
+use m_correlate
+use m_cpml
+use m_propagator
 
     !mpiworld lives in t_mpienv
     call mpiworld%init(name='MPIWorld')
@@ -20,6 +27,7 @@ use m_Modeling
 
     !print propagator info
     call ppg%print_info
+    if_propagator_record_adjseismo=.true.
 
     !model
     call m%init
@@ -69,7 +77,7 @@ use m_Modeling
         call cb%project
 
         call ppg%check_discretization
-        call ppg%init(oif_record_adjseismo=.true.)
+        call ppg%init
         call ppg%init_abslayer
         
         call ppg%init_field(sfield,name='sfield')

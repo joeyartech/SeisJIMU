@@ -2,7 +2,7 @@
 # Don't track these files & folders #
 #####################################
 #Doc/
-#Demo/
+Demo/
 devel/
 exe/
 mod/
@@ -36,6 +36,7 @@ test
 *.toc
 *.odp
 *.su
+*.ipynb_checkpoints/
 
 
 
