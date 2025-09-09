@@ -31,7 +31,7 @@ use, intrinsic :: ieee_arithmetic
     type,public :: t_propagator
         !info
         character(i_str_xxlen) :: info = &
-            'Time-domain ISOtropic 2D PSV propagation'//s_NL// &
+            'Time-domain ISOtropic 2D PSV (ELastic) propagation'//s_NL// &
             '2nd-order Displacement formulation'//s_NL// &
             'Vireux-Levandar Staggered-Grid Finite-Difference (FDSG) method'//s_NL// &
             'Cartesian O(x⁴,t²) stencil'//s_NL// &
@@ -352,6 +352,7 @@ use, intrinsic :: ieee_arithmetic
             ! call correlate_assemble(corr%gbuo,  correlate_gradient(:,:,:,2))
             call correlate_assemble(corr%glda,  correlate_gradient(:,:,:,2))
             call correlate_assemble(corr%gmu,   correlate_gradient(:,:,:,3))
+
         endif        
         
     end subroutine
@@ -620,6 +621,8 @@ use, intrinsic :: ieee_arithmetic
 
         enddo
 
+        !postprocess
+        call cross_correlate_postprocess(a_star_u)
         call a_star_u%scale(m%cell_volume*rdt)
 
 
@@ -941,6 +944,68 @@ use, intrinsic :: ieee_arithmetic
 
     end subroutine
 
+    subroutine cross_correlate_postprocess(corr)
+        type(t_correlate) :: corr
+
+        ! if(allocated(correlate_gradient)) then
+
+            ! corr%glda(1,:,:) = corr%glda(2,:,:)
+
+            call interp2D(corr%gmu(:,:,1),[1,1])
+            ! corr%gmu(1,:,:) = corr%gmu(2,:,:)
+
+        ! endif
+
+    end subroutine
+
+    subroutine interp2D(array,ishifts)
+        real,dimension(:,:) :: array
+        integer :: ishifts(2)
+
+        real,dimension(:,:),allocatable :: tmp
+
+        n1 = size(array,dim=1); ish1 = ishifts(1)
+        n2 = size(array,dim=2); ish2 = ishifts(2)
+
+        allocate(tmp(n1,n2))
+
+        do i2=1,n2-ish2 !may cause out-of-bounds if ish2<0
+        do i1=1,n1-ish1 !may cause out-of-bounds if ish1<0
+            tmp(i1,i2)=( array(i1     ,i2     ) &
+                        +array(i1+ish1,i2     ) &
+                        +array(i1     ,i2+ish2) &
+                        +array(i1+ish1,i2+ish2) )/4
+        enddo
+        enddo
+
+        tmp(:,n2)=tmp(:,n2-ish2)
+        tmp(n1,:)=tmp(n1-ish1,:)
+
+        array=tmp
+
+        deallocate(tmp)
+
+    end subroutine
+
+    ! subroutine roll2D(array,ishifts)
+    !     real,dimension(:,:) :: array
+    !     integer :: ishifts(2)
+
+    !     real,dimension(:,:),allocatable :: tmp
+
+    !     n1 = size(array,dim=1)
+    !     n2 = size(array,dim=2)
+
+    !     allocate(tmp(n1,n2))
+
+    !     tmp(1:n1,1:n2)=array(1:n1,1:n2)
+
+    !     array=tmp
+
+    !     deallocate(tmp)
+
+    ! end subroutine
+
     ! subroutine cross_correlate_image(rf,sf,corr,it)
     !     type(t_field), intent(in) :: rf, sf
     !     type(t_correlate) :: corr
@@ -1142,9 +1207,9 @@ use, intrinsic :: ieee_arithmetic
         !$omp         rf_duz_dz,rf_dux_dx,rf_dux_dz,rf_duz_dx,&
         !$omp         sf_duz_dz,sf_dux_dx,sf_dux_dz,sf_duz_dx)
         !$omp do schedule(dynamic)
-        do ix = ifx+2,ilx-2
+        do ix = ifx,ilx
             !dir$ simd
-            do iz = ifz+2,ilz-2
+            do iz = ifz,ilz
 
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
                 j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers

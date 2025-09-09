@@ -11,10 +11,15 @@ use m_correlate
 use m_cpml
 use m_propagator
 
-use m_Kernel
+!use m_Kernel
+use m_parametrizer
+use m_querypoint
+use m_weighter
+use m_preconditioner
+use m_fobjective
+
 use m_linesearcher
 
-!     type(t_checkpoint) :: chp_shls, chp_qp
     type(t_querypoint),target :: qp0
 
     !mpiworld lives in t_mpienv
@@ -46,9 +51,6 @@ use m_linesearcher
     ! call sfield%estim_RAM
     ! call rfield%estim_RAM
     
-    !checkpoint
-!     call checkpoint_init
-
     !model
     call m%init
     call m%read
@@ -57,11 +59,7 @@ use m_linesearcher
     !shotlist
     call shls%read_from_data
     call shls%build
-!     call chp_shls%init('FWI_shotlist_gradient',oif_fuse=.true.)
-!     if(.not.shls%is_registered(chp_shls,'sampled_shots')) then
-        call shls%sample
-!         call shls%register(chp_shls,'sampled_shots')
-!     endif
+    call shls%sample
     call shls%assign
 
     !if preconditioner needs energy terms
@@ -77,11 +75,7 @@ use m_linesearcher
 
     !objective function and gradient
     call fobj%init
-!     call chp_qp%init('FWI_querypoint_gradient')
-!     if(.not.qp0%is_registered(chp_qp)) then
-        call fobj%eval(qp0,oif_update_m=.false.)
-!         call qp0%register(chp_qp)
-!     endif
+    call fobj%eval(qp0,oif_update_m=.false.)
     
     call sysio_write('qp0%g',qp0%g,size(qp0%g))
     call sysio_write('qp0%pg',qp0%pg,size(qp0%pg))
