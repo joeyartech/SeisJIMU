@@ -317,16 +317,16 @@ use, intrinsic :: ieee_arithmetic
         
         corr%name=name
 
-        if(name(1:1)=='g') then !gradient components
+        ! if(name(1:1)=='g') then !gradient components
             ! call alloc(corr%gikpa,m%nz,m%nx,m%ny)
             ! call alloc(corr%gbuo, m%nz,m%nx,m%ny)
             call alloc(corr%glda, m%nz,m%nx,m%ny)
             call alloc(corr%gmu,  m%nz,m%nx,m%ny)
-        else !image components
+        ! else !image components
             ! call alloc(corr%ipp,m%nz,m%nx,m%ny)
             ! call alloc(corr%ibksc,m%nz,m%nx,m%ny)
             ! call alloc(corr%ifwsc,m%nz,m%nx,m%ny)
-        endif
+        ! endif
 
     end subroutine
 
@@ -1017,18 +1017,6 @@ use, intrinsic :: ieee_arithmetic
                 iz_ixp1=i  +nz  !iz,ix+1
                 iz_ixp2=i  +2*nz  !iz,ix+2
 
-! dp_dz_ = c1z*(p(iz_ix) - p(izm1_ix)) +c2z*(p(izp1_ix)-p(izm2_ix))
-! dp_dx_ = c1x*(p(iz_ix) - p(iz_ixm1)) +c2x*(p(iz_ixp1)-p(iz_ixm2))
-
-! dp_dz(iz_ix) = cpml%b_z_half(iz)*dp_dz(iz_ix) + cpml%a_z_half(iz)*dp_dz_
-! dp_dx(iz_ix) = cpml%b_x_half(ix)*dp_dx(iz_ix) + cpml%a_x_half(ix)*dp_dx_
-
-! dp_dz_ = dp_dz_/cpml%kpa_z_half(iz) + dp_dz(iz_ix)
-! dp_dx_ = dp_dx_/cpml%kpa_x_half(ix) + dp_dx(iz_ix)
-
-! pzz(iz_ix) = buoz(iz_ix)*dp_dz_
-! pxx(iz_ix) = buox(iz_ix)*dp_dx_
-
                 duz_dz_ = c1z*(uz(izp1_ix)-uz(iz_ix)) +c2z*(uz(izp2_ix)-uz(izm1_ix)) !∂zᶠ
                 dux_dx_ = c1x*(ux(iz_ixp1)-ux(iz_ix)) +c2x*(ux(iz_ixp2)-ux(iz_ixm1)) !∂ₓᶠ
 
@@ -1134,9 +1122,9 @@ use, intrinsic :: ieee_arithmetic
 
 
     subroutine grad2d_glda_gmu(rf_uz,rf_ux,&
-                                sf_uz,sf_ux,&
-                                glda,gmu,&
-                                ifz,ilz,ifx,ilx)
+                               sf_uz,sf_ux,&
+                               glda,gmu,&
+                               ifz,ilz,ifx,ilx)
         real,dimension(*) :: rf_uz,rf_ux, sf_uz, sf_ux
         real,dimension(*) :: glda,gmu
         
@@ -1154,9 +1142,9 @@ use, intrinsic :: ieee_arithmetic
         !$omp         rf_duz_dz,rf_dux_dx,rf_dux_dz,rf_duz_dx,&
         !$omp         sf_duz_dz,sf_dux_dx,sf_dux_dz,sf_duz_dx)
         !$omp do schedule(dynamic)
-        do ix = ifx,ilx
+        do ix = ifx+2,ilx-2
             !dir$ simd
-            do iz = ifz,ilz
+            do iz = ifz+2,ilz-2
 
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
                 j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
@@ -1184,12 +1172,12 @@ use, intrinsic :: ieee_arithmetic
                 sf_dux_dz = c1z*(sf_ux(iz_ix)-sf_ux(izm1_ix)) +c2z*(sf_ux(izp1_ix)-sf_ux(izm2_ix))
                 sf_duz_dx = c1x*(sf_uz(iz_ix)-sf_uz(iz_ixm1)) +c2x*(sf_uz(iz_ixp1)-sf_uz(iz_ixm2))
                 
-                glda(j) =rf_duz_dz*sf_duz_dz +rf_duz_dz*sf_dux_dx &
-                        +rf_dux_dx*sf_duz_dz +rf_dux_dx*sf_dux_dx
+                glda(j) = glda(j) +  rf_duz_dz*sf_duz_dz +rf_duz_dz*sf_dux_dx &
+                                    +rf_dux_dx*sf_duz_dz +rf_dux_dx*sf_dux_dx
 
-                gmu (j) =2*rf_duz_dz*sf_duz_dz +2*rf_dux_dx*sf_dux_dx &
-                          +rf_dux_dz*sf_dux_dz   +rf_dux_dz*sf_duz_dx &
-                          +rf_duz_dx*sf_dux_dz   +rf_duz_dx*sf_duz_dx
+                gmu (j) = gmu (j) +2*rf_duz_dz*sf_duz_dz +2*rf_dux_dx*sf_dux_dx &
+                                    +rf_dux_dz*sf_dux_dz   +rf_dux_dz*sf_duz_dx &
+                                    +rf_duz_dx*sf_dux_dz   +rf_duz_dx*sf_duz_dx
 
             enddo
         enddo
