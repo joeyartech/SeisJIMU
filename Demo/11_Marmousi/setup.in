@@ -18,8 +18,8 @@ NR                      600
 SCOMP                   p
 RCOMP                   p #'p vz'
 
-#IF_HICKS        F
-#IF_BLOOM        F
+IF_HICKS        F
+IF_BLOOM        F
 
 NT           4600
 DT           0.0015
@@ -35,6 +35,7 @@ FILE_DATA_PREFIX    './results_fwd/dsyn_Shot'
 WEIGHTING           'none'
 
 FPEAK        6.4
+#FPEAK        20
 
 PARAMETER           'vp:1028:4700'
 

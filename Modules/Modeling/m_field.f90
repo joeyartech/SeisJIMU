@@ -19,8 +19,8 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:),allocatable :: vy_front,vy_rear
         real,dimension(:,:),allocatable :: vx_top,vx_bot,vz_left,vz_right
 
-        real,dimension(:,:),allocatable :: p_top,  p_bot
-        real,dimension(:,:),allocatable :: p_left, p_right
+        real,dimension(:,:),allocatable :: p_top,  p_bot , p_next_top, p_next_bot
+        real,dimension(:,:),allocatable :: p_left, p_right , p_next_left, p_next_right
         real,dimension(:,:),allocatable :: p_front,p_rear
 
     end type
@@ -249,6 +249,8 @@ use, intrinsic :: ieee_arithmetic
         n=3*cb%mx*cb%my
         call alloc(self%bnd%p_top,n,nt)
         call alloc(self%bnd%p_bot,n,nt)
+        call alloc(self%bnd%p_next_top,n,nt)
+        call alloc(self%bnd%p_next_bot,n,nt)
         ! if(if_shear) then
         !     call alloc(self%bnd%p_top,n,nt)
         !     call alloc(self%bnd%p_bot,n,nt)
@@ -257,6 +259,8 @@ use, intrinsic :: ieee_arithmetic
         n=cb%mz*3*cb%my
         call alloc(self%bnd%p_left, n,nt)
         call alloc(self%bnd%p_right,n,nt)
+        call alloc(self%bnd%p_next_left, n,nt)
+        call alloc(self%bnd%p_next_right,n,nt)
         ! if(if_shear) then
         !     call alloc(self%bnd%p_left, n,nt)
         !     call alloc(self%bnd%p_right,n,nt)
@@ -522,6 +526,15 @@ use, intrinsic :: ieee_arithmetic
             call copy(action,self%p,self%bnd%p_left(:,it), [1,nz],[1,3],    [1,1])
             !right
             call copy(action,self%p,self%bnd%p_right(:,it),[1,nz],[nx-1,nx+1],[1,1])
+            !for p_next
+            !top
+            ! call copy(action,self%p_next,self%bnd%p_next_top(:,it),  [1,3],    [1,nx],[1,1])
+            ! !bottom
+            ! call copy(action,self%p_next,self%bnd%p_next_bot(:,it),  [nz-1,nz+1],[1,nx],[1,1])
+            ! !left
+            ! call copy(action,self%p_next,self%bnd%p_next_left(:,it), [1,nz],[1,3],    [1,1])
+            ! !right
+            ! call copy(action,self%p_next,self%bnd%p_next_right(:,it),[1,nz],[nx-1,nx+1],[1,1])
         endif
 
         ! !shear part
