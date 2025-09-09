@@ -88,7 +88,7 @@ use, intrinsic :: ieee_arithmetic
     integer :: irdt
     real :: rdt
 
-    logical :: if_record_adjseismo=.false.
+    logical,public :: if_propagator_record_adjseismo=.false.
 
     contains
     
@@ -251,7 +251,6 @@ use, intrinsic :: ieee_arithmetic
         enddo
 
 
-
         !initialize m_field
         call field_init(.true.,self%nt,self%dt)
 
@@ -301,10 +300,10 @@ use, intrinsic :: ieee_arithmetic
         call alloc(f%dux_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%duz_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         
-        call alloc(f%dz_ldap2mu_duz_dz_p_lda_dux_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dx_lda_duz_dz_p_ldap2mu_dux_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dz_mu_dux_dz_p_duz_dx         ,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dx_mu_dux_dz_p_duz_dx         ,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dz_ldap2mu_duzdz_p_lda_duxdx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dx_lda_duzdz_p_ldap2mu_duxdx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dz_mu_duxdz_p_duzdx        ,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dx_mu_duxdz_p_duzdx        ,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
         call alloc(f%lapz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%lapx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -411,11 +410,12 @@ use, intrinsic :: ieee_arithmetic
     !Step #3: save u^n to boundary values
     !Step #4: u^n+1 = 2u^n -u^n-1 +laplacian of u^n
     !Step #5: (u^n-1,u^n) = (u^n,u^n+1)
-    ! in reverse time:
-    ! Step #5: (u^n,u^n+1) = (u^n-1,u^n)
-    ! Step #4: u^n-1 = 2u^n -u^n+1 +laplacian of u^n
-    ! Step #3: load boundary values for u^n+1
-    ! Step #1: u^n -= src
+    !
+    !in reverse time:
+    !Step #5: (u^n,u^n+1) = (u^n-1,u^n)
+    !Step #4: u^n-1 = 2u^n -u^n+1 +laplacian of u^n
+    !Step #3: load boundary values for u^n+1
+    !Step #1: u^n -= src
     !
     !Adjoint:
     !since
@@ -462,12 +462,10 @@ use, intrinsic :: ieee_arithmetic
             tt1=tt1+toc-tic
 
             !step 2: save p^it+1 in boundary layers
-            ! if(fld_E0%if_will_reconstruct) then
-                call cpu_time(tic)
-                call fld_u%boundary_transport_displacement('save',it)
-                call cpu_time(toc)
-                tt2=tt2+toc-tic
-            ! endif
+            call cpu_time(tic)
+            call fld_u%boundary_transport_displacement('save',it)
+            call cpu_time(toc)
+            tt2=tt2+toc-tic
 
             ! !step 3: set hardBC
             ! call cpu_time(tic)
@@ -525,7 +523,7 @@ use, intrinsic :: ieee_arithmetic
         call fld_u%reinit
         
         !for adjoint test
-        if(if_record_adjseismo)  call alloc(fld_a%seismo,1,self%nt)
+        if(if_propagator_record_adjseismo)  call alloc(fld_a%seismo,1,self%nt)
 
         !timing
         tt1=0.; tt2=0.; tt3=0.
@@ -604,13 +602,12 @@ use, intrinsic :: ieee_arithmetic
             tt11=tt11+toc-tic
 
             !adjoint step 1: sample p^it at source position
-            ! if(if_record_adjseismo) then
-                ! call cpu_time(tic)
-                ! call self%extract(fld_q,it)
-                ! call self%extract(fld_p,it)
-                ! call cpu_time(toc)
-                ! tt12=tt12+toc-tic
-            ! endif
+            if(if_propagator_record_adjseismo) then
+                call cpu_time(tic)
+                call self%extract(fld_a,it)
+                call cpu_time(toc)
+                tt12=tt12+toc-tic
+            endif
 
 
             !--------------------------------------------------------!
@@ -668,10 +665,10 @@ use, intrinsic :: ieee_arithmetic
             
             if(if_hicks) then
                 select case (shot%src%comp)
-                case ('vz')
+                case ('uz')
                     f%uz(ifz:ilz,ifx:ilx,1) = f%uz(ifz:ilz,ifx:ilx,1) + wl*self%buoz(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
 
-                case ('vx')
+                case ('ux')
                     if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl
                     f%ux(ifz:ilz,ifx:ilx,1) = f%ux(ifz:ilz,ifx:ilx,1) + wl*self%buox(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
                 
@@ -679,10 +676,10 @@ use, intrinsic :: ieee_arithmetic
                 
             else
                 select case (shot%src%comp)
-                case ('vz')
+                case ('uz')
                     f%uz(iz,ix,1) = f%uz(iz,ix,1) + wl*self%buoz(iz,ix)
 
-                case ('vx')
+                case ('ux')
                     if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl
                     f%ux(iz,ix,1) = f%ux(iz,ix,1) + wl*self%buox(iz,ix)
                     
@@ -703,20 +700,20 @@ use, intrinsic :: ieee_arithmetic
                 
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
-                    case ('vz') !vertical z adjsource
+                    case ('uz') !vertical z adjsource
                         f%uz(ifz:ilz,ifx:ilx,1) = f%uz(ifz:ilz,ifx:ilx,1) + wl*self%buoz(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1)
 
-                    case ('vx') !horizontal x adjsource
+                    case ('ux') !horizontal x adjsource
                         f%ux(ifz:ilz,ifx:ilx,1) = f%ux(ifz:ilz,ifx:ilx,1) + wl*self%buox(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1)
                         
                     end select
                     
                 else
                     select case (shot%rcv(i)%comp)
-                    case ('vz')
+                    case ('uz')
                         f%uz(iz,ix,1) = f%uz(iz,ix,1) + wl*self%buoz(iz,ix)
 
-                    case ('vx')
+                    case ('ux')
                         if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl
                         f%ux(iz,ix,1) = f%ux(iz,ix,1) + wl*self%buox(iz,ix)
 
@@ -750,10 +747,10 @@ use, intrinsic :: ieee_arithmetic
 
             call fd2d_laplacian(f%uz,f%ux,&
                                 f%duz_dz,f%dux_dx,f%dux_dz,f%duz_dx,&
-                                f%dz_ldap2mu_duz_dz_p_lda_dux_dx,&
-                                f%dx_lda_duz_dz_p_ldap2mu_dux_dx,&
-                                f%dz_mu_dux_dz_p_duz_dx,&
-                                f%dx_mu_dux_dz_p_duz_dx,&
+                                f%dz_ldap2mu_duzdz_p_lda_duxdx,&
+                                f%dx_lda_duzdz_p_ldap2mu_duxdx,&
+                                f%dz_mu_duxdz_p_duzdx,&
+                                f%dx_mu_duxdz_p_duzdx,&
                                 f%lapz,f%lapx,&
                                 self%ldap2mu,self%lda,self%mu,&
                                 ifz,ilz,ifx,ilx)
@@ -762,15 +759,11 @@ use, intrinsic :: ieee_arithmetic
 
 
         if(time_dir>0.) then !in forward time
-            f%uz_next(ifz:ilz,ifx:ilx,:) = 2*f%uz(ifz:ilz,ifx:ilx,:) -f%uz_prev(ifz:ilz,ifx:ilx,:) & 
-                +dt2*f%lapz(ifz:ilz,ifx:ilx,:)
-            f%ux_next(ifz:ilz,ifx:ilx,:) = 2*f%ux(ifz:ilz,ifx:ilx,:) -f%ux_prev(ifz:ilz,ifx:ilx,:) & 
-                +dt2*f%lapx(ifz:ilz,ifx:ilx,:)
+            f%uz_next(ifz:ilz,ifx:ilx,1) = 2*f%uz(ifz:ilz,ifx:ilx,1) -f%uz_prev(ifz:ilz,ifx:ilx,1) +dt2*self%buoz(ifz:ilz,ifx:ilx)*f%lapz(ifz:ilz,ifx:ilx,1)
+            f%ux_next(ifz:ilz,ifx:ilx,1) = 2*f%ux(ifz:ilz,ifx:ilx,1) -f%ux_prev(ifz:ilz,ifx:ilx,1) +dt2*self%buox(ifz:ilz,ifx:ilx)*f%lapx(ifz:ilz,ifx:ilx,1)
         else !in reverse time
-            f%uz_prev(ifz:ilz,ifx:ilx,:) = 2*f%uz(ifz:ilz,ifx:ilx,:) -f%uz_next(ifz:ilz,ifx:ilx,:) &
-                +dt2*f%lapz(ifz:ilz,ifx:ilx,:)
-            f%ux_prev(ifz:ilz,ifx:ilx,:) = 2*f%ux(ifz:ilz,ifx:ilx,:) -f%ux_next(ifz:ilz,ifx:ilx,:) &
-                +dt2*f%lapx(ifz:ilz,ifx:ilx,:)
+            f%uz_prev(ifz:ilz,ifx:ilx,1) = 2*f%uz(ifz:ilz,ifx:ilx,1) -f%uz_next(ifz:ilz,ifx:ilx,1) +dt2*self%buoz(ifz:ilz,ifx:ilx)*f%lapz(ifz:ilz,ifx:ilx,1)
+            f%ux_prev(ifz:ilz,ifx:ilx,1) = 2*f%ux(ifz:ilz,ifx:ilx,1) -f%ux_next(ifz:ilz,ifx:ilx,1) +dt2*self%buox(ifz:ilz,ifx:ilx)*f%lapx(ifz:ilz,ifx:ilx,1)
         endif
 
         ! !apply free surface boundary condition if needed
@@ -971,31 +964,32 @@ use, intrinsic :: ieee_arithmetic
     
     subroutine fd2d_laplacian(uz,ux,&
                             duz_dz,dux_dx,dux_dz,duz_dx,&
-                            dz_ldap2mu_duz_dz_p_lda_dux_dx,&
-                            dx_lda_duz_dz_p_ldap2mu_dux_dx,&
-                            dz_mu_dux_dz_p_duz_dx,&
-                            dx_mu_dux_dz_p_duz_dx,&
+                            dz_ldap2mu_duzdz_p_lda_duxdx,&
+                            dx_lda_duzdz_p_ldap2mu_duxdx,&
+                            dz_mu_duxdz_p_duzdx,&
+                            dx_mu_duxdz_p_duzdx,&
                             lapz,lapx,&
                             ldap2mu,lda,mu,&
                             ifz,ilz,ifx,ilx)
         real,dimension(*) :: uz,ux
         real,dimension(*) :: duz_dz,dux_dx,dux_dz,duz_dx
-        real,dimension(*) :: dz_ldap2mu_duz_dz_p_lda_dux_dx
-        real,dimension(*) :: dx_lda_duz_dz_p_ldap2mu_dux_dx
-        real,dimension(*) :: dz_mu_dux_dz_p_duz_dx
-        real,dimension(*) :: dx_mu_dux_dz_p_duz_dx
+        real,dimension(*) :: dz_ldap2mu_duzdz_p_lda_duxdx
+        real,dimension(*) :: dx_lda_duzdz_p_ldap2mu_duxdx
+        real,dimension(*) :: dz_mu_duxdz_p_duzdx
+        real,dimension(*) :: dx_mu_duxdz_p_duzdx
         real,dimension(*) :: ldap2mu,lda,mu,lapz,lapx
 
-        real,dimension(:),allocatable :: ldap2mu_duz_dz_p_lda_dux_dx
-        real,dimension(:),allocatable :: lda_duz_dz_p_ldap2mu_dux_dx
-        real,dimension(:),allocatable :: mu_dux_dz_p_duz_dx
+        real,dimension(:),allocatable :: ldap2mu_duzdz_p_lda_duxdx
+        real,dimension(:),allocatable :: lda_duzdz_p_ldap2mu_duxdx
+        real,dimension(:),allocatable :: mu_duxdz_p_duz_dx
 
-        call alloc(ldap2mu_duz_dz_p_lda_dux_dx, cb%n)
-        call alloc(lda_duz_dz_p_ldap2mu_dux_dx, cb%n)
-        call alloc(mu_dux_dz_p_duz_dx,          cb%n)
+        call alloc(ldap2mu_duzdz_p_lda_duxdx, cb%n)
+        call alloc(lda_duzdz_p_ldap2mu_duxdx, cb%n)
+        call alloc(mu_duxdz_p_duz_dx,         cb%n)
 
         nz=cb%nz
         nx=cb%nx
+
         
         !       [λ+2μ  λ      ][∂zᶠ  0 ]       [λ+2μ  λ      ][∂zᶠuz]   [(λ+2μ)∂zᶠuz +  λ    ∂ₓᶠux]
         !flux = | λ   λ+2μ    || 0  ∂ₓᶠ|[uz] = | λ   λ+2μ    ||∂ₓᶠux| = | λ    ∂zᶠuz + (λ+2μ)∂ₓᶠux|
@@ -1003,8 +997,8 @@ use, intrinsic :: ieee_arithmetic
         !       [          μ μ][∂ₓᵇ  0 ]       [          μ μ][∂ₓᵇuz]   [    μ ∂zᵇux + μ     ∂ₓᵇuz]
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
-        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,&
-        !$omp         iz_ixm2,iz_ixm1,iz_ixp1)
+        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
+        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2)
         !$omp do schedule(dynamic)
         do ix = ifx+2,ilx-2
             !dir$ simd
@@ -1023,43 +1017,63 @@ use, intrinsic :: ieee_arithmetic
                 iz_ixp1=i  +nz  !iz,ix+1
                 iz_ixp2=i  +2*nz  !iz,ix+2
 
-                duz_dz_ = c1z*(uz(izp1_ix)-uz(iz_ix)) +c2z*(uz(izp2_ix)-uz(izm1_ix))
-                dux_dx_ = c1x*(ux(iz_ixp1)-ux(iz_ix)) +c2x*(ux(iz_ixp2)-ux(iz_ixm1))
+! dp_dz_ = c1z*(p(iz_ix) - p(izm1_ix)) +c2z*(p(izp1_ix)-p(izm2_ix))
+! dp_dx_ = c1x*(p(iz_ix) - p(iz_ixm1)) +c2x*(p(iz_ixp1)-p(iz_ixm2))
+
+! dp_dz(iz_ix) = cpml%b_z_half(iz)*dp_dz(iz_ix) + cpml%a_z_half(iz)*dp_dz_
+! dp_dx(iz_ix) = cpml%b_x_half(ix)*dp_dx(iz_ix) + cpml%a_x_half(ix)*dp_dx_
+
+! dp_dz_ = dp_dz_/cpml%kpa_z_half(iz) + dp_dz(iz_ix)
+! dp_dx_ = dp_dx_/cpml%kpa_x_half(ix) + dp_dx(iz_ix)
+
+! pzz(iz_ix) = buoz(iz_ix)*dp_dz_
+! pxx(iz_ix) = buox(iz_ix)*dp_dx_
+
+                duz_dz_ = c1z*(uz(izp1_ix)-uz(iz_ix)) +c2z*(uz(izp2_ix)-uz(izm1_ix)) !∂zᶠ
+                dux_dx_ = c1x*(ux(iz_ixp1)-ux(iz_ix)) +c2x*(ux(iz_ixp2)-ux(iz_ixm1)) !∂ₓᶠ
 
                 duz_dz(i)=cpml%b_z(iz)*duz_dz(i)+cpml%a_z(iz)*duz_dz_
                 dux_dx(i)=cpml%b_x(ix)*dux_dx(i)+cpml%a_x(ix)*dux_dx_
 
-                dux_dz_ = c1z*(ux(iz_ix)-ux(izm1_ix)) +c2z*(ux(izp1_ix)-ux(izm2_ix))
-                duz_dx_ = c1x*(uz(iz_ix)-uz(iz_ixm1)) +c2x*(uz(iz_ixp1)-uz(iz_ixm2))
+                duz_dz_ = duz_dz_*cpml%kpa_z(iz) + duz_dz(iz_ix)
+                dux_dx_ = dux_dx_*cpml%kpa_x(ix) + dux_dx(iz_ix)
+
+
+                dux_dz_ = c1z*(ux(iz_ix)-ux(izm1_ix)) +c2z*(ux(izp1_ix)-ux(izm2_ix)) !∂zᵇ
+                duz_dx_ = c1x*(uz(iz_ix)-uz(iz_ixm1)) +c2x*(uz(iz_ixp1)-uz(iz_ixm2)) !∂ₓᵇ
 
                 dux_dz(i)=cpml%b_z_half(iz)*dux_dz(i)+cpml%a_z_half(iz)*dux_dz_
                 duz_dx(i)=cpml%b_x_half(ix)*duz_dx(i)+cpml%a_x_half(ix)*duz_dx_
 
+                dux_dz_ = dux_dz_*cpml%kpa_z_half(iz) + dux_dz(iz_ix)
+                duz_dx_ = duz_dx_*cpml%kpa_x_half(ix) + duz_dx(iz_ix)
 
-                ldap2mu_duz_dz_p_lda_dux_dx(iz_ix) = ldap2mu(iz_ix)*duz_dz(iz_ix) &
-                                                   + lda    (iz_ix)*dux_dx(iz_ix)
-                lda_duz_dz_p_ldap2mu_dux_dx(iz_ix) = lda    (iz_ix)*duz_dz(iz_ix) &
-                                                   + ldap2mu(iz_ix)*dux_dx(iz_ix)
 
-                mu_dux_dz_p_duz_dx(iz_ix) = mu(iz_ix)*(duz_dx(iz_ix)+dux_dz(iz_ix))
+                ldap2mu_duzdz_p_lda_duxdx(iz_ix) = &
+                    ldap2mu(iz_ix)*duz_dz_ +lda    (iz_ix)*dux_dx_
+                lda_duzdz_p_ldap2mu_duxdx(iz_ix) = &
+                    lda    (iz_ix)*duz_dz_ +ldap2mu(iz_ix)*dux_dx_
+
+                mu_duxdz_p_duz_dx(iz_ix) = mu(iz_ix)*(duz_dx_+dux_dz_)
                 
             enddo
         enddo
         !$omp end do
         !$omp end parallel
 
-        !                          [ldap2mu_duz_dz_p_lda_dux_dx    ]
-        !Laplacian= [∂zᵇ 0   0 ∂ₓᶠ]|    lda_duz_dz_p_ldap2mu_dux_dx|
-        !           [0  ∂ₓᵇ ∂zᶠ 0 ]|     mu_dux_dz_p_duz_dx        |
-        !                          [     mu_dux_dz_p_duz_dx        ]
+
+        !                          [ldap2mu_duzdz_p_lda_duxdx    ]
+        !Laplacian= [∂zᵇ 0   0 ∂ₓᶠ]|    lda_duzdz_p_ldap2mu_duxdx|
+        !           [0  ∂ₓᵇ ∂zᶠ 0 ]|     mu_duxdz_p_duz_dx       |
+        !                          [     mu_duxdz_p_duz_dx       ]
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
         !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dz_ldap2mu_duz_dz_p_lda_dux_dx_,&
-        !$omp         dx_lda_duz_dz_p_ldap2mu_dux_dx_,&
-        !$omp         dz_mu_dux_dz_p_duz_dx_,&
-        !$omp         dx_mu_dux_dz_p_duz_dx_)
+        !$omp         dz_ldap2mu_duzdz_p_lda_duxdx_,&
+        !$omp         dx_lda_duzdz_p_ldap2mu_duxdx_,&
+        !$omp         dz_mu_duxdz_p_duzdx_,&
+        !$omp         dx_mu_duxdz_p_duzdx_)
         !$omp do schedule(dynamic)
         do ix = ifx+2,ilx-2
             !dir$ simd
@@ -1078,31 +1092,38 @@ use, intrinsic :: ieee_arithmetic
                 iz_ixp1=i  +nz  !iz,ix+1
                 iz_ixp2=i  +2*nz  !iz,ix+2
                 
-                dz_ldap2mu_duz_dz_p_lda_dux_dx_ = & !∂zᵇ
-                     c1z*(ldap2mu_duz_dz_p_lda_dux_dx(iz_ix)  -ldap2mu_duz_dz_p_lda_dux_dx(izm1_ix)) &
-                    +c2z*(ldap2mu_duz_dz_p_lda_dux_dx(izp1_ix)-ldap2mu_duz_dz_p_lda_dux_dx(izm2_ix))
+                dz_ldap2mu_duzdz_p_lda_duxdx_ = & !∂zᵇ
+                     c1z*(ldap2mu_duzdz_p_lda_duxdx(iz_ix)  -ldap2mu_duzdz_p_lda_duxdx(izm1_ix)) &
+                    +c2z*(ldap2mu_duzdz_p_lda_duxdx(izp1_ix)-ldap2mu_duzdz_p_lda_duxdx(izm2_ix))
 
-                dx_lda_duz_dz_p_ldap2mu_dux_dx_ = & !∂ₓᵇ
-                     c1x*(lda_duz_dz_p_ldap2mu_dux_dx(iz_ix)  -lda_duz_dz_p_ldap2mu_dux_dx(iz_ixm1)) &
-                    +c2x*(lda_duz_dz_p_ldap2mu_dux_dx(iz_ixp1)-lda_duz_dz_p_ldap2mu_dux_dx(iz_ixm2))
+                dx_lda_duzdz_p_ldap2mu_duxdx_ = & !∂ₓᵇ
+                     c1x*(lda_duzdz_p_ldap2mu_duxdx(iz_ix)  -lda_duzdz_p_ldap2mu_duxdx(iz_ixm1)) &
+                    +c2x*(lda_duzdz_p_ldap2mu_duxdx(iz_ixp1)-lda_duzdz_p_ldap2mu_duxdx(iz_ixm2))
 
-                dz_ldap2mu_duz_dz_p_lda_dux_dx(i)=cpml%b_z_half(iz)*dz_ldap2mu_duz_dz_p_lda_dux_dx(i)+cpml%a_z_half(iz)*dz_ldap2mu_duz_dz_p_lda_dux_dx_
-                dx_lda_duz_dz_p_ldap2mu_dux_dx(i)=cpml%b_x_half(ix)*dx_lda_duz_dz_p_ldap2mu_dux_dx(i)+cpml%a_x_half(ix)*dx_lda_duz_dz_p_ldap2mu_dux_dx_
+                dz_ldap2mu_duzdz_p_lda_duxdx(i)=cpml%b_z_half(iz)*dz_ldap2mu_duzdz_p_lda_duxdx(i)+cpml%a_z_half(iz)*dz_ldap2mu_duzdz_p_lda_duxdx_
+                dx_lda_duzdz_p_ldap2mu_duxdx(i)=cpml%b_x_half(ix)*dx_lda_duzdz_p_ldap2mu_duxdx(i)+cpml%a_x_half(ix)*dx_lda_duzdz_p_ldap2mu_duxdx_
+
+                dz_ldap2mu_duzdz_p_lda_duxdx_ = dz_ldap2mu_duzdz_p_lda_duxdx_*cpml%kpa_z_half(iz) + dz_ldap2mu_duzdz_p_lda_duxdx(iz_ix)
+                dx_lda_duzdz_p_ldap2mu_duxdx_ = dx_lda_duzdz_p_ldap2mu_duxdx_*cpml%kpa_x_half(ix) + dx_lda_duzdz_p_ldap2mu_duxdx(iz_ix)
 
 
-                dz_mu_dux_dz_p_duz_dx_ = & !∂ₓᶠ
-                     c1z*(mu_dux_dz_p_duz_dx(izp1_ix)-mu_dux_dz_p_duz_dx(iz_ix)  ) &
-                    +c2z*(mu_dux_dz_p_duz_dx(izp2_ix)-mu_dux_dz_p_duz_dx(izm1_ix))
+                dz_mu_duxdz_p_duzdx_ = & !∂zᶠ
+                     c1z*(mu_duxdz_p_duz_dx(izp1_ix)-mu_duxdz_p_duz_dx(iz_ix)  ) &
+                    +c2z*(mu_duxdz_p_duz_dx(izp2_ix)-mu_duxdz_p_duz_dx(izm1_ix))
 
-                dx_mu_dux_dz_p_duz_dx_ = & !∂zᶠ
-                     c1x*(mu_dux_dz_p_duz_dx(iz_ixp1)-mu_dux_dz_p_duz_dx(iz_ix)  ) &
-                    +c2x*(mu_dux_dz_p_duz_dx(iz_ixp2)-mu_dux_dz_p_duz_dx(iz_ixm1))
+                dx_mu_duxdz_p_duzdx_ = & !∂ₓᶠ
+                     c1x*(mu_duxdz_p_duz_dx(iz_ixp1)-mu_duxdz_p_duz_dx(iz_ix)  ) &
+                    +c2x*(mu_duxdz_p_duz_dx(iz_ixp2)-mu_duxdz_p_duz_dx(iz_ixm1))
 
-                dz_mu_dux_dz_p_duz_dx(i)=cpml%b_z(iz)*dz_mu_dux_dz_p_duz_dx(i)+cpml%a_z(iz)*dz_mu_dux_dz_p_duz_dx_
-                dx_mu_dux_dz_p_duz_dx(i)=cpml%b_x(ix)*dx_mu_dux_dz_p_duz_dx(i)+cpml%a_x(ix)*dx_mu_dux_dz_p_duz_dx_
+                dz_mu_duxdz_p_duzdx(i)=cpml%b_z(iz)*dz_mu_duxdz_p_duzdx(i)+cpml%a_z(iz)*dz_mu_duxdz_p_duzdx_
+                dx_mu_duxdz_p_duzdx(i)=cpml%b_x(ix)*dx_mu_duxdz_p_duzdx(i)+cpml%a_x(ix)*dx_mu_duxdz_p_duzdx_
+                
+                dz_mu_duxdz_p_duzdx_ = dz_mu_duxdz_p_duzdx_*cpml%kpa_z(iz) + dz_mu_duxdz_p_duzdx(iz_ix)
+                dx_mu_duxdz_p_duzdx_ = dx_mu_duxdz_p_duzdx_*cpml%kpa_x(ix) + dx_mu_duxdz_p_duzdx(iz_ix)
+                
 
-                lapz(iz_ix) = dz_ldap2mu_duz_dz_p_lda_dux_dx(iz_ix) + dx_mu_dux_dz_p_duz_dx(iz_ix)
-                lapx(iz_ix) = dx_lda_duz_dz_p_ldap2mu_dux_dx(iz_ix) + dz_mu_dux_dz_p_duz_dx(iz_ix)
+                lapz(iz_ix) = dz_ldap2mu_duzdz_p_lda_duxdx_ + dx_mu_duxdz_p_duzdx_
+                lapx(iz_ix) = dx_lda_duzdz_p_ldap2mu_duxdx_ + dz_mu_duxdz_p_duzdx_
 
             enddo
         enddo

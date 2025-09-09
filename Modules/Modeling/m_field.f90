@@ -78,10 +78,10 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:,:),allocatable :: dthta_dz,dthta_dx
 
         real,dimension(:,:,:),allocatable :: duz_dz,dux_dx,dux_dz,duz_dx
-        real,dimension(:,:,:),allocatable :: dz_ldap2mu_duz_dz_p_lda_dux_dx
-        real,dimension(:,:,:),allocatable :: dx_lda_duz_dz_p_ldap2mu_dux_dx
-        real,dimension(:,:,:),allocatable :: dz_mu_dux_dz_p_duz_dx
-        real,dimension(:,:,:),allocatable :: dx_mu_dux_dz_p_duz_dx
+        real,dimension(:,:,:),allocatable :: dz_ldap2mu_duzdz_p_lda_duxdx
+        real,dimension(:,:,:),allocatable :: dx_lda_duzdz_p_ldap2mu_duxdx
+        real,dimension(:,:,:),allocatable :: dz_mu_duxdz_p_duzdx
+        real,dimension(:,:,:),allocatable :: dx_mu_duxdz_p_duzdx
 
         real,dimension(:,:,:),allocatable :: lapz,lapx,laps
 
@@ -432,6 +432,11 @@ use, intrinsic :: ieee_arithmetic
                     case ('es')
                         call sysio_write('snap_'//self%name//'%es'//suf,self%es,cb%n,o_mode='append')
 
+                    case ('uz')
+                        call sysio_write('snap_'//self%name//'%uz'//suf,self%uz,cb%n,o_mode='append')
+                    case ('ux')
+                        call sysio_write('snap_'//self%name//'%ux'//suf,self%ux,cb%n,o_mode='append')
+
                     ! case ('p')
                     !     call sysio_write('snap_'//self%name//'%p'//suf,self%p,cb%n,o_mode='append')
                     ! case ('p_prev')
@@ -506,20 +511,20 @@ use, intrinsic :: ieee_arithmetic
             
             endif
             
-        endif
-
-        !w/o o_wavelet
-        if(self%is_adjoint) then
-            do i=1,shot%nrcv !implicit transpose
-                call resampler(shot%dadj(:,i),self%wavelet(i,:),1,&
+        else !w/o o_wavelet
+            if(self%is_adjoint) then
+                do i=1,shot%nrcv !implicit transpose
+                    call resampler(shot%dadj(:,i),self%wavelet(i,:),1,&
+                                    din=shot%dt,nin=shot%nt,&
+                                    dout=dt,nout=nt)
+                enddo
+                
+            else
+                call resampler(shot%wavelet,self%wavelet(1,:),1,&
                                 din=shot%dt,nin=shot%nt,&
                                 dout=dt,nout=nt)
-            enddo
+            endif
 
-        else
-            call resampler(shot%wavelet,self%wavelet(1,:),1,&
-                            din=shot%dt,nin=shot%nt,&
-                            dout=dt,nout=nt)
         endif
  
     end subroutine
@@ -833,10 +838,10 @@ use, intrinsic :: ieee_arithmetic
         call dealloc(self%bnd%ux_top,  self%bnd%ux_bot, self%bnd%ux_left, self%bnd%ux_right)
 
         call dealloc(self%duz_dz, self%dux_dx, self%duz_dx, self%dux_dx)
-        call dealloc(self%dz_ldap2mu_duz_dz_p_lda_dux_dx, &
-                     self%dx_lda_duz_dz_p_ldap2mu_dux_dx, &
-                     self%dz_mu_dux_dz_p_duz_dx, &
-                     self%dx_mu_dux_dz_p_duz_dx)
+        call dealloc(self%dz_ldap2mu_duzdz_p_lda_duxdx, &
+                     self%dx_lda_duzdz_p_ldap2mu_duxdx, &
+                     self%dz_mu_duxdz_p_duzdx, &
+                     self%dx_mu_duxdz_p_duzdx)
 
 
         call dealloc(self%lapz,self%lapx,self%laps)
