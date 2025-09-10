@@ -18,7 +18,7 @@ use m_resampler
     type(t_correlate) :: a_star_u
     real,dimension(:,:),allocatable :: tmp
     real,dimension(3) :: grad_term_weights
-    character(:),allocatable :: dnorm
+    character(:),allocatable :: s_dnorm, s_conversion
     
     type :: t_S
         real,dimension(:),allocatable :: scale
@@ -78,8 +78,8 @@ use m_resampler
 
         call hud('----  Computing obj func & dadj  ----')
 
-            if(.not.allocated(dnorm)) dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2')
-            select case (dnorm)
+            if(.not.allocated(s_dnorm)) s_dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2')
+            select case (s_dnorm)
             case ('L2')
 
                 call wei%update
@@ -107,9 +107,15 @@ use m_resampler
 
             case ('strain_L2averaged')
                 !first goto strain
-                !call derivative_x(shot%dsyn)
-                !call integrate_t(shot%dsyn)
-                call convert_in_fk(shot%dsyn,'v2e')
+                s_conversion=setup%get_str('DATA_CONVERSION_METHOD',o_default='fk')
+                if(s_conversion=='fk') then
+                    call convert_in_fk(shot%dsyn,'v2e')
+                else
+                    call hud('differentiate_x(shot%dsyn)')
+                    call differentiate_x(shot%dsyn)
+                    !call integrate_t(shot%dsyn)
+                endif
+
                 !then add gauge length
                 length=setup%get_int('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)
                 ! scaler=setup%get_real('MOVING_AVERAGE_SCALER','MA_SCALER',o_default='1.')
@@ -118,11 +124,18 @@ use m_resampler
                 fobj%misfit = fobj%misfit &
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
                 call kernel_L2sq(shot%dadj)
+
                 !goback to velocity adjoint src
                 if(length>0) call moving_average(shot%dadj,length)!,scaler)
-                !call rev_integrate_t(shot%dadj)
-                !call derivative_x(-shot%dadj)
-                call convert_in_fk(shot%dadj,'e2v')
+
+                !finally convert back
+                if(s_conversion=='fk') then
+                    call convert_in_fk(shot%dadj,'e2v')
+                else
+                    call hud('differentiate_x(-shot%dadj)')
+                    !call rev_integrate_t(shot%dadj)
+                    call differentiate_x(-shot%dadj)
+                endif
 
                 call fld_a%ignite(o_wavelet=shot%dadj)
                 call shot%write('dadj_',shot%dadj)
@@ -234,7 +247,7 @@ use m_resampler
 
     end subroutine
 
-    subroutine derivative_x(data) !gradient by cdiff
+    subroutine differentiate_x(data) !by central diff
         real,dimension(:,:) :: data !nt x nrcv
 
         real,dimension(:,:), allocatable :: dout
