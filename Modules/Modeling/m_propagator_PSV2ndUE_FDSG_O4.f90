@@ -640,7 +640,7 @@ use, intrinsic :: ieee_arithmetic
             tt11=tt11+toc-tic
 
             !adjoint step 1: sample pz^it or e^it+0.5 at source position
-            if(if_record_adjseismo) then
+            if(if_propagator_record_adjseismo) then
                 call cpu_time(tic)
                 call self%extract(fld_a,it)
                 call cpu_time(toc)
@@ -1109,7 +1109,7 @@ use, intrinsic :: ieee_arithmetic
 
     end subroutine
 
-    subroutine cross_correlate(rf,sf,corr,it)
+    subroutine cross_correlate_glda_gmu(rf,sf,corr,it)
         type(t_field), intent(in) :: rf, sf
         type(t_correlate) :: corr
 
