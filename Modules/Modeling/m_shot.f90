@@ -202,6 +202,10 @@ use m_model
             
         enddo
 
+
+        if(setup%get_bool('IF_SZ_MUSTBE0',o_default='F')) then
+            self%src%z=0.
+        endif
         if(setup%get_bool('IF_MUST_USE_RCOMP',o_default='F')) then
             do i=1,shot%nrcv
                 self%rcv(i)%comp=rcomp(1)%s
