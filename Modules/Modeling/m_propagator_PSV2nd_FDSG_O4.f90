@@ -375,7 +375,7 @@ use, intrinsic :: ieee_arithmetic
     !                      |    μ     |   μ     bz  μ     |         |
     !                      |          |         |         |         |
     !                     λ,μ   bx   λ,μ  bx   λ,μ  bx   λ,μ  bx   λ,μ
-    !  -v--s-v-s-v-→ t    -sn---ux---sn---ux---sn---ux---sn---ux---sn-→ x
+    !  -u--s-u-s-u-→ t    -sn---ux---sn---ux---sn---ux---sn---ux---sn-→ x
     !  -1 -½ 0 ½ 1        -2   -1½   -1   -½    0    ½    1   1½    2    
     !                      |          |         |         |         | 
     !                      |    ss    |   ss  ½ uz  ss    |         | 
@@ -398,10 +398,10 @@ use, intrinsic :: ieee_arithmetic
     !
     !Forward:
     !FD eqn:
-    !                                   [∂zᶠ  0 ]
-    !ρ∂ₜ² [ uz^n  ] = [∂zᵇ 0   0 ∂ₓᶠ] C | 0  ∂ₓᶠ|[uz^n+1]
-    !     [ ux^n  ]   [0  ∂ₓᵇ ∂zᶠ 0 ]   | 0  ∂zᵇ|[ux^n+1]
-    !                                   [∂ₓᵇ  0 ]
+    !                                [∂zᶠ  0 ]
+    !ρ∂ₜ² [uz^n] = [∂zᵇ 0   0 ∂ₓᶠ] C | 0  ∂ₓᶠ|[uz^n]
+    !     [ux^n]   [0  ∂ₓᵇ ∂zᶠ 0 ]   | 0  ∂zᵇ|[ux^n]
+    !                                [∂ₓᵇ  0 ]
     !where
     !∂ₜᶠ*dt := v^n+1 - v^n                             ~O(t²)
     !∂zᵇ*dz := c₁(s(iz  )-s(iz-1) +c₂(s(iz+1)-s(iz-2)  ~O(x⁴)
@@ -423,10 +423,10 @@ use, intrinsic :: ieee_arithmetic
     !∂ₜ²ᵀ = ∂ₜ²
     !∂zᵇᵀ = u(iz)-u(iz+1) = -∂zᶠ, ∂zᶠᵀ = -∂zᵇ
     !FD eqn:
-    !                                   [∂zᶠ  0 ]
-    !ρ∂ₜ² [ uz^n  ] = [∂zᵇ 0   0 ∂ₓᶠ] C | 0  ∂ₓᶠ|[uz^n+1]
-    !     [ ux^n  ]   [0  ∂ₓᵇ ∂zᶠ 0 ]   | 0  ∂zᵇ|[ux^n+1]
-    !                                   [∂ₓᵇ  0 ]
+    !                                [∂zᶠ  0 ]
+    !ρ∂ₜ² [uz^n] = [∂zᵇ 0   0 ∂ₓᶠ] C | 0  ∂ₓᶠ|[uz^n]
+    !     [ux^n]   [0  ∂ₓᵇ ∂zᶠ 0 ]   | 0  ∂zᵇ|[ux^n]
+    !                                [∂ₓᵇ  0 ]
     !SAME as the discretized FD eqn!
     !
     !Time marching (in reverse time):
@@ -1201,7 +1201,7 @@ use, intrinsic :: ieee_arithmetic
         !     | 0  ∂zᵇ|[ux]   |∂zᵇux|         |    0 0|         |    1 1|
         !     [∂ₓᵇ  0 ]       [∂ₓᵇuz]         [    0 0]         [    1 1]
         !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,j&
+        !$omp private(iz,ix,i,j,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
         !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
         !$omp         rf_duz_dz,rf_dux_dx,rf_dux_dz,rf_duz_dx,&
