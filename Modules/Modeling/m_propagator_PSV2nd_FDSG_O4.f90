@@ -125,7 +125,12 @@ use, intrinsic :: ieee_arithmetic
             call alloc(m%rho,m%nz,m%nx,1,o_init=1000.)
             call warn('Constant rho model (1000 kg/m³) is allocated by propagator.')
         endif
-                
+        
+        if(m%is_freesurface) then
+            call warn('Sorry, free surface has NOT yet considered in this propagator. Switch off free-surface condition.')
+            m%is_freesurface=.false.
+        endif
+
     end subroutine
 
     subroutine check_discretization(self)
@@ -371,23 +376,23 @@ use, intrinsic :: ieee_arithmetic
     !
     !Discrete case:
     !Meshing with staggered grids in time and space (2D example):
-    !                      |    ss    |   ss -½ uz  ss    |         |
-    !                      |    μ     |   μ     bz  μ     |         |
-    !                      |          |         |         |         |
-    !                     λ,μ   bx   λ,μ  bx   λ,μ  bx   λ,μ  bx   λ,μ
-    !  -u--s-u-s-u-→ t    -sn---ux---sn---ux---sn---ux---sn---ux---sn-→ x
-    !  -1 -½ 0 ½ 1        -2   -1½   -1   -½    0    ½    1   1½    2    
-    !                      |          |         |         |         | 
-    !                      |    ss    |   ss  ½ uz  ss    |         | 
-    !                      |    μ     |   μ     bz  μ     |         | 
-    !                      |          |         |         |         | 
-    !                     -|----------|-------1-sn--------|---------|-
-    !                      |          |         κ         |         | 
-    !                      |          |         |         |         | 
-    !                      |          |      1½ uz        |         | 
-    !                      |          |         bz        |         | 
-    !                      |          |         |         |         | 
-    !                                         z ↓
+    !                   |    ss    |   ss -½ uz  ss    |         |
+    !                   |    μ     |   μ     bz  μ     |         |
+    !                   |          |         |         |         |
+    !                  λ,μ   bx   λ,μ  bx   λ,μ  bx   λ,μ  bx   λ,μ
+    !  -u--u--u-→ t    -sn---ux---sn---ux---sn---ux---sn---ux---sn-→ x
+    !  -1  0  1        -2   -1½   -1   -½    0    ½    1   1½    2    
+    !                   |          |         |         |         | 
+    !                   |    ss    |   ss  ½ uz  ss    |         | 
+    !                   |    μ     |   μ     bz  μ     |         | 
+    !                   |          |         |         |         | 
+    !                  -|----------|-------1-sn--------|---------|-
+    !                   |          |         κ         |         | 
+    !                   |          |         |         |         | 
+    !                   |          |      1½ uz        |         | 
+    !                   |          |         bz        |         | 
+    !                   |          |         |         |         | 
+    !                                      z ↓
     !
     !Convention for half-integer index:
     !(array index)  =>     (real index)     
@@ -407,15 +412,15 @@ use, intrinsic :: ieee_arithmetic
     !∂zᵇ*dz := c₁(s(iz  )-s(iz-1) +c₂(s(iz+1)-s(iz-2)  ~O(x⁴)
     !∂zᶠ*dz := c₁(v(iz+1)-v(iz  ) +c₂(v(iz+2)-v(iz-1)  ~O(x⁴)
     !Step #1: u^n  += src
-    !Step #2: sample u^n at receivers
-    !Step #3: save u^n to boundary values
-    !Step #4: u^n+1 = 2u^n -u^n-1 +laplacian of u^n
-    !Step #5: (u^n-1,u^n) = (u^n,u^n+1)
+    !Step #2: save u^n to boundary values
+    !Step #3: u^n+1 = 2u^n -u^n-1 +laplacian of u^n
+    !Step #4: (u^n-1,u^n) = (u^n,u^n+1)
+    !Step #5: sample u^n at receivers
     !
     !in reverse time:
-    !Step #5: (u^n,u^n+1) = (u^n-1,u^n)
-    !Step #4: u^n-1 = 2u^n -u^n+1 +laplacian of u^n
-    !Step #3: load boundary values for u^n+1
+    !Step #4: (u^n,u^n+1) = (u^n-1,u^n)
+    !Step #2: load boundary values for u^n
+    !Step #3: u^n-1 = 2u^n -u^n+1 +laplacian of u^n
     !Step #1: u^n -= src
     !
     !Adjoint:
@@ -431,10 +436,10 @@ use, intrinsic :: ieee_arithmetic
     !
     !Time marching (in reverse time):
     !Step #1: uᵃ^n += adjsrc
-    !Step #2: sample uᵃ^n at source
-    !Step #4: uᵃ^n-1 = 2uᵃ^n -uᵃ^n+1 +laplacian of uᵃ^n
-    !Step #5: (uᵃ^n,uᵃ^n+1) = (uᵃ^n-1,uᵃ^n)
-        
+    !Step #2: uᵃ^n-1 = 2uᵃ^n -uᵃ^n+1 +laplacian of uᵃ^n
+    !Step #3: cross correlate
+    !Step #4: (uᵃ^n,uᵃ^n+1) = (uᵃ^n-1,uᵃ^n)
+    !Step #5: sample uᵃ^n at source        
 
     subroutine forward(self,fld_u)
         class(t_propagator) :: self
@@ -474,19 +479,19 @@ use, intrinsic :: ieee_arithmetic
             ! call cpu_time(toc)
             ! tt3=tt3+toc-tic
 
-            !step 4: update
+            !step 3: update
             call cpu_time(tic)
             call self%update(fld_u,time_dir,it)
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
-            !step 5: evolve, it -> it+1
+            !step 4: evolve, it -> it+1
             call cpu_time(tic)
             call self%evolve(fld_u,time_dir,it)
             call cpu_time(toc)
             tt6=tt6+toc-tic
 
-            !step 6: sample p^it+1 at receivers
+            !step 5: sample p^it+1 at receivers
             call cpu_time(tic)
             call self%extract(fld_u,it)
             call cpu_time(toc)
@@ -542,7 +547,7 @@ use, intrinsic :: ieee_arithmetic
             endif   
 
             ! if(present(o_sf)) then
-                !backward step 5: it+1 -> it
+                !backward step 4: it+1 -> it
                 call cpu_time(tic)
                 call self%evolve(fld_u,time_dir,it)
                 call cpu_time(toc)
@@ -554,7 +559,7 @@ use, intrinsic :: ieee_arithmetic
                 call cpu_time(toc)
                 tt2=tt2+toc-tic
 
-                !backward step 4:
+                !backward step 3:
                 call cpu_time(tic)
                 call self%update(fld_u,time_dir,it)
                 call cpu_time(toc)
@@ -567,13 +572,13 @@ use, intrinsic :: ieee_arithmetic
                 tt6=tt6+toc-tic
             ! endif
 
-            !adjoint step 6: inject to p^it+1 at receivers
+            !adjoint step 1: inject to p^it+1 at receivers
             call cpu_time(tic)
             call self%inject_displacement(fld_a,time_dir,it)
             call cpu_time(toc)
             tt8=tt8+toc-tic
 
-            !adjoint step 4:
+            !adjoint step 2:
             call cpu_time(tic)
             call self%update(fld_a,time_dir,it)
             call cpu_time(toc)
@@ -587,7 +592,7 @@ use, intrinsic :: ieee_arithmetic
             !     tt10=tt10+toc-tic
             ! endif
 
-            !gradient: rf%p^it star sf%p^it
+            !adjoint step 3 gradient: rf%p^it star sf%p^it
             if(mod(it,irdt)==0) then
                 call cpu_time(tic)
                 call cross_correlate(fld_a,fld_u,a_star_u,it)
@@ -595,14 +600,14 @@ use, intrinsic :: ieee_arithmetic
                 tt10=tt10+toc-tic
             endif
 
-            !adjoint step 5
+            !adjoint step 4
             ! this step is moved to update_pressure for easier management
             call cpu_time(tic)
             call self%evolve(fld_a,time_dir,it)
             call cpu_time(toc)
             tt11=tt11+toc-tic
 
-            !adjoint step 1: sample p^it at source position
+            !adjoint step 5: sample p^it at source position
             if(if_propagator_record_adjseismo) then
                 call cpu_time(tic)
                 call self%extract(fld_a,it)
@@ -639,7 +644,7 @@ use, intrinsic :: ieee_arithmetic
             write(*,*) 'Elapsed time to evolve adj field         ',tt11/mpiworld%max_threads
             ! write(*,*) 'Elapsed time to set adj field          ',tt9/mpiworld%max_threads
             write(*,*) 'Elapsed time to extract fields           ',tt12/mpiworld%max_threads
-            write(*,*) 'Elapsed time to compute Poynting vectors ',tt3/mpiworld%max_threads
+            ! write(*,*) 'Elapsed time to compute Poynting vectors ',tt3/mpiworld%max_threads
             write(*,*) 'Elapsed time to correlate                ',tt10/mpiworld%max_threads
 
         endif
@@ -1063,7 +1068,8 @@ use, intrinsic :: ieee_arithmetic
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2)
+        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
+        !$omp         duz_dz_,dux_dx_,dux_dz_,duz_dx_)
         !$omp do schedule(dynamic)
         do ix = ifx+2,ilx-2
             !dir$ simd
