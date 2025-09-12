@@ -953,8 +953,10 @@ use, intrinsic :: ieee_arithmetic
         type(t_correlate) :: corr
 
         ! if(allocated(correlate_gradient)) then
-
-            ! corr%glda(1,:,:) = corr%glda(2,:,:)
+        
+            !preparing for projection back
+            corr%glda(1,:,:) = corr%glda(2,:,:)
+            corr%gmu (1,:,:) = corr%gmu (2,:,:)
 
             call interp2D(corr%gmu(:,:,1),[1,1])
             ! corr%gmu(1,:,:) = corr%gmu(2,:,:)

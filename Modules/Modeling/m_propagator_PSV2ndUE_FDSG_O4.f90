@@ -124,8 +124,8 @@ use, intrinsic :: ieee_arithmetic
         endif
 
         if(index(self%info,'rho')>0 .and. .not. allocated(m%rho)) then
-            call alloc(m%rho,m%nz,m%nx,1,o_init=1000.)
-            call warn('Constant rho model (1000 kg/m³) is allocated by propagator.')
+            call alloc(m%rho,m%nz,m%nx,1,o_init=1.)
+            call warn('Constant rho model (1 kg/m³) is allocated by propagator.')
         endif
 
         if(m%is_freesurface) then
@@ -380,8 +380,8 @@ use, intrinsic :: ieee_arithmetic
 
     
     !========= Derivations =================
-    !PDE:      A u = CP u - CDC u =  f
-    !Adjoint:  Aᵀa = CP a - CDC a =  d
+    !PDE:      A u = CP u - CDC u - f
+    !Adjoint:  Aᵀa = CP a - CDC a - d
     !where
     !u=[uz ux ez ex es]ᵀ, f=[fz fx]ᵀδ(x-xs) with xs source position, d is recorded data
     !P=diag[ρ∂ₜₜ ρ∂ₜₜ 1 1 1]
@@ -660,48 +660,7 @@ use, intrinsic :: ieee_arithmetic
             call self%evolve(fld_a,time_dir,it)
             call cpu_time(toc)
             tt11=tt11+toc-tic
-
-
-! !adjoint step 3: e^it+1.5 -> e^it+0.5 by FD^T of pz^it+1
-! call cpu_time(tic)
-! call self%update_strains(fld_a,time_dir,it)
-! call cpu_time(toc)
-! tt5=tt5+toc-tic
-
-! !adjoint step 4: inject to e^it+1.5 at receivers
-! call cpu_time(tic)
-! call self%inject_strains(fld_a,time_dir,it)
-! call cpu_time(toc)
-! tt4=tt4+toc-tic
-
-! !adjoint step 7: gkpa: rf%e^it+0.5 star D sf%s_dt^it+0.5
-! !use sf%pz^it+1 to compute sf%s_dt^it+0.5, as backward step 4
-! if(mod(it,irdt)==0) then
-!     call cpu_time(tic)
-!     call cross_correlate_glda_gmu(fld_a,fld_u,a_star_u,it)
-!     call cpu_time(toc)
-!     tt6=tt6+toc-tic
-! endif
-
-! !adjoint step 1: inject to pz^it+1 at receivers
-! call cpu_time(tic)
-! call self%inject_displacement(fld_a,time_dir,it)
-! call cpu_time(toc)
-! tt9=tt9+toc-tic
-
-! !adjoint step 5 & 6: pz^it+1 -> pz^it by FD^T of e^it+0.5
-! call cpu_time(tic)
-! call self%update_displacement(fld_a,time_dir,it)
-! call cpu_time(toc)
-! tt10=tt10+toc-tic
-
-! !adjoint step 8
-! ! this step is moved to update_pressure for easier management
-! call cpu_time(tic)
-! call self%evolve(fld_a,time_dir,it)
-! call cpu_time(toc)
-! tt11=tt11+toc-tic
-
+            
             !adjoint step 9: sample pz^it or e^it+0.5 at source position
             if(if_propagator_record_adjseismo) then
                 call cpu_time(tic)
@@ -1173,15 +1132,14 @@ use, intrinsic :: ieee_arithmetic
     !========= gradient, imaging or other correlations ===================
     !For gradient:
     !
-    !PDE:      A u = CP u - CDC u - Cf
-    !Adjoint:  Aᵀa = CP a - CDC a - Cd
+    !PDE:      A u = CP u - CDC u - f
+    !Adjoint:  Aᵀa = CP a - CDC a - d
     !
-    !<a|Au> = <a|CPu-CDCu-Cf> = <a|CPu> - <a|CDCu> - <a|Cf>
-    !   K_ρ<a|CPu> = <a|C (K_ρP) u>
-    !   Kₘ<a|CPu> = <a|(KₘC)Pu> = <a|(KₘC)(DCu+f)> = <a|(KₘC)DCu> + <a|(KₘC)f>
+    !<a|Au> = <a|CPu-CDCu-f> ≐ <a|CPu> - <a|CDCu>
+    !   K_ρ<a|CPu> = <a|C(K_ρP)u>
+    !   Kₘ<a|CPu> = <a|(KₘC)Pu> ≐ <a|(KₘC)DCu>
     !   Kₘ<a|CDCu> = <a|(KₘC)DCu> + <a|C(KₘDC)u> = <a|(KₘC)DCu> - <DCa|(KₘC)u>
-    !   Kₘ<a|Cf> = <a|(KₘC)f>
-    !So Kₘ<a|Au> = <DCa|(KₘC)u> =∫ (DCa)ᵀ KₘC u dt
+    !So Kₘ<a|Au> ≐ <DCa|(KₘC)u> =∫ (DCa)ᵀ KₘC u dt
     !
     !  [1             ]     [ 0  0 ∂z  0 ∂ₓ]
     !  |  1           |     | 0  0  0 ∂ₓ ∂z|
@@ -1236,7 +1194,7 @@ use, intrinsic :: ieee_arithmetic
         if(m%is_cubic) then
         else
             call grad2d_glda_gmu(rf%uz(:,:,1),rf%ux(:,:,1),&
-                                 sf%uz(:,:,1),sf%ux(:,:,1),&
+                                 sf%ez(:,:,1),sf%ex(:,:,1),sf%es(:,:,1),&
                                  corr%glda,corr%gmu, &
                                  ifz,ilz,ifx,ilx)
         endif
@@ -1248,7 +1206,9 @@ use, intrinsic :: ieee_arithmetic
 
         ! if(allocated(correlate_gradient)) then
 
-            ! corr%glda(1,:,:) = corr%glda(2,:,:)
+            !preparing for projection back
+            corr%glda(1,:,:) = corr%glda(2,:,:)
+            corr%gmu (1,:,:) = corr%gmu (2,:,:)
 
             call interp2D(corr%gmu(:,:,1),[1,1])
             ! corr%gmu(1,:,:) = corr%gmu(2,:,:)
@@ -1469,25 +1429,27 @@ use, intrinsic :: ieee_arithmetic
     end subroutine
 
     subroutine grad2d_glda_gmu(rf_uz,rf_ux,&
-                               sf_uz,sf_ux,&
+                               sf_ez,sf_ex,sf_es,&
                                glda,gmu,&
                                ifz,ilz,ifx,ilx)
-        real,dimension(*) :: rf_uz,rf_ux, sf_uz, sf_ux
+        real,dimension(*) :: rf_uz,rf_ux
+        real,dimension(*) :: sf_ez,sf_ex,sf_es
         real,dimension(*) :: glda,gmu
         
         nz=cb%nz
         nx=cb%nx
         
-        !     [∂zᶠ  0 ]       [∂zᶠuz]         [1 1    ]         [2 0    ]
-        !Du = | 0  ∂ₓᶠ|[uz] = |∂ₓᶠux|, K_λC = |1 1    |, K_μC = |0 2    |
-        !     | 0  ∂zᵇ|[ux]   |∂zᵇux|         |    0 0|         |    1 1|
-        !     [∂ₓᵇ  0 ]       [∂ₓᵇuz]         [    0 0]         [    1 1]
+        !    [ lapzᵃ       ]    [uz]       [0     ]       [0     ]
+        !    | lapxᵃ       ]    [ux]       | 0    |       | 0    |
+        !DCa=|∂zᶠuzᵃ       |, u=[ez], K_λC=|  1 1 |, K_μC=|  2   |
+        !    [∂ₓᶠuxᵃ       ]    [ex]       |  1 1 |       |    2 |
+        !    [∂ₓᵇuzᵃ+∂zᵇuxᵃ]    [es]       [     0]       [     1]
+        !
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
         !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         rf_duz_dz,rf_dux_dx,rf_dux_dz,rf_duz_dx,&
-        !$omp         sf_duz_dz,sf_dux_dx,sf_dux_dz,sf_duz_dx)
+        !$omp         rf_duz_dz,rf_dux_dx,rf_dux_dz,rf_duz_dx)
         !$omp do schedule(dynamic)
         do ix = ifx,ilx
             !dir$ simd
@@ -1510,21 +1472,14 @@ use, intrinsic :: ieee_arithmetic
                 rf_duz_dz = c1z*(rf_uz(izp1_ix)-rf_uz(iz_ix)) +c2z*(rf_uz(izp2_ix)-rf_uz(izm1_ix))
                 rf_dux_dx = c1x*(rf_ux(iz_ixp1)-rf_ux(iz_ix)) +c2x*(rf_ux(iz_ixp2)-rf_ux(iz_ixm1))
 
-                sf_duz_dz = c1z*(sf_uz(izp1_ix)-sf_uz(iz_ix)) +c2z*(sf_uz(izp2_ix)-sf_uz(izm1_ix))
-                sf_dux_dx = c1x*(sf_ux(iz_ixp1)-sf_ux(iz_ix)) +c2x*(sf_ux(iz_ixp2)-sf_ux(iz_ixm1))
-
                 rf_dux_dz = c1z*(rf_ux(iz_ix)-rf_ux(izm1_ix)) +c2z*(rf_ux(izp1_ix)-rf_ux(izm2_ix))
                 rf_duz_dx = c1x*(rf_uz(iz_ix)-rf_uz(iz_ixm1)) +c2x*(rf_uz(iz_ixp1)-rf_uz(iz_ixm2))
-
-                sf_dux_dz = c1z*(sf_ux(iz_ix)-sf_ux(izm1_ix)) +c2z*(sf_ux(izp1_ix)-sf_ux(izm2_ix))
-                sf_duz_dx = c1x*(sf_uz(iz_ix)-sf_uz(iz_ixm1)) +c2x*(sf_uz(iz_ixp1)-sf_uz(iz_ixm2))
                 
-                glda(j) = glda(j) +  rf_duz_dz*sf_duz_dz +rf_duz_dz*sf_dux_dx &
-                                    +rf_dux_dx*sf_duz_dz +rf_dux_dx*sf_dux_dx
+                glda(j) = glda(j) +  rf_duz_dz*sf_ez(i) +rf_duz_dz*sf_ex(i) &
+                                    +rf_dux_dx*sf_ez(i) +rf_dux_dx*sf_ex(i)
 
-                gmu (j) = gmu (j) +2*rf_duz_dz*sf_duz_dz +2*rf_dux_dx*sf_dux_dx &
-                                    +rf_dux_dz*sf_dux_dz   +rf_dux_dz*sf_duz_dx &
-                                    +rf_duz_dx*sf_dux_dz   +rf_duz_dx*sf_duz_dx
+                gmu (j) = gmu (j) +2*(rf_duz_dz*sf_ez(i) +rf_dux_dx*sf_ex(i)) &
+                                    +(rf_dux_dz+rf_duz_dx)*sf_es(i)
 
             enddo
         enddo
