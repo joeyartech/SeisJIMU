@@ -381,7 +381,7 @@ use, intrinsic :: ieee_arithmetic
     
     !========= Derivations =================
     !PDE:      A u = CP u - CDC u - f
-    !Adjoint:  Aᵀa = CP a - CDC a - d
+    !Adjoint:  Aᵀa = CP a + CDC a - d
     !where
     !u=[uz ux ez ex es]ᵀ, f=[fz fx]ᵀδ(x-xs) with xs source position, d is recorded data
     !P=diag[ρ∂ₜₜ ρ∂ₜₜ 1 1 1]
@@ -390,7 +390,7 @@ use, intrinsic :: ieee_arithmetic
     !C=|    λ+2μ  λ   |, D =|∂z  0  0  0  0|
     !  |    λ   λ+2μ  |     | 0 ∂ₓ  0  0  0|
     !  [             μ]     [∂ₓ ∂z  0  0  0]
-    !a=[uzᵃ uxᵃ]ᵀ is the adjoint field
+    !a=[uzᵃ uxᵃ ezᵃ exᵃ esᵃ]ᵀ is the adjoint field
     !
     !Discrete case:
     !Meshing with staggered grids in time and space (2D example):
@@ -1133,19 +1133,18 @@ use, intrinsic :: ieee_arithmetic
     !For gradient:
     !
     !PDE:      A u = CP u - CDC u - f
-    !Adjoint:  Aᵀa = CP a - CDC a - d
+    !Adjoint:  Aᵀa = CP a + CDC a - d
     !
-    !<a|Au> = <a|CPu-CDCu-f> ≐ <a|CPu> - <a|CDCu>
-    !   K_ρ<a|CPu> = <a|C(K_ρP)u>
-    !   Kₘ<a|CPu> = <a|(KₘC)Pu> ≐ <a|(KₘC)DCu>
-    !   Kₘ<a|CDCu> = <a|(KₘC)DCu> + <a|C(KₘDC)u> = <a|(KₘC)DCu> - <DCa|(KₘC)u>
-    !So Kₘ<a|Au> ≐ <DCa|(KₘC)u> =∫ (DCa)ᵀ KₘC u dt
+    !<a|Au> = <a|CPu-CDCu-f> = <a|CPu> - <a|CDCu> - <a|f>
+    !K_ρ<a|CPu> = <a|C(K_ρP)u>
+    !Kₘ<a|Au> = <a|(KₘC)Pu> - <a|(KₘC)DCu> - <a|C(KₘDC)u>
+    !         = <a|(KₘC)C⁻¹f>              - <a|C(KₘDC)u>
+    !         ≐-<a|C(KₘDC)u> = <DCa|(KₘC)u>
+    !         ≐-<Pa|(KₘC)u> =-∫ (Pa)ᵀ KₘC u dt
     !
-    !  [1             ]     [ 0  0 ∂z  0 ∂ₓ]
-    !  |  1           |     | 0  0  0 ∂ₓ ∂z|
-    !C=|    λ+2μ  λ   |, D =|∂z  0  0  0  0|
-    !  |    λ   λ+2μ  |     | 0 ∂ₓ  0  0  0|
-    !  [             μ]     [∂ₓ ∂z  0  0  0]
+    !Pa = [ρ∂ₜₜuzᵃ ρ∂ₜₜuxᵃ ezᵃ exᵃ esᵃ]ᵀ
+    ! u = [    uz      ux  ez  ex  es ]ᵀ
+    !
     !     [0     ]
     !     | 0    |
     !K_λC=|  1 1 |, K_μC=diag{0,0,2,2,1}
@@ -1153,8 +1152,8 @@ use, intrinsic :: ieee_arithmetic
     !     [     0]
     !
     !Therefore,
-    !glda = ...
-    !gmu  = ...
+    !glda =  (ezᵃ+exᵃ)*(ez+ex)
+    !gmu  = 2(ezᵃ*ez+exᵃ*ex) + esᵃ*es 
 
     subroutine auto_correlate(f,corr,it)
         type(t_field), intent(in) :: f
@@ -1193,7 +1192,7 @@ use, intrinsic :: ieee_arithmetic
 
         if(m%is_cubic) then
         else
-            call grad2d_glda_gmu(rf%uz(:,:,1),rf%ux(:,:,1),&
+            call grad2d_glda_gmu(rf%ez(:,:,1),rf%ex(:,:,1),rf%es(:,:,1),&
                                  sf%ez(:,:,1),sf%ex(:,:,1),sf%es(:,:,1),&
                                  corr%glda,corr%gmu, &
                                  ifz,ilz,ifx,ilx)
@@ -1428,28 +1427,21 @@ use, intrinsic :: ieee_arithmetic
         
     end subroutine
 
-    subroutine grad2d_glda_gmu(rf_uz,rf_ux,&
-                               sf_ez,sf_ex,sf_es,&
-                               glda,gmu,&
-                               ifz,ilz,ifx,ilx)
-        real,dimension(*) :: rf_uz,rf_ux
+    subroutine grad2d_glda_gmu(rf_ez,rf_ex,rf_es,&
+                           sf_ez,sf_ex,sf_es,&
+                           glda,gmu,&
+                           ifz,ilz,ifx,ilx)
+        real,dimension(*) :: rf_ez,rf_ex,rf_es
         real,dimension(*) :: sf_ez,sf_ex,sf_es
         real,dimension(*) :: glda,gmu
         
         nz=cb%nz
         nx=cb%nx
         
-        !    [ lapzᵃ       ]    [uz]       [0     ]       [0     ]
-        !    | lapxᵃ       ]    [ux]       | 0    |       | 0    |
-        !DCa=|∂zᶠuzᵃ       |, u=[ez], K_λC=|  1 1 |, K_μC=|  2   |
-        !    [∂ₓᶠuxᵃ       ]    [ex]       |  1 1 |       |    2 |
-        !    [∂ₓᵇuzᵃ+∂zᵇuxᵃ]    [es]       [     0]       [     1]
-        !
+        !glda = -(ezᵃ+exᵃ)*(ez+ex)
+        !gmu  =-2(ezᵃ*ez+exᵃ*ex) + esᵃ*es 
         !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,j,&
-        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         rf_duz_dz,rf_dux_dx,rf_dux_dz,rf_duz_dx)
+        !$omp private(iz,ix,i,j)
         !$omp do schedule(dynamic)
         do ix = ifx,ilx
             !dir$ simd
@@ -1458,28 +1450,10 @@ use, intrinsic :: ieee_arithmetic
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
                 j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
-                izm2_ix=i-2  !iz-2,ix
-                izm1_ix=i-1  !iz-1,ix
-                iz_ix  =i    !iz,ix
-                izp1_ix=i+1  !iz+1,ix
-                izp2_ix=i+2  !iz+2,ix
-                
-                iz_ixm2=i  -2*nz !iz,ix-2
-                iz_ixm1=i  -nz  !iz,ix-1
-                iz_ixp1=i  +nz  !iz,ix+1
-                iz_ixp2=i  +2*nz !iz,ix+2
+                glda(j) = glda(j) -  (rf_ez(i)+rf_ex(i))*(sf_ez(i)+sf_ex(i))
 
-                rf_duz_dz = c1z*(rf_uz(izp1_ix)-rf_uz(iz_ix)) +c2z*(rf_uz(izp2_ix)-rf_uz(izm1_ix))
-                rf_dux_dx = c1x*(rf_ux(iz_ixp1)-rf_ux(iz_ix)) +c2x*(rf_ux(iz_ixp2)-rf_ux(iz_ixm1))
-
-                rf_dux_dz = c1z*(rf_ux(iz_ix)-rf_ux(izm1_ix)) +c2z*(rf_ux(izp1_ix)-rf_ux(izm2_ix))
-                rf_duz_dx = c1x*(rf_uz(iz_ix)-rf_uz(iz_ixm1)) +c2x*(rf_uz(iz_ixp1)-rf_uz(iz_ixm2))
-                
-                glda(j) = glda(j) +  rf_duz_dz*sf_ez(i) +rf_duz_dz*sf_ex(i) &
-                                    +rf_dux_dx*sf_ez(i) +rf_dux_dx*sf_ex(i)
-
-                gmu (j) = gmu (j) +2*(rf_duz_dz*sf_ez(i) +rf_dux_dx*sf_ex(i)) &
-                                    +(rf_dux_dz+rf_duz_dx)*sf_es(i)
+                gmu (j) = gmu (j) -2*(rf_ez(i)*sf_ez(i) +rf_ex(i)*sf_ex(i)) &
+                                    - rf_es(i)*sf_es(i)
 
             enddo
         enddo
