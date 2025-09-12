@@ -49,7 +49,7 @@ use, intrinsic :: ieee_arithmetic
 
         !local models shared between fields
         real,dimension(:,:),allocatable :: buoz, buox, ldap2mu, lda, mu
-        real,dimension(:,:),allocatable :: inv_ldapmu_4mu, ldapmu
+        real,dimension(:,:),allocatable :: inv_ldapmu_4mu!, ldapmu
 
         !time frames
         integer :: nt
@@ -206,7 +206,7 @@ use, intrinsic :: ieee_arithmetic
         call alloc(self%lda,            [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%mu,             [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%inv_ldapmu_4mu, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(self%ldapmu,         [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        !call alloc(self%ldapmu,         [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
 
 
         call alloc(temp_mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])

@@ -51,8 +51,8 @@ use, intrinsic :: ieee_arithmetic
         logical :: if_compute_engy=.false.
 
         !local models shared between fields
-        real,dimension(:,:),allocatable :: buoz, buox!, buoy
-        real,dimension(:,:),allocatable :: ldap2mu, lda, mu
+        real,dimension(:,:),allocatable :: buoz, buox, ldap2mu, lda, mu
+        real,dimension(:,:),allocatable :: inv_ldapmu_4mu!, ldapmu
 
         !time frames
         integer :: nt
@@ -127,6 +127,11 @@ use, intrinsic :: ieee_arithmetic
             call alloc(m%rho,m%nz,m%nx,1,o_init=1000.)
             call warn('Constant rho model (1000 kg/m³) is allocated by propagator.')
         endif
+
+        if(m%is_freesurface) then
+            call warn('Sorry, free surface has NOT yet considered in this propagator. Switch off free-surface condition.')
+            m%is_freesurface=.false.
+        endif
                 
     end subroutine
 
@@ -185,7 +190,8 @@ use, intrinsic :: ieee_arithmetic
         call alloc(self%buox,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%ldap2mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%lda,    [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(self%mu,     [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(self%mu,             [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(self%inv_ldapmu_4mu, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
 
         call alloc(temp_mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
 
@@ -197,6 +203,8 @@ use, intrinsic :: ieee_arithmetic
         ! write(*,*) 'self%ldap2mu sanity:', minval(self%ldap2mu),maxval(self%ldap2mu)
         ! write(*,*) 'self%lda     sanity:', minval(self%lda),maxval(self%lda)
         ! endif
+
+        self%inv_ldapmu_4mu=0.25/(self%lda+temp_mu)/temp_mu
 
         !interpolat mu by harmonic average
         temp_mu=1./temp_mu
@@ -301,18 +309,25 @@ use, intrinsic :: ieee_arithmetic
         call alloc(f%dux_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%dux_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%duz_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        
-        call alloc(f%dz_ldap2mu_duzdz_p_lda_duxdx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dx_lda_duzdz_p_ldap2mu_duxdx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dz_mu_duxdz_p_duzdx        ,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dx_mu_duxdz_p_duzdx        ,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+    
+        call alloc(f%duz_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dux_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%duz_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dux_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+    
+        call alloc(f%lapz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%lapx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
         call alloc(f%ez,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%ex,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%es,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
-        call alloc(f%lapz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%lapx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dez_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dex_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dex_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dez_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%des_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%des_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
     end subroutine
 
@@ -365,8 +380,8 @@ use, intrinsic :: ieee_arithmetic
 
     
     !========= Derivations =================
-    !PDE:      A u = CP u - CDC u = Cf
-    !Adjoint:  Aᵀa = CP a - CDC a = Cd
+    !PDE:      A u = CP u - CDC u =  f
+    !Adjoint:  Aᵀa = CP a - CDC a =  d
     !where
     !u=[uz ux ez ex es]ᵀ, f=[fz fx]ᵀδ(x-xs) with xs source position, d is recorded data
     !P=diag[ρ∂ₜₜ ρ∂ₜₜ 1 1 1]
@@ -379,23 +394,23 @@ use, intrinsic :: ieee_arithmetic
     !
     !Discrete case:
     !Meshing with staggered grids in time and space (2D example):
-    !                      |    es    |   es -½ uz  es    |         |
-    !                      |    μ     |   μ     bz  μ     |         |
-    !                      |          |         |         |         |
-    !                     λ,μ   bx   λ,μ  bx   λ,μ  bx   λ,μ  bx   λ,μ
-    !  -u--e-u-e-u-→ t    -en---ux---en---ux---en---ux---en---ux---en-→ x
-    !  -1 -½ 0 ½ 1        -2   -1½   -1   -½    0    ½    1   1½    2    
-    !                      |          |         |         |         | 
-    !                      |    es    |   es  ½ uz  es    |         | 
-    !                      |    μ     |   μ     bz  μ     |         | 
-    !                      |          |         |         |         | 
-    !                     -|----------|-------1-en--------|---------|-
-    !                      |          |         κ         |         | 
-    !                      |          |         |         |         | 
-    !                      |          |      1½ uz        |         | 
-    !                      |          |         bz        |         | 
-    !                      |          |         |         |         | 
-    !                                         z ↓
+    !                   |    es    |   es -½ uz  es    |         |
+    !                   |    μ     |   μ     bz  μ     |         |
+    !                   |          |         |         |         |
+    !   e  e  e        λ,μ   bx   λ,μ  bx   λ,μ  bx   λ,μ  bx   λ,μ
+    !  -u--u--u-→ t    -en---ux---en---ux---en---ux---en---ux---en-→ x
+    !  -1  0  1        -2   -1½   -1   -½    0    ½    1   1½    2    
+    !                   |          |         |         |         | 
+    !                   |    es    |   es  ½ uz  es    |         | 
+    !                   |    μ     |   μ     bz  μ     |         | 
+    !                   |          |         |         |         | 
+    !                  -|----------|-------1-en--------|---------|-
+    !                   |          |         κ         |         | 
+    !                   |          |         |         |         | 
+    !                   |          |      1½ uz        |         | 
+    !                   |          |         bz        |         | 
+    !                   |          |         |         |         | 
+    !                                      z ↓
     !
     !Convention for half-integer index:
     !(array index)  =>     (real index)     
@@ -408,23 +423,30 @@ use, intrinsic :: ieee_arithmetic
     !FD eqn:
     !  [uz]      [ 0   0 ∂zᵇ  0 ∂ₓᶠ][      uz          ]
     !  |ux|      | 0   0  0  ∂ₓ ∂zᶠ||      ux          |
-    !PC|ez|^n = C|∂zᶠ  0  0   0  0 ||(λ+2μ)ez +     λex|^n
+    !CP|ez|^n = C|∂zᶠ  0  0   0  0 ||(λ+2μ)ez +     λex|^n
     !  |ex|      | 0  ∂ₓᶠ 0   0  0 ||     λez +(λ+2μ)ex|
     !  [es]      [∂ₓᵇ ∂zᵇ 0   0  0 ][     μes          ]
     !where
     !∂ₜᶠ*dt := v^n+1 - v^n                             ~O(t²)
     !∂zᵇ*dz := c₁(s(iz  )-s(iz-1) +c₂(s(iz+1)-s(iz-2)  ~O(x⁴)
     !∂zᶠ*dz := c₁(v(iz+1)-v(iz  ) +c₂(v(iz+2)-v(iz-1)  ~O(x⁴)
+    
     !Step #1: u^n  += src
-    !Step #2: sample u^n at receivers
-    !Step #3: save u^n to boundary values
-    !Step #4: u^n+1 = 2u^n -u^n-1 +laplacian of u^n
-    !Step #5: (u^n-1,u^n) = (u^n,u^n+1)
+    !Step #2: save u^n to boundary values
+    !Step #3: e^n = spatial FD(u^n)
+    !Step #4: e^n += src
+    !Step #5: lap^n = spatial FD(e^n)
+    !Step #6: u^n+1 = 2u^n -u^n-1 + lap^n
+    !Step #7: (u^n-1,u^n) = (u^n,u^n+1)
+    !Step #8: sample u^n at receivers
     !
     !in reverse time:
-    !Step #5: (u^n,u^n+1) = (u^n-1,u^n)
-    !Step #4: u^n-1 = 2u^n -u^n+1 +laplacian of u^n
-    !Step #3: load boundary values for u^n+1
+    !Step #7: (u^n,u^n+1) = (u^n-1,u^n)
+    !Step #2: load boundary values for u^n
+    !Step #3: e^n = spatial FD(u^n)
+    !Step #4: e^n -= src
+    !Step #5: lap^n = spatial FD(e^n)
+    !Step #6: u^n-1 = 2u^n -u^n+1 + lap^n
     !Step #1: u^n -= src
     !
     !Adjoint:
@@ -434,17 +456,21 @@ use, intrinsic :: ieee_arithmetic
     !FD eqn:
     !  [uz]      [ 0   0 ∂zᵇ  0 ∂ₓᶠ][      uz          ]
     !  |ux|      | 0   0  0  ∂ₓ ∂zᶠ||      ux          |
-    !PC|ez|^n = C|∂zᶠ  0  0   0  0 ||(λ+2μ)ez +     λex|^n
+    !CP|ez|^n =-C|∂zᶠ  0  0   0  0 ||(λ+2μ)ez +     λex|^n
     !  |ex|      | 0  ∂ₓᶠ 0   0  0 ||     λez +(λ+2μ)ex|
     !  [es]      [∂ₓᵇ ∂zᵇ 0   0  0 ][     μes          ]
     !SAME as the discretized forward FD eqn!
     !
     !Time marching (in reverse time):
     !Step #1: uᵃ^n += adjsrc
-    !Step #2: sample uᵃ^n at source
-    !Step #4: uᵃ^n-1 = 2uᵃ^n -uᵃ^n+1 +laplacian of uᵃ^n
-    !Step #5: (uᵃ^n,uᵃ^n+1) = (uᵃ^n-1,uᵃ^n)
-        
+    !Step #3: eᵃ^n = spatial FD(uᵃ^n)
+    !Step #4: eᵃ^n += src
+    !Step #5: lapᵃ^n = spatial FD(eᵃ^n)
+    !Step #6: uᵃ^n+1 = 2uᵃ^n -uᵃ^n-1 + lapᵃ^n
+    !Step #7: cross correlate
+    !Step #8: (uᵃ^n-1,uᵃ^n) = (uᵃ^n,uᵃ^n+1)
+    !Step #9: sample uᵃ^n at source      
+
 
     subroutine forward(self,fld_u)
         class(t_propagator) :: self
@@ -465,61 +491,59 @@ use, intrinsic :: ieee_arithmetic
                 call fld_u%check_value(fld_u%uz)
             endif
 
-            !do forward time stepping (step# conforms with backward & adjoint time stepping)
-            !step 1: add forces to pz^it
+            !step 1
             call cpu_time(tic)
             call self%inject_displacement(fld_u,time_dir,it)
             call cpu_time(toc)
             tt1=tt1+toc-tic
 
-            !step 2: from pz^it to pz^it+1 by differences of e^it+0.5
+            !step 2
             call cpu_time(tic)
-            call self%update_displacement(fld_u,time_dir,it)
+            call fld_u%boundary_transport_displacement('save',it)
             call cpu_time(toc)
             tt2=tt2+toc-tic
 
-            !step 3: add pressure to e^it+0.5
-            call cpu_time(tic)
-            call self%inject_strains(fld_u,time_dir,it)
-            call cpu_time(toc)
-            tt3=tt3+toc-tic
-
-            !step 4: from e^it+0.5 to e^it+1.5 by differences of pz^it+1
+            !step 3
             call cpu_time(tic)
             call self%update_strains(fld_u,time_dir,it)
             call cpu_time(toc)
+            tt3=tt3+toc-tic
+
+            !step 4
+            call cpu_time(tic)
+            call self%inject_strains(fld_u,time_dir,it)
+            call cpu_time(toc)
+            tt1=tt1+toc-tic
+
+            !step 5 & 6
+            call cpu_time(tic)
+            call self%update_displacement(fld_u,time_dir,it)
+            call cpu_time(toc)
             tt4=tt4+toc-tic
 
-            !step 5: evolve, it -> it+1
+            !step 7: evolve, it -> it+1
             call cpu_time(tic)
             call self%evolve(fld_u,time_dir,it)
             call cpu_time(toc)
             tt6=tt6+toc-tic
 
-            !step 6: sample pz^it+1 or e^it+1.5 at receivers
+            !step 8
             call cpu_time(tic)
             call self%extract(fld_u,it)
             call cpu_time(toc)
-            tt5=tt5+toc-tic
+            tt7=tt7+toc-tic
 
             !snapshot
             call fld_u%write(it)
 
-            !step 7: save pz^it+1 in boundary layers
-            ! if(fld_u%if_will_reconstruct) then
-                call cpu_time(tic)
-                call fld_u%boundary_transport_displacement('save',it)
-                call cpu_time(toc)
-                tt6=tt6+toc-tic
-            ! endif
 
         enddo
 
         if(mpiworld%is_master) then
             write(*,*) 'Elapsed time to add source              ',tt1/mpiworld%max_threads
             write(*,*) 'Elapsed time to save boundary           ',tt2/mpiworld%max_threads
-            ! write(*,*) 'Elapsed time to set field             ',tt3/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update field            ',tt4/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update strain           ',tt3/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update displacement     ',tt4/mpiworld%max_threads
             write(*,*) 'Elapsed time to evolve field            ',tt6/mpiworld%max_threads
             write(*,*) 'Elapsed time to extract field           ',tt7/mpiworld%max_threads
         endif
@@ -559,41 +583,69 @@ use, intrinsic :: ieee_arithmetic
                 call fld_u%check_value(fld_u%uz)
             endif   
 
+            !backward step 4
+            call cpu_time(tic)
+            call self%evolve(fld_u,time_dir,it)
+            call cpu_time(toc)
+            tt11=tt11+toc-tic
 
-                !backward step 6: retrieve pz^it+1 at boundary layers (BC)
-                call cpu_time(tic)
-                call fld_u%boundary_transport_displacement('load',it)
-                call cpu_time(toc)
-                tt1=tt1+toc-tic
-                
-                !backward step 4: e^it+1.5 -> e^it+0.5 by FD of pz^it+1
-                call cpu_time(tic)
-                call self%update_strains(fld_u,time_dir,it)
-                call cpu_time(toc)
-                tt2=tt2+toc-tic
+            !backward step 2
+            call cpu_time(tic)
+            call fld_u%boundary_transport_displacement('load',it)
+            call cpu_time(toc)
+            tt1=tt1+toc-tic
 
-                !backward step 3: rm pressure from e^it+0.5
-                call cpu_time(tic)
-                call self%inject_strains(fld_u,time_dir,it)
-                call cpu_time(toc)
-                tt3=tt3+toc-tic
-            ! endif
+            !backward step 3
+            call cpu_time(tic)
+            call self%update_strains(fld_u,time_dir,it)
+            call cpu_time(toc)
+            tt2=tt2+toc-tic
+
+            !backward step 4
+            call cpu_time(tic)
+            call self%inject_strains(fld_u,time_dir,it)
+            call cpu_time(toc)
+            tt3=tt3+toc-tic
+
+            !backward step 5 & 6
+            call cpu_time(tic)
+            call self%update_displacement(fld_u,time_dir,it)
+            call cpu_time(toc)
+            tt7=tt7+toc-tic
+
+            !backward step 1
+            call cpu_time(tic)
+            call self%inject_displacement(fld_u,time_dir,it)
+            call cpu_time(toc)
+            tt8=tt8+toc-tic
 
             !--------------------------------------------------------!
 
-            !adjoint step 5: inject to e^it+1.5 at receivers
+            !adjoint step 1: inject to pz^it+1 at receivers
             call cpu_time(tic)
-            call self%inject_strains(fld_a,time_dir,it)
+            call self%inject_displacement(fld_a,time_dir,it)
             call cpu_time(toc)
-            tt4=tt4+toc-tic
+            tt9=tt9+toc-tic
 
-            !adjoint step 4: e^it+1.5 -> e^it+0.5 by FD^T of pz^it+1
+            !adjoint step 3: e^it+1.5 -> e^it+0.5 by FD^T of pz^it+1
             call cpu_time(tic)
             call self%update_strains(fld_a,time_dir,it)
             call cpu_time(toc)
             tt5=tt5+toc-tic
 
-            !gkpa: rf%e^it+0.5 star D sf%s_dt^it+0.5
+            !adjoint step 4: inject to e^it+1.5 at receivers
+            call cpu_time(tic)
+            call self%inject_strains(fld_a,time_dir,it)
+            call cpu_time(toc)
+            tt4=tt4+toc-tic
+
+            !adjoint step 5 & 6: pz^it+1 -> pz^it by FD^T of e^it+0.5
+            call cpu_time(tic)
+            call self%update_displacement(fld_a,time_dir,it)
+            call cpu_time(toc)
+            tt10=tt10+toc-tic
+
+            !adjoint step 7: gkpa: rf%e^it+0.5 star D sf%s_dt^it+0.5
             !use sf%pz^it+1 to compute sf%s_dt^it+0.5, as backward step 4
             if(mod(it,irdt)==0) then
                 call cpu_time(tic)
@@ -601,45 +653,56 @@ use, intrinsic :: ieee_arithmetic
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             endif
-                            
-            !========================================================!
 
-            ! if(present(o_sf)) then
-                !backward step 2: pz^it+1 -> pz^it by FD of e^it+0.5
-                call cpu_time(tic)
-                call self%update_displacement(fld_u,time_dir,it)
-                call cpu_time(toc)
-                tt7=tt7+toc-tic
-
-                !backward step 1: rm forces from pz^it
-                call cpu_time(tic)
-                call self%inject_displacement(fld_u,time_dir,it)
-                call cpu_time(toc)
-                tt8=tt8+toc-tic
-            ! endif
-
-            !--------------------------------------------------------!
-
-            !adjoint step 3: inject to pz^it+1 at receivers
-            call cpu_time(tic)
-            call self%inject_displacement(fld_a,time_dir,it)
-            call cpu_time(toc)
-            tt9=tt9+toc-tic
-
-            !adjoint step 2: pz^it+1 -> pz^it by FD^T of e^it+0.5
-            call cpu_time(tic)
-            call self%update_displacement(fld_a,time_dir,it)
-            call cpu_time(toc)
-            tt10=tt10+toc-tic
-
-            !adjoint step 5
+            !adjoint step 8
             ! this step is moved to update_pressure for easier management
             call cpu_time(tic)
             call self%evolve(fld_a,time_dir,it)
             call cpu_time(toc)
             tt11=tt11+toc-tic
 
-            !adjoint step 1: sample pz^it or e^it+0.5 at source position
+
+! !adjoint step 3: e^it+1.5 -> e^it+0.5 by FD^T of pz^it+1
+! call cpu_time(tic)
+! call self%update_strains(fld_a,time_dir,it)
+! call cpu_time(toc)
+! tt5=tt5+toc-tic
+
+! !adjoint step 4: inject to e^it+1.5 at receivers
+! call cpu_time(tic)
+! call self%inject_strains(fld_a,time_dir,it)
+! call cpu_time(toc)
+! tt4=tt4+toc-tic
+
+! !adjoint step 7: gkpa: rf%e^it+0.5 star D sf%s_dt^it+0.5
+! !use sf%pz^it+1 to compute sf%s_dt^it+0.5, as backward step 4
+! if(mod(it,irdt)==0) then
+!     call cpu_time(tic)
+!     call cross_correlate_glda_gmu(fld_a,fld_u,a_star_u,it)
+!     call cpu_time(toc)
+!     tt6=tt6+toc-tic
+! endif
+
+! !adjoint step 1: inject to pz^it+1 at receivers
+! call cpu_time(tic)
+! call self%inject_displacement(fld_a,time_dir,it)
+! call cpu_time(toc)
+! tt9=tt9+toc-tic
+
+! !adjoint step 5 & 6: pz^it+1 -> pz^it by FD^T of e^it+0.5
+! call cpu_time(tic)
+! call self%update_displacement(fld_a,time_dir,it)
+! call cpu_time(toc)
+! tt10=tt10+toc-tic
+
+! !adjoint step 8
+! ! this step is moved to update_pressure for easier management
+! call cpu_time(tic)
+! call self%evolve(fld_a,time_dir,it)
+! call cpu_time(toc)
+! tt11=tt11+toc-tic
+
+            !adjoint step 9: sample pz^it or e^it+0.5 at source position
             if(if_propagator_record_adjseismo) then
                 call cpu_time(tic)
                 call self%extract(fld_a,it)
@@ -792,14 +855,18 @@ use, intrinsic :: ieee_arithmetic
             !                    ifz,f%bloom(2,it),f%bloom(3,it),f%bloom(4,it))
         else
 
-            call fd2d_laplacian(f%uz,f%ux,f%ez,f%ex,self%mu,f%es,&
+            call fd2d_laplacian(f%ez,f%ex,f%es,&
                                 f%dez_dz,f%dex_dx,f%dex_dz,f%dez_dx,f%des_dz,f%des_dx,&
                                 f%lapz,f%lapx,&
-                                self%ldap2mu,self%lda,&
+                                self%ldap2mu,self%lda,self%mu,&
                                 ifz,ilz,ifx,ilx)
 
         endif
 
+        if(f%is_adjoint) then !flip
+            f%lapz=-f%lapz
+            f%lapx=-f%lapx
+        endif
 
         if(time_dir>0.) then !in forward time
             f%uz_next(ifz:ilz,ifx:ilx,1) = 2*f%uz(ifz:ilz,ifx:ilx,1) -f%uz_prev(ifz:ilz,ifx:ilx,1) +dt2*self%buoz(ifz:ilz,ifx:ilx)*f%lapz(ifz:ilz,ifx:ilx,1)
@@ -823,78 +890,117 @@ use, intrinsic :: ieee_arithmetic
 
     end subroutine
 
+
+    !forward: add RHS to e^it+0.5
+    !adjoint: add RHS to e^it+1.5
     subroutine inject_strains(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
-        
+
         if(.not. f%is_adjoint) then
 
             ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
-            
-            wl=time_dir*f%wavelet(1,it)*wavelet_scaler
+
+            wl=time_dir*f%wavelet(1,it)/m%cell_volume !as no time derivative on strains
             
             if(if_hicks) then
                 select case (shot%src%comp)
                 case ('ez')
-                    f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*shot%src%interp_coef(:,:,1)
+                    if(m%is_freesurface.and.shot%src%iz==1) then !on FS
+                        f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*( self%lda(ifz:ilz,ifx:ilx)**2/self%ldap2mu(ifz:ilz,ifx:ilx))*shot%src%interp_coef_symm(:,:,1)
+                        f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda(ifz:ilz,ifx:ilx)) *shot%src%interp_coef_symm(:,:,1)
+
+                    else !no interfaction with FS
+                        f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*  self%ldap2mu(ifz:ilz,ifx:ilx) *shot%src%interp_coef_full(:,:,1)
+                        f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda    (ifz:ilz,ifx:ilx))*shot%src%interp_coef_full(:,:,1)
+
+                    endif
 
                 case ('ex')
-                    ! if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl
-                    f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*shot%src%interp_coef(:,:,1)
-                
-                end select
+                    f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda    (ifz:ilz,ifx:ilx))*shot%src%interp_coef_symm(:,:,1)
+                    f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*  self%ldap2mu(ifz:ilz,ifx:ilx) *shot%src%interp_coef_symm(:,:,1)
+
+                case ('es')
+                    f%es(ifz:ilz,ifx:ilx,1) = f%es(ifz:ilz,ifx:ilx,1) +   wl/self%mu(ifz:ilz,ifx:ilx) *shot%src%interp_coef(:,:,1)
+
+                endselect
                 
             else
                 select case (shot%src%comp)
                 case ('ez')
-                    f%ez(iz,ix,1) = f%ez(iz,ix,1) + wl
+                    !if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl
+                    f%ez(iz,ix,1) = f%ez(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*  self%ldap2mu(iz,ix)
+                    f%ex(iz,ix,1) = f%ex(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*(-self%lda    (iz,ix))
 
                 case ('ex')
-                    ! if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl
-                    f%ex(iz,ix,1) = f%ex(iz,ix,1) + wl
-                    
-                end select
-                
+                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl
+                    f%ez(iz,ix,1) = f%ez(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*(-self%lda    (iz,ix))
+                    f%ex(iz,ix,1) = f%ex(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*  self%ldap2mu(iz,ix)
+
+                case ('es')
+                    f%es(iz,ix,1) = f%es(iz,ix,1) +   wl/self%mu(iz,ix)
+
+                endselect
+
             endif
 
             return
 
         endif
 
-
             do i=1,shot%nrcv
                 ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
                 ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
                 
-                wl=f%wavelet(i,it)*wavelet_scaler
-                
+                wl=f%wavelet(i,it)/m%cell_volume !as no time derivative on strains
+                    
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
-                    case ('ez') !vertical z adjsource
-                        f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*shot%rcv(i)%interp_coef(:,:,1)
-
-                    case ('ex') !horizontal x adjsource
-                        f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*shot%rcv(i)%interp_coef(:,:,1)
-                        
-                    end select
-                    
-                else
-                    select case (shot%rcv(i)%comp)
                     case ('ez')
-                        f%ez(iz,ix,1) = f%ez(iz,ix,1) + wl
+                        if(m%is_freesurface.and.shot%rcv(i)%iz==1) then !on FS
+                            f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*( self%lda(ifz:ilz,ifx:ilx)**2/self%ldap2mu(ifz:ilz,ifx:ilx))*shot%rcv(i)%interp_coef_symm(:,:,1)
+                            f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda(ifz:ilz,ifx:ilx)) *shot%rcv(i)%interp_coef_symm(:,:,1)
+
+                        else !no interfaction with FS
+                            f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*  self%ldap2mu(ifz:ilz,ifx:ilx) *shot%rcv(i)%interp_coef_full(:,:,1)
+                            f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda    (ifz:ilz,ifx:ilx))*shot%rcv(i)%interp_coef_full(:,:,1)
+
+                        endif
+
 
                     case ('ex')
-                        ! if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl
-                        f%ex(iz,ix,1) = f%ex(iz,ix,1) + wl
+                        f%ez(ifz:ilz,ifx:ilx,1) = f%ez(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*(-self%lda    (ifz:ilz,ifx:ilx))*shot%rcv(i)%interp_coef_symm(:,:,1)
+                        f%ex(ifz:ilz,ifx:ilx,1) = f%ex(ifz:ilz,ifx:ilx,1) + wl*self%inv_ldapmu_4mu(ifz:ilz,ifx:ilx)*  self%ldap2mu(ifz:ilz,ifx:ilx) *shot%rcv(i)%interp_coef_symm(:,:,1)
 
-                    end select
-                    
+                    case ('es')
+                        f%es(ifz:ilz,ifx:ilx,1) = f%es(ifz:ilz,ifx:ilx,1) + wl/self%mu(ifz:ilz,ifx:ilx) *shot%rcv(i)%interp_coef(:,:,1)
+
+                    endselect
+
+                else           
+                    select case (shot%rcv(i)%comp)
+                    case ('ez')
+                        !if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl
+                        f%ez(iz,ix,1) = f%ez(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*  self%ldap2mu(iz,ix)
+                        f%ex(iz,ix,1) = f%ex(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*(-self%lda    (iz,ix))
+
+                    case ('ex')
+                        if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl
+                        f%ez(iz,ix,1) = f%ez(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*(-self%lda    (iz,ix))
+                        f%ex(iz,ix,1) = f%ex(iz,ix,1) + wl*self%inv_ldapmu_4mu(iz,ix)*  self%ldap2mu(iz,ix)
+
+                    case ('es')
+                        f%es(iz,ix,1) = f%es(iz,ix,1) +wl/self%mu(iz,ix)
+
+                    endselect
+
                 endif
-                
+
             enddo
         
     end subroutine
+
 
     subroutine update_strains(self,f,time_dir,it)
         class(t_propagator) :: self
@@ -920,6 +1026,12 @@ use, intrinsic :: ieee_arithmetic
                               f%duz_dz,f%dux_dx,f%duz_dx,f%dux_dz,&
                               ifz,ilz,ifx,ilx)
 
+        endif
+
+        if(f%is_adjoint) then !flip
+            f%ez=-f%ez
+            f%ex=-f%ex
+            f%es=-f%es
         endif
 
     end subroutine
@@ -1214,14 +1326,15 @@ use, intrinsic :: ieee_arithmetic
 
     !========= Finite-Difference on flattened arrays ==================
     
-    subroutine fd2d_laplacian(uz,ux,ez,ex,mu,es,&
+    subroutine fd2d_laplacian(ez,ex,es,&
                               dez_dz,dex_dx,dex_dz,dez_dx,des_dz,des_dx,&
                               lapz,lapx,&
-                              ldap2mu,lda,&
+                              ldap2mu,lda,mu,&
                               ifz,ilz,ifx,ilx)
-        real,dimension(*) :: uz,ux,ez,ex,mu,es
+        real,dimension(*) :: ez,ex,es
         real,dimension(*) :: dez_dz,dex_dx,dex_dz,dez_dx,des_dz,des_dx
-        real,dimension(*) :: lapz,lapx,ldap2mu,lda
+        real,dimension(*) :: lapz,lapx
+        real,dimension(*) :: ldap2mu,lda,mu
 
         nz=cb%nz
         nx=cb%nx
@@ -1232,10 +1345,10 @@ use, intrinsic :: ieee_arithmetic
         !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
         !$omp         dez_dz_,dex_dx_,dex_dz_,dez_dx_,des_dz_,des_dx_)
         !$omp do schedule(dynamic)
-        do ix=ifx,ilx
+        do ix=ifx+2,ilx-2
 
             !dir$ simd
-            do iz=ifz,ilz
+            do iz=ifz+2,ilz-2
 
                 i=(iz-cb%ifz)+(ix-cb%ifx)*nz+1
 
@@ -1269,7 +1382,7 @@ use, intrinsic :: ieee_arithmetic
                 des_dx(i)= cpml%b_x(ix)     *des_dx(i) + cpml%a_x(ix)     *des_dx_
 
                 dez_dz_=dez_dz_*cpml%kpa_z_half(iz) + dez_dz(i)
-                dex_dx_=dex_dx_*cpml%kpa_x_half(ix) + dex_dx(i)  !kappa's should have been inversed in m_computebox.f90
+                dex_dx_=dex_dx_*cpml%kpa_x_half(ix) + dex_dx(i)
                 dex_dz_=dex_dz_*cpml%kpa_z_half(iz) + dex_dz(i)
                 dez_dx_=dez_dx_*cpml%kpa_x_half(ix) + dez_dx(i)
                 des_dz_=des_dz_*cpml%kpa_z(iz)      + des_dz(i)
@@ -1301,10 +1414,10 @@ use, intrinsic :: ieee_arithmetic
         !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
         !$omp         duz_dz_,dux_dx_,duz_dx_,dux_dz_)
         !$omp do schedule(dynamic)
-        do ix=ifx,ilx
+        do ix=ifx+2,ilx-2
         
             !dir$ simd
-            do iz=ifz,ilz
+            do iz=ifz+2,ilz-2
             
                 i=(iz-cb%ifz)+(ix-cb%ifx)*nz+1
                 
@@ -1345,7 +1458,7 @@ use, intrinsic :: ieee_arithmetic
                 dux_dz_=dux_dz_*cpml%kpa_z_half(iz) + dux_dz(i)
 
                 !shear stress
-                es(i) = (duz_dx_+dux_dz_)
+                es(i) = duz_dx_+dux_dz_
                 
             enddo
             
