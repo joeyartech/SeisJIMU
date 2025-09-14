@@ -78,13 +78,12 @@ use m_resampler
 
         call hud('----  Computing obj func & dadj  ----')
 
+            call wei%update
+            call alloc(shot%dadj,shot%nt,shot%nrcv)
+
             if(.not.allocated(s_dnorm)) s_dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2')
             select case (s_dnorm)
             case ('L2')
-
-                call wei%update
-                call alloc(shot%dadj,shot%nt,shot%nrcv)
-
                 fobj%misfit = fobj%misfit &
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
                 call kernel_L2sq(shot%dadj)
@@ -94,13 +93,12 @@ use m_resampler
 
             case ('L2averaged')
                 length=setup%get_int('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)
-                ! scaler=setup%get_real('MOVING_AVERAGE_SCALER','MA_SCALER',o_default='1.')
-                if(length>0) call moving_average(shot%dsyn,length)!,scaler)
+                if(length>0) call moving_average(shot%dsyn,length)
                 call shot%write('avg_dsyn_',shot%dsyn)
                 fobj%misfit = fobj%misfit &
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
                 call kernel_L2sq(shot%dadj)
-                if(length>0) call moving_average(shot%dadj,length)!,scaler)
+                if(length>0) call moving_average(shot%dadj,length)
                 call fld_a%ignite(o_wavelet=shot%dadj)
                 call shot%write('dadj_',shot%dadj)
 
@@ -111,28 +109,27 @@ use m_resampler
                 if(s_conversion=='fk') then
                     call convert_in_fk(shot%dsyn,'v2e')
                 else
-                    call hud('differentiate_x(shot%dsyn)')
+                    call hud('u2e by differentiate_x(shot%dsyn)')
                     call differentiate_x(shot%dsyn)
                     !call integrate_t(shot%dsyn)
                 endif
 
                 !then add gauge length
                 length=setup%get_int('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)
-                ! scaler=setup%get_real('MOVING_AVERAGE_SCALER','MA_SCALER',o_default='1.')
-                if(length>0) call moving_average(shot%dsyn,length)!,scaler)
+                if(length>0) call moving_average(shot%dsyn,length)
                 call shot%write('DAS_dsyn_',shot%dsyn)
                 fobj%misfit = fobj%misfit &
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
                 call kernel_L2sq(shot%dadj)
 
                 !goback to velocity adjoint src
-                if(length>0) call moving_average(shot%dadj,length)!,scaler)
+                if(length>0) call moving_average(shot%dadj,length)
 
                 !finally convert back
                 if(s_conversion=='fk') then
                     call convert_in_fk(shot%dadj,'e2v')
                 else
-                    call hud('differentiate_x(-shot%dadj)')
+                    call hud('e2u by differentiate_x(-shot%dadj)')
                     !call rev_integrate_t(shot%dadj)
                     call differentiate_x(-shot%dadj)
                 endif
