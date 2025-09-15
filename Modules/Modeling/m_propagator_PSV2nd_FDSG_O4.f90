@@ -307,8 +307,8 @@ use, intrinsic :: ieee_arithmetic
         
         call alloc(f%dz_ldap2mu_duzdz_p_lda_duxdx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%dx_lda_duzdz_p_ldap2mu_duxdx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dz_mu_duxdz_p_duzdx        ,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dx_mu_duxdz_p_duzdx        ,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dz_mu_duxdz_p_duzdx         ,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dx_mu_duxdz_p_duzdx         ,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
         call alloc(f%lapz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%lapx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -1035,14 +1035,14 @@ use, intrinsic :: ieee_arithmetic
     !========= Finite-Difference on flattened arrays ==================
     
     subroutine fd2d_laplacian(uz,ux,&
-                            duz_dz,dux_dx,dux_dz,duz_dx,&
-                            dz_ldap2mu_duzdz_p_lda_duxdx,&
-                            dx_lda_duzdz_p_ldap2mu_duxdx,&
-                            dz_mu_duxdz_p_duzdx,&
-                            dx_mu_duxdz_p_duzdx,&
-                            lapz,lapx,&
-                            ldap2mu,lda,mu,&
-                            ifz,ilz,ifx,ilx)
+                              duz_dz,dux_dx,dux_dz,duz_dx,&
+                              dz_ldap2mu_duzdz_p_lda_duxdx,&
+                              dx_lda_duzdz_p_ldap2mu_duxdx,&
+                              dz_mu_duxdz_p_duzdx,&
+                              dx_mu_duxdz_p_duzdx,&
+                              lapz,lapx,&
+                              ldap2mu,lda,mu,&
+                              ifz,ilz,ifx,ilx)
         real,dimension(*) :: uz,ux
         real,dimension(*) :: duz_dz,dux_dx,dux_dz,duz_dx
         real,dimension(*) :: dz_ldap2mu_duzdz_p_lda_duxdx
@@ -1245,12 +1245,15 @@ use, intrinsic :: ieee_arithmetic
                 sf_dux_dz = c1z*(sf_ux(iz_ix)-sf_ux(izm1_ix)) +c2z*(sf_ux(izp1_ix)-sf_ux(izm2_ix))
                 sf_duz_dx = c1x*(sf_uz(iz_ix)-sf_uz(iz_ixm1)) +c2x*(sf_uz(iz_ixp1)-sf_uz(iz_ixm2))
                 
-                glda(j) = glda(j) +  rf_duz_dz*sf_duz_dz +rf_duz_dz*sf_dux_dx &
-                                    +rf_dux_dx*sf_duz_dz +rf_dux_dx*sf_dux_dx
+                glda(j) = glda(j) + (rf_duz_dz+rf_dux_dx)*(sf_duz_dz+sf_dux_dx)
+                                    ! rf_duz_dz*sf_duz_dz +rf_duz_dz*sf_dux_dx &
+                                    !+rf_dux_dx*sf_duz_dz +rf_dux_dx*sf_dux_dx
 
-                gmu (j) = gmu (j) +2*rf_duz_dz*sf_duz_dz +2*rf_dux_dx*sf_dux_dx &
-                                    +rf_dux_dz*sf_dux_dz   +rf_dux_dz*sf_duz_dx &
-                                    +rf_duz_dx*sf_dux_dz   +rf_duz_dx*sf_duz_dx
+                gmu (j) = gmu (j) +2*(rf_duz_dz*sf_duz_dz+rf_dux_dx*sf_dux_dx) &
+                                    +(rf_dux_dz+rf_duz_dx)*(sf_dux_dz+sf_duz_dx)
+                                  ! +2*rf_duz_dz*sf_duz_dz +2*rf_dux_dx*sf_dux_dx &
+                                  !   +rf_dux_dz*sf_dux_dz   +rf_dux_dz*sf_duz_dx &
+                                  !   +rf_duz_dx*sf_dux_dz   +rf_duz_dx*sf_duz_dx
 
             enddo
         enddo
