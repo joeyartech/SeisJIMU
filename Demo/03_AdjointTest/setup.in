@@ -15,7 +15,7 @@ WAVELET_TYPE            ricker
 T0                       0.5
 
 SCOMP                   p
-RCOMP                   vz #'p vz'
+RCOMP                   p #'p vz'
 
 IF_BLOOM        F
 IF_HICKS        F
@@ -31,4 +31,3 @@ FPEAK        7
 
 IF_USE_CHECKPOINT   F
 
-DIR_OUT			'./'

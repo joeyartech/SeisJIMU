@@ -48,9 +48,8 @@ use m_hilbert
 
     double precision :: LHS=0., RHS=0.
 
-    real,dimension(:,:),allocatable :: u,v,Lu,Lv !forward
-    real,dimension(:,:),allocatable :: q,p,Ladj_q,Ladj_p, Ladj_p_hilb !adjoint
-    type(t_field) :: sfield_u, sfield_v, rfield_p, rfield_q
+    real,dimension(:,:),allocatable :: reS,imS, reR,imR, reLS,imLS, reLadjR, imLadjR
+    type(t_field) :: reU, imU, reA, imA
     type(t_correlate) :: a_star_u
 
     logical :: if_use_random
@@ -75,81 +74,75 @@ use m_hilbert
         call ppg%init
         call ppg%init_abslayer
         
-        call ppg%init_field(sfield_u,name='sfield_u')
-        call ppg%init_field(sfield_v,name='sfield_v')
+        call ppg%init_field(reU,name='reU')
+        call ppg%init_field(imU,name='imU')
 
         call ppg%init_correlate(a_star_u,'a_star_u')
         
         if_use_random=setup%get_bool('IF_USE_RANDOM',o_default='T')
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !variables for dotproduct test
-        call alloc(u     ,ppg%nt,1        )
-        call alloc(v     ,ppg%nt,1        )
-        call alloc(q     ,ppg%nt,1        )
-        call alloc(p     ,ppg%nt,1        )
-        call alloc(Lu    ,ppg%nt,shot%nrcv)
-        call alloc(Lv    ,ppg%nt,shot%nrcv)
+        call alloc(reS     ,ppg%nt,1        )
+        call alloc(imS     ,ppg%nt,1        )
+        call alloc(reR     ,ppg%nt,shot%nrcv)
+        call alloc(imR     ,ppg%nt,shot%nrcv)
+        call alloc(reLS    ,ppg%nt,shot%nrcv)
+        call alloc(imLS    ,ppg%nt,shot%nrcv)
+        call alloc(reLadjR ,ppg%nt,1        )
+        call alloc(imLadjR ,ppg%nt,1        )
 
 
         if(if_use_random) then
             call random_number(u)
         else
-            u(:,1)=shot%wavelet
-            ! v(:,1)=shot%wavelet
-            call hilbert_transform(u,v,ppg%nt,1)
+            reS(:,1)=shot%wavelet
+            call hilbert_transform(reS,imS,ppg%nt,1)
         endif
-        call suformat_write('u',u,ppg%nt,1        ,o_dt=ppg%dt)
-        call suformat_write('v',v,ppg%nt,1        ,o_dt=ppg%dt)
+        call suformat_write('reS',reS,ppg%nt,1        ,o_dt=ppg%dt)
+        call suformat_write('imS',imS,ppg%nt,1        ,o_dt=ppg%dt)
         ! call suformat_write('v',v,ppg%nt,shot%nrcv,o_dt=ppg%dt)
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         
-        call sfield_u%ignite(o_wavelet=u)
-        call sfield_v%ignite(o_wavelet=v)
+        call reU%ignite(o_wavelet=reS)
+        call imU%ignite(o_wavelet=imS)
         
         !forward modeling
-        call ppg%forward(sfield_u,sfield_v)
+        call ppg%forward(reU,imU)
         
-        call sfield_u%acquire(o_seismo=Lu)
-        call sfield_v%acquire(o_seismo=Lv)
+        call reU%acquire(o_seismo=reLS)
+        call imU%acquire(o_seismo=imLS)
 
         !call shot%write('dsyn_')
-        call suformat_write('Lu',Lu,ppg%nt,shot%nrcv,o_dt=ppg%dt)
-        call suformat_write('Lv',Lv,ppg%nt,shot%nrcv,o_dt=ppg%dt)
+        call suformat_write('reLS',reLS,ppg%nt,shot%nrcv,o_dt=ppg%dt)
+        call suformat_write('imLS',imLS,ppg%nt,shot%nrcv,o_dt=ppg%dt)
 
-        call ppg%init_field(rfield_q,name='rfield_q',ois_adjoint=.true.)
-        call ppg%init_field(rfield_p,name='rfield_p',ois_adjoint=.true.)
+
+        call ppg%init_field(reA,name='reA',ois_adjoint=.true.)
+        call ppg%init_field(imA,name='imA',ois_adjoint=.true.)
 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        !variables for dotproduct test
-        call alloc(q     ,ppg%nt,shot%nrcv)
-        call alloc(p     ,ppg%nt,shot%nrcv)
-        call alloc(Ladj_q,ppg%nt,1        )
-        call alloc(Ladj_p,ppg%nt,1        )
-        call alloc(Ladj_p_hilb,ppg%nt,1        )
         if(if_use_random) then
-            call random_number(q)
+            call random_number(reR)
         else
-            q=Lu
-            p=Lv
+            !reR(:,1)=shot%wavelet
+            reR=reLS
+            call hilbert_transform(reR,imR,ppg%nt,shot%nrcv)
         endif
-        call suformat_write('q',q,ppg%nt,shot%nrcv,o_dt=ppg%dt)
-        call suformat_write('p',p,ppg%nt,shot%nrcv,o_dt=ppg%dt)
+        call suformat_write('reR',reR,ppg%nt,shot%nrcv,o_dt=ppg%dt)
+        call suformat_write('imR',imR,ppg%nt,shot%nrcv,o_dt=ppg%dt)
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-        call rfield_q%ignite(o_wavelet=q)
-        call rfield_p%ignite(o_wavelet=p)
+        call reA%ignite(o_wavelet=reR)
+        call imA%ignite(o_wavelet=imR)
         
         !adjoint modeling
-        call ppg%adjoint(rfield_q,rfield_p,sfield_u,sfield_v,a_star_u)
+        call ppg%adjoint(reA,imA,reU,imU,a_star_u)
 
-        call rfield_q%acquire(o_seismo=Ladj_q)
-        call rfield_p%acquire(o_seismo=Ladj_p)
-        Ladj_p=-Ladj_p
-        ! call hilbert_transform(Ladj_p,Ladj_p_hilb,ppg%nt,1)
-        ! call hilbert_transform(Ladj_p_hilb,Ladj_p,,ppg%nt,1)
-        ! call hilbert_transform(Ladj_p,Ladj_p_hilb,ppg%nt,1)
-        call suformat_write('Ladj_q',Ladj_q,ppg%nt,1,o_dt=ppg%dt)
-        call suformat_write('Ladj_p',Ladj_p,ppg%nt,1,o_dt=ppg%dt)
+        call reA%acquire(o_seismo=reLadjR)
+        call imA%acquire(o_seismo=imLadjR)
+!         Ladj_p=-Ladj_p
+        call suformat_write('reLadjR',reLadjR,ppg%nt,1,o_dt=ppg%dt)
+        call suformat_write('imLadjR',imLadjR,ppg%nt,1,o_dt=ppg%dt)
         
 !         call cb%project_back
         
@@ -159,15 +152,28 @@ use m_hilbert
 
 !     call sysio_write('gradient',m%gradient,size(m%gradient))
 
-    print*,'shape(u)=',     shape(u),    ', ║u║₂=',      norm2(u)*sqrt(ppg%dt)
-    print*,'shape(v)=',     shape(v),    ', ║v║₂=',      norm2(v)*sqrt(ppg%dt)
-    print*,'shape(q)=',     shape(q),    ', ║q║₂=',      norm2(q)*sqrt(ppg%dt)
-    print*,'shape(p)=',     shape(p),    ', ║v║₂=',      norm2(p)*sqrt(ppg%dt)
-    print*,'shape(Lu)=',    shape(Lu),   ', ║Lu║₂=',     norm2(Lu)*sqrt(ppg%dt)
-    print*,'shape(Lv)=',    shape(Lv),   ', ║Lv║₂=',     norm2(Lv)*sqrt(ppg%dt)
-    print*,'shape(Lᴴq)=',   shape(Ladj_q),', ║Lᴴq║₂=', norm2(Ladj_q)*sqrt(ppg%dt)
-    print*,'shape(Lᴴp)=',   shape(Ladj_p),', ║Lᴴp║₂=', norm2(Ladj_p)*sqrt(ppg%dt)
-    print*,'Remind that ║u║₂ := √ (∫ u² dt) = norm2(u)*sqrt(dt)'
+    print*,'Vector |  shape  |  ║*║₂'
+    print*,'reS  ',  shape(reS),     norm2(reS)*sqrt(ppg%dt)
+    print*,'imS  ',  shape(imS),     norm2(imS)*sqrt(ppg%dt)
+    print*,'reR  ',  shape(reR),     norm2(reR)*sqrt(ppg%dt)
+    print*,'imR  ',  shape(imR),     norm2(imR)*sqrt(ppg%dt)
+    print*,'reLS ',  shape(reLS),    norm2(reLS)*sqrt(ppg%dt)
+    print*,'imLS ',  shape(imLS),    norm2(imLS)*sqrt(ppg%dt)
+    print*,'reLᴴR',  shape(reLadjR), norm2(reLadjR)*sqrt(ppg%dt)
+    print*,'imLᴴR',  shape(imLadjR), norm2(imLadjR)*sqrt(ppg%dt)
+!     print*,'Remind that ║u║₂ := √ (∫ u² dt) = norm2(u)*sqrt(dt)'
+
+    print*,'<R|LS> =?= <LᴴR|S>'
+    print*,'LHS:= (re  R-iim  R)·(reLS+iimLS) = re  R·reLS + im  R·imLS +i(re  R·imLS - im  R·reLS)'
+    print*,'RHS:= (reLᴴR-iimLᴴR)·(re S+iim S) = reLᴴR·re S + imLᴴR·im S +i(reLᴴR·im S - imLᴴR·re S)'
+    print*,''
+    print*,'Real parts:'
+    print*,'LHS=',sum(dprod(    reR,reLS)),sum(dprod(    imR,imLS)),sum(dprod(    reR,reLS))+sum(dprod(    imR,imLS))
+    print*,'RHS=',sum(dprod(reLadjR, reS)),sum(dprod(imLadjR, imS)),sum(dprod(reLadjR, reS))+sum(dprod(imLadjR, imS))
+    print*,''
+    print*,'Imag parts:'
+    print*,'LHS=',sum(dprod(    reR,imLS)),sum(dprod(    imR,reLS)),sum(dprod(    reR,imLS))-sum(dprod(    imR,reLS))
+    print*,'RHS=',sum(dprod(reLadjR, imS)),sum(dprod(imLadjR, reS)),sum(dprod(reLadjR, imS))-sum(dprod(imLadjR, reS))
 
     !<v|Lu> =?= <L^Tv|u>
     !<v|Lu>=int v*Lu*dt = sum(v*Lu)*dt
@@ -179,37 +185,37 @@ use m_hilbert
 
     ! LHS=sum(dprod(p,Lv))*ppg%dt
     ! RHS=sum(dprod(Ladj_p,v))*ppg%dt
-
-    
-    LHS=sum(dprod(q,Lu))*ppg%dt + sum(dprod(p,Lv))*ppg%dt
-    RHS=sum(dprod(Ladj_q,u))*ppg%dt + sum(dprod(Ladj_p,v))*ppg%dt
-
-    print*,'LHS = <  v|Lu> = ', LHS
-    print*,'RHS = <Lᴴv| u> = ', RHS
-    print*,'relative difference = ', (LHS-RHS)/LHS
-
-
-    LHS=sum(dprod(p,Lu))*ppg%dt 
-    RHS=sum(dprod(Ladj_p,u))*ppg%dt 
-
-    print*,'LHS = <  v|Lu> = ', LHS
-    print*,'RHS = <Lᴴv| u> = ', RHS
-    print*,'relative difference = ', (LHS-RHS)/LHS
-
-    LHS=sum(dprod(q,Lv))*ppg%dt
-    RHS=sum(dprod(Ladj_q,v))*ppg%dt
-
-    print*,'LHS = <  v|Lu> = ', LHS
-    print*,'RHS = <Lᴴv| u> = ', RHS
-    print*,'relative difference = ', (LHS-RHS)/LHS
-
-    LHS=sum(dprod(p,Lu))*ppg%dt - sum(dprod(q,Lv))*ppg%dt
-    RHS=sum(dprod(Ladj_p,u))*ppg%dt - sum(dprod(Ladj_q,v))*ppg%dt
-
-
-    print*,'LHS = <  v|Lu> = ', LHS
-    print*,'RHS = <Lᴴv| u> = ', RHS
-    print*,'relative difference = ', (LHS-RHS)/LHS
+!
+!
+!     LHS=sum(dprod(q,Lu))*ppg%dt + sum(dprod(p,Lv))*ppg%dt
+!     RHS=sum(dprod(Ladj_q,u))*ppg%dt + sum(dprod(Ladj_p,v))*ppg%dt
+!
+!     print*,'LHS = <  v|Lu> = ', LHS
+!     print*,'RHS = <Lᴴv| u> = ', RHS
+!     print*,'relative difference = ', (LHS-RHS)/LHS
+!
+!
+!     LHS=sum(dprod(p,Lu))*ppg%dt
+!     RHS=sum(dprod(Ladj_p,u))*ppg%dt
+!
+!     print*,'LHS = <  v|Lu> = ', LHS
+!     print*,'RHS = <Lᴴv| u> = ', RHS
+!     print*,'relative difference = ', (LHS-RHS)/LHS
+!
+!     LHS=sum(dprod(q,Lv))*ppg%dt
+!     RHS=sum(dprod(Ladj_q,v))*ppg%dt
+!
+!     print*,'LHS = <  v|Lu> = ', LHS
+!     print*,'RHS = <Lᴴv| u> = ', RHS
+!     print*,'relative difference = ', (LHS-RHS)/LHS
+!
+!     LHS=sum(dprod(p,Lu))*ppg%dt - sum(dprod(q,Lv))*ppg%dt
+!     RHS=sum(dprod(Ladj_p,u))*ppg%dt - sum(dprod(Ladj_q,v))*ppg%dt
+!
+!
+!     print*,'LHS = <  v|Lu> = ', LHS
+!     print*,'RHS = <Lᴴv| u> = ', RHS
+!     print*,'relative difference = ', (LHS-RHS)/LHS
 
     call mpiworld%barrier
 
