@@ -286,7 +286,16 @@ use, intrinsic :: ieee_arithmetic
 
         f%is_adjoint=either(ois_adjoint,.false.,present(ois_adjoint))
 
-        call f%init_bloom
+        ! call f%init_bloom
+        call warn("Disable field%bloom, otherwise back propagation of incident field is unstable (don't know why..)")
+        call alloc(f%bloom,6,self%nt)
+        f%bloom(1,:)=cb%ifz
+        f%bloom(2,:)=cb%ilz
+        f%bloom(3,:)=cb%ifx
+        f%bloom(4,:)=cb%ilx
+        f%bloom(5,:)=cb%ify
+        f%bloom(6,:)=cb%ily
+
 
         !f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
         !if(f%if_will_reconstruct) call f%init_boundary

@@ -7,8 +7,8 @@
 #WaveEq=PSV
 #WaveEq=DAS
 #WaveEq=DASAC
-#WaveEq=PSV2nd
-WaveEq=PSV2ndUE
+WaveEq=PSV2nd
+#WaveEq=PSV2ndUE
 
 Solver=FDSG
 Order=O4
@@ -30,5 +30,5 @@ App=FWI
 LineS=Wolfe
 #LineS=enumerate
 #Optim=SD
-Optim=NLCG
-#Optim=lBFGS
+#Optim=NLCG
+Optim=lBFGS

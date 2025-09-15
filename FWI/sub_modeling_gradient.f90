@@ -131,7 +131,9 @@ use m_resampler
                 else
                     call hud('e2u by differentiate_x(-shot%dadj)')
                     !call rev_integrate_t(shot%dadj)
-                    call differentiate_x(-shot%dadj)
+                    !call differentiate_x(-shot%dadj) !this is dangerous in fortran..
+                    shot%dadj=-shot%dadj
+                    call differentiate_x(shot%dadj) !so let's use functions instead of subroutines..
                 endif
 
                 call fld_a%ignite(o_wavelet=shot%dadj)
