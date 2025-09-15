@@ -98,6 +98,8 @@ use singleton
     integer :: irdt
     real :: rdt
 
+    logical :: if_record_adjseismo=.true.
+
     ! logical :: is_absolute_virtual
 
     contains
@@ -396,7 +398,7 @@ use singleton
 
         !allocate(wavelet_hilb(1,self%nt))
         call hilbert_transform2(fld_u%wavelet,fld_v%wavelet,1,self%nt)
-        fld_v%wavelet(1,500:self%nt)=0
+        ! fld_v%wavelet(1,500:self%nt)=0
 
 
         ! open(unit=12, file='../../Demo/11_Marmousi/wavelet.bin', form='unformatted', access='stream', status='replace')
@@ -453,17 +455,17 @@ use singleton
             ! endif
             
 
-            if(mod(it,20)==0) then
-                call build_mask(mask, fld_u, it)
-                ! print *,'mask shape', size(mask,1),size(mask,2),size(mask,3), 'fld_u%p shape',size(fld_u%p,1),size(fld_u%p,2),size(fld_u%p,3)
-                ! open(unit=10, file='../../Demo/11_Marmousi/mask.bin', form='unformatted', access='stream', status='replace')
-                ! write(10) mask
-                ! close(10)
-                ! stop
-                call fft_gassian_filt(fld_u, mask, it)
-                call fft_gassian_filt(fld_v, mask, it)
-                deallocate(mask)
-            endif
+            ! if(mod(it,20)==0) then
+            !     call build_mask(mask, fld_u, it)
+            !     ! print *,'mask shape', size(mask,1),size(mask,2),size(mask,3), 'fld_u%p shape',size(fld_u%p,1),size(fld_u%p,2),size(fld_u%p,3)
+            !     ! open(unit=10, file='../../Demo/11_Marmousi/mask.bin', form='unformatted', access='stream', status='replace')
+            !     ! write(10) mask
+            !     ! close(10)
+            !     ! stop
+            !     call fft_gassian_filt(fld_u, mask, it)
+            !     call fft_gassian_filt(fld_v, mask, it)
+            !     deallocate(mask)
+            ! endif
             
 
             !step 5: evolve pressure, it -> it+1
@@ -476,6 +478,7 @@ use singleton
             !step 6: sample p^it+1 at receivers
             call cpu_time(tic)
             call self%extract(fld_u,it)
+            call self%extract(fld_v,it)
             call cpu_time(toc)
             tt7=tt7+toc-tic
 
@@ -512,6 +515,9 @@ use singleton
         !reinitialize absorbing boundary for incident wavefield reconstruction
         call fld_v%reinit
         call fld_u%reinit
+
+        if(if_record_adjseismo)  call alloc(fld_q%seismo,1,self%nt)
+        if(if_record_adjseismo)  call alloc(fld_p%seismo,1,self%nt)
         
         !timing
         tt1=0.; tt2=0.; tt3=0.
@@ -547,25 +553,25 @@ use singleton
 
                 !backward step 4:
                 call cpu_time(tic)
-                call self%update_pressure(fld_u,fld_v,time_dir,it)
+                call self%update_pressure(fld_u,fld_v,time_dir,it,'back')
                 call cpu_time(toc)
                 tt4=tt4+toc-tic
 
-                if(mod(it,100)==0) then
-                    call build_mask(mask, fld_u, it)
-                    ! print *,'mask size=',size(mask,1),size(mask,2),'it=',it
-                    ! if(it==4400) then
-                    ! open(unit=10, file='../../Demo/11_Marmousi/mask.bin', form='unformatted', access='stream', status='replace')
-                    ! write(10) mask
-                    ! close(10)
-                    ! stop
-                    ! endif 
+                ! if(mod(it,100)==0) then
+                !     call build_mask(mask, fld_u, it)
+                !     ! print *,'mask size=',size(mask,1),size(mask,2),'it=',it
+                !     ! if(it==4400) then
+                !     ! open(unit=10, file='../../Demo/11_Marmousi/mask.bin', form='unformatted', access='stream', status='replace')
+                !     ! write(10) mask
+                !     ! close(10)
+                !     ! stop
+                !     ! endif 
                     
-                    call fft_gassian_filt(fld_u, mask, it)
-                    call fft_gassian_filt(fld_v, mask, it)
-                    deallocate(mask)
-                    ! print *,'fld_u shape=',size(fld_u%p,1),size(fld_u%p,2)
-                 endif
+                !     call fft_gassian_filt(fld_u, mask, it)
+                !     call fft_gassian_filt(fld_v, mask, it)
+                !     deallocate(mask)
+                !     ! print *,'fld_u shape=',size(fld_u%p,1),size(fld_u%p,2)
+                !  endif
                  
 
                 !backward step 1: rm p^it at source
@@ -585,17 +591,17 @@ use singleton
 
             !adjoint step 4:
             call cpu_time(tic)
-            call self%update_pressure(fld_p,fld_q,time_dir,it)
+            call self%update_pressure(fld_p,fld_q,time_dir,it,'adjt')
             ! call self%update_pressure(fld_p,time_dir,it)
             call cpu_time(toc)
             tt9=tt9+toc-tic
 
-            if(mod(it,100)==0) then
-                call build_mask(mask, fld_p, it)
-                call fft_gassian_filt(fld_p, mask, it)
-                call fft_gassian_filt(fld_q, mask, it)
-                deallocate(mask)
-            endif
+            ! if(mod(it,100)==0) then
+            !     call build_mask(mask, fld_p, it)
+            !     call fft_gassian_filt(fld_p, mask, it)
+            !     call fft_gassian_filt(fld_q, mask, it)
+            !     deallocate(mask)
+            ! endif
 
             !image: rf%p^it star sf%p^it
             if(mod(it,irdt)==0) then
@@ -620,13 +626,13 @@ use singleton
             tt11=tt11+toc-tic
 
             !adjoint step 1: sample p^it at source position
-            ! if(if_record_adjseismo) then
-                ! call cpu_time(tic)
-                ! call self%extract(fld_q,it)
-                ! call self%extract(fld_p,it)
-                ! call cpu_time(toc)
-                ! tt12=tt12+toc-tic
-            ! endif
+            if(if_record_adjseismo) then
+                call cpu_time(tic)
+                call self%extract(fld_q,it)
+                call self%extract(fld_p,it)
+                call cpu_time(toc)
+                tt12=tt12+toc-tic
+            endif
 
 
             !--------------------------------------------------------!
@@ -696,19 +702,28 @@ use singleton
             wl=time_dir*f%wavelet(1,it)*wavelet_scaler
 
             !explosion
+            if(if_hicks) then
+                f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
+            else
+                f%p(iz,ix,iy)                = f%p(iz,ix,iy)                + wl*self%kpa(iz,ix,iy)
+            endif
+
+            !add df_dz
             ! if(if_hicks) then
-            !     f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
+            !     f%p(ifz+1:ilz+1,ifx:ilx,ify:ily) = f%p(ifz+1:ilz+1,ifx:ilx,ify:ily) + wl*self%kpa(ifz+1:ilz+1,ifx:ilx,ify:ily)/(2*m%dz)*shot%src%interp_coef
+            !     f%p(ifz-1:ilz-1,ifx:ilx,ify:ily) = f%p(ifz-1:ilz-1,ifx:ilx,ify:ily) - wl*self%kpa(ifz-1:ilz-1,ifx:ilx,ify:ily)/(2*m%dz)*shot%src%interp_coef
             ! else
-            !     f%p(iz,ix,iy)                = f%p(iz,ix,iy)                + wl*self%kpa(iz,ix,iy)
+            !     f%p(iz+1,ix,iy)                = f%p(iz+1,ix,iy)                + wl*self%kpa(iz+1,ix,iy)/(2*m%dz)
+            !     f%p(iz-1,ix,iy)                = f%p(iz-1,ix,iy)                + wl*self%kpa(iz-1,ix,iy)/(2*m%dz)
             ! endif
 
             ! add source to a_z
-            if(if_hicks) then
-                f%dp_dz(ifz:ilz,ifx:ilx,ify:ily) = f%dp_dz(ifz:ilz,ifx:ilx,ify:ily) + 0.01*wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
-                ! f%dp_dz(ifz:ilz,ifx:ilx,ify:ily) = f%dp_dz(ifz:ilz,ifx:ilx,ify:ily) + wl*shot%src%interp_coef
-            else
-                f%dp_dz(iz,ix,iy)                = f%dp_dz(iz,ix,iy)                + wl*self%kpa(iz,ix,iy)
-            endif
+            ! if(if_hicks) then
+            !     f%dp_dz(ifz:ilz,ifx:ilx,ify:ily) = f%dp_dz(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
+            !     ! f%dp_dz(ifz:ilz,ifx:ilx,ify:ily) = f%dp_dz(ifz:ilz,ifx:ilx,ify:ily) + wl*shot%src%interp_coef
+            ! else
+            !     f%dp_dz(iz,ix,iy)                = f%dp_dz(iz,ix,iy)                + wl*self%kpa(iz,ix,iy)
+            ! endif
 
             return
 
@@ -732,26 +747,36 @@ use singleton
             !adjsource for pressure
             wl = f%wavelet(i,it)*wavelet_scaler    !no time_dir needed!
 
-            ! if(if_hicks) then 
-            !     f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef
+            if(if_hicks) then 
+                f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef
+            else
+                f%p(iz,ix,iy)                = f%p(iz,ix,iy)                +wl*self%kpa(iz,ix,iy)
+            endif
+
+            !add df_dz
+            ! if(if_hicks) then
+            !     f%p(ifz+1:ilz+1,ifx:ilx,ify:ily) = f%p(ifz+1:ilz+1,ifx:ilx,ify:ily) + wl*self%kpa(ifz+1:ilz+1,ifx:ilx,ify:ily)/(2*m%dz)*shot%src%interp_coef
+            !     f%p(ifz-1:ilz-1,ifx:ilx,ify:ily) = f%p(ifz-1:ilz-1,ifx:ilx,ify:ily) - wl*self%kpa(ifz-1:ilz-1,ifx:ilx,ify:ily)/(2*m%dz)*shot%src%interp_coef
             ! else
-            !     f%p(iz,ix,iy)                = f%p(iz,ix,iy)                +wl*self%kpa(iz,ix,iy)
+            !     f%p(iz+1,ix,iy)                = f%p(iz+1,ix,iy)                + wl*self%kpa(iz+1,ix,iy)/(2*m%dz)
+            !     f%p(iz-1,ix,iy)                = f%p(iz-1,ix,iy)                + wl*self%kpa(iz-1,ix,iy)/(2*m%dz)
             ! endif
 
             ! add source to a_z
-            if(if_hicks) then
-                f%dp_dz(ifz:ilz,ifx:ilx,ify:ily) = f%dp_dz(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
-            else
-                f%dp_dz(iz,ix,iy)                = f%dp_dz(iz,ix,iy)                + wl*self%kpa(iz,ix,iy)
-            endif
+            ! if(if_hicks) then
+            !     f%dp_dz(ifz:ilz,ifx:ilx,ify:ily) = f%dp_dz(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
+            ! else
+            !     f%dp_dz(iz,ix,iy)                = f%dp_dz(iz,ix,iy)                + wl*self%kpa(iz,ix,iy)
+            ! endif
 
         enddo
         
     end subroutine
 
-    subroutine update_pressure(self,f_u,f_v,time_dir,it)
+    subroutine update_pressure(self,f_u,f_v,time_dir,it,adj_back)
         class(t_propagator) :: self
         type(t_field) :: f_u, f_v
+        character(len=4), optional:: adj_back
 
         real :: a, b, d, pi, vis, e, Q
         ! real, allocatable :: Q(:,:,:)
@@ -773,7 +798,7 @@ use singleton
         ! allocate(Q(ilz-ifz+1,ilx-ifx+1,1))
         ! allocate(C1(ilz-ifz+1,ilx-ifx+1,1),C2(ilz-ifz+1,ilx-ifx+1,1),C3(ilz-ifz+1,ilx-ifx+1,1))
         ! allocate(C1(1),C2(1),C3(1))
-        vis = 1
+        vis = 0
         
         ! Q = cb%vp(ifz:ilz,ifx:ilx,:)/10
         Q = 100
@@ -844,24 +869,37 @@ use singleton
             ! f%p_next(ifz:ilz,ifx:ilx,:) = 2*f%p(ifz:ilz,ifx:ilx,:) - f%p_prev(ifz:ilz,ifx:ilx,:) & 
             !     +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*f%lap(ifz:ilz,ifx:ilx,:)
 
-        ! elseif(time_dir<0 .and. adj_back=='back') then !in reverse time
-        elseif(time_dir<0) then
-                C1 = 1 - 2*a/(pi*Q) - e*cmplx(0.0, 1.0/Q) - cmplx(0.0, b/pi/Q*self%dt)
-                C2 = 2*(1-2*a/(pi*Q)- e*cmplx(0.0, 1.0/Q)                             - d*dt2/(pi*Q))
-                C3 = (1-2*a/(pi*Q) - e*cmplx(0.0, 1.0/Q) + cmplx(0.0, b/pi/Q*self%dt))
-                C3= 1/C3
-                C1= -C1
+        elseif(time_dir<0 .and. adj_back=='back') then !in reverse time
+        ! elseif(time_dir<0) then
+            C1 = 1 - 2*a/(pi*Q) - e*cmplx(0.0, 1.0/Q) - cmplx(0.0, b/pi/Q*self%dt)
+            C2 = 2*(1-2*a/(pi*Q)- e*cmplx(0.0, 1.0/Q)                             - d*dt2/(pi*Q))
+            C3 = (1-2*a/(pi*Q) - e*cmplx(0.0, 1.0/Q) + cmplx(0.0, b/pi/Q*self%dt))
+            C3= 1/C3
+            C1= -C1
 
-                f_temp(:,:,:) = C3*(C2*cmplx(f_u%p(ifz:ilz,ifx:ilx,:),f_v%p(ifz:ilz,ifx:ilx,:)) &
-                    +C1*cmplx(f_u%p_next(ifz:ilz,ifx:ilx,:),f_v%p_next(ifz:ilz,ifx:ilx,:)) &
-                    +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*cmplx(f_u%lap(ifz:ilz,ifx:ilx,:),f_v%lap(ifz:ilz,ifx:ilx,:)))
-                f_u%p_prev(ifz:ilz,ifx:ilx,:) = real(f_temp(:,:,:))
-                f_v%p_prev(ifz:ilz,ifx:ilx,:) = aimag(f_temp(:,:,:))
+            f_temp(:,:,:) = C3*(C2*cmplx(f_u%p(ifz:ilz,ifx:ilx,:),f_v%p(ifz:ilz,ifx:ilx,:)) &
+                +C1*cmplx(f_u%p_next(ifz:ilz,ifx:ilx,:),f_v%p_next(ifz:ilz,ifx:ilx,:)) &
+                +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*cmplx(f_u%lap(ifz:ilz,ifx:ilx,:),f_v%lap(ifz:ilz,ifx:ilx,:)))
+            f_u%p_prev(ifz:ilz,ifx:ilx,:) = real(f_temp(:,:,:))
+            f_v%p_prev(ifz:ilz,ifx:ilx,:) = aimag(f_temp(:,:,:))
 
             ! f%p_prev(ifz:ilz,ifx:ilx,:) = C3*(C2*2*f%p(ifz:ilz,ifx:ilx,:) -C1*f%p_next(ifz:ilz,ifx:ilx,:) &
             !     +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*f%lap(ifz:ilz,ifx:ilx,:))
             ! f%p_prev(ifz:ilz,ifx:ilx,:) = 2*f%p(ifz:ilz,ifx:ilx,:) -f%p_next(ifz:ilz,ifx:ilx,:) &
             !     +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*f%lap(ifz:ilz,ifx:ilx,:)
+        
+        elseif(time_dir<0 .and. adj_back=='adjt') then
+                C1 = 1 - 2*a/(pi*Q) + e*cmplx(0.0, 1.0/Q) + cmplx(0.0, b/pi/Q*self%dt)
+                C2 = 2*(1-2*a/(pi*Q)+ e*cmplx(0.0, 1.0/Q)                             - d*dt2/(pi*Q))
+                C3 = (1-2*a/(pi*Q) + e*cmplx(0.0, 1.0/Q) - cmplx(0.0, b/pi/Q*self%dt))
+                C3= 1/C3
+                C1= -C1
+
+                f_temp(:,:,:) = C3*(C2*cmplx(f_u%p(ifz:ilz,ifx:ilx,:),     f_v%p(ifz:ilz,ifx:ilx,:)) &
+                                   +C1*cmplx(f_u%p_next(ifz:ilz,ifx:ilx,:),f_v%p_next(ifz:ilz,ifx:ilx,:)) &
+                    +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*cmplx(f_u%lap(ifz:ilz,ifx:ilx,:),f_v%lap(ifz:ilz,ifx:ilx,:)))
+                f_u%p_prev(ifz:ilz,ifx:ilx,:) = real(f_temp(:,:,:))
+                f_v%p_prev(ifz:ilz,ifx:ilx,:) = aimag(f_temp(:,:,:))
 
         endif
 
@@ -1074,8 +1112,8 @@ use singleton
 
         !for gikpa
         corr%gikpa = corr%gikpa + &
-            rf_p%p(1:m%nz,1:m%nx,1:m%ny) * ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*sf_u%lap(1:m%nz,1:m%nx,1:m%ny) + &
-            rf_q%p(1:m%nz,1:m%nx,1:m%ny) * ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*sf_v%lap(1:m%nz,1:m%nx,1:m%ny)
+            rf_p%p(1:m%nz,1:m%nx,1:m%ny) * ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*sf_u%lap(1:m%nz,1:m%nx,1:m%ny) !+ &
+            ! rf_q%p(1:m%nz,1:m%nx,1:m%ny) * ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*sf_v%lap(1:m%nz,1:m%nx,1:m%ny)
 
         !for gbuo
         call fd2d_grho(rf_p%p,sf_u%p,corr%gbuo,   ifz,ilz,ifx,ilx)
