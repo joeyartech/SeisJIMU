@@ -399,7 +399,7 @@ use singleton
         call alloc(fld_reU%seismo,shot%nrcv,self%nt)
         call alloc(fld_imU%seismo,shot%nrcv,self%nt)
 
-        call hilbert_transform(fld_reU%wavelet,fld_imU%wavelet,1,self%nt,o_axis=2)
+        ! call hilbert_transform(fld_reU%wavelet,fld_imU%wavelet,1,self%nt,o_axis=2)
 
         tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.; tt7=0.
 
@@ -674,13 +674,9 @@ use singleton
     subroutine inject_pressure(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
-        ! real, allocatable :: wavelet_hilb(:,:)
-        ! character(len=*), intent(in) :: is_hilbert
 
         if(.not. f%is_adjoint) then
-!this loop takes more time when nthreads>1.
-!e.g. 0.1s vs 0.046s from Elapased time to rm source (tt5)
-!tobe fixed..
+        
             if(if_hicks) then
                 ifz=shot%src%ifz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
                 ifx=shot%src%ifx-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
@@ -695,37 +691,34 @@ use singleton
             ! wl=time_dir*f%wavelet(1,it)*wavelet_scaler
             wl=time_dir*f%wavelet(1,it)*wavelet_scaler
 
-            !explosion
             if(if_hicks) then
-                f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
+                select case (shot%src%comp)
+                case ('p') !explosion
+                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
+                
+                case ('dpdz') !vertical force
+                    f%p(ifz+1:ilz+1,ifx:ilx,ify:ily) = f%p(ifz+1:ilz+1,ifx:ilx,ify:ily) + wl*self%kpa(ifz+1:ilz+1,ifx:ilx,ify:ily)*inv_2dz*shot%src%interp_coef
+                    f%p(ifz-1:ilz-1,ifx:ilx,ify:ily) = f%p(ifz-1:ilz-1,ifx:ilx,ify:ily) - wl*self%kpa(ifz-1:ilz-1,ifx:ilx,ify:ily)*inv_2dz*shot%src%interp_coef
+                
+                endselect
+
             else
-                f%p(iz,ix,iy)                = f%p(iz,ix,iy)                + wl*self%kpa(iz,ix,iy)
+                select case (shot%src%comp)
+                case ('p') !explosion
+                    f%p(iz,ix,iy)                = f%p(iz,ix,iy)                + wl*self%kpa(iz,ix,iy)
+                
+                case ('dpdz') !vertical force
+                    f%p(iz+1,ix,iy)                = f%p(iz+1,ix,iy)            + wl*self%kpa(iz+1,ix,iy)*inv_2dz
+                    f%p(iz-1,ix,iy)                = f%p(iz-1,ix,iy)            - wl*self%kpa(iz-1,ix,iy)*inv_2dz
+                
+                endselect
+
             endif
-
-            !add df_dz
-            ! if(if_hicks) then
-            !     f%p(ifz+1:ilz+1,ifx:ilx,ify:ily) = f%p(ifz+1:ilz+1,ifx:ilx,ify:ily) + wl*self%kpa(ifz+1:ilz+1,ifx:ilx,ify:ily)/(2*m%dz)*shot%src%interp_coef
-            !     f%p(ifz-1:ilz-1,ifx:ilx,ify:ily) = f%p(ifz-1:ilz-1,ifx:ilx,ify:ily) - wl*self%kpa(ifz-1:ilz-1,ifx:ilx,ify:ily)/(2*m%dz)*shot%src%interp_coef
-            ! else
-            !     f%p(iz+1,ix,iy)                = f%p(iz+1,ix,iy)                + wl*self%kpa(iz+1,ix,iy)/(2*m%dz)
-            !     f%p(iz-1,ix,iy)                = f%p(iz-1,ix,iy)                + wl*self%kpa(iz-1,ix,iy)/(2*m%dz)
-            ! endif
-
-            ! add source to a_z
-            ! if(if_hicks) then
-            !     f%dp_dz(ifz:ilz,ifx:ilx,ify:ily) = f%dp_dz(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
-            !     ! f%dp_dz(ifz:ilz,ifx:ilx,ify:ily) = f%dp_dz(ifz:ilz,ifx:ilx,ify:ily) + wl*shot%src%interp_coef
-            ! else
-            !     f%dp_dz(iz,ix,iy)                = f%dp_dz(iz,ix,iy)                + wl*self%kpa(iz,ix,iy)
-            ! endif
 
             return
 
         endif
 
-!this loop takes more time when nthreads>1.
-!e.g. 38s vs 8.7s from Elapased time to add adj source  (tt6)
-!tobe fixed..
         do i=1,shot%nrcv
 
             if(if_hicks) then
@@ -738,30 +731,32 @@ use singleton
                 iy=shot%rcv(i)%iy-cb%ioy+1
             endif
 
-            !adjsource for pressure
             wl = f%wavelet(i,it)*wavelet_scaler    !no time_dir needed!
 
             if(if_hicks) then 
-                f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef
+
+                select case (shot%rcv(i)%comp)
+                case ('p') !adjsource for pressure
+                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef
+
+                case ('dpdz') !adjsource for vertical force 
+                    f%p(ifz+1:ilz+1,ifx:ilx,ify:ily) = f%p(ifz+1:ilz+1,ifx:ilx,ify:ily) + wl*self%kpa(ifz+1:ilz+1,ifx:ilx,ify:ily)*inv_2dz*shot%rcv(i)%interp_coef
+                    f%p(ifz-1:ilz-1,ifx:ilx,ify:ily) = f%p(ifz-1:ilz-1,ifx:ilx,ify:ily) - wl*self%kpa(ifz-1:ilz-1,ifx:ilx,ify:ily)*inv_2dz*shot%rcv(i)%interp_coef
+
+                endselect
+
             else
-                f%p(iz,ix,iy)                = f%p(iz,ix,iy)                +wl*self%kpa(iz,ix,iy)
+                select case (shot%rcv(i)%comp)
+                case ('p') !adjsource for pressure
+                    f%p(iz,ix,iy)                = f%p(iz,ix,iy)                +wl*self%kpa(iz,ix,iy)
+            
+                case ('dpdz') !adjsource for vertical force 
+                    f%p(iz+1,ix,iy)              = f%p(iz+1,ix,iy)              + wl*self%kpa(iz+1,ix,iy)*inv_2dz
+                    f%p(iz-1,ix,iy)              = f%p(iz-1,ix,iy)              - wl*self%kpa(iz-1,ix,iy)*inv_2dz
+
+                endselect
+
             endif
-
-            !add df_dz
-            ! if(if_hicks) then
-            !     f%p(ifz+1:ilz+1,ifx:ilx,ify:ily) = f%p(ifz+1:ilz+1,ifx:ilx,ify:ily) + wl*self%kpa(ifz+1:ilz+1,ifx:ilx,ify:ily)/(2*m%dz)*shot%src%interp_coef
-            !     f%p(ifz-1:ilz-1,ifx:ilx,ify:ily) = f%p(ifz-1:ilz-1,ifx:ilx,ify:ily) - wl*self%kpa(ifz-1:ilz-1,ifx:ilx,ify:ily)/(2*m%dz)*shot%src%interp_coef
-            ! else
-            !     f%p(iz+1,ix,iy)                = f%p(iz+1,ix,iy)                + wl*self%kpa(iz+1,ix,iy)/(2*m%dz)
-            !     f%p(iz-1,ix,iy)                = f%p(iz-1,ix,iy)                + wl*self%kpa(iz-1,ix,iy)/(2*m%dz)
-            ! endif
-
-            ! add source to a_z
-            ! if(if_hicks) then
-            !     f%dp_dz(ifz:ilz,ifx:ilx,ify:ily) = f%dp_dz(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
-            ! else
-            !     f%dp_dz(iz,ix,iy)                = f%dp_dz(iz,ix,iy)                + wl*self%kpa(iz,ix,iy)
-            ! endif
 
         enddo
         
@@ -809,6 +804,7 @@ use singleton
 
                !Uⁿ⁺¹  =2Uⁿ -Uⁿ⁻¹  +  i C₁/C₂    (Uⁿ-Uⁿ⁻¹) dt      -   C₀/C₂ Uⁿdt² +      1/C₂*dt²*Lap
                 Unext =2*U -Uprev +c_i*self%C1n*(U-Uprev)*self%dt -self%C0n*U*dt2 +self%invC2*dt2*self%kpa*Lap
+               ! Unext =2*U -Uprev +dt2*self%kpa*Lap
                 f_re%p_next =  real(Unext)
                 f_im%p_next = aimag(Unext)
 
@@ -831,6 +827,7 @@ use singleton
 
                !Uᵃⁿ⁻¹ =2Uᵃⁿ-Uᵃⁿ⁺¹ +  i    C₁/C₂ᴴ (Uᵃⁿ⁺¹-Uᵃⁿ)dt     -   C₀/C₂ᴴ Uᵃⁿdt² +     1/C₂ᴴ*dt²*Lap
                 Uprev =2*U -Unext +c_i*self%C1nH*(Unext-U)*self%dt -self%C0nH*U*dt2 +self%invC2H*dt2*self%kpa*Lap
+               ! Uprev =2*U -Unext +dt2*self%kpa*Lap
                 f_re%p_prev =  real(Uprev)
                 f_im%p_prev = aimag(Uprev)
         endif
@@ -918,12 +915,13 @@ use singleton
 
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
-                        case default
-                        !case ('p')
-                        f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef)
+                    case ('p')
+                        f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
 
-                        ! case ('vz')
-                        ! f%seismo(i,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                    case ('dpdz')
+                        f%seismo(i,it)=( sum(f%p(ifz+1:ilz+1,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef) &
+                                        -sum(f%p(ifz-1:ilz-1,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef) )*inv_2dz 
+
                         ! case ('vx')
                         ! f%seismo(i,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
                         ! case ('vy')
@@ -932,9 +930,12 @@ use singleton
                     
                 else
                     select case (shot%rcv(i)%comp)
-                        case default
-                        !case ('p') !p[iz,ix,iy]
+                    case ('p') !p[iz,ix,iy]
                         f%seismo(i,it)=f%p(iz,ix,iy)
+
+                    case ('dpdz')
+                        f%seismo(i,it)=( f%p(iz+1,ix,iy) &
+                                        -f%p(iz-1,ix,iy) )*inv_2dz 
 
                         ! case ('vz') !vz[iz-0.5,ix,iy]
                         ! f%seismo(i,it)=f%vz(iz,ix,iy)
@@ -958,10 +959,13 @@ use singleton
             
             if(if_hicks) then
                 select case (shot%src%comp)
-                    case default
-                    !case ('p')
+                case ('p')
                     f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef)
                     
+                case ('dpdz')
+                    f%seismo(1,it)=( sum(f%p(ifz+1:ilz+1,ifx:ilx,ify:ily)*shot%src%interp_coef) &
+                                    -sum(f%p(ifz-1:ilz-1,ifx:ilx,ify:ily)*shot%src%interp_coef) )*inv_2dz 
+
                     ! case ('vz')
                     ! f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
                     
@@ -975,9 +979,12 @@ use singleton
                 
             else
                 select case (shot%src%comp)
-                    case default
-                    !case ('p') !p[iz,ix,iy]
+                case ('p') !p[iz,ix,iy]
                     f%seismo(1,it)=f%p(iz,ix,iy)
+
+                case ('dpdz')
+                    f%seismo(1,it)=( f%p(iz+1,ix,iy) &
+                                    -f%p(iz-1,ix,iy) )*inv_2dz 
                     
                     ! case ('vz') !vz[iz-0.5,ix,iy]
                     ! f%seismo(1,it)=f%vz(iz,ix,iy)

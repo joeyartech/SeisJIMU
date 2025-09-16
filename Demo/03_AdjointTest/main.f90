@@ -127,6 +127,7 @@ use m_hilbert
         else
             !reR(:,1)=shot%wavelet
             reR=reLS
+!             imR=-imLS
             call hilbert_transform(reR,imR,ppg%nt,shot%nrcv)
         endif
         call suformat_write('reR',reR,ppg%nt,shot%nrcv,o_dt=ppg%dt)
@@ -153,15 +154,15 @@ use m_hilbert
 
 !     call sysio_write('gradient',m%gradient,size(m%gradient))
 
-    print*,'Vector |      shape  |      ║*║₂'
-    print*,'reS  ',  shape(reS),     norm2(reS)*sqrt(ppg%dt)
-    print*,'imS  ',  shape(imS),     norm2(imS)*sqrt(ppg%dt)
-    print*,'reLS ',  shape(reLS),    norm2(reLS)*sqrt(ppg%dt)
-    print*,'imLS ',  shape(imLS),    norm2(imLS)*sqrt(ppg%dt)
-    print*,'reR  ',  shape(reR),     norm2(reR)*sqrt(ppg%dt)
-    print*,'imR  ',  shape(imR),     norm2(imR)*sqrt(ppg%dt)
-    print*,'reLᴴR',  shape(reLadjR), norm2(reLadjR)*sqrt(ppg%dt)
-    print*,'imLᴴR',  shape(imLadjR), norm2(imLadjR)*sqrt(ppg%dt)
+    print*,'Vector   |       shape       |   ║*║₂'
+    print*,'reS  '   ,     shape(reS),     norm2(reS)*sqrt(ppg%dt)
+    print*,'imS  '   ,     shape(imS),     norm2(imS)*sqrt(ppg%dt)
+    print*,'reLS '   ,     shape(reLS),    norm2(reLS)*sqrt(ppg%dt)
+    print*,'imLS '   ,     shape(imLS),    norm2(imLS)*sqrt(ppg%dt)
+    print*,'reR  '   ,     shape(reR),     norm2(reR)*sqrt(ppg%dt)
+    print*,'imR  '   ,     shape(imR),     norm2(imR)*sqrt(ppg%dt)
+    print*,'reLᴴR'   ,     shape(reLadjR), norm2(reLadjR)*sqrt(ppg%dt)
+    print*,'imLᴴR'   ,     shape(imLadjR), norm2(imLadjR)*sqrt(ppg%dt)
 !     print*,'Remind that ║u║₂ := √ (∫ u² dt) = norm2(u)*sqrt(dt)'
     print*,''
     print*,'<R|LS> =?= <LᴴR|S>'
@@ -170,16 +171,16 @@ use m_hilbert
     print*,''
 
     print*,'Real parts:'
-    LHS1=sum(dprod(    reR,reLS)); LHS2=sum(dprod(    imR,imLS)); LHS3=sum(dprod(    reR,reLS))+sum(dprod(    imR,imLS))
-    RHS1=sum(dprod(reLadjR, reS)); RHS2=sum(dprod(imLadjR, imS)); RHS3=sum(dprod(reLadjR, reS))+sum(dprod(imLadjR, imS))
+    LHS1=sum(dprod(    reR,reLS)); LHS2=sum(dprod(    imR,imLS)); LHS3=LHS1+LHS2
+    RHS1=sum(dprod(reLadjR, reS)); RHS2=sum(dprod(imLadjR, imS)); RHS3=RHS1+RHS2
     print*,'LHS=', LHS1, LHS2, LHS3
     print*,'RHS=', RHS1, RHS2, RHS3
     print*,'Relative diff=', (LHS1-RHS1)/LHS1, (LHS2-RHS2)/LHS2, (LHS3-RHS3)/LHS3
     print*,''
 
     print*,'Imag parts:'
-    LHS1=sum(dprod(    reR,imLS)); LHS2=sum(dprod(    imR,reLS)); LHS3=sum(dprod(    reR,imLS))-sum(dprod(    imR,reLS))
-    RHS1=sum(dprod(reLadjR, imS)); RHS2=sum(dprod(imLadjR, reS)); RHS3=sum(dprod(reLadjR, imS))-sum(dprod(imLadjR, reS))
+    LHS1=sum(dprod(    reR,imLS)); LHS2=sum(dprod(    imR,reLS)); LHS3=LHS1-LHS2
+    RHS1=sum(dprod(reLadjR, imS)); RHS2=sum(dprod(imLadjR, reS)); RHS3=RHS1-RHS2
     print*,'LHS=', LHS1, LHS2, LHS3
     print*,'RHS=', RHS1, RHS2, RHS3
     print*,'Relative diff=', (LHS1-RHS1)/LHS1, (LHS2-RHS2)/LHS2, (LHS3-RHS3)/LHS3
