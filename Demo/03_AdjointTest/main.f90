@@ -46,7 +46,8 @@ use m_System
 use m_Modeling
 use m_hilbert
 
-    double precision :: LHS=0., RHS=0.
+    double precision :: LHS1, LHS2, LHS3
+    double precision :: RHS1, RHS2, RHS3
 
     real,dimension(:,:),allocatable :: reS,imS, reR,imR, reLS,imLS, reLadjR, imLadjR
     type(t_field) :: reU, imU, reA, imA
@@ -152,28 +153,37 @@ use m_hilbert
 
 !     call sysio_write('gradient',m%gradient,size(m%gradient))
 
-    print*,'Vector |  shape  |  ║*║₂'
+    print*,'Vector |      shape  |      ║*║₂'
     print*,'reS  ',  shape(reS),     norm2(reS)*sqrt(ppg%dt)
     print*,'imS  ',  shape(imS),     norm2(imS)*sqrt(ppg%dt)
-    print*,'reR  ',  shape(reR),     norm2(reR)*sqrt(ppg%dt)
-    print*,'imR  ',  shape(imR),     norm2(imR)*sqrt(ppg%dt)
     print*,'reLS ',  shape(reLS),    norm2(reLS)*sqrt(ppg%dt)
     print*,'imLS ',  shape(imLS),    norm2(imLS)*sqrt(ppg%dt)
+    print*,'reR  ',  shape(reR),     norm2(reR)*sqrt(ppg%dt)
+    print*,'imR  ',  shape(imR),     norm2(imR)*sqrt(ppg%dt)
     print*,'reLᴴR',  shape(reLadjR), norm2(reLadjR)*sqrt(ppg%dt)
     print*,'imLᴴR',  shape(imLadjR), norm2(imLadjR)*sqrt(ppg%dt)
 !     print*,'Remind that ║u║₂ := √ (∫ u² dt) = norm2(u)*sqrt(dt)'
-
+    print*,''
     print*,'<R|LS> =?= <LᴴR|S>'
-    print*,'LHS:= (re  R-iim  R)·(reLS+iimLS) = re  R·reLS + im  R·imLS +i(re  R·imLS - im  R·reLS)'
-    print*,'RHS:= (reLᴴR-iimLᴴR)·(re S+iim S) = reLᴴR·re S + imLᴴR·im S +i(reLᴴR·im S - imLᴴR·re S)'
+    print*,'LHS= (re  R-iim  R)·(reLS+iimLS) = re  R·reLS + im  R·imLS +i(re  R·imLS - im  R·reLS)'
+    print*,'RHS= (reLᴴR-iimLᴴR)·(re S+iim S) = reLᴴR·re S + imLᴴR·im S +i(reLᴴR·im S - imLᴴR·re S)'
     print*,''
+
     print*,'Real parts:'
-    print*,'LHS=',sum(dprod(    reR,reLS)),sum(dprod(    imR,imLS)),sum(dprod(    reR,reLS))+sum(dprod(    imR,imLS))
-    print*,'RHS=',sum(dprod(reLadjR, reS)),sum(dprod(imLadjR, imS)),sum(dprod(reLadjR, reS))+sum(dprod(imLadjR, imS))
+    LHS1=sum(dprod(    reR,reLS)); LHS2=sum(dprod(    imR,imLS)); LHS3=sum(dprod(    reR,reLS))+sum(dprod(    imR,imLS))
+    RHS1=sum(dprod(reLadjR, reS)); RHS2=sum(dprod(imLadjR, imS)); RHS3=sum(dprod(reLadjR, reS))+sum(dprod(imLadjR, imS))
+    print*,'LHS=', LHS1, LHS2, LHS3
+    print*,'RHS=', RHS1, RHS2, RHS3
+    print*,'Relative diff=', (LHS1-RHS1)/LHS1, (LHS2-RHS2)/LHS2, (LHS3-RHS3)/LHS3
     print*,''
+
     print*,'Imag parts:'
-    print*,'LHS=',sum(dprod(    reR,imLS)),sum(dprod(    imR,reLS)),sum(dprod(    reR,imLS))-sum(dprod(    imR,reLS))
-    print*,'RHS=',sum(dprod(reLadjR, imS)),sum(dprod(imLadjR, reS)),sum(dprod(reLadjR, imS))-sum(dprod(imLadjR, reS))
+    LHS1=sum(dprod(    reR,imLS)); LHS2=sum(dprod(    imR,reLS)); LHS3=sum(dprod(    reR,imLS))-sum(dprod(    imR,reLS))
+    RHS1=sum(dprod(reLadjR, imS)); RHS2=sum(dprod(imLadjR, reS)); RHS3=sum(dprod(reLadjR, imS))-sum(dprod(imLadjR, reS))
+    print*,'LHS=', LHS1, LHS2, LHS3
+    print*,'RHS=', RHS1, RHS2, RHS3
+    print*,'Relative diff=', (LHS1-RHS1)/LHS1, (LHS2-RHS2)/LHS2, (LHS3-RHS3)/LHS3
+
 
     !<v|Lu> =?= <L^Tv|u>
     !<v|Lu>=int v*Lu*dt = sum(v*Lu)*dt

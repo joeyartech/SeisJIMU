@@ -5,56 +5,18 @@ use singleton
 
     contains
 
-    subroutine hilbert_transform(din,dout,nt,ntr)
-        real,dimension(nt,ntr) :: din
-        real,dimension(nt,ntr) :: dout
+    subroutine hilbert_transform(din,dout,n1,n2,o_axis)
+        real,dimension(n1,n2) :: din
+        real,dimension(n1,n2) :: dout
+        integer,optional :: o_axis
 
-        complex(fftkind),dimension(nt,ntr) :: dfft
+        complex(fftkind),dimension(n1,n2) :: dfft
 
-        dfft = fft(dcmplx(din),dim=[1])  !may require "ulimit -s unlimited"
+        integer axis
 
-        !90deg phase shift == multiply by i*sgn(freq)
-        !1st implementation
-        !ref: https://github.com/yanhuay/seisDD/blob/master/seisDD/lib/src/m_hilbert_transform.f90
-        !created by Yanhua O. Yuan (yanhuay@princeton.edu)
-        ! data_fft(1:imid-1    ,:) =-c_i*data_fft(1:imid-1    ,:) ! pos. spectrum (-i)
-        ! data_fft(  imid      ,:) = 0.0                          ! d.c. component
-        ! data_fft(  imid+1:npt,:) = c_i*data_fft(  imid+1:npt,:) ! neg. spectrum (i)
+        axis=either(o_axis,1,present(o_axis))
 
-        ! !2nd implementation
-        ! if(mod(nt,2)==0) then !if nt is even
-        !     dfft(1          ,:)= 0.0                     ! DC
-        !     dfft(2:nt/2     ,:)=-c_i*dfft(2:nt/2     ,:) ! pos. spectrum (-i)
-        !     dfft(  nt/2+1:nt,:)= c_i*dfft(  nt/2+1:nt,:) ! neg. spectrum (i)
-        ! else !if nt is odd, 1:(nt+1)/2 are DC & positive freq, (nt+1)/2+1:nt are negative freq
-        !     dfft(1              ,:)= 0.0                         ! DC
-        !     dfft(2:(nt+1)/2     ,:)=-c_i*dfft(2:(nt+1)/2     ,:) ! pos. spectrum (-i)
-        !     dfft(  (nt+1)/2+1:nt,:)= c_i*dfft(  (nt+1)/2+1:nt,:) ! neg. spectrum (i)
-        ! endif
-
-        !3rd implementation, set DC and neg freq to 0
-        if(mod(nt,2)==0) then !if nt is even
-            dfft(1          ,:)= 0.0
-            dfft(  nt/2+1:nt,:)= 0.0
-        else !if nt is odd, 1:(nt+1)/2 are DC & positive freq, (nt+1)/2+1:nt are negative freq
-            dfft(1              ,:)= 0.0
-            dfft(  (nt+1)/2+1:nt,:)= 0.0
-        endif
-
-
-        !inverse fourier transform
-        ! dout=real(fft(dfft,dim=[1],inv=.true.),kind=4)
-        dout=2.*aimag(fft(dfft,dim=[1],inv=.true.))
-
-    end subroutine
-
-    subroutine hilbert_transform2(din,dout,nt,ntr)
-        real,dimension(nt,ntr) :: din
-        real,dimension(nt,ntr) :: dout
-
-        complex(fftkind),dimension(nt,ntr) :: dfft
-
-        dfft = fft(dcmplx(din),dim=[2])  !may require "ulimit -s unlimited"
+        dfft = fft(dcmplx(din),dim=[axis])  !may require "ulimit -s unlimited"
 
         !90deg phase shift == multiply by i*sgn(freq)
         !1st implementation
@@ -75,19 +37,30 @@ use singleton
         !     dfft(  (nt+1)/2+1:nt,:)= c_i*dfft(  (nt+1)/2+1:nt,:) ! neg. spectrum (i)
         ! endif
 
-        !3rd implementation, set DC and neg freq to 0
-        if(mod(ntr,2)==0) then !if nt is even
-            dfft(:,1          )= 0.0
-            dfft(:,ntr/2+1:ntr)= 0.0
-        else !if nt is odd, 1:(nt+1)/2 are DC & positive freq, (nt+1)/2+1:nt are negative freq
-            dfft(:,1              )= 0.0
-            dfft(:,  (nrt+1)/2+1:ntr)= 0.0
-        endif
+        if(axis==1) then
+            !3rd implementation, set DC and neg freq to 0
+            if(mod(n1,2)==0) then !if nt is even
+                dfft(1            ,:)= 0.0
+                dfft(    n1/2+1:n1,:)= 0.0
+            else !if nt is odd, 1:(nt+1)/2 are DC & positive freq, (nt+1)/2+1:nt are negative freq
+                dfft(1             ,:)= 0.0
+                dfft( (n1+1)/2+1:n1,:)= 0.0
+            endif
 
+        else
+            if(mod(n2,2)==0) then
+                dfft(:,1             )= 0.0
+                dfft(:,     n2/2+1:n2)= 0.0
+            else
+                dfft(:,1             )= 0.0
+                dfft(:, (n2+1)/2+1:n2)= 0.0
+            endif
+
+        endif
 
         !inverse fourier transform
         ! dout=real(fft(dfft,dim=[1],inv=.true.),kind=4)
-        dout=2.*aimag(fft(dfft,dim=[2],inv=.true.))
+        dout=2.*aimag(fft(dfft,dim=[axis],inv=.true.))
 
     end subroutine
 

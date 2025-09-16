@@ -5,6 +5,9 @@ MODEL_ATTRIBUTES        vp  #'vp rho'
 
 IS_FREESURFACE          F
 
+IS_Q_ATTENUATION    F
+
+
 ACQUI_GEOMETRY          spread
 FS                      '40 500 500'
 DR                      '0  20 0'
@@ -18,7 +21,7 @@ SCOMP                   p
 RCOMP                   p #'p vz'
 
 WAVELET_TYPE            ricker
-#T0                      0.5                                                                 
+T0                      0.29   #=2/fpeak
 #FILE_WAVELET            'fricker_dt6000.su' 
 
 IF_BLOOM        F

@@ -19,9 +19,19 @@ use singleton
     real :: c1x, c1y, c1z
     real :: c2x, c2y, c2z
 
+    !ViscoAcoustic coef
+    ! real :: visac_a = 5.7356
+    ! real :: visac_b = -762.1606
+    ! real :: visac_d = 46054.0
+    ! real :: visac_e = 1
+
+    real :: visac_a = 3.7801
+    real :: visac_b = -110.687
+    real :: visac_d = 1111.5
+    real :: visac_e = 1
+
     !local const
     real :: dt2, inv_2dt, inv_2dz, inv_2dx
-    real, allocatable :: wavelet_hilb(:,:)
 
     !scaling source wavelet
     real :: wavelet_scaler
@@ -29,13 +39,13 @@ use singleton
     type,public :: t_propagator
         !info
         character(i_str_xxlen) :: info = &
-            'Time-domain ISOtropic 2D/3D ACoustic propagation'//s_NL// &
+            'Time-domain ISOtropic 2D/3D VIScoACoustic propagation'//s_NL// &
             '2nd-order Pressure formulation'//s_NL// &
             'Vireux-Levandar Staggered-Grid Finite-Difference (FDSG) method'//s_NL// &
             'Cartesian O(x⁴,t²) stencil'//s_NL// &
             'CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal'//s_NL// &
             '   -> dt ≤ 0.5*Vmax/dx'//s_NL// &
-            'Required model attributes: vp, rho'//s_NL// &
+            'Required model attributes: vp, rho, qp'//s_NL// &
             'Required field components: p, p_prev, p_next'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
             'Poynting definitions: Esq_gradphi'//s_NL// &
@@ -51,7 +61,9 @@ use singleton
         logical :: if_compute_engy=.false.
 
         !local models shared between fields
-        real,dimension(:,:,:),allocatable :: buoz, buox, buoy, kpa!, qp !r2, tilD_vp2
+        real,dimension(:,:,:),allocatable :: buoz, buox, buoy, kpa!, qp
+        complex,dimension(:,:,:),allocatable :: invC2,  C1n,  C0n
+        complex,dimension(:,:,:),allocatable :: invC2H, C1nH, C0nH
 
         !time frames
         integer :: nt
@@ -131,6 +143,28 @@ use singleton
             call alloc(m%rho,m%nz,m%nx,m%ny,o_init=1000.)
             call warn('Constant rho model (1000 kg/m³) is allocated by propagator.')
         endif
+
+        if(index(self%info,'qp')>0 .and. .not. allocated(m%qp)) then
+            call alloc(m%qp,m%nz,m%nx,m%ny,o_init=1000.)
+            call warn('Constant Qp model (1000) is allocated by propagator.')
+        endif
+
+        ! if(.not.setup%get_bool('IS_Q_DISPERSION',o_default='T')) then
+        !     visac_a = 0.
+        !     visac_b = 0.
+        !     visac_d = 0.
+        ! endif
+        ! if(setup%get_bool('IS_Q_DISSIPATION',o_default='T')) then
+        !     visac_e = 0.
+        ! endif
+        if(.not.setup%get_bool('IS_Q_ATTENUATION',o_default='T')) then
+            visac_a = 0.
+            visac_b = 0.
+            visac_d = 0.
+            visac_e = 0.
+        endif
+
+        call hud('visac coefs:'//num2str(visac_a)//', '//num2str(visac_b)//', '//num2str(visac_d)//', '//num2str(visac_e))
                 
     end subroutine
 
@@ -170,6 +204,7 @@ use singleton
         class(t_propagator) :: self
 
         character(:),allocatable :: file
+        complex,dimension(:,:,:),allocatable :: C2,C1,C0
 
         c1x=coef(1)/m%dx; c1y=coef(1)/m%dy; c1z=coef(1)/m%dz
         c2x=coef(2)/m%dx; c2y=coef(2)/m%dy; c2z=coef(2)/m%dz
@@ -225,8 +260,19 @@ use singleton
         rdt=irdt*self%dt
         call hud('rdt, irdt = '//num2str(rdt)//', '//num2str(irdt))
 
-        s_poynting_def=setup%get_str('POYNTING_DEF',o_default='Esq_gradphi')
-        if(s_poynting_def/='Esq_gradphi') call error('Sorry, other Poynting definitions have not yet implemented.')
+        ! s_poynting_def=setup%get_str('POYNTING_DEF',o_default='Esq_gradphi')
+        ! if(s_poynting_def/='Esq_gradphi') call error('Sorry, other Poynting definitions have not yet implemented.')
+
+        !coef
+        C2 = 1 -2*visac_a/r_pi/cb%qp -c_i*visac_e/cb%qp; self%invC2 = 1/C2
+        C1 =    2*visac_b/r_pi/cb%qp;                    self%C1n = C1*self%invC2
+        C0 =    2*visac_d/r_pi/cb%qp;                    self%C0n = C0*self%invC2
+
+        C2 = 1 -2*visac_a/r_pi/cb%qp +c_i*visac_e/cb%qp; self%invC2H = 1/C2
+        C1 =    2*visac_b/r_pi/cb%qp;                    self%C1nH= C1*self%invC2H
+        C0 =    2*visac_d/r_pi/cb%qp;                    self%C0nH= C0*self%invC2H
+
+        deallocate(C2,C1,C0) !save some RAM
 
     end subroutine
 
@@ -314,99 +360,46 @@ use singleton
 
     
     !========= Derivations =================
-    !PDE:      A u = ϰ∂ₜ²u - ∇·b∇u = f
-    !Adjoint:  Aᵀa = ϰ∂ₜ²a - ∇·b∇a = d
+    !PDE:      A U  = ϰ₀(C₂ ∂ₜ² -iC₁∂ₜ +C₀)U - ∇·b∇U = f
+    !Adjoint:  AᴴUᵃ = ϰ₀(C₂ᴴ∂ₜ² -iC₁∂ₜ +C₀)Uᵃ- ∇·b∇Uᵃ= d
     !where
-    !u=p=tr(s)=szz=sxx=syy is (hydrostatic) pressure
+    !U=u+i*Hilbert(u) is the complex-valued wavefield (pressure component)
+    !Uᵃ is the associated complex-valued adjoint field
     !f=fp*δ(x-xs), d is recorded data
-    !b=ρ⁻¹ is buoyancy, ϰ=κ⁻¹ is bulk compliance (inverse of modulus)
-    !and a=pᵃ is the adjoint field
-    !
-    !Discrete case:
-    !Meshing with staggered grids in time and space (2D example):
-    !                     |       |   -½ ∂zp      |       |
-    !                     |       |       bz      |       |
-    !                     |       |       |       |       |
-    !                     κ   bx  κ   bx  κ   bx  κ   bx  κ
-    !  --p--p--p--→ t    -p--∂ₓp--p--∂ₓp--p--∂ₓp--p--∂ₓp--p-→ x
-    !   -1  0  1         -2  -1½ -1  -½   0   ½   1   1½  2    
-    !                     |       |       |       |       | 
-    !                     |       |    ½ ∂zp      |       | 
-    !                     |       |       bz      |       | 
-    !                     |       |       |       |       | 
-    !                    -|-------|-----1-p-------|-------|-
-    !                     |       |       κ       |       | 
-    !                     |       |       |       |       | 
-    !                     |       |   1½ ∂zp      |       | 
-    !                     |       |       bz      |       | 
-    !                     |       |       |       |       | 
-    !                                   z ↓
-    !
-    !Convention for half-integer index:
-    !(array index)  =>    (real index)     
-    !∂zp(iz,ix,iy)  => ∂zp[iz-½,ix,  iy  ]^n   :=vz((iz-½)*dz,ix*dx,iy*dy,n*dt)
-    !∂ₓp(iz,ix,iy)  => ∂ₓp[iz,  ix-½,iy  ]^n  
-    !∂yp(iz,ix,iy)  => ∂yp[iz,  ix,  iy-½]^n  
-    !  p(iz,ix,iy)  =>   p[iz,  ix,  iy  ]^n+½ :=p(iz*dz,ix*dx,iy*dy,(n+½)*dt)
-    !
+    !b=ρ⁻¹ is buoyancy, 
+    !ϰ₀=κ₀⁻¹ is bulk compliance (inverse of modulus) at the reference frequency
+          
+    !PDE:    (C₂∂ₜ² -iC₁∂ₜ +C₀)U = κ₀∇·b∇U + κ₀f
+    !Discretized:
+    !    C₂(Uⁿ⁺¹-2Uⁿ+Uⁿ⁻¹)/dt² -iC₁(Uⁿ-Uⁿ⁻¹)/dt +C₀Uⁿ =κ₀Lap
     !Forward:
-    !FD eqn:
-    !ϰ*∂ₜ²p = ∂zᶠ(bz*∂zᵇp) + ∂ₓᶠ(bx*∂ₓᵇp) +f
-    !ϰ*∂ₜ²p = [∂zᶠ ∂ₓᶠ][bz  ][∂zᵇ]p
-    !                  [  bx][∂ₓᵇ]
-    !where
-    !∂ₜ²*dt² := p^n+1 -2p^n +p^n-1  ~O(t²)
-    !∂zᵇ*dz  := p(iz  )-p(iz-1)     ~O(x¹)
-    !∂zᶠ*dz  := p(iz+1)-p(iz  )     ~O(x¹)
-    !Step #1: p^n  += src
-    !Step #2: sample p^n at receivers
-    !Step #3: save p^n to boundary values
-    !Step #4: p^n+1 = 2p^n -p^n-1 +laplacian of p^n
-    !Step #5: (p^n-1,p^n) = (p^n,p^n+1)
-    !in reverse time:
-    !Step #5: (p^n,p^n+1) = (p^n-1,p^n)
-    !Step #4: p^n-1 = 2p^n -p^n+1 +laplacian of p^n
-    !Step #3: load boundary values for p^n+1
-    !Step #1: p^n -= src
-    !
-    !Adjoint:
-    !since
-    !∂ₜ²ᵀ = ∂ₜ²
-    !∂zᵇᵀ = p(iz)-p(iz+1) = -∂zᶠ, ∂zᶠᵀ = -∂zᵇ
-    !FD eqn:
-    !ϰ*∂ₜ²ᵀpᵃ = [∂zᵇᵀ ∂ₓᵇᵀ][bz  ][∂zᶠᵀ]pᵃ = [∂zᶠ ∂ₓᶠ][bz  ][∂zᵇ]pᵃ
-    !                      [  bx][∂ₓᶠᵀ]              [  bx][∂ₓᵇ]  
-    !ie. ϰ*∂ₜ²pᵃ = ∂zᶠbz*(∂zᵇpᵃ) + ∂ₓᶠbx*(∂ₓᵇpᵃ) +d
-    !SAME as the discretized FD eqn!
-    !
-    !Time marching (in reverse time):
-    !Step #1: pᵃ^n += adjsrc
-    !Step #2: sample pᵃ^n at source
-    !Step #4: pᵃ^n-1 = 2pᵃ^n -pᵃ^n+1 +laplacian of pᵃ^n
-    !Step #5: (pᵃ^n,pᵃ^n+1) = (pᵃ^n-1,pᵃ^n)
-        
+    !    Uⁿ⁺¹ -2Uⁿ +Uⁿ⁻¹ -iC₁/C₂(Uⁿ-Uⁿ⁻¹)dt +C₀/C₂Uⁿdt² =1/C₂*dt²*κ₀Lap
+    !    Uⁿ⁺¹ =2Uⁿ -Uⁿ⁻¹ +iC₁/C₂(Uⁿ-Uⁿ⁻¹)dt -C₀/C₂Uⁿdt² +1/C₂*dt²*κ₀Lap
+    !Backward:
+    !    Uⁿ⁻¹ -2Uⁿ +Uⁿ⁺¹ -iC₁/C₂(Uⁿ⁺¹-Uⁿ)dt +C₀/C₂Uⁿdt² =1/C₂*dt²*κ₀Lap
+    !    Uⁿ⁻¹ =2Uⁿ -Uⁿ⁺¹ +iC₁/C₂(Uⁿ⁺¹-Uⁿ)dt -C₀/C₂Uⁿdt² +1/C₂*dt²*κ₀Lap
+     
+    !Adjoint:(C₂ᴴ∂ₜ² -iC₁∂ₜ +C₀)Uᵃ = κ₀∇·b∇Uᵃ + κ₀d
+    !Discretized:
+    !    C₂ᴴ(Uᵃⁿ⁺¹-2Uᵃⁿ+Uᵃⁿ⁻¹)/dt² +iC₁(Uᵃⁿ-Uᵃⁿ⁻¹)/dt +C₀Uᵃⁿ =κ₀Lap
+    !Forward:
+    !    Uᵃⁿ⁺¹ -2Uᵃⁿ +Uᵃⁿ⁻¹ -iC₁/C₂ᴴ(Uᵃⁿ-Uᵃⁿ⁻¹)dt +C₀/C₂ᴴUᵃⁿdt² =1/C₂ᴴ*dt²*κ₀Lap
+    !    Uᵃⁿ⁺¹ =2Uᵃⁿ -Uᵃⁿ⁻¹ +iC₁/C₂ᴴ(Uᵃⁿ-Uᵃⁿ⁻¹)dt -C₀/C₂ᴴUᵃⁿdt² +1/C₂ᴴ*dt²*κ₀Lap
+    !Backward:
+    !    Uᵃⁿ⁻¹ -2Uᵃⁿ +Uᵃⁿ⁺¹ -iC₁/C₂ᴴ(Uᵃⁿ⁺¹-Uᵃⁿ)dt +C₀/C₂ᴴUᵃⁿdt² =1/C₂ᴴ*dt²*κ₀Lap
+    !    Uᵃⁿ⁻¹ =2Uᵃⁿ -Uᵃⁿ⁺¹ +iC₁/C₂ᴴ(Uᵃⁿ⁺¹-Uᵃⁿ)dt -C₀/C₂ᴴUᵃⁿdt² +1/C₂ᴴ*dt²*κ₀Lap
 
-    subroutine forward(self,fld_u,fld_v)
+    subroutine forward(self,fld_reU,fld_imU)
         class(t_propagator) :: self
-        type(t_field) :: fld_u,fld_v
+        type(t_field) :: fld_reU,fld_imU
         real, allocatable :: mask(:,:,:)
         real,parameter :: time_dir=1. !time direction
         
         !seismo
-        call alloc(fld_u%seismo,shot%nrcv,self%nt)
-        call alloc(fld_v%seismo,shot%nrcv,self%nt)
+        call alloc(fld_reU%seismo,shot%nrcv,self%nt)
+        call alloc(fld_imU%seismo,shot%nrcv,self%nt)
 
-        !allocate(wavelet_hilb(1,self%nt))
-        call hilbert_transform2(fld_u%wavelet,fld_v%wavelet,1,self%nt)
-        ! fld_v%wavelet(1,500:self%nt)=0
-
-
-        ! open(unit=12, file='../../Demo/11_Marmousi/wavelet.bin', form='unformatted', access='stream', status='replace')
-        ! write(12) fld_u%wavelet
-        ! close(12)
-        ! open(unit=12, file='../../Demo/11_Marmousi/wavelet_hilb.bin', form='unformatted', access='stream', status='replace')
-        ! write(12) fld_v%wavelet
-        ! close(12)
+        call hilbert_transform(fld_reU%wavelet,fld_imU%wavelet,1,self%nt,o_axis=2)
 
         tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.; tt7=0.
 
@@ -415,24 +408,24 @@ use singleton
         do it=ift,ilt
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
-                call fld_u%check_value
-                call fld_v%check_value
+                call fld_reU%check_value
+                call fld_imU%check_value
             endif
             
             !do forward time stepping (step# conforms with backward & adjoint time stepping)
             !step 1: add pressure
             call cpu_time(tic)
-            call self%inject_pressure(fld_u,time_dir,it)
-            call self%inject_pressure(fld_v,time_dir,it)
-            ! print *, 'time=',it,'wavelet for u:',size(fld_u%wavelet,1),size(fld_u%wavelet,2),'wavelet for v:',size(fld_v%wavelet,1),size(fld_v%wavelet,2)
+            call self%inject_pressure(fld_reU,time_dir,it)
+            call self%inject_pressure(fld_imU,time_dir,it)
+            ! print *, 'time=',it,'wavelet for u:',size(fld_reU%wavelet,1),size(fld_reU%wavelet,2),'wavelet for v:',size(fld_imU%wavelet,1),size(fld_imU%wavelet,2)
             call cpu_time(toc)
             tt1=tt1+toc-tic
 
             !step 2: save p^it+1 in boundary layers
             ! if(fld_E0%if_will_reconstruct) then
                 call cpu_time(tic)
-                call fld_u%boundary_transport_pressure('save',it)
-                call fld_v%boundary_transport_pressure('save',it)
+                call fld_reU%boundary_transport_pressure('save',it)
+                call fld_imU%boundary_transport_pressure('save',it)
                 call cpu_time(toc)
                 tt2=tt2+toc-tic
             ! endif
@@ -445,46 +438,46 @@ use singleton
 
             !step 4: update pressure
             call cpu_time(tic)
-            call self%update_pressure(fld_u,fld_v,time_dir,it)
+            call self%update_pressure(fld_reU,fld_imU,time_dir,it)
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
             ! if(mod(it,1000)==0) then
-            !     call self%gaussian_smooth(fld_u)
-            !     call self%gaussian_smooth(fld_v)
+            !     call self%gaussian_smooth(fld_reU)
+            !     call self%gaussian_smooth(fld_imU)
             ! endif
             
 
             ! if(mod(it,20)==0) then
-            !     call build_mask(mask, fld_u, it)
-            !     ! print *,'mask shape', size(mask,1),size(mask,2),size(mask,3), 'fld_u%p shape',size(fld_u%p,1),size(fld_u%p,2),size(fld_u%p,3)
+            !     call build_mask(mask, fld_reU, it)
+            !     ! print *,'mask shape', size(mask,1),size(mask,2),size(mask,3), 'fld_reU%p shape',size(fld_reU%p,1),size(fld_reU%p,2),size(fld_reU%p,3)
             !     ! open(unit=10, file='../../Demo/11_Marmousi/mask.bin', form='unformatted', access='stream', status='replace')
             !     ! write(10) mask
             !     ! close(10)
             !     ! stop
-            !     call fft_gassian_filt(fld_u, mask, it)
-            !     call fft_gassian_filt(fld_v, mask, it)
+            !     call fft_gassian_filt(fld_reU, mask, it)
+            !     call fft_gassian_filt(fld_imU, mask, it)
             !     deallocate(mask)
             ! endif
             
 
             !step 5: evolve pressure, it -> it+1
             call cpu_time(tic)
-            call self%evolve_pressure(fld_u,time_dir,it)
-            call self%evolve_pressure(fld_v,time_dir,it)
+            call self%evolve_pressure(fld_reU,time_dir,it)
+            call self%evolve_pressure(fld_imU,time_dir,it)
             call cpu_time(toc)
             tt6=tt6+toc-tic
 
             !step 6: sample p^it+1 at receivers
             call cpu_time(tic)
-            call self%extract(fld_u,it)
-            call self%extract(fld_v,it)
+            call self%extract(fld_reU,it)
+            call self%extract(fld_imU,it)
             call cpu_time(toc)
             tt7=tt7+toc-tic
 
             !snapshot
-            call fld_u%write(it)
-            call fld_v%write(it)
+            call fld_reU%write(it)
+            call fld_imU%write(it)
 
         enddo
         
@@ -504,20 +497,21 @@ use singleton
         
     end subroutine
 
-    subroutine adjoint(self,fld_q,fld_p, fld_v,fld_u, a_star_u)
+    subroutine adjoint(self, fld_reA,fld_imA, fld_reU,fld_imU, A_star_U)
         class(t_propagator) :: self
-        type(t_field) :: fld_q,fld_p,fld_v,fld_u
-        type(t_correlate) :: a_star_u
+        type(t_field) :: fld_reA,fld_imA, fld_reU,fld_imU
+        type(t_correlate) :: A_star_U
+
         real, allocatable :: mask(:,:,:)
 
         real,parameter :: time_dir=-1. !time direction
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
-        call fld_v%reinit
-        call fld_u%reinit
+        call fld_reU%reinit
+        call fld_imU%reinit
 
-        if(if_record_adjseismo)  call alloc(fld_q%seismo,1,self%nt)
-        if(if_record_adjseismo)  call alloc(fld_p%seismo,1,self%nt)
+        if(if_record_adjseismo)  call alloc(fld_reA%seismo,1,self%nt)
+        if(if_record_adjseismo)  call alloc(fld_imA%seismo,1,self%nt)
         
         !timing
         tt1=0.; tt2=0.; tt3=0.
@@ -529,36 +523,36 @@ use singleton
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
-                call fld_q%check_value
-                call fld_p%check_value
-                call fld_v%check_value
-                call fld_u%check_value
+                call fld_reA%check_value
+                call fld_imA%check_value
+                call fld_reU%check_value
+                call fld_imU%check_value
                 
             endif
 
             ! if(present(o_sf)) then
                 !backward step 5: it+1 -> it
                 call cpu_time(tic)
-                call self%evolve_pressure(fld_v,time_dir,it)
-                call self%evolve_pressure(fld_u,time_dir,it)
+                call self%evolve_pressure(fld_reU,time_dir,it)
+                call self%evolve_pressure(fld_imU,time_dir,it)
                 call cpu_time(toc)
                 tt1=tt1+toc-tic
 
                 ! !backward step 2: retrieve p^it+1 at boundary layers (BC)
                 call cpu_time(tic)
-                call fld_v%boundary_transport_pressure('load',it)
-                call fld_u%boundary_transport_pressure('load',it)
+                call fld_reU%boundary_transport_pressure('load',it)
+                call fld_imU%boundary_transport_pressure('load',it)
                 call cpu_time(toc)
                 tt2=tt2+toc-tic
 
                 !backward step 4:
                 call cpu_time(tic)
-                call self%update_pressure(fld_u,fld_v,time_dir,it,'back')
+                call self%update_pressure(fld_reU,fld_imU,time_dir,it)
                 call cpu_time(toc)
                 tt4=tt4+toc-tic
 
                 ! if(mod(it,100)==0) then
-                !     call build_mask(mask, fld_u, it)
+                !     call build_mask(mask, fld_reU, it)
                 !     ! print *,'mask size=',size(mask,1),size(mask,2),'it=',it
                 !     ! if(it==4400) then
                 !     ! open(unit=10, file='../../Demo/11_Marmousi/mask.bin', form='unformatted', access='stream', status='replace')
@@ -567,52 +561,52 @@ use singleton
                 !     ! stop
                 !     ! endif 
                     
-                !     call fft_gassian_filt(fld_u, mask, it)
-                !     call fft_gassian_filt(fld_v, mask, it)
+                !     call fft_gassian_filt(fld_reU, mask, it)
+                !     call fft_gassian_filt(fld_imU, mask, it)
                 !     deallocate(mask)
-                !     ! print *,'fld_u shape=',size(fld_u%p,1),size(fld_u%p,2)
+                !     ! print *,'fld_reU shape=',size(fld_reU%p,1),size(fld_reU%p,2)
                 !  endif
                  
 
                 !backward step 1: rm p^it at source
                 call cpu_time(tic)
-                call self%inject_pressure(fld_u,time_dir,it)
-                call self%inject_pressure(fld_v,time_dir,it)
+                call self%inject_pressure(fld_reU,time_dir,it)
+                call self%inject_pressure(fld_imU,time_dir,it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             ! endif
 
             !adjoint step 6: inject to p^it+1 at receivers
             call cpu_time(tic)
-            call self%inject_pressure(fld_p,time_dir,it)
-            call self%inject_pressure(fld_q,time_dir,it)
+            call self%inject_pressure(fld_reA,time_dir,it)
+            call self%inject_pressure(fld_imA,time_dir,it)
             call cpu_time(toc)
             tt8=tt8+toc-tic
 
             !adjoint step 4:
             call cpu_time(tic)
-            call self%update_pressure(fld_p,fld_q,time_dir,it,'adjt')
-            ! call self%update_pressure(fld_p,time_dir,it)
+            call self%update_pressure(fld_reA,fld_imA,time_dir,it)
+            ! call self%update_pressure(fld_reA,time_dir,it)
             call cpu_time(toc)
             tt9=tt9+toc-tic
 
             ! if(mod(it,100)==0) then
-            !     call build_mask(mask, fld_p, it)
-            !     call fft_gassian_filt(fld_p, mask, it)
-            !     call fft_gassian_filt(fld_q, mask, it)
+            !     call build_mask(mask, fld_reA, it)
+            !     call fft_gassian_filt(fld_reA, mask, it)
+            !     call fft_gassian_filt(fld_imA, mask, it)
             !     deallocate(mask)
             ! endif
 
             !image: rf%p^it star sf%p^it
             if(mod(it,irdt)==0) then
                 ! call cpu_time(tic)
-                ! call compute_poynting(fld_q,fld_p)
-                ! call compute_poynting(fld_v,fld_u)
+                ! call compute_poynting(fld_imA,fld_reA)
+                ! call compute_poynting(fld_imU,fld_reU)
                 ! call cpu_time(toc)
                 ! tt3=tt3+toc-tic
 
                 call cpu_time(tic)
-                call cross_correlate_gradient(fld_p,fld_q,fld_u,fld_v,a_star_u,it)
+                call cross_correlate_gradient(fld_reA,fld_imA,fld_reU,fld_imU,A_star_U,it)
                 call cpu_time(toc)
                 tt10=tt10+toc-tic
             endif
@@ -620,16 +614,16 @@ use singleton
             !adjoint step 5
             ! this step is moved to update_pressure for easier management
             call cpu_time(tic)
-            call self%evolve_pressure(fld_q,time_dir,it)
-            call self%evolve_pressure(fld_p,time_dir,it)
+            call self%evolve_pressure(fld_reA,time_dir,it)
+            call self%evolve_pressure(fld_imA,time_dir,it)
             call cpu_time(toc)
             tt11=tt11+toc-tic
 
             !adjoint step 1: sample p^it at source position
             if(if_record_adjseismo) then
                 call cpu_time(tic)
-                call self%extract(fld_q,it)
-                call self%extract(fld_p,it)
+                call self%extract(fld_reA,it)
+                call self%extract(fld_imA,it)
                 call cpu_time(toc)
                 tt12=tt12+toc-tic
             endif
@@ -638,16 +632,16 @@ use singleton
             !--------------------------------------------------------!
          
             !snapshot
-            call fld_p%write(it,o_suffix='_rev')
-            call fld_q%write(it,o_suffix='_rev')
-            call fld_u%write(it,o_suffix='_rev')
-            call fld_v%write(it,o_suffix='_rev')
+            call fld_reA%write(it,o_suffix='_rev')
+            call fld_imA%write(it,o_suffix='_rev')
+            call fld_reU%write(it,o_suffix='_rev')
+            call fld_imU%write(it,o_suffix='_rev')
 
-            call a_star_u%write(it,o_suffix='_rev')
+            call A_star_U%write(it,o_suffix='_rev')
 
         enddo
 
-        call a_star_u%scale(m%cell_volume*rdt)
+        call A_star_U%scale(m%cell_volume*rdt)
 
 
         if(mpiworld%is_master) then
@@ -773,138 +767,75 @@ use singleton
         
     end subroutine
 
-    subroutine update_pressure(self,f_u,f_v,time_dir,it,adj_back)
+    subroutine update_pressure(self,f_re,f_im,time_dir,it)
         class(t_propagator) :: self
-        type(t_field) :: f_u, f_v
-        character(len=4), optional:: adj_back
+        type(t_field) :: f_re, f_im
 
-        real :: a, b, d, pi, vis, e, Q
-        ! real, allocatable :: Q(:,:,:)
-        ! complex, allocatable :: C1(:,:,:), C2(:,:,:), C3(:,:,:)
-        complex :: C1, C2, C3
-        complex, allocatable :: f_temp(:,:,:)
-        
+        complex,dimension(:,:,:),allocatable :: Uprev, U, Unext, Lap
+
+                
         ! !necessary after computing the secondary source
         ! f%lap=0.
 
-        ifz=f_u%bloom(1,it)
+        ifz=f_re%bloom(1,it)
         if(m%is_freesurface) ifz=max(ifz,1)
-        ilz=f_u%bloom(2,it)
-        ifx=f_u%bloom(3,it)
-        ilx=f_u%bloom(4,it)
+        ilz=f_re%bloom(2,it)
+        ifx=f_re%bloom(3,it)
+        ilx=f_re%bloom(4,it)
         
-
-        allocate(f_temp(ilz-ifz+1,ilx-ifx+1,1))
-        ! allocate(Q(ilz-ifz+1,ilx-ifx+1,1))
-        ! allocate(C1(ilz-ifz+1,ilx-ifx+1,1),C2(ilz-ifz+1,ilx-ifx+1,1),C3(ilz-ifz+1,ilx-ifx+1,1))
-        ! allocate(C1(1),C2(1),C3(1))
-        vis = 0
-        
-        ! Q = cb%vp(ifz:ilz,ifx:ilx,:)/10
-        Q = 100
-
-        if(vis==1) then
-            ! a = 5.7356
-            ! b = -762.1606
-            ! d = 46054.0
-            ! e = 1
-            a = 3.7801
-            b = -110.687
-            d = 1111.5
-            e = 1
-        else
-            a = 0
-            b = 0
-            d = 0
-            e = 0
-        endif
-        pi = acos(-1.0)
-
-        ! C1 = 1 - 2*a/(pi*self%qp) - e*complex(0.0, 1.0/Q) - complex(0.0, b/pi/Q*self%dt)
-        C1 = 1 - 2*a/pi/Q - e*cmplx(0.0, 1.0/Q) - b*cmplx(0.0, 1/pi/Q*self%dt)
-        ! C2 = (1-2*a/(pi*Q)- e*cmplx(0.0, 1.0/Q)                             - d*dt2/(pi*Q))*2
-        C2 = (1-2*a/pi/Q- e*cmplx(0.0, 1.0/Q)                             - d*self%dt**2/(pi*Q))*2
-        C3 = -(1-2*a/pi/Q - e*cmplx(0.0, 1.0/Q) + b*cmplx(0.0, 1/pi/Q*self%dt))
-
         if(m%is_cubic) then
             ! call fd3d_pressure(f%p,                                      &
             !                    f%dp_dz,f%dp_dx,f%dp_dy,                  &
             !                    self%buoz,self%buox,self%buoy,self%kpa,   &
             !                    ifz,f%bloom(2,it),f%bloom(3,it),f%bloom(4,it))
         else
-            call fd2d_laplacian(f_u%p,                            &
-                                f_u%dp_dz,f_u%dp_dx,f_u%dpzz_dz,f_u%dpxx_dx,&
-                                f_u%lap,&
-                                self%buoz,self%buox,            &
+            call fd2d_laplacian(f_re%p,                                         &
+                                f_re%dp_dz,f_re%dp_dx,f_re%dpzz_dz,f_re%dpxx_dx,&
+                                f_re%lap,                                       &
+                                self%buoz,self%buox,                            &
                                 ifz,ilz,ifx,ilx)
-            call fd2d_laplacian(f_v%p,                            &
-                                f_v%dp_dz,f_v%dp_dx,f_v%dpzz_dz,f_v%dpxx_dx,&
-                                f_v%lap,&
-                                self%buoz,self%buox,            &
+            call fd2d_laplacian(f_im%p,                                         &
+                                f_im%dp_dz,f_im%dp_dx,f_im%dpzz_dz,f_im%dpxx_dx,&
+                                f_im%lap,                                       &
+                                self%buoz,self%buox,                            &
                                 ifz,ilz,ifx,ilx)
-            ! call fd2d_laplacian_nocpml(f_u%p,                            &
-            !                     !f_u%dp_dz,f_u%dp_dx,f_u%dpzz_dz,f_u%dpxx_dx,&
-            !                     f_u%lap,&
-            !                     self%buoz,self%buox,            &
-            !                     ifz,ilz,ifx,ilx)
-            ! call fd2d_laplacian_nocpml(f_v%p,                            &
-            !                     !f_v%dp_dz,f_v%dp_dx,f_v%dpzz_dz,f_v%dpxx_dx,&
-            !                     f_v%lap,&
-            !                     self%buoz,self%buox,            &
-            !                     ifz,ilz,ifx,ilx)
         endif
 
+        if(.not. f_re%is_adjoint) then !PDE
+            if(time_dir>0. ) then !forward in time
+                Uprev = cmplx(f_re%p_prev,f_im%p_prev)
+                U     = cmplx(f_re%p     ,f_im%p     )
+                Lap   = cmplx(f_re%lap   ,f_im%lap   )
 
-        if(time_dir>0. ) then !in forward time
-            C1=1.0/C1
-            ! f%p_next(ifz:ilz,ifx:ilx,:) = C1*(C2*2*f%p(ifz:ilz,ifx:ilx,:) - C3*f%p_prev(ifz:ilz,ifx:ilx,:) & 
-            !     +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*f%lap(ifz:ilz,ifx:ilx,:))
+               !Uⁿ⁺¹  =2Uⁿ -Uⁿ⁻¹  +  i C₁/C₂    (Uⁿ-Uⁿ⁻¹) dt      -   C₀/C₂ Uⁿdt² +      1/C₂*dt²*Lap
+                Unext =2*U -Uprev +c_i*self%C1n*(U-Uprev)*self%dt -self%C0n*U*dt2 +self%invC2*dt2*self%kpa*Lap
+                f_re%p_next =  real(Unext)
+                f_im%p_next = aimag(Unext)
 
-            f_temp(:,:,:) = C1*(C2*cmplx(f_u%p(ifz:ilz,ifx:ilx,:),f_v%p(ifz:ilz,ifx:ilx,:)) &
-                + C3*cmplx(f_u%p_prev(ifz:ilz,ifx:ilx,:),f_v%p_prev(ifz:ilz,ifx:ilx,:)) & 
-                +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*cmplx(f_u%lap(ifz:ilz,ifx:ilx,:),f_v%lap(ifz:ilz,ifx:ilx,:)))
-            f_u%p_next(ifz:ilz,ifx:ilx,:)=real(f_temp(:,:,:))
-            f_v%p_next(ifz:ilz,ifx:ilx,:)=aimag(f_temp(:,:,:))
+            else !backward in time
+                Unext = cmplx(f_re%p_next,f_im%p_next)
+                U     = cmplx(f_re%p     ,f_im%p     )
+                Lap   = cmplx(f_re%lap   ,f_im%lap   )
 
-            ! f%p_next(ifz:ilz,ifx:ilx,:) = 2*f%p(ifz:ilz,ifx:ilx,:) - f%p_prev(ifz:ilz,ifx:ilx,:) & 
-            !     +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*f%lap(ifz:ilz,ifx:ilx,:)
+               !Uⁿ⁻¹  =2Uⁿ -Uⁿ⁺¹  +  i C₁/C₂    (Uⁿ⁺¹-Uⁿ) dt      -   C₀/C₂ Uⁿdt² +      1/C₂*dt²*Lap
+                Uprev =2*U -Unext +c_i*self%C1n*(Unext-U)*self%dt -self%C0n*U*dt2 +self%invC2*dt2*self%kpa*Lap
+                f_re%p_prev =  real(Uprev)
+                f_im%p_prev = aimag(Uprev)
 
-        elseif(time_dir<0 .and. adj_back=='back') then !in reverse time
-        ! elseif(time_dir<0) then
-            C1 = 1 - 2*a/(pi*Q) - e*cmplx(0.0, 1.0/Q) - cmplx(0.0, b/pi/Q*self%dt)
-            C2 = 2*(1-2*a/(pi*Q)- e*cmplx(0.0, 1.0/Q)                             - d*dt2/(pi*Q))
-            C3 = (1-2*a/(pi*Q) - e*cmplx(0.0, 1.0/Q) + cmplx(0.0, b/pi/Q*self%dt))
-            C3= 1/C3
-            C1= -C1
+            endif
 
-            f_temp(:,:,:) = C3*(C2*cmplx(f_u%p(ifz:ilz,ifx:ilx,:),f_v%p(ifz:ilz,ifx:ilx,:)) &
-                +C1*cmplx(f_u%p_next(ifz:ilz,ifx:ilx,:),f_v%p_next(ifz:ilz,ifx:ilx,:)) &
-                +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*cmplx(f_u%lap(ifz:ilz,ifx:ilx,:),f_v%lap(ifz:ilz,ifx:ilx,:)))
-            f_u%p_prev(ifz:ilz,ifx:ilx,:) = real(f_temp(:,:,:))
-            f_v%p_prev(ifz:ilz,ifx:ilx,:) = aimag(f_temp(:,:,:))
+        else !Adjoint, backward in time
+                Unext = cmplx(f_re%p_next,f_im%p_next)
+                U     = cmplx(f_re%p     ,f_im%p     )
+                Lap   = cmplx(f_re%lap   ,f_im%lap   )
 
-            ! f%p_prev(ifz:ilz,ifx:ilx,:) = C3*(C2*2*f%p(ifz:ilz,ifx:ilx,:) -C1*f%p_next(ifz:ilz,ifx:ilx,:) &
-            !     +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*f%lap(ifz:ilz,ifx:ilx,:))
-            ! f%p_prev(ifz:ilz,ifx:ilx,:) = 2*f%p(ifz:ilz,ifx:ilx,:) -f%p_next(ifz:ilz,ifx:ilx,:) &
-            !     +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*f%lap(ifz:ilz,ifx:ilx,:)
-        
-        elseif(time_dir<0 .and. adj_back=='adjt') then
-                C1 = 1 - 2*a/(pi*Q) + e*cmplx(0.0, 1.0/Q) + cmplx(0.0, b/pi/Q*self%dt)
-                C2 = 2*(1-2*a/(pi*Q)+ e*cmplx(0.0, 1.0/Q)                             - d*dt2/(pi*Q))
-                C3 = (1-2*a/(pi*Q) + e*cmplx(0.0, 1.0/Q) - cmplx(0.0, b/pi/Q*self%dt))
-                C3= 1/C3
-                C1= -C1
-
-                f_temp(:,:,:) = C3*(C2*cmplx(f_u%p(ifz:ilz,ifx:ilx,:),     f_v%p(ifz:ilz,ifx:ilx,:)) &
-                                   +C1*cmplx(f_u%p_next(ifz:ilz,ifx:ilx,:),f_v%p_next(ifz:ilz,ifx:ilx,:)) &
-                    +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*cmplx(f_u%lap(ifz:ilz,ifx:ilx,:),f_v%lap(ifz:ilz,ifx:ilx,:)))
-                f_u%p_prev(ifz:ilz,ifx:ilx,:) = real(f_temp(:,:,:))
-                f_v%p_prev(ifz:ilz,ifx:ilx,:) = aimag(f_temp(:,:,:))
-
+               !Uᵃⁿ⁻¹ =2Uᵃⁿ-Uᵃⁿ⁺¹ +  i    C₁/C₂ᴴ (Uᵃⁿ⁺¹-Uᵃⁿ)dt     -   C₀/C₂ᴴ Uᵃⁿdt² +     1/C₂ᴴ*dt²*Lap
+                Uprev =2*U -Unext +c_i*self%C1nH*(Unext-U)*self%dt -self%C0nH*U*dt2 +self%invC2H*dt2*self%kpa*Lap
+                f_re%p_prev =  real(Uprev)
+                f_im%p_prev = aimag(Uprev)
         endif
 
-        deallocate(f_temp)
-        ! deallocate(Q, C1, C2, C3)
+        deallocate(Uprev, U, Unext, Lap) !save some RAM
 
         ! !apply free surface boundary condition if needed
         ! if(m%is_freesurface) call fd_freesurface_stresses(f%p)
@@ -1098,25 +1029,25 @@ use singleton
 
     end subroutine
 
-    subroutine cross_correlate_gradient(rf_p,rf_q,sf_u,sf_v,corr,it)
-        type(t_field), intent(in) :: rf_p, rf_q, sf_u, sf_v
+    subroutine cross_correlate_gradient(reA,imA,reU,imU,corr,it)
+        type(t_field), intent(in) :: reA, imA, reU, imU
         type(t_correlate) :: corr
 
         !nonzero only when sf touches rf
-        ifz=max(sf_u%bloom(1,it),rf_p%bloom(1,it),2)
-        ilz=min(sf_u%bloom(2,it),rf_p%bloom(2,it),cb%mz)
-        ifx=max(sf_u%bloom(3,it),rf_p%bloom(3,it),1)
-        ilx=min(sf_u%bloom(4,it),rf_p%bloom(4,it),cb%mx)
+        ifz=max(reU%bloom(1,it),reA%bloom(1,it),2)
+        ilz=min(reU%bloom(2,it),reA%bloom(2,it),cb%mz)
+        ifx=max(reU%bloom(3,it),reA%bloom(3,it),1)
+        ilx=min(reU%bloom(4,it),reA%bloom(4,it),cb%mx)
         ! ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
         ! ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
 
         !for gikpa
         corr%gikpa = corr%gikpa + &
-            rf_p%p(1:m%nz,1:m%nx,1:m%ny) * ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*sf_u%lap(1:m%nz,1:m%nx,1:m%ny) !+ &
-            ! rf_q%p(1:m%nz,1:m%nx,1:m%ny) * ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*sf_v%lap(1:m%nz,1:m%nx,1:m%ny)
+            reA%p(1:m%nz,1:m%nx,1:m%ny) * ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny) !+ &
+            ! imA%p(1:m%nz,1:m%nx,1:m%ny) * ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny)
 
         !for gbuo
-        call fd2d_grho(rf_p%p,sf_u%p,corr%gbuo,   ifz,ilz,ifx,ilx)
+        call fd2d_grho(reA%p,reU%p,corr%gbuo,   ifz,ilz,ifx,ilx)
 
     end subroutine
 
@@ -1140,119 +1071,6 @@ use singleton
     end subroutine
 
     !========= Finite-Difference on flattened arrays ==================
-    
-    ! subroutine fd2d_laplacian(u_p,v_p,u_dp_dz,v_dp_dz,u_dp_dx,v_dp_dx, &
-    !                             u_dpzz_dz,v_dpzz_dz,u_dpxx_dx,v_dpxx_dx, &
-    !                             u_lap,v_lap,&
-    !                             buoz,buox,&
-    !                             ifz,ilz,ifx,ilx)
-    !     real,dimension(*) :: u_p,v_p,u_dp_dz,v_dp_dz,u_dp_dx,v_dp_dx
-    !     real,dimension(*) :: u_dpzz_dz,v_dpzz_dz,u_dpxx_dx,v_dpxx_dx
-    !     real,dimension(*) :: u_lap,v_lap
-    !     real,dimension(*) :: buoz,buox
-
-    !     real,dimension(:),allocatable :: u_pzz,v_pzz,u_pxx,v_pxx
-    !     call alloc(u_pzz,cb%n)
-    !     call alloc(v_pzz,cb%n)
-    !     call alloc(u_pxx,cb%n)
-    !     call alloc(v_pxx,cb%n)
-
-    !     nz=cb%nz
-    !     nx=cb%nx
-        
-    !     !flux: b∇u ~= ( bz*∂zᵇp , bx*∂ₓᵇp )
-    !     !$omp parallel default (shared)&
-    !     !$omp private(iz,ix,i,&
-    !     !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,&
-    !     !$omp         iz_ixm2,iz_ixm1,iz_ixp1,&
-    !     !$omp         dp_dz_,dp_dx_)
-    !     !$omp do schedule(dynamic)
-    !     do ix = ifx+2,ilx-1
-    !         !dir$ simd
-    !         do iz = ifz+2,ilz-1
-
-    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
-
-    !             izm2_ix=i-2  !iz-2,ix
-    !             izm1_ix=i-1  !iz-1,ix
-    !             iz_ix  =i    !iz,ix
-    !             izp1_ix=i+1  !iz+1,ix
-                
-    !             iz_ixm2=i  -2*nz !iz,ix-2
-    !             iz_ixm1=i  -nz  !iz,ix-1
-    !             iz_ixp1=i  +nz  !iz,ix+1
-
-    !             u_dp_dz_ = c1z*(u_p(iz_ix) - u_p(izm1_ix)) +c2z*(u_p(izp1_ix)-u_p(izm2_ix))
-    !             v_dp_dz_ = c1z*(v_p(iz_ix) - v_p(izm1_ix)) +c2z*(v_p(izp1_ix)-v_p(izm2_ix))
-    !             u_dp_dx_ = c1x*(u_p(iz_ix) - u_p(iz_ixm1)) +c2x*(u_p(iz_ixp1)-u_p(iz_ixm2))
-    !             v_dp_dx_ = c1x*(v_p(iz_ix) - v_p(iz_ixm1)) +c2x*(v_p(iz_ixp1)-v_p(iz_ixm2))
-
-    !             u_dp_dz(iz_ix) = cpml%b_z_half(iz)*u_dp_dz(iz_ix) + cpml%a_z_half(iz)*u_dp_dz_
-    !             v_dp_dz(iz_ix) = cpml%b_z_half(iz)*v_dp_dz(iz_ix) + cpml%a_z_half(iz)*v_dp_dz_
-    !             u_dp_dx(iz_ix) = cpml%b_x_half(ix)*u_dp_dx(iz_ix) + cpml%a_x_half(ix)*u_dp_dx_
-    !             v_dp_dx(iz_ix) = cpml%b_x_half(ix)*v_dp_dx(iz_ix) + cpml%a_x_half(ix)*v_dp_dx_
-
-    !             u_dp_dz_ = u_dp_dz_/cpml%kpa_z_half(iz) + u_dp_dz(iz_ix)
-    !             v_dp_dz_ = v_dp_dz_/cpml%kpa_z_half(iz) + v_dp_dz(iz_ix)
-    !             u_dp_dx_ = u_dp_dx_/cpml%kpa_x_half(ix) + u_dp_dx(iz_ix)
-    !             v_dp_dx_ = v_dp_dx_/cpml%kpa_x_half(ix) + v_dp_dx(iz_ix)
-
-    !             u_pzz(iz_ix) = buoz(iz_ix)*u_dp_dz_
-    !             v_pzz(iz_ix) = buoz(iz_ix)*v_dp_dz_
-    !             u_pxx(iz_ix) = buox(iz_ix)*u_dp_dx_
-    !             v_pxx(iz_ix) = buox(iz_ix)*v_dp_dx_
-
-    !         enddo
-    !     enddo
-    !     !$omp end do
-    !     !$omp end parallel
-        
-    !     !laplacian: ∇·b∇u ~= ∂zᶠ(bz*∂zᵇp) + ∂ₓᶠ(bx*∂ₓᵇp)
-    !     !$omp parallel default (shared)&
-    !     !$omp private(iz,ix,i,&
-    !     !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-    !     !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
-    !     !$omp         dpzz_dz_,dpxx_dx_)
-    !     !$omp do schedule(dynamic)
-    !     do ix = ifx+1,ilx-2
-    !         !dir$ simd
-    !         do iz = ifz+1,ilz-2
-
-    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
-
-    !             izm1_ix=i-1  !iz-1,ix
-    !             iz_ix  =i    !iz,ix
-    !             izp1_ix=i+1  !iz+1,ix
-    !             izp2_ix=i+2  !iz+2,ix
-                
-    !             iz_ixm1=i  -nz  !iz,ix-1
-    !             iz_ixp1=i  +nz  !iz,ix+1
-    !             iz_ixp2=i  +2*nz !iz,ix+2
-                
-    !             u_dpzz_dz_ = c1z*(u_pzz(izp1_ix) - u_pzz(iz_ix))  +c2z*(u_pzz(izp2_ix) - u_pzz(izm1_ix))
-    !             v_dpzz_dz_ = c1z*(v_pzz(izp1_ix) - v_pzz(iz_ix))  +c2z*(v_pzz(izp2_ix) - v_pzz(izm1_ix))
-    !             u_dpxx_dx_ = c1x*(u_pxx(iz_ixp1) - u_pxx(iz_ix))  +c2x*(u_pxx(iz_ixp2) - u_pxx(iz_ixm1))
-    !             v_dpxx_dx_ = c1x*(v_pxx(iz_ixp1) - v_pxx(iz_ix))  +c2x*(v_pxx(iz_ixp2) - v_pxx(iz_ixm1))
-
-    !             u_dpzz_dz(iz_ix) = cpml%b_z(iz)*u_dpzz_dz(iz_ix) + cpml%a_z(iz)*u_dpzz_dz_
-    !             v_dpzz_dz(iz_ix) = cpml%b_z(iz)*v_dpzz_dz(iz_ix) + cpml%a_z(iz)*v_dpzz_dz_
-    !             u_dpxx_dx(iz_ix) = cpml%b_x(ix)*u_dpxx_dx(iz_ix) + cpml%a_x(ix)*u_dpxx_dx_
-    !             v_dpxx_dx(iz_ix) = cpml%b_x(ix)*v_dpxx_dx(iz_ix) + cpml%a_x(ix)*v_dpxx_dx_
-
-    !             u_dpzz_dz_ = u_dpzz_dz_/cpml%kpa_z(iz) + u_dpzz_dz(iz_ix)
-    !             v_dpzz_dz_ = v_dpzz_dz_/cpml%kpa_z(iz) + v_dpzz_dz(iz_ix)
-    !             u_dpxx_dx_ = u_dpxx_dx_/cpml%kpa_x(ix) + u_dpxx_dx(iz_ix)
-    !             v_dpxx_dx_ = v_dpxx_dx_/cpml%kpa_x(ix) + v_dpxx_dx(iz_ix)
-
-    !             u_lap(iz_ix) = u_dpzz_dz_ + u_dpxx_dx_
-    !             v_lap(iz_ix) = v_dpzz_dz_ + v_dpxx_dx_
-
-    !         enddo
-    !     enddo
-    !     !$omp end do
-    !     !$omp end parallel
-
-    ! end subroutine
 
     subroutine fd2d_laplacian(p,dp_dz,dp_dx,&
                                 dpzz_dz,dpxx_dx,&
@@ -1869,12 +1687,10 @@ use singleton
         real, intent(in),  optional      :: h_in, sigma_filter_in, freq_cut
         real, allocatable, intent(out)   :: mask(:,:,:) 
 
-        real                :: h, sigma_filter, vp_min, k_cut, pi
+        real                :: h, sigma_filter, vp_min, k_cut
         integer             :: nz, nx, i, j, nz2, nx2
         integer             :: idx_x, idx_z
         real, allocatable   :: kx(:), kz(:), kx_grid(:,:), kz_grid(:,:), K(:,:)
-
-        pi = acos(-1.0)
         
         ! fp     = shot%fpeak
         vp_min = cb%velmin
@@ -1912,18 +1728,18 @@ use singleton
         ! print *,'For mask:ifz ilz ifx ilx', ifz,ilz,ifx,ilx, 'K shape:',size(K,1),size(K,2), 'nz nx=',nz,nx
 
         do i = 1, nx/2
-            kx(i) = 2.0*pi*real(i-1)/(h*real(nx))    ! [0 ... nx/2-1]
+            kx(i) = 2.0*r_pi*real(i-1)/(h*real(nx))    ! [0 ... nx/2-1]
         end do
         do i = nx/2+1, nx
-            kx(i) = 2.0d0*pi*real(i-nx-1)/(h*real(nx)) ! [-nx/2 ... -1]
+            kx(i) = 2.0d0*r_pi*real(i-nx-1)/(h*real(nx)) ! [-nx/2 ... -1]
         end do
 
         ! ---- kz 向量 ----
         do i = 1, nz/2
-            kz(i) = 2.0d0*pi*real(i-1)/(h*real(nz))
+            kz(i) = 2.0d0*r_pi*real(i-1)/(h*real(nz))
         end do
         do i = nz/2+1, nz
-            kz(i) = 2.0d0*pi*real(i-nz-1)/(h*real(nz))
+            kz(i) = 2.0d0*r_pi*real(i-nz-1)/(h*real(nz))
         end do
 
         do j = 1, nz
@@ -1937,9 +1753,9 @@ use singleton
 
         ! 截止波数（单位 rad/m）
         if(present(freq_cut)) then
-            k_cut = 2.0*pi*freq_cut / vp_min
+            k_cut = 2.0*r_pi*freq_cut / vp_min
         else
-            k_cut = 2.0*pi*shot%fmax / vp_min
+            k_cut = 2.0*r_pi*shot%fmax / vp_min
         endif
 
         where (K <= k_cut)
@@ -1956,12 +1772,10 @@ use singleton
         real, intent(in),  optional      :: h_in, sigma_filter_in, freq_cut
         real, allocatable, intent(out)   :: mask(:,:,:) 
 
-        real                :: h, sigma_filter, vp_min, k_cut, pi
+        real                :: h, sigma_filter, vp_min, k_cut
         integer             :: nz, nx, i, j, nz2, nx2
         integer             :: idx_x, idx_z
         real, allocatable   :: kx(:), kz(:), kx_grid(:,:), kz_grid(:,:), K(:,:)
-
-        pi = acos(-1.0)
         
         ! fp     = shot%fpeak
         vp_min = cb%velmin
@@ -1999,18 +1813,18 @@ use singleton
         ! print *,'For mask:ifz ilz ifx ilx', ifz,ilz,ifx,ilx, 'K shape:',size(K,1),size(K,2), 'nz nx=',nz,nx
 
         do i = 1, nx/2
-            kx(i) = 2.0*pi*real(i-1)/(h*real(nx))    ! [0 ... nx/2-1]
+            kx(i) = 2.0*r_pi*real(i-1)/(h*real(nx))    ! [0 ... nx/2-1]
         end do
         do i = nx/2+1, nx
-            kx(i) = 2.0d0*pi*real(i-nx-1)/(h*real(nx)) ! [-nx/2 ... -1]
+            kx(i) = 2.0d0*r_pi*real(i-nx-1)/(h*real(nx)) ! [-nx/2 ... -1]
         end do
 
         ! ---- kz 向量 ----
         do i = 1, nz/2
-            kz(i) = 2.0d0*pi*real(i-1)/(h*real(nz))
+            kz(i) = 2.0d0*r_pi*real(i-1)/(h*real(nz))
         end do
         do i = nz/2+1, nz
-            kz(i) = 2.0d0*pi*real(i-nz-1)/(h*real(nz))
+            kz(i) = 2.0d0*r_pi*real(i-nz-1)/(h*real(nz))
         end do
 
         do j = 1, nz
@@ -2024,9 +1838,9 @@ use singleton
 
         ! 截止波数（单位 rad/m）
         ! if(present(freq_cut)) then
-        !     k_cut = 2.0*pi*freq_cut / vp_min
+        !     k_cut = 2.0*r_pi*freq_cut / vp_min
         ! else
-        k_cut = 2.0*pi*shot%fmax / vp_min
+        k_cut = 2.0*r_pi*shot%fmax / vp_min
         ! endif
 
         where (K <= k_cut)
@@ -2044,12 +1858,12 @@ use singleton
     !     real, allocatable, intent(out)   :: mask(:,:,:) 
 
     !     ! 局部
-    !     real                :: h, sigma_filter, fp, vp_min, k_cut, pi
+    !     real                :: h, sigma_filter, fp, vp_min, k_cut!, r_pi
     !     integer             :: nz, nx, i, j
     !     integer             :: idx_x, idx_z
     !     real, allocatable   :: kx(:), kz(:), kx_grid(:,:), kz_grid(:,:), K(:,:)
 
-    !     pi = acos(-1.0)
+    !     r_pi = acos(-1.0)
     !     nz = size(f%p,1)
     !     nx = size(f%p,2)
 
@@ -2081,18 +1895,18 @@ use singleton
     !     ! ---- 关键修正：环形折返的索引（奇偶长度都正确）----
     !     ! ---- kx 向量 ----
     !     do i = ifx, (ilx-ifx+1)/2
-    !         kx(i) = 2.0*pi*real(i-1)/(h*real((ilx-ifx+1)))    ! [0 ... nx/2-1]
+    !         kx(i) = 2.0*r_pi*real(i-1)/(h*real((ilx-ifx+1)))    ! [0 ... nx/2-1]
     !     end do
     !     do i = (ilx-ifx+1)/2+1, (ilx-ifx+1)
-    !         kx(i) = 2.0d0*pi*real(i-(ilx-ifx+1)-1)/(h*real(ilx-ifx+1)) ! [-nx/2 ... -1]
+    !         kx(i) = 2.0d0*r_pi*real(i-(ilx-ifx+1)-1)/(h*real(ilx-ifx+1)) ! [-nx/2 ... -1]
     !     end do
 
     !     ! ---- kz 向量 ----
     !     do i = ifz, (ilz-ifz+1)/2
-    !         kz(i) = 2.0d0*pi*real(i-1)/(h*real(ilz-ifz+1))
+    !         kz(i) = 2.0d0*r_pi*real(i-1)/(h*real(ilz-ifz+1))
     !     end do
     !     do i = (ilz-ifz+1)/2+1, (ilz-ifz+1)
-    !         kz(i) = 2.0d0*pi*real(i-(ilz-ifz+1)-1)/(h*real(ilz-ifz+1))
+    !         kz(i) = 2.0d0*r_pi*real(i-(ilz-ifz+1)-1)/(h*real(ilz-ifz+1))
     !     end do
 
     !     do j = ifz, (ilz-ifz+1)
@@ -2105,7 +1919,7 @@ use singleton
 
 
     !     ! 截止波数（单位 rad/m）
-    !     k_cut = 2.0*pi*fp / vp_min * 2
+    !     k_cut = 2.0*r_pi*fp / vp_min * 2
 
     !     where (K <= k_cut)
     !         mask(:,:,1) = 1.0

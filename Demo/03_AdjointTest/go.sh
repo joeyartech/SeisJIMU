@@ -12,11 +12,14 @@ rm c1 c2 tmp
 
 # makevel nx=201 nz=201 v000=2000 > model
 
+
+#echo "IS_Q_ATTENUATION    F"
+
+
 ../../exe/AdjointTest  setup_simple.in
 
-# suximage <  u.su  legend=1  title='u' &
-# suximage <  v.su  legend=1  title='v' &
-# suximage < Lu.su  legend=1  title='Lu' &
-# suximage < Ladj_v.su  legend=1  title='Ladj_v' &
-# sumax < Lu.su
+suxwigb < results/reS.su      legend=1  title='reS'     &
+suxwigb < results/imS.su      legend=1  title='imS'     &
+suxwigb < results/reLadjR.su  legend=1  title='reLadjR' &
+suxwigb < results/imLadjR.su  legend=1  title='imLadjR' &
 
