@@ -43,6 +43,7 @@ use m_model
         character(8) :: sindex
         
         real,dimension(:),allocatable :: wavelet
+        real,dimension(:),allocatable :: wavelet_hilb
         integer :: nt
         real :: dt, fmin, fmax, fpeak
 
@@ -284,7 +285,13 @@ use m_model
             self%wavelet=self%wavelet*str2real(str)
         endif
 
-        if(mpiworld%is_master) call suformat_write('wavelet',self%wavelet,self%nt,ntr=1,o_dt=self%dt)
+        self%wavelet_hilb=self%wavelet !allocation
+        call hilbert_transform(shot%wavelet,self%wavelet_hilb,self%nt,1)
+
+        if(mpiworld%is_master) then
+            call suformat_write('wavelet',     self%wavelet,     self%nt,ntr=1,o_dt=self%dt)
+            ! call suformat_write('wavelet_hilb',self%wavelet_hilb,self%nt,ntr=1,o_dt=self%dt)
+        endif
 
     end subroutine
 

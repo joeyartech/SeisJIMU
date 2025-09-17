@@ -16,9 +16,9 @@ use m_hilbert
     character(:),allocatable :: update_wavelet
     type(t_weighter) :: wei_wl
 
-    type(t_field) :: fld_u,fld_v, fld_p, fld_q
+    type(t_field) :: fld_reU,fld_imU, fld_reA, fld_imA
     type(t_correlate) :: U_star_D,D_star_D,U_star_U, D_star_U
-    type(t_correlate) :: a_star_u
+    type(t_correlate) :: A_star_U
     real,dimension(:,:),allocatable :: tmp
     real,dimension(3) :: grad_term_weights
     character(:),allocatable :: dnorm
@@ -51,10 +51,18 @@ use m_hilbert
 
 
         call hud('----  Solving Au=s  ----')
-        call ppg%init_field(fld_u, name='fld_u');    call fld_u%ignite
-        call ppg%init_field(fld_v, name='fld_v');    call fld_v%ignite
-        call ppg%forward(fld_u,fld_v)
-        call fld_u%acquire; call shot%write('Ru_',shot%dsyn)
+        call ppg%init_field(fld_reU, name='fld_reU')
+        call ppg%init_field(fld_imU, name='fld_imU')
+        
+        call fld_reU%ignite
+        call alloc(tmp,shot%nt,1)
+        call hilbert_transform(shot%wavelet,tmp,shot%nt,1)
+        call fld_imU%ignite(o_wavelet=tmp)
+        deallocate(tmp)
+
+        call ppg%forward(fld_reU,fld_imU)
+        call fld_reU%acquire; call shot%write('Ru_',shot%dsyn)
+        call fld_imU%acquire; call shot%write('imRU_',shot%dsyn)
 
 
         ! if(index(setup%get_str('JOB',o_default='gradient'),'estimate wavelet')>0) then
@@ -75,16 +83,16 @@ use m_hilbert
 
         ! call hud('----  Solving Av=H[s]  ----')
         ! call shot%read_wlhilb
-        ! call ppg%init_field(fld_v, name='fld_v');    call fld_v%ignite
-        ! call ppg%forward(fld_v)
-        ! call fld_v%acquire; call shot%write('Rv_',shot%dsyn); shot%dsyn_aux=shot%dsyn
-        ! call fld_u%acquire
+        ! call ppg%init_field(fld_imU, name='fld_imU');    call fld_imU%ignite
+        ! call ppg%forward(fld_imU)
+        ! call fld_imU%acquire; call shot%write('Rv_',shot%dsyn); shot%dsyn_aux=shot%dsyn
+        ! call fld_reU%acquire
         
         if(setup%get_str('JOB')=='forward modeling') cycle
 
 
-        call ppg%init_field(fld_p,name='fld_p',ois_adjoint=.true.)
-        call ppg%init_field(fld_q,name='fld_q',ois_adjoint=.true.)
+        call ppg%init_field(fld_reA,name='fld_reA',ois_adjoint=.true.)
+        call ppg%init_field(fld_imA,name='fld_imA',ois_adjoint=.true.)
 
         call hud('----  Computing obj func & dadj  ----')
             call wei%update
@@ -96,12 +104,13 @@ use m_hilbert
                 fobj%misfit = fobj%misfit &
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
                 call kernel_L2sq(shot%dadj)
-                call fld_p%ignite(o_wavelet=shot%dadj)
+                call fld_reA%ignite(o_wavelet=shot%dadj)
                 call shot%write('dadj_',shot%dadj)
                 tmp=shot%dadj
                 call hilbert_transform(shot%dadj,tmp,shot%nt,shot%nrcv)
+                call shot%write('imdadj_',tmp)
                 ! call hilbert_nofft('generic',shot%dadj,tmp,shot%nt,shot%nrcv)
-                call fld_q%ignite(o_wavelet=tmp)
+                call fld_imA%ignite(o_wavelet=tmp)
                 
                 
                 ! case default
@@ -111,12 +120,12 @@ use m_hilbert
 
         
         call hud('----  Solving adjoint eqn & xcorrelate  ----')
-        call ppg%init_correlate(a_star_u,'a_star_u')
-        call ppg%adjoint(fld_q,fld_p,fld_v,fld_u,a_star_u)
+        call ppg%init_correlate(A_star_U,'A_star_U')
+        call ppg%adjoint(fld_reA,fld_imA, fld_reU,fld_imU, A_star_U)
 
 
         call hud('----  Assemble  ----')
-        call ppg%assemble(a_star_u)
+        call ppg%assemble(A_star_U)
 
         call hud('---------------------------------')
 
@@ -140,7 +149,7 @@ use m_hilbert
 
     !write correlate
     if(mpiworld%is_master) then
-        call a_star_u%write
+        call A_star_U%write
     endif
 
     !allreduce energy, gradient

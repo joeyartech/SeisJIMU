@@ -51,7 +51,7 @@ use singleton
             'Poynting definitions: Esq_gradphi'//s_NL// &
             'Imaging conditions: ipp ibksc ifwsc (P-Pxcorr of backward & forward scattering)'//s_NL// &
             'Energy terms: Σ_shot ∫ sfield%p² dt'//s_NL// &
-            'Basic gradients: gikpa, gbuo'
+            'Basic gradients: gbuo(wait), gikpa, gqp'
 
         integer :: nbndlayer=max(1,hicks_r) !minimum absorbing layer thickness
         integer :: ngrad=2 !number of basic gradients
@@ -324,8 +324,9 @@ use singleton
         corr%name=name
 
         ! if(name(1:1)=='g') then !gradient components
-            call alloc(corr%gikpa,m%nz,m%nx,m%ny)
             call alloc(corr%gbuo, m%nz,m%nx,m%ny)
+            call alloc(corr%gikpa,m%nz,m%nx,m%ny)
+            ! call alloc(corr%giqp,m%nz,m%nx,m%ny)
         ! else !image components
         !     call alloc(corr%ipp,m%nz,m%nx,m%ny)
         !     call alloc(corr%ibksc,m%nz,m%nx,m%ny)
@@ -352,8 +353,9 @@ use singleton
         endif
 
         if(allocated(correlate_gradient)) then
-            call correlate_assemble(corr%gikpa, correlate_gradient(:,:,:,1))
-            call correlate_assemble(corr%gbuo,  correlate_gradient(:,:,:,2))
+            call correlate_assemble(corr%gbuo,  correlate_gradient(:,:,:,1))
+            call correlate_assemble(corr%gikpa, correlate_gradient(:,:,:,2))
+            ! call correlate_assemble(corr%giqp, correlate_gradient(:,:,:,3))
         endif        
         
     end subroutine
@@ -606,7 +608,7 @@ use singleton
                 ! tt3=tt3+toc-tic
 
                 call cpu_time(tic)
-                call cross_correlate_gradient(fld_reA,fld_imA,fld_reU,fld_imU,A_star_U,it)
+                call cross_correlate_gradient(fld_reA,fld_imA, fld_reU,fld_imU, A_star_U, it)
                 call cpu_time(toc)
                 tt10=tt10+toc-tic
             endif
@@ -809,6 +811,8 @@ use singleton
                 f_im%p_next = aimag(Unext)
 
             else !backward in time
+            !for 1st-order time derivative, use forward FD instead of backward FD like forward PDE
+            !this is fine but cannot make the field doesn't disappear after backpropagation
                 Unext = cmplx(f_re%p_next,f_im%p_next)
                 U     = cmplx(f_re%p     ,f_im%p     )
                 Lap   = cmplx(f_re%lap   ,f_im%lap   )
@@ -1013,32 +1017,13 @@ use singleton
     !for ϰ: Kₘ<a|Au> = ∫ a ∂ₜ²u dt =-∫ ∂ₜa ∂ₜu dt, or = ∫ a κ∇·b∇u dt 
     !for b: Kₘ<a|Au> = -Kₘ<a|∇·b∇u> = ∫ ∇a·∇u dt
 
-    subroutine auto_correlate(f,corr,it)
-        type(t_field), intent(in) :: f
-        type(t_correlate) :: corr
-
-        !nonzero only when sf touches rf
-        ifz=f%bloom(1,it)
-        ilz=f%bloom(2,it)
-        ifx=f%bloom(3,it)
-        ilx=f%bloom(4,it)
-        ify=f%bloom(5,it)
-        ily=f%bloom(6,it)
-        
-        ! if(m%is_cubic) then
-        ! else
-            
-            ! call imag2d_inverse_scattering(rf%p_next,rf%p,rf%p_prev,sf%p_next,sf%p,sf%p_prev,&
-            !                       imag%drp_dt_dsp_dt,imag%nab_rp_nab_sp,                     &
-            !                       ifz,ilz,ifx,ilx)
-        ! endif
-
-
-    end subroutine
-
-    subroutine cross_correlate_gradient(reA,imA,reU,imU,corr,it)
+    subroutine cross_correlate_gradient(reA,imA, reU,imU, corr,it)
         type(t_field), intent(in) :: reA, imA, reU, imU
         type(t_correlate) :: corr
+
+        real,dimension(:,:,:),allocatable,save :: im_gikpa
+
+        complex,dimension(:,:,:),allocatable :: Ulap, Aconj
 
         !nonzero only when sf touches rf
         ifz=max(reU%bloom(1,it),reA%bloom(1,it),2)
@@ -1048,13 +1033,25 @@ use singleton
         ! ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
         ! ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
 
-        !for gikpa
-        corr%gikpa = corr%gikpa + &
-            reA%p(1:m%nz,1:m%nx,1:m%ny) * ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny) !+ &
-            ! imA%p(1:m%nz,1:m%nx,1:m%ny) * ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny)
 
-        !for gbuo
-        call fd2d_grho(reA%p,reU%p,corr%gbuo,   ifz,ilz,ifx,ilx)
+        Ulap  = cmplx( reU%lap(1:m%nz,1:m%nx,1:m%ny), imU%lap(1:m%nz,1:m%nx,1:m%ny) )
+        Aconj = cmplx( reA%p  (1:m%nz,1:m%nx,1:m%ny),-imA%p  (1:m%nz,1:m%nx,1:m%ny) )
+
+        !for gikpa
+        corr%gikpa = corr%gikpa + real ( Aconj*ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*Ulap )
+
+
+        call alloc(im_gikpa,cb%mz,cb%mx,cb%my, oif_protect=.true.)
+        im_gikpa = im_gikpa + imag ( Aconj*ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*Ulap )
+
+        call sysio_write('im_gikpa',im_gikpa,size(im_gikpa))
+
+        ! !for gbuo
+        ! call fd2d_grho(reA%p,reU%p,corr%gbuo,   ifz,ilz,ifx,ilx)
+
+        ! !for giqp
+        ! corr%giqp = corr%giqp + &
+        !     A(1:m%nz,1:m%nx,1:m%ny) * ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*Ulap(1:m%nz,1:m%nx,1:m%ny)        
 
     end subroutine
 

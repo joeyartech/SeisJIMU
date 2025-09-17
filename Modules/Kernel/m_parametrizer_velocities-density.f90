@@ -276,24 +276,16 @@ use m_Modeling
 
         if(present(o_g)) then
             call alloc(o_g,self%n1,self%n2,self%n3,self%npars)
-            !!correlate_gradient(:,:,:,1) = grho
-            !!correlate_gradient(:,:,:,2) = gkpa or glda
-            !!correlate_gradient(:,:,:,3) = gmu
-
-            !ikpa(vp,rho) = 1/(rho*vp^2)
-            !irho0(vp,rho)=1/rho
-            !gvp = gikpa*(-2/rho/vp^3)
-            !grho= gikpa*(-1/vp^2/rho^2) + gbuo*(-1/rho^2)
-            !correlate_gradient(:,:,:,1) = gikpa
-            !correlate_gradient(:,:,:,2) = gbuo
-            
+            !correlate_gradient(:,:,:,1) = grho
+            !correlate_gradient(:,:,:,2) = gkpa or glda
+            !correlate_gradient(:,:,:,3) = gmu
 
             !acoustic
             if(is_AC .and. .not. is_empirical) then
                 do i=1,param%npars
                     select case (param%pars(i)%name)
-                    case ('vp' ); o_g(:,:,:,i) = correlate_gradient(:,:,:,1)*(-2/m%rho/m%vp**3)
-                    case ('rho'); o_g(:,:,:,i) = correlate_gradient(:,:,:,1)*(-1/m%vp**2/m%rho**2) + correlate_gradient(:,:,:,2)*(-1/m%rho**2)
+                    case ('vp' ); o_g(:,:,:,i) = correlate_gradient(:,:,:,2)*2*m%rho*m%vp
+                    case ('rho'); o_g(:,:,:,i) = correlate_gradient(:,:,:,2)*m%vp**2 + correlate_gradient(:,:,:,1)
                     end select
                 enddo
             endif
