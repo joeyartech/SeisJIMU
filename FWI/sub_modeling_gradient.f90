@@ -13,19 +13,15 @@ use m_hilbert
 
     logical,save :: is_first_in=.true.
 
-    character(:),allocatable :: update_wavelet
+    character(:),allocatable :: update_wavelet, dnorm
     type(t_weighter) :: wei_wl
 
     type(t_field) :: fld_reU,fld_imU, fld_reA, fld_imA
-    type(t_correlate) :: U_star_D,D_star_D,U_star_U, D_star_U
     type(t_correlate) :: A_star_U
+
     real,dimension(:,:),allocatable :: tmp
-    real,dimension(3) :: grad_term_weights
-    character(:),allocatable :: dnorm
-
-    real,dimension(:,:,:),allocatable :: term1,term2
     
-
+    
     !misfit
     fobj%misfit=0.
 
@@ -61,8 +57,9 @@ use m_hilbert
         deallocate(tmp)
 
         call ppg%forward(fld_reU,fld_imU)
-        call fld_reU%acquire; call shot%write('Ru_',shot%dsyn)
         call fld_imU%acquire; call shot%write('imRU_',shot%dsyn)
+        call fld_reU%acquire; call shot%write('Ru_',shot%dsyn)       
+        
 
 
         ! if(index(setup%get_str('JOB',o_default='gradient'),'estimate wavelet')>0) then
@@ -106,7 +103,8 @@ use m_hilbert
                 call kernel_L2sq(shot%dadj)
                 call fld_reA%ignite(o_wavelet=shot%dadj)
                 call shot%write('dadj_',shot%dadj)
-                tmp=shot%dadj
+
+                call alloc(tmp,shot%nt,shot%nrcv)
                 call hilbert_transform(shot%dadj,tmp,shot%nt,shot%nrcv)
                 call shot%write('imdadj_',tmp)
                 ! call hilbert_nofft('generic',shot%dadj,tmp,shot%nt,shot%nrcv)

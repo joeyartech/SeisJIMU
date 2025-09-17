@@ -1,11 +1,12 @@
 program main
 use m_System
 use m_Modeling
+use m_hilbert
 
     !type(t_field) :: field
-    type(t_field) :: fld_u, fld_v
+    type(t_field) :: fld_reU, fld_imU
 
-    !character(:),allocatable :: job  
+    real,dimension(:,:),allocatable :: tmp
 
     !mpiworld lives in t_mpienv
     call mpiworld%init(name='MPIWorld')
@@ -82,12 +83,19 @@ use m_Modeling
 
 
         call hud('----  Solving Au=s  ----')
-        call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
-        call ppg%init_field(fld_v,name='fld_v');    call fld_v%ignite
-        call ppg%forward(fld_u,fld_v)
-        ! call ppg%forward(fld_u)
-        call fld_u%acquire; call shot%write('Ru_',shot%dsyn)
-        ! call fld_u%acquire; call shot%write('Ru_',shot%dsyn)
+        call ppg%init_field(fld_reU, name='fld_reU')
+        call ppg%init_field(fld_imU, name='fld_imU')
+        
+        call fld_reU%ignite
+        call alloc(tmp,shot%nt,1)
+        call hilbert_transform(shot%wavelet,tmp,shot%nt,1)
+        call fld_imU%ignite(o_wavelet=tmp)
+        deallocate(tmp)
+
+        call ppg%forward(fld_reU,fld_imU)
+        call fld_reU%acquire; call shot%write('Ru_',shot%dsyn)
+        call fld_imU%acquire; call shot%write('imRU_',shot%dsyn)
+
 
         ! call hud('----  Solving Av=H[s]  ----')
         ! call shot%read_wlhilb

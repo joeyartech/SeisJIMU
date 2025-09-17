@@ -608,7 +608,7 @@ use singleton
                 ! tt3=tt3+toc-tic
 
                 call cpu_time(tic)
-                call cross_correlate_gradient(fld_reA,fld_imA, fld_reU,fld_imU, A_star_U, it)
+                call cross_correlate_gradient(fld_reA,fld_imA,fld_reU,fld_imU,A_star_U,it)
                 call cpu_time(toc)
                 tt10=tt10+toc-tic
             endif
@@ -1021,7 +1021,7 @@ use singleton
         type(t_field), intent(in) :: reA, imA, reU, imU
         type(t_correlate) :: corr
 
-        real,dimension(:,:,:),allocatable,save :: im_gikpa
+        real,dimension(:,:,:),allocatable,save :: re_gikpa_rere, re_gikpa_imim, im_gikpa
 
         complex,dimension(:,:,:),allocatable :: Ulap, Aconj
 
@@ -1034,17 +1034,37 @@ use singleton
         ! ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
 
 
-        Ulap  = cmplx( reU%lap(1:m%nz,1:m%nx,1:m%ny), imU%lap(1:m%nz,1:m%nx,1:m%ny) )
-        Aconj = cmplx( reA%p  (1:m%nz,1:m%nx,1:m%ny),-imA%p  (1:m%nz,1:m%nx,1:m%ny) )
+        ! Ulap  = cmplx( reU%lap(1:m%nz,1:m%nx,1:m%ny), imU%lap(1:m%nz,1:m%nx,1:m%ny) )
+        ! Aconj = cmplx( reA%p  (1:m%nz,1:m%nx,1:m%ny),-imA%p  (1:m%nz,1:m%nx,1:m%ny) )
 
-        !for gikpa
-        corr%gikpa = corr%gikpa + real ( Aconj*ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*Ulap )
+        ! !for gikpa
+        ! corr%gikpa = corr%gikpa + &
+        !     real ( Aconj*ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*Ulap )
 
 
-        call alloc(im_gikpa,cb%mz,cb%mx,cb%my, oif_protect=.true.)
-        im_gikpa = im_gikpa + imag ( Aconj*ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*Ulap )
+        !other parts
+        call alloc(re_gikpa_rere,cb%mz,cb%mx,cb%my, oif_protect=.true.)
+        call alloc(re_gikpa_imim,cb%mz,cb%mx,cb%my, oif_protect=.true.)
+        call alloc(im_gikpa,     cb%mz,cb%mx,cb%my, oif_protect=.true.)
+        
+        re_gikpa_rere = re_gikpa_rere + &
+                   reA%p(1:m%nz,1:m%nx,1:m%ny)*ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny)
+        re_gikpa_imim = re_gikpa_imim + &
+                   imA%p(1:m%nz,1:m%nx,1:m%ny)*ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny)
 
-        call sysio_write('im_gikpa',im_gikpa,size(im_gikpa))
+        corr%gikpa  = re_gikpa_rere + re_gikpa_imim
+
+        ! ! im_gikpa = im_gikpa + &
+        !     ! aimag( Aconj(1:m%nz,1:m%nx,1:m%ny)*ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*Ulap(1:m%nz,1:m%nx,1:m%ny) )
+        ! im_gikpa = im_gikpa + ppg%kpa(1:m%nz,1:m%nx,1:m%ny)* (&
+        !      reA%p(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny) &
+        !     -imA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny) &
+        !     )
+
+        ! call sysio_write('re_gikpa_rere',re_gikpa_rere,m%n)
+        ! call sysio_write('re_gikpa_imim',re_gikpa_imim,m%n)
+        ! call sysio_write('re_gikpa',     corr%gikpa,   m%n)
+        ! call sysio_write('im_gikpa',     im_gikpa,     m%n)
 
         ! !for gbuo
         ! call fd2d_grho(reA%p,reU%p,corr%gbuo,   ifz,ilz,ifx,ilx)
