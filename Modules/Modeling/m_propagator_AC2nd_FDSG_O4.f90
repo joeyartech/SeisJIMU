@@ -36,14 +36,12 @@ use m_cpml
             'Required model attributes: vp, rho'//s_NL// &
             'Required field components: p, p_prev, p_next'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
-            'Poynting definitions: Esq_gradphi'//s_NL// &
-            'Imaging conditions: ipp ibksc ifwsc (P-Pxcorr of backward & forward scattering)'//s_NL// &
             'Energy terms: Σ_shot ∫ sfield%p² dt'//s_NL// &
             'Basic gradients: gikpa, gbuo'
 
         integer :: nbndlayer=max(1,hicks_r) !minimum absorbing layer thickness
         integer :: ngrad=2 !number of basic gradients
-        integer :: nimag=3 !number of basic images
+        ! integer :: nimag=3 !number of basic images
         !integer :: nengy=1 !number of energy terms
 
         logical :: if_compute_engy=.false.
@@ -84,11 +82,11 @@ use m_cpml
 
     type(t_propagator),public :: ppg
 
-    character(:),allocatable :: s_poynting_def
-
     logical :: if_hicks
     integer :: irdt
     real :: rdt
+
+    logical :: if_record_adjseismo=.false.
 
     ! logical :: is_absolute_virtual
 
@@ -213,9 +211,6 @@ use m_cpml
         rdt=irdt*self%dt
         call hud('rdt, irdt = '//num2str(rdt)//', '//num2str(irdt))
 
-        s_poynting_def=setup%get_str('POYNTING_DEF',o_default='Esq_gradphi')
-        if(s_poynting_def/='Esq_gradphi') call error('Sorry, other Poynting definitions have not yet implemented.')
-
     end subroutine
 
     subroutine init_field(self,f,name,ois_simple,ois_adjoint,oif_will_reconstruct)
@@ -253,9 +248,6 @@ use m_cpml
             call alloc(f%lap, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         ! endif
 
-        call alloc(f%poynz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%poynx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-
     end subroutine
 
     subroutine init_correlate(self,corr,name)
@@ -265,14 +257,14 @@ use m_cpml
         
         corr%name=name
 
-        if(name(1:1)=='g') then !gradient components
+        ! if(name(1:1)=='g') then !gradient components
             call alloc(corr%gikpa,m%nz,m%nx,m%ny)
             call alloc(corr%gbuo, m%nz,m%nx,m%ny)
-        else !image components
-            call alloc(corr%ipp,m%nz,m%nx,m%ny)
-            call alloc(corr%ibksc,m%nz,m%nx,m%ny)
-            call alloc(corr%ifwsc,m%nz,m%nx,m%ny)
-        endif
+        ! else !image components
+            ! call alloc(corr%ipp,m%nz,m%nx,m%ny)
+            ! call alloc(corr%ibksc,m%nz,m%nx,m%ny)
+            ! call alloc(corr%ifwsc,m%nz,m%nx,m%ny)
+        ! endif
 
     end subroutine
 
@@ -287,15 +279,15 @@ use m_cpml
         class(t_propagator) :: self
         type(t_correlate) :: corr
 
-        if(allocated(correlate_image)) then
-            call correlate_assemble(corr%ipp,   correlate_image(:,:,:,1))
-            call correlate_assemble(corr%ibksc, correlate_image(:,:,:,2))
-            call correlate_assemble(corr%ifwsc, correlate_image(:,:,:,3))
-        endif
+        ! if(allocated(correlate_image)) then
+        !     call correlate_assemble(corr%ipp,   correlate_image(:,:,:,1))
+        !     call correlate_assemble(corr%ibksc, correlate_image(:,:,:,2))
+        !     call correlate_assemble(corr%ifwsc, correlate_image(:,:,:,3))
+        ! endif
 
         if(allocated(correlate_gradient)) then
-            call correlate_assemble(corr%gikpa, correlate_gradient(:,:,:,1))
-            call correlate_assemble(corr%gbuo,  correlate_gradient(:,:,:,2))
+            call correlate_assemble(corr%gbuo,  correlate_gradient(:,:,:,1))
+            call correlate_assemble(corr%gikpa, correlate_gradient(:,:,:,2))
         endif        
         
     end subroutine
@@ -452,15 +444,14 @@ use m_cpml
 
     end subroutine
 
-    subroutine adjoint(self,fld_q,fld_p, fld_v,fld_u, a_star_u)
+    subroutine adjoint(self, fld_a,fld_u, a_star_u)
         class(t_propagator) :: self
-        type(t_field) :: fld_q,fld_p,fld_v,fld_u
+        type(t_field) :: fld_a,fld_u
         type(t_correlate) :: a_star_u
 
         real,parameter :: time_dir=-1. !time direction
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
-        call fld_v%reinit
         call fld_u%reinit
         
         !timing
@@ -474,37 +465,31 @@ use m_cpml
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
-                call fld_q%check_value
-                call fld_p%check_value
-                call fld_v%check_value
+                call fld_a%check_value
                 call fld_u%check_value
             endif
 
             ! if(present(o_sf)) then
                 !backward step 5: it+1 -> it
                 call cpu_time(tic)
-                call self%evolve_pressure(fld_v,time_dir,it)
                 call self%evolve_pressure(fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt1=tt1+toc-tic
 
                 ! !backward step 2: retrieve p^it+1 at boundary layers (BC)
                 call cpu_time(tic)
-                call fld_v%boundary_transport_pressure('load',it)
                 call fld_u%boundary_transport_pressure('load',it)
                 call cpu_time(toc)
                 tt2=tt2+toc-tic
 
                 !backward step 4:
                 call cpu_time(tic)
-                call self%update_pressure(fld_v,time_dir,it)
                 call self%update_pressure(fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt4=tt4+toc-tic
 
                 !backward step 1: rm p^it at source
                 call cpu_time(tic)
-                call self%inject_pressure(fld_v,time_dir,it)
                 call self%inject_pressure(fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
@@ -512,29 +497,21 @@ use m_cpml
 
             !adjoint step 6: inject to p^it+1 at receivers
             call cpu_time(tic)
-            call self%inject_pressure(fld_q,time_dir,it)
-            call self%inject_pressure(fld_p,time_dir,it)
+            call self%inject_pressure(fld_a,time_dir,it)
             call cpu_time(toc)
             tt8=tt8+toc-tic
 
             !adjoint step 4:
             call cpu_time(tic)
-            call self%update_pressure(fld_q,time_dir,it)
-            call self%update_pressure(fld_p,time_dir,it)
+            call self%update_pressure(fld_a,time_dir,it)
             call cpu_time(toc)
             tt9=tt9+toc-tic
 
             !image: rf%p^it star sf%p^it
             if(mod(it,irdt)==0) then
-                ! call cpu_time(tic)
-                ! call compute_poynting(fld_q,fld_p)
-                ! call compute_poynting(fld_v,fld_u)
-                ! call cpu_time(toc)
-                tt3=tt3+toc-tic
-
                 call cpu_time(tic)
                 ! call cross_correlate_image(fld_p,fld_u,a_star_u,it)
-                call cross_correlate_gradient(fld_p,fld_u,a_star_u,it)
+                call cross_correlate_gradient(fld_a,fld_u,a_star_u,it)
                 call cpu_time(toc)
                 tt10=tt10+toc-tic
             endif
@@ -542,31 +519,31 @@ use m_cpml
             !adjoint step 5
             ! this step is moved to update_pressure for easier management
             call cpu_time(tic)
-            call self%evolve_pressure(fld_q,time_dir,it)
-            call self%evolve_pressure(fld_p,time_dir,it)
+            call self%evolve_pressure(fld_a,time_dir,it)
             call cpu_time(toc)
             tt11=tt11+toc-tic
 
             !adjoint step 1: sample p^it at source position
-            ! if(if_record_adjseismo) then
-                ! call cpu_time(tic)
-                ! call self%extract(fld_q,it)
-                ! call self%extract(fld_p,it)
-                ! call cpu_time(toc)
-                ! tt12=tt12+toc-tic
-            ! endif
+            if(if_record_adjseismo) then
+                call cpu_time(tic)
+                call self%extract(fld_a,it)
+                call cpu_time(toc)
+                tt12=tt12+toc-tic
+            endif
 
 
             !--------------------------------------------------------!
             
             !snapshot
-            call fld_p%write(it,o_suffix='_rev')
+            call fld_a%write(it,o_suffix='_rev')
             call fld_u%write(it,o_suffix='_rev')
 
             call a_star_u%write(it,o_suffix='_rev')
 
         enddo
 
+        !postprocess
+        call cross_correlate_postprocess(a_star_u)
         call a_star_u%scale(m%cell_volume*rdt)
 
 
@@ -718,46 +695,16 @@ use m_cpml
             f%p     =>f%p_next
             f%p_next=>tmp
 
-            ! f%p_prev = f%p
-            ! f%p      = f%p_next
-            ! !f%p_next = f%p_prev
-
         else !in reverse time
             tmp=>f%p_next
             f%p_next=>f%p
             f%p     =>f%p_prev
             f%p_prev=>tmp
 
-            ! f%p_next = f%p
-            ! f%p      = f%p_prev
-            ! !f%p_prev = f%p_next
-
         endif
 
         nullify(tmp)
         
-    end subroutine
-
-    subroutine compute_poynting(v,u)
-        type(t_field) :: v, u
-
-        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: E2, ph !envelope squared & inst phase
-        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: dph_dz, dph_dx
-
-    	!E=sqrt(u%p*u%p+v%p*v%p)
-        E2=u%p*u%p+v%p*v%p
-        ph=atan2(v%p,u%p)
-
-    	do ix=cb%ifx+1,cb%ilx-1
-    	do iz=cb%ifz+1,cb%ilz-1
-    	    dph_dz(iz,ix,1) = asin(sin(ph(iz+1,ix,1) - ph(iz-1,ix,1)))*inv_2dz
-    	    dph_dx(iz,ix,1) = asin(sin(ph(iz,ix+1,1) - ph(iz,ix-1,1)))*inv_2dx
-    	enddo
-    	enddo
-
-        u%poynz=E2*dph_dz
-        u%poynx=E2*dph_dx
-
     end subroutine
 
     subroutine extract(self,f,it)
@@ -899,29 +846,31 @@ use m_cpml
         !for gikpa
         corr%gikpa = corr%gikpa + &
             !rf%p(1:m%nz,1:m%nx,1:m%ny) * ( sf%p_next(1:m%nz,1:m%nx,1:m%ny)-2*sf%p(1:m%nz,1:m%nx,1:m%ny)+sf%p_prev(1:m%nz,1:m%nx,1:m%ny) )/dt2
-            rf%p(1:m%nz,1:m%nx,1:m%ny) * ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*sf%lap(1:m%nz,1:m%nx,1:m%ny)
+            rf%p(1:m%nz,1:m%nx,1:m%ny)*sf%lap(1:m%nz,1:m%nx,1:m%ny)
 
         !for gbuo
         call fd2d_grho(rf%p,sf%p,corr%gbuo,   ifz,ilz,ifx,ilx)
 
     end subroutine
 
-    subroutine cross_correlate_image(rf,sf,corr,it)
-        type(t_field), intent(in) :: rf, sf
+    subroutine cross_correlate_postprocess(corr)
         type(t_correlate) :: corr
 
-        !nonzero only when sf touches rf
-        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
-        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
-        ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
-        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
-        ! ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
-        ! ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
+        if(allocated(correlate_gradient)) then
+            !scaling gradients by model parameters
+            ! corr%grho = corr%grho / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
+            corr%gikpa=corr%gikpa*ppg%kpa(1:m%nz,1:m%nx,1:m%ny)
+                    
+            !preparing for projection back
+            ! corr%grho(1,:,:) = corr%grho(2,:,:)
+            corr%gikpa(1,:,:) = corr%gikpa(2,:,:)
+        endif
 
-        call imag2d(rf%p,sf%p,&
-                    rf%poynz,rf%poynx,sf%poynz,sf%poynx, &
-                    corr%ipp,corr%ibksc,corr%ifwsc, &
-                    ifz,ilz,ifx,ilx)
+        ! if(allocated(correlate_image)) then
+        !     corr%ipp (1,:,:) = corr%ipp (2,:,:)
+        !     corr%ibksc(1,:,:) = corr%ibksc(2,:,:)
+        !     corr%ifwsc(1,:,:) = corr%ifwsc(2,:,:)
+        ! endif
 
     end subroutine
 
@@ -1105,51 +1054,6 @@ use m_cpml
 
     end subroutine
 
-    ! !2nd order
-    ! subroutine fd2d_grho(rp,sp,corr,&
-    !                     ifz,ilz,ifx,ilx)
-    !     real,dimension(*) :: rp, sp
-    !     real,dimension(*) :: corr
-
-    !     real,dimension(:),allocatable :: pzz, pxx
-    !     call alloc(pzz,cb%n)
-    !     call alloc(pxx,cb%n)
-
-    !     nz=cb%nz
-    !     nx=cb%nx
-        
-        
-    !     !laplacian: ∇·b∇u ~= ∂zᶠ(bz*∂zᵇp) + ∂ₓᶠ(bx*∂ₓᵇp)
-    !     !$omp parallel default (shared)&
-    !     !$omp private(iz,ix,i,&
-    !     !$omp         iz_ixm1,izm1_ix,iz_ix,izp1_ix,iz_ixp1)
-    !     !$omp do schedule(dynamic)
-    !     do ix = ifx,ilx-1
-    !         !dir$ simd
-    !         do iz = ifz,ilz-1
-
-    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
-    !             j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
-
-    !             iz_ixm1=i    -nz  !iz,ix-1
-    !             izm1_ix=i-1       !iz-1,ix
-    !             iz_ix  =i
-    !             izp1_ix=i+1       !iz+1,ix
-    !             iz_ixp1=i    +nz  !iz,ix+1
-
-                
-    !             corr(j) = corr(j) &
-    !                 + (rp(izp1_ix)-rp(izm1_ix))*(sp(izp1_ix)-sp(izm1_ix))*inv_2dz*inv_2dz &
-    !                 + (rp(iz_ixp1)-rp(iz_ixm1))*(sp(iz_ixp1)-sp(iz_ixm1))*inv_2dx*inv_2dx
-
-    !         enddo
-    !     enddo
-    !     !$omp end do
-    !     !$omp end parallel
-
-    ! end subroutine
-
-    !4th order
     subroutine fd2d_grho(rp,sp,corr,&
                         ifz,ilz,ifx,ilx)
         real,dimension(*) :: rp, sp
@@ -1198,47 +1102,6 @@ use m_cpml
                 corr(j) = corr(j) + (drp_dz*dsp_dz + drp_dx*dsp_dx)
             enddo
         enddo
-        !$omp end do
-        !$omp end parallel
-
-    end subroutine
-
-    subroutine imag2d(rf_p,sf_p,&
-                        rf_poynz,rf_poynx,sf_poynz,sf_poynx,&
-                        ipp, ibksc, ifwsc,&
-                        ifz,ilz,ifx,ilx)
-        real,dimension(*) :: rf_p,sf_p
-        real,dimension(*) :: rf_poynz,rf_poynx,sf_poynz,sf_poynx
-        real,dimension(*) :: ipp, ibksc, ifwsc
-        
-        nz=cb%nz
-        
-        rp=0.
-        sp=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,j,&
-        !$omp         rp,sp)
-        !$omp do schedule(dynamic)
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-                
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
-                
-                ipp(j)=ipp(j) + rf_p(i)*sf_p(i)
-
-                if(rf_poynz(i)*sf_poynz(i)+rf_poynx(i)*sf_poynx(i) < 0.) then !backward scattering
-                    ibksc(j)=ibksc(j) + rf_p(i)*sf_p(i)
-                else
-                    ifwsc(j)=ifwsc(j) + rf_p(i)*sf_p(i)
-                endif
-                
-            end do
-            
-        end do
         !$omp end do
         !$omp end parallel
 

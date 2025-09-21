@@ -3,7 +3,85 @@ use m_System
 use m_math
 use singleton
 
+    interface hilbert
+        module procedure hilbert_real1
+        module procedure hilbert_real2
+    end interface
+
     contains
+
+    function hilbert_real1(din) result(dout)
+        real,dimension(:),intent(in) :: din
+        real,dimension(:),allocatable :: dout
+
+        complex(fftkind),dimension(:),allocatable :: dfft
+
+        n1=size(din,1)
+
+        dfft = fft(dcmplx(din))  !may require "ulimit -s unlimited"
+
+        !3rd implementation, set DC and neg freq to 0
+        if(mod(n1,2)==0) then !if nt is even
+            dfft(1            )= 0.0
+            dfft(    n1/2+1:n1)= 0.0
+        else !if nt is odd, 1:(nt+1)/2 are DC & positive freq, (nt+1)/2+1:nt are negative freq
+            dfft(1             )= 0.0
+            dfft( (n1+1)/2+1:n1)= 0.0
+        endif
+
+
+        !inverse fourier transform
+        ! dout=real(fft(dfft,dim=[1],inv=.true.),kind=4)
+        dout=2.*aimag(fft(dfft,inv=.true.))
+
+        deallocate(dfft)
+
+    end function
+
+    function hilbert_real2(din,o_axis) result(dout)
+        real,dimension(:,:),intent(in) :: din
+        real,dimension(:,:),allocatable :: dout
+        integer,optional :: o_axis
+
+        complex(fftkind),dimension(:,:),allocatable :: dfft
+
+        integer axis
+
+        n1=size(din,1)
+        n2=size(din,2)
+
+        axis=either(o_axis,1,present(o_axis))
+
+        dfft = fft(dcmplx(din),dim=[axis])  !may require "ulimit -s unlimited"
+
+        if(axis==1) then
+            !3rd implementation, set DC and neg freq to 0
+            if(mod(n1,2)==0) then !if nt is even
+                dfft(1            ,:)= 0.0
+                dfft(    n1/2+1:n1,:)= 0.0
+            else !if nt is odd, 1:(nt+1)/2 are DC & positive freq, (nt+1)/2+1:nt are negative freq
+                dfft(1             ,:)= 0.0
+                dfft( (n1+1)/2+1:n1,:)= 0.0
+            endif
+
+        else
+            if(mod(n2,2)==0) then
+                dfft(:,1             )= 0.0
+                dfft(:,     n2/2+1:n2)= 0.0
+            else
+                dfft(:,1             )= 0.0
+                dfft(:, (n2+1)/2+1:n2)= 0.0
+            endif
+
+        endif
+
+        !inverse fourier transform
+        ! dout=real(fft(dfft,dim=[1],inv=.true.),kind=4)
+        dout=2.*aimag(fft(dfft,dim=[axis],inv=.true.))
+
+        deallocate(dfft)
+
+    end function
 
     subroutine hilbert_transform(din,dout,n1,n2,o_axis)
         real,dimension(n1,n2) :: din

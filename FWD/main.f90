@@ -92,9 +92,10 @@ use m_hilbert
         call fld_imU%ignite(o_wavelet=tmp)
         deallocate(tmp)
 
-        call ppg%forward(fld_reU,fld_imU)
+        !call ppg%forward(fld_reU,fld_imU)
+        call ppg%forward(fld_reU)
         call fld_reU%acquire; call shot%write('Ru_',shot%dsyn)
-        call fld_imU%acquire; call shot%write('imRU_',shot%dsyn)
+        ! call fld_imU%acquire; call shot%write('imRU_',shot%dsyn)
 
 
         ! call hud('----  Solving Av=H[s]  ----')

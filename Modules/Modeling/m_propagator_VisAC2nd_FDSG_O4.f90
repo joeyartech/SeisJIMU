@@ -48,8 +48,6 @@ use singleton
             'Required model attributes: vp, rho, qp'//s_NL// &
             'Required field components: p, p_prev, p_next'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
-            'Poynting definitions: Esq_gradphi'//s_NL// &
-            'Imaging conditions: ipp ibksc ifwsc (P-Pxcorr of backward & forward scattering)'//s_NL// &
             'Energy terms: Σ_shot ∫ sfield%p² dt'//s_NL// &
             'Basic gradients: gbuo(wait), gikpa, gqp'
 
@@ -104,13 +102,11 @@ use singleton
 
     type(t_propagator),public :: ppg
 
-    character(:),allocatable :: s_poynting_def
-
     logical :: if_hicks
     integer :: irdt
     real :: rdt
 
-    logical :: if_record_adjseismo=.true.
+    logical :: if_record_adjseismo=.false.
 
     ! logical :: is_absolute_virtual
 
@@ -260,9 +256,6 @@ use singleton
         rdt=irdt*self%dt
         call hud('rdt, irdt = '//num2str(rdt)//', '//num2str(irdt))
 
-        ! s_poynting_def=setup%get_str('POYNTING_DEF',o_default='Esq_gradphi')
-        ! if(s_poynting_def/='Esq_gradphi') call error('Sorry, other Poynting definitions have not yet implemented.')
-
         !coef
         C2 = 1 -2*visac_a/r_pi/cb%qp -c_i*visac_e/cb%qp; self%invC2 = 1/C2
         C1 =    2*visac_b/r_pi/cb%qp;                    self%C1n = C1*self%invC2
@@ -311,9 +304,6 @@ use singleton
             call alloc(f%lap, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         ! endif
 
-        call alloc(f%poynz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%poynx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-
     end subroutine
 
     subroutine init_correlate(self,corr,name)
@@ -346,11 +336,11 @@ use singleton
         class(t_propagator) :: self
         type(t_correlate) :: corr
 
-        if(allocated(correlate_image)) then
-            call correlate_assemble(corr%ipp,   correlate_image(:,:,:,1))
-            call correlate_assemble(corr%ibksc, correlate_image(:,:,:,2))
-            call correlate_assemble(corr%ifwsc, correlate_image(:,:,:,3))
-        endif
+        ! if(allocated(correlate_image)) then
+        !     call correlate_assemble(corr%ipp,   correlate_image(:,:,:,1))
+        !     call correlate_assemble(corr%ibksc, correlate_image(:,:,:,2))
+        !     call correlate_assemble(corr%ifwsc, correlate_image(:,:,:,3))
+        ! endif
 
         if(allocated(correlate_gradient)) then
             call correlate_assemble(corr%gbuo,  correlate_gradient(:,:,:,1))
@@ -601,12 +591,6 @@ use singleton
 
             !image: rf%p^it star sf%p^it
             if(mod(it,irdt)==0) then
-                ! call cpu_time(tic)
-                ! call compute_poynting(fld_imA,fld_reA)
-                ! call compute_poynting(fld_imU,fld_reU)
-                ! call cpu_time(toc)
-                ! tt3=tt3+toc-tic
-
                 call cpu_time(tic)
                 call cross_correlate_gradient(fld_reA,fld_imA,fld_reU,fld_imU,A_star_U,it)
                 call cpu_time(toc)
@@ -643,6 +627,8 @@ use singleton
 
         enddo
 
+        !postprocess
+        call cross_correlate_postprocess(A_star_U)
         call A_star_U%scale(m%cell_volume*rdt)
 
 
@@ -884,28 +870,6 @@ use singleton
         
     end subroutine
 
-    subroutine compute_poynting(v,u)
-        type(t_field) :: v, u
-
-        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: E2, ph !envelope squared & inst phase
-        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: dph_dz, dph_dx
-
-    	!E=sqrt(u%p*u%p+v%p*v%p)
-        E2=u%p*u%p+v%p*v%p
-        ph=atan2(v%p,u%p)
-
-    	do ix=cb%ifx+1,cb%ilx-1
-    	do iz=cb%ifz+1,cb%ilz-1
-    	    dph_dz(iz,ix,1) = asin(sin(ph(iz+1,ix,1) - ph(iz-1,ix,1)))*inv_2dz
-    	    dph_dx(iz,ix,1) = asin(sin(ph(iz,ix+1,1) - ph(iz,ix-1,1)))*inv_2dx
-    	enddo
-    	enddo
-
-        u%poynz=E2*dph_dz
-        u%poynx=E2*dph_dx
-
-    end subroutine
-
     subroutine extract(self,f,it)
         class(t_propagator) :: self
         type(t_field) :: f
@@ -1042,17 +1006,17 @@ use singleton
         !     real ( Aconj*ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*Ulap )
 
 
-        !other parts
-        call alloc(re_gikpa_rere,cb%mz,cb%mx,cb%my, oif_protect=.true.)
-        call alloc(re_gikpa_imim,cb%mz,cb%mx,cb%my, oif_protect=.true.)
-        call alloc(im_gikpa,     cb%mz,cb%mx,cb%my, oif_protect=.true.)
+        ! !other parts
+        ! call alloc(re_gikpa_rere,cb%mz,cb%mx,cb%my, oif_protect=.true.)
+        ! call alloc(re_gikpa_imim,cb%mz,cb%mx,cb%my, oif_protect=.true.)
+        ! call alloc(im_gikpa,     cb%mz,cb%mx,cb%my, oif_protect=.true.)
         
-        re_gikpa_rere = re_gikpa_rere + &
-                   reA%p(1:m%nz,1:m%nx,1:m%ny)*ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny)
-        re_gikpa_imim = re_gikpa_imim + &
-                   imA%p(1:m%nz,1:m%nx,1:m%ny)*ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny)
+        ! re_gikpa_rere = re_gikpa_rere + reA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny)
+        ! re_gikpa_imim = re_gikpa_imim + imA%p(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny)
 
-        corr%gikpa  = re_gikpa_rere + re_gikpa_imim
+        ! corr%gikpa  = re_gikpa_rere + re_gikpa_imim
+
+        corr%gikpa = corr%gikpa + reA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny)
 
         ! ! im_gikpa = im_gikpa + &
         !     ! aimag( Aconj(1:m%nz,1:m%nx,1:m%ny)*ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*Ulap(1:m%nz,1:m%nx,1:m%ny) )
@@ -1075,22 +1039,24 @@ use singleton
 
     end subroutine
 
-    subroutine cross_correlate_image(rf,sf,corr,it)
-        type(t_field), intent(in) :: rf, sf
+    subroutine cross_correlate_postprocess(corr)
         type(t_correlate) :: corr
 
-        !nonzero only when sf touches rf
-        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
-        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
-        ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
-        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
-        ! ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
-        ! ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
+        if(allocated(correlate_gradient)) then
+            !scaling gradients by model parameters
+            ! corr%grho = corr%grho / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
+            corr%gikpa=corr%gikpa*ppg%kpa(1:m%nz,1:m%nx,1:m%ny)
+                    
+            !preparing for projection back
+            ! corr%grho(1,:,:) = corr%grho(2,:,:)
+            corr%gikpa(1,:,:) = corr%gikpa(2,:,:)
+        endif
 
-        call imag2d(rf%p,sf%p,&
-                    rf%poynz,rf%poynx,sf%poynz,sf%poynx, &
-                    corr%ipp,corr%ibksc,corr%ifwsc, &
-                    ifz,ilz,ifx,ilx)
+        ! if(allocated(correlate_image)) then
+        !     corr%ipp (1,:,:) = corr%ipp (2,:,:)
+        !     corr%ibksc(1,:,:) = corr%ibksc(2,:,:)
+        !     corr%ifwsc(1,:,:) = corr%ifwsc(2,:,:)
+        ! endif
 
     end subroutine
 
@@ -1372,46 +1338,6 @@ use singleton
 
     end subroutine
 
-    subroutine imag2d(rf_p,sf_p,&
-                        rf_poynz,rf_poynx,sf_poynz,sf_poynx,&
-                        ipp, ibksc, ifwsc,&
-                        ifz,ilz,ifx,ilx)
-        real,dimension(*) :: rf_p,sf_p
-        real,dimension(*) :: rf_poynz,rf_poynx,sf_poynz,sf_poynx
-        real,dimension(*) :: ipp, ibksc, ifwsc
-        
-        nz=cb%nz
-        
-        rp=0.
-        sp=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,j,&
-        !$omp         rp,sp)
-        !$omp do schedule(dynamic)
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-                
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
-                
-                ipp(j)=ipp(j) + rf_p(i)*sf_p(i)
-
-                if(rf_poynz(i)*sf_poynz(i)+rf_poynx(i)*sf_poynx(i) < 0.) then !backward scattering
-                    ibksc(j)=ibksc(j) + rf_p(i)*sf_p(i)
-                else
-                    ifwsc(j)=ifwsc(j) + rf_p(i)*sf_p(i)
-                endif
-                
-            end do
-            
-        end do
-        !$omp end do
-        !$omp end parallel
-
-    end subroutine
 
 
     ! subroutine gaussian_smooth(self, f, dx_in)

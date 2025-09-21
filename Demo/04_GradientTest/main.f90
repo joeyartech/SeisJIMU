@@ -1,33 +1,18 @@
 program main
 use m_System
-
-!use m_Modeling
-use m_model
-use m_shotlist
-use m_shot
-use m_computebox
-use m_field
-use m_correlate
-use m_cpml
-use m_propagator
-
-!use m_Kernel
-use m_parametrizer
-use m_querypoint
-use m_weighter
-use m_preconditioner
-use m_fobjective
-
+use m_Modeling
+use m_Kernel
 use m_linesearcher
 
+!     type(t_checkpoint) :: chp_shls, chp_qp
     type(t_querypoint),target :: qp0
 
     !mpiworld lives in t_mpienv
     call mpiworld%init(name='MPIWorld')
 
-    call hud('====================================='//s_NL// &
-             '       WELCOME TO SeisJIMU FWI       '//s_NL// &
-             '=====================================')
+    call hud('======================================'//s_NL// &
+             '       WELCOME TO SeisJIMU PFEI       '//s_NL// &
+             '======================================')
 
     call setup%init
     call sysio_init
@@ -51,6 +36,9 @@ use m_linesearcher
     ! call sfield%estim_RAM
     ! call rfield%estim_RAM
     
+    !checkpoint
+!     call checkpoint_init
+
     !model
     call m%init
     call m%read
@@ -59,7 +47,11 @@ use m_linesearcher
     !shotlist
     call shls%read_from_data
     call shls%build
-    call shls%sample
+!     call chp_shls%init('FWI_shotlist_gradient',oif_fuse=.true.)
+!     if(.not.shls%is_registered(chp_shls,'sampled_shots')) then
+        call shls%sample
+!         call shls%register(chp_shls,'sampled_shots')
+!     endif
     call shls%assign
 
     !if preconditioner needs energy terms
@@ -75,7 +67,13 @@ use m_linesearcher
 
     !objective function and gradient
     call fobj%init
-    call fobj%eval(qp0,oif_update_m=.false.)
+!     call chp_qp%init('FWI_querypoint_gradient')
+!     if(.not.qp0%is_registered(chp_qp)) then
+        call fobj%eval(qp0,oif_update_m=.false.)
+!         call qp0%register(chp_qp)
+!     endif
+
+    call sysio_write('correlate_gradient',correlate_gradient,m%n*ppg%ngrad)
     
     call sysio_write('qp0%g',qp0%g,size(qp0%g))
     call sysio_write('qp0%pg',qp0%pg,size(qp0%pg))
