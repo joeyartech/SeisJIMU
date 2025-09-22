@@ -67,9 +67,6 @@ use singleton
         integer :: nt
         real :: dt
 
-        !!reference value
-        !real :: invsqEref
-
         contains
         procedure :: print_info
         procedure :: estim_RAM

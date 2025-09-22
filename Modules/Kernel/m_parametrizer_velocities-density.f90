@@ -30,7 +30,7 @@ use m_empirical
 
     type(t_parametrizer),public :: param
 
-    logical :: is_AC=.false., is_EL=.false.
+    logical :: is_grho,is_gbuo,is_gkpa,is_gikpa,is_glda,is_gmu
     integer :: i_vp=0, i_vs=0, i_rho=0
 
     contains
@@ -46,9 +46,13 @@ use m_empirical
         if(allocated(sublist)) deallocate(sublist)
         
         
-        !PDE info
-        is_AC = index(ppg%info,'AC')>0
-        is_EL = index(ppg%info,'EL')>0
+        !check basic gradients provided from propagator
+        is_grho = index(ppg%info,'grho')>0
+        is_gbuo = index(ppg%info,'gbuo')>0
+        is_gkpa = index(ppg%info,'gkpa')>0 
+        is_gikpa= index(ppg%info,'gikpa')>0
+        is_glda = index(ppg%info,'glda')>0
+        is_gmu  = index(ppg%info,'gmu')>0
 
         !read in active parameters and their allowed ranges
         list=setup%get_strs('PARAMETER',o_default='vp:1500:3400')
@@ -68,7 +72,7 @@ use m_empirical
                 self%npars=self%npars+1
 
             case ('vs' )
-                if(is_AC) then
+                if(index(ppg%info,'AC')>0) then
                     call hud('vs in PARAMETER is neglected as the PDE is ACoustic.')
                     cycle loop
                 endif
@@ -130,7 +134,7 @@ use m_empirical
 
                 call empirical_x2m('velocities-density')
                 
-                if(is_EL) call m%apply_elastic_continuum
+                if(index(ppg%info,'EL')>0) call m%apply_elastic_continuum
                 call m%apply_freeze_zone
 
             endif
@@ -151,46 +155,47 @@ use m_empirical
         if(present(o_g)) then
             call alloc(o_g,self%n1,self%n2,self%n3,self%npars)
 
-            if(is_AC) then
+            n_entry=0
 
-                if(index(ppg%info,'1st-order')>0) then 
-                    call hud('Parametrizer finds AC 1st-order propagator.')
-                    !correlate_gradient(:,:,:,1) = grho
-                    !correlate_gradient(:,:,:,2) = gkpa
-                    !
-                    !kpa = rho*vp² = vp*ip
-                    !rho0= rho      = ip/vp
-                    !So,
-                    !gvp = gkpa*2*rho*vp
-                    !grho= gkpa*vp² + grho0
-                    if(i_vp >0) o_g(:,:,:,i_vp ) = correlate_gradient(:,:,:,2)*2*m%rho*m%vp
-                    if(i_rho>0) o_g(:,:,:,i_rho) = correlate_gradient(:,:,:,2)*m%vp**2 + correlate_gradient(:,:,:,1)
-
-                elseif(index(ppg%info,'2nd-order')>0) then 
-                    call hud('Parametrizer finds AC 2nd-order propagator.')
-                    !correlate_gradient(:,:,:,1) = gbuo
-                    !correlate_gradient(:,:,:,2) = gikpa
-                    !
-                    !ikpa= kpa⁻¹ = rho⁻¹ vp⁻²
-                    !buo = rho⁻¹
-                    !So,
-                    !gvp = gikpa* rho⁻¹*(-2)vp⁻³
-                    !grho= -rho⁻²*( gbuo + gikpa*vp⁻² )
-                    if(i_vp >0) o_g(:,:,:,i_vp ) = correlate_gradient(:,:,:,2)*(-2.)/m%rho/(m%vp**3)
-                    if(i_rho>0) o_g(:,:,:,i_rho) = -m%rho**(-2)*( &
-                        correlate_gradient(:,:,:,1) + correlate_gradient(:,:,:,2)/(m%vp**2) )
-
-                else
-                    call error('Parametrizer finds NO propagators.')
-
-                endif
+            if(is_grho.and.is_gkpa) then
+                call hud('Parametrizer finds grho & gkpa')
+                !correlate_gradient(:,:,:,1) = grho
+                !correlate_gradient(:,:,:,2) = gkpa
+                !
+                !kpa = rho*vp² = vp*ip
+                !rho0= rho      = ip/vp
+                !So,
+                !gvp = gkpa*2*rho*vp
+                !grho= gkpa*vp² + grho0
+                if(i_vp >0) o_g(:,:,:,i_vp ) = correlate_gradient(:,:,:,2)*2*m%rho*m%vp
+                if(i_rho>0) o_g(:,:,:,i_rho) = correlate_gradient(:,:,:,2)*m%vp**2 + correlate_gradient(:,:,:,1)
 
                 call empirical_gradient('velocities-density',o_gvp=o_g(:,:,:,i_vp),o_grho=o_g(:,:,:,i_rho))
 
+                n_entry=n_entry+1
             endif
 
-            if(is_EL) then
-                call hud('Parametrizer finds EL 1st-order propagator.')
+            if(is_gbuo.and.is_gikpa) then 
+                call hud('Parametrizer finds gbuo & gikpa')    
+                !correlate_gradient(:,:,:,1) = gbuo
+                !correlate_gradient(:,:,:,2) = gikpa
+                !
+                !ikpa= kpa⁻¹ = rho⁻¹ vp⁻²
+                !buo = rho⁻¹
+                !So,
+                !gvp = gikpa* rho⁻¹*(-2)vp⁻³
+                !grho= -rho⁻²*( gbuo + gikpa*vp⁻² )
+                if(i_vp >0) o_g(:,:,:,i_vp ) = correlate_gradient(:,:,:,2)*(-2.)/m%rho/(m%vp**3)
+                if(i_rho>0) o_g(:,:,:,i_rho) = -m%rho**(-2)*( &
+                    correlate_gradient(:,:,:,1) + correlate_gradient(:,:,:,2)/(m%vp**2) )
+
+                call empirical_gradient('velocities-density',o_gvp=o_g(:,:,:,i_vp),o_grho=o_g(:,:,:,i_rho))
+
+                n_entry=n_entry+1
+            endif
+
+            if(is_grho.and.is_glda.and.is_gmu) then
+                call hud('Parametrizer finds grho glda & gmu')
                 !correlate_gradient(:,:,:,1) = grho
                 !correlate_gradient(:,:,:,2) = glda
                 !correlate_gradient(:,:,:,2) = gmu 
@@ -209,6 +214,11 @@ use m_empirical
 
                 call empirical_gradient('velocities-density',o_gvp=o_g(:,:,:,i_vp),o_gvs=o_g(:,:,:,i_vs),o_grho=o_g(:,:,:,i_rho))
 
+                n_entry=n_entry+1
+            endif
+
+            if(n_entry/=1) then
+                call error('Parametrizer has n_entry='//num2str(n_entry))
             endif
 
             !normaliz g by allowed parameter range

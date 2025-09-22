@@ -43,12 +43,12 @@ clean :
 	-rm FWD/*.o FWI/*.o RTM/*.o
 
 cleanmod :
-	(cd Modules/System; make clean)
-	(cd Modules/Etc; make clean)
-	(cd Modules/Signal; make clean)
-	(cd Modules/Modeling; make clean)
-	(cd Modules/Kernel; make clean)
-	(cd Modules/Optimization; make clean)
-	(cd mod; rm -r *)
+	-(cd Modules/System; make clean)
+	-(cd Modules/Etc; make clean)
+	-(cd Modules/Signal; make clean)
+	-(cd Modules/Modeling; make clean)
+	-(cd Modules/Kernel; make clean)
+	-(cd Modules/Optimization; make clean)
+	-(cd mod; rm -r *)
 
 cleanall : cleanmod clean
