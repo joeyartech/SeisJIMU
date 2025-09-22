@@ -29,8 +29,6 @@ use m_smoother_laplacian_sparse
         integer,dimension(:,:),allocatable :: ibathy
         logical,dimension(:,:,:),allocatable :: is_freeze_zone
 
-        real,dimension(:,:,:,:),allocatable :: gradient, image, energy, correlate
-
         contains
         procedure :: init
         procedure :: estim_RAM
@@ -39,6 +37,7 @@ use m_smoother_laplacian_sparse
         procedure :: set_reference
         procedure :: write
         procedure :: apply_freeze_zone
+        procedure :: apply_elastic_continuum
 
     end type
     
@@ -349,6 +348,25 @@ use m_smoother_laplacian_sparse
 
     end subroutine
 
+    subroutine apply_elastic_continuum(self)
+        class(t_model) :: self
+
+        !vp²=(K+4/3*G)/ρ; vs²=G/ρ
+        !lowest possible vp²=K/ρ=500 m/s
+        !so vp²  500² + 4/3vs²
+        !0.75(vp²-500²) >= vs²
+        
+        real,dimension(:,:,:),allocatable :: tmp
+        
+        tmp = sqrt(0.75* (self%vp**2 - 500**2))
+
+        where (tmp<self%vs) self%vs=tmp
+
+        deallocate(tmp)
+
+    end subroutine
+
+
     subroutine write(self,o_suffix)
         class(t_model) :: self
         character(*),optional :: o_suffix
@@ -426,12 +444,6 @@ use m_smoother_laplacian_sparse
         enddo
 
         close(13)
-
-        if(allocated(self%image)) then
-            open(13,file=dir_out//'image'//suf,access='direct',recl=4*self%n,action='write')
-            write(13,rec=1) self%image
-            close(13)
-        endif
 
     end subroutine
 

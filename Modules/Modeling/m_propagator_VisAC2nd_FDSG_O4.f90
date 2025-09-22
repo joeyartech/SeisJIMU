@@ -693,7 +693,7 @@ use singleton
             else
                 select case (shot%src%comp)
                 case ('p') !explosion
-                    f%p(iz,ix,iy)                = f%p(iz,ix,iy)                + wl*self%kpa(iz,ix,iy)
+                    f%p(iz,ix,iy)                  = f%p(iz,ix,iy)                + wl*self%kpa(iz,ix,iy)
                 
                 case ('dpdz') !vertical force
                     f%p(iz+1,ix,iy)                = f%p(iz+1,ix,iy)            + wl*self%kpa(iz+1,ix,iy)*inv_2dz
@@ -985,57 +985,60 @@ use singleton
         type(t_field), intent(in) :: reA, imA, reU, imU
         type(t_correlate) :: corr
 
-        real,dimension(:,:,:),allocatable,save :: re_gikpa_rere, re_gikpa_imim, im_gikpa
-
-        complex,dimension(:,:,:),allocatable :: Ulap, Aconj
+        ! real,dimension(:,:,:),allocatable,save :: re_gikpa_rere, re_gikpa_imim, im_gikpa
+        ! complex,dimension(:,:,:),allocatable :: Ulap, Aconj
 
         !nonzero only when sf touches rf
-        ifz=max(reU%bloom(1,it),reA%bloom(1,it),2)
-        ilz=min(reU%bloom(2,it),reA%bloom(2,it),cb%mz)
-        ifx=max(reU%bloom(3,it),reA%bloom(3,it),1)
-        ilx=min(reU%bloom(4,it),reA%bloom(4,it),cb%mx)
+        ! ifz=max(reU%bloom(1,it),reA%bloom(1,it),2)
+        ! ilz=min(reU%bloom(2,it),reA%bloom(2,it),cb%mz)
+        ! ifx=max(reU%bloom(3,it),reA%bloom(3,it),1)
+        ! ilx=min(reU%bloom(4,it),reA%bloom(4,it),cb%mx)
         ! ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
         ! ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
 
 
+        corr%gikpa = corr%gikpa + reA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny) !should use this one because we just use the real part in the misfit function, only the re-re term is needed here.
+        ! corr%gikpa = corr%gikpa + imA%p(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny) !same value as above
+        ! corr%gikpa = corr%gikpa + reA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny) &
+        !                         + imA%p(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny) !twice magnitude as above
+
+        
         ! Ulap  = cmplx( reU%lap(1:m%nz,1:m%nx,1:m%ny), imU%lap(1:m%nz,1:m%nx,1:m%ny) )
         ! Aconj = cmplx( reA%p  (1:m%nz,1:m%nx,1:m%ny),-imA%p  (1:m%nz,1:m%nx,1:m%ny) )
-
+        !
         ! !for gikpa
         ! corr%gikpa = corr%gikpa + &
         !     real ( Aconj*ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*Ulap )
-
-
+        !
         ! !other parts
         ! call alloc(re_gikpa_rere,cb%mz,cb%mx,cb%my, oif_protect=.true.)
         ! call alloc(re_gikpa_imim,cb%mz,cb%mx,cb%my, oif_protect=.true.)
         ! call alloc(im_gikpa,     cb%mz,cb%mx,cb%my, oif_protect=.true.)
-        
+        !        
         ! re_gikpa_rere = re_gikpa_rere + reA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny)
         ! re_gikpa_imim = re_gikpa_imim + imA%p(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny)
-
+        !
         ! corr%gikpa  = re_gikpa_rere + re_gikpa_imim
-
-        corr%gikpa = corr%gikpa + reA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny)
-
+        !
         ! ! im_gikpa = im_gikpa + &
         !     ! aimag( Aconj(1:m%nz,1:m%nx,1:m%ny)*ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*Ulap(1:m%nz,1:m%nx,1:m%ny) )
         ! im_gikpa = im_gikpa + ppg%kpa(1:m%nz,1:m%nx,1:m%ny)* (&
         !      reA%p(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny) &
         !     -imA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny) &
         !     )
-
+        !
         ! call sysio_write('re_gikpa_rere',re_gikpa_rere,m%n)
         ! call sysio_write('re_gikpa_imim',re_gikpa_imim,m%n)
         ! call sysio_write('re_gikpa',     corr%gikpa,   m%n)
         ! call sysio_write('im_gikpa',     im_gikpa,     m%n)
+
 
         ! !for gbuo
         ! call fd2d_grho(reA%p,reU%p,corr%gbuo,   ifz,ilz,ifx,ilx)
 
         ! !for giqp
         ! corr%giqp = corr%giqp + &
-        !     A(1:m%nz,1:m%nx,1:m%ny) * ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*Ulap(1:m%nz,1:m%nx,1:m%ny)        
+        !     A(1:m%nz,1:m%nx,1:m%ny) * ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*Ulap(1:m%nz,1:m%nx,1:m%ny)
 
     end subroutine
 
@@ -1048,8 +1051,19 @@ use singleton
             corr%gikpa=corr%gikpa*ppg%kpa(1:m%nz,1:m%nx,1:m%ny)
                     
             !preparing for projection back
+            iz=shot%src%iz-cb%ioz+1
+            ix=shot%src%ix-cb%iox+1
+            !iy=shot%src%iy-cb%ioy+1
+
+            !remove singular point at the src position,
+            !because we didn't consider src when deriving the gradient formula
+            ncells=size(corr%gikpa(iz-2:iz+2,ix-2:ix+2,1))
+            corr%gikpa(iz,ix,1) = sum(corr%gikpa(iz-2:iz+2,ix-2:ix+2,1))/ncells
+
+            !removing singular top boundary..
             ! corr%grho(1,:,:) = corr%grho(2,:,:)
             corr%gikpa(1,:,:) = corr%gikpa(2,:,:)
+
         endif
 
         ! if(allocated(correlate_image)) then

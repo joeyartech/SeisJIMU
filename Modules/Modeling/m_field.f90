@@ -400,6 +400,8 @@ use, intrinsic :: ieee_arithmetic
                 self%wavelet=transpose(o_wavelet)
             
             endif
+
+            return
             
         endif
 

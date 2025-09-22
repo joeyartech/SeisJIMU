@@ -1,4 +1,5 @@
 module m_Kernel
+use m_empirical
 use m_parametrizer
 use m_querypoint
 use m_weighter

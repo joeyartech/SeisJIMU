@@ -68,42 +68,19 @@ use m_hilbert
 
         call ppg%check_discretization
         call ppg%init
-        ! call ppg%init_field(field,name='field')
         call ppg%init_abslayer
-
-        ! call field%ignite
-
-        ! !forward modeling
-        ! call ppg%forward(field)
-
-        ! call field%acquire
-
-        ! !write synthetic data
-        ! call shot%write('dsyn_',shot%dsyn)
-
 
         call hud('----  Solving Au=s  ----')
         call ppg%init_field(fld_reU, name='fld_reU')
         call ppg%init_field(fld_imU, name='fld_imU')
         
         call fld_reU%ignite
-        call alloc(tmp,shot%nt,1)
-        call hilbert_transform(shot%wavelet,tmp,shot%nt,1)
-        call fld_imU%ignite(o_wavelet=tmp)
-        deallocate(tmp)
+        call fld_imU%ignite(o_wavelet=reshape(hilbert(shot%wavelet),[shot%nt,1]))
 
-        !call ppg%forward(fld_reU,fld_imU)
-        call ppg%forward(fld_reU)
+        call ppg%forward(fld_reU,fld_imU)
+        ! call ppg%forward(fld_reU)
         call fld_reU%acquire; call shot%write('Ru_',shot%dsyn)
         ! call fld_imU%acquire; call shot%write('imRU_',shot%dsyn)
-
-
-        ! call hud('----  Solving Av=H[s]  ----')
-        ! call shot%read_wlhilb
-        ! call ppg%init_field(fld_v,name='fld_v');    call fld_v%ignite
-        ! call ppg%forward(fld_v)
-        ! call fld_v%acquire; call shot%write('Rv_',shot%dsyn)
-
 
     enddo
     

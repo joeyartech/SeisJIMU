@@ -45,16 +45,16 @@ use m_parametrizer
                 call by_depth(o_factor=str2real(sublist(2)%s))
             endif
             
-            if(index(list(i)%s,'energy')>0) then
-                sublist=split(list(i)%s,o_sep=':')
-                iengy=either(str2int(sublist(2)%s),1,len(sublist(2)%s)>0)
-                call hud('Will precondition the gradient by '//num2str(iengy)//"'th energy term")
-                if((iengy) > size(m%energy,4)) then
-                    call warn('The chosen energy term does NOT exist! Use instead the 1st term provided from propagator.')
-                    iengy=1
-                endif
-                call by_energy(iengy)
-            endif
+            ! if(index(list(i)%s,'energy')>0) then
+            !     sublist=split(list(i)%s,o_sep=':')
+            !     iengy=either(str2int(sublist(2)%s),1,len(sublist(2)%s)>0)
+            !     call hud('Will precondition the gradient by '//num2str(iengy)//"'th energy term")
+            !     if((iengy) > size(m%energy,4)) then
+            !         call warn('The chosen energy term does NOT exist! Use instead the 1st term provided from propagator.')
+            !         iengy=1
+            !     endif
+            !     call by_energy(iengy)
+            ! endif
 
             if(index(list(i)%s,'custom')>0) then
                 sublist=split(list(i)%s,o_sep=':')
@@ -94,36 +94,36 @@ use m_parametrizer
         
     end subroutine
 
-    subroutine by_energy(iengy)
+    ! subroutine by_energy(iengy)
 
-        preco_in_m=1./m%energy(:,:,:,iengy)
+    !     preco_in_m=1./m%energy(:,:,:,iengy)
 
-        ! !convert gradient wrt model to gradient wrt parameters
-        ! call param%transform_gradient('m->x',fobj%gradient)
+    !     ! !convert gradient wrt model to gradient wrt parameters
+    !     ! call param%transform_gradient('m->x',fobj%gradient)
         
-        ! !start_depth
+    !     ! !start_depth
 
-        ! !H11 = H_[kappainv,kappainv] = (wadj dA/dVp w)^adj (wadj dA/dVp w) = autocorr of pressure field
-        ! !tmp1=pbdir%p*(pbdir%p_bwd-pbdir%p)*pbdir%kappa
-        ! !inv%h11+=tmp1*tmp1 /pbdir%dt
-        ! !inv%h11=inv%h11/pbdir%rho**4/pbdir%vp**8 !kappa is the model parameter instead of kappainv
+    !     ! !H11 = H_[kappainv,kappainv] = (wadj dA/dVp w)^adj (wadj dA/dVp w) = autocorr of pressure field
+    !     ! !tmp1=pbdir%p*(pbdir%p_bwd-pbdir%p)*pbdir%kappa
+    !     ! !inv%h11+=tmp1*tmp1 /pbdir%dt
+    !     ! !inv%h11=inv%h11/pbdir%rho**4/pbdir%vp**8 !kappa is the model parameter instead of kappainv
         
-        ! idepth=nint(depth/m%dz)
+    !     ! idepth=nint(depth/m%dz)
 
-        ! do i=1,ppg%ngrad
-        !     do iy=1,m%ny; do ix=1,m%nx
-        !     self%preco(1:idepth,ix,iy)=[(i-1)*m%dz,i=1,idepth)] &
-        !         /(depth*sfield%amp(1:idepth,ix,iy))
+    !     ! do i=1,ppg%ngrad
+    !     !     do iy=1,m%ny; do ix=1,m%nx
+    !     !     self%preco(1:idepth,ix,iy)=[(i-1)*m%dz,i=1,idepth)] &
+    !     !         /(depth*sfield%amp(1:idepth,ix,iy))
 
-        !     self%preco(idepth+1:m%nz,ix,iy)=1./sfield%amp(idepth+1:m%nz,:,:)
-        !     enddo; enddo
-        ! enddo
+    !     !     self%preco(idepth+1:m%nz,ix,iy)=1./sfield%amp(idepth+1:m%nz,:,:)
+    !     !     enddo; enddo
+    !     ! enddo
 
-        ! where(ieee_is_nan(self%preco) .or. .not. ieee_is_finite(self%preco))
-        !     self%preco=0.
-        ! endwhere
+    !     ! where(ieee_is_nan(self%preco) .or. .not. ieee_is_finite(self%preco))
+    !     !     self%preco=0.
+    !     ! endwhere
 
-    end subroutine
+    ! end subroutine
 
     subroutine by_custom(file)
         character(*) :: file

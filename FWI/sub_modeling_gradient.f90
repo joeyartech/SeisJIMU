@@ -45,20 +45,20 @@ use m_hilbert
 
         call hud('----  Solving AU=S  ----')
         call ppg%init_field(fld_reU, name='fld_reU')
-        ! call ppg%init_field(fld_imU, name='fld_imU')
+        call ppg%init_field(fld_imU, name='fld_imU')
         
         call fld_reU%ignite
         call fld_imU%ignite(o_wavelet=reshape(hilbert(shot%wavelet),[shot%nt,1]))
 
-        call ppg%forward(fld_reU)!,fld_imU)
-        ! call fld_imU%acquire; call shot%write('imRU_',shot%dsyn)
+        call ppg%forward(fld_reU,fld_imU)
+        call fld_imU%acquire; call shot%write('imRU_',shot%dsyn)
         call fld_reU%acquire; call shot%write('Ru_',shot%dsyn)       
                 
         if(setup%get_str('JOB')=='forward modeling') cycle
 
 
         call ppg%init_field(fld_reA,name='fld_reA',ois_adjoint=.true.)
-        ! call ppg%init_field(fld_imA,name='fld_imA',ois_adjoint=.true.)
+        call ppg%init_field(fld_imA,name='fld_imA',ois_adjoint=.true.)
 
         call hud('----  Computing obj func & dadj  ----')
             call wei%update
@@ -72,11 +72,10 @@ use m_hilbert
                 call kernel_L2sq(shot%dadj)
                 call fld_reA%ignite(o_wavelet=shot%dadj)
                 call shot%write('dadj_',shot%dadj)
-                ! call shot%write('Hdadj_',hilbert(shot%dadj))
+                call shot%write('Hdadj_',hilbert(shot%dadj))
 
-                ! call fld_imA%ignite(o_wavelet=hilbert(shot%dadj)) !,tmp,shot%nt,shot%nrcv))
-                
-                
+                call fld_imA%ignite(o_wavelet=hilbert(shot%dadj))
+                                
                 case default
                 call error('No DNORM specified!')
 
@@ -85,8 +84,8 @@ use m_hilbert
         
         call hud('----  Solving adjoint eqn & xcorrelate  ----')
         call ppg%init_correlate(A_star_U,'A_star_U')
-        !call ppg%adjoint(fld_reA,fld_imA, fld_reU,fld_imU, A_star_U)
-        call ppg%adjoint(fld_reA, fld_reU, A_star_U)
+        call ppg%adjoint(fld_reA,fld_imA, fld_reU,fld_imU, A_star_U)
+        ! call ppg%adjoint(fld_reA, fld_reU, A_star_U)
 
 
         call hud('----  Assemble  ----')

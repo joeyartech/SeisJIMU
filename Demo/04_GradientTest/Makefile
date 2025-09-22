@@ -18,6 +18,7 @@ obj = \
 ../../Modules/Modeling/m_cpml.o \
 ../../Modules/Modeling/m_propagator_$(WaveEq)_$(Solver)_$(Order).o \
 ../../Modules/Modeling/m_Modeling.o \
+../../Modules/Kernel/m_empirical.o \
 ../../Modules/Kernel/m_parametrizer_$(Param).o \
 ../../Modules/Kernel/m_querypoint.o \
 ../../Modules/Kernel/m_weighter.o \
@@ -49,22 +50,25 @@ exe : ../../$(App)/sub_modeling_gradient.o main.o sub_optimizer_init_loop.o
 	(cd ../../exe; ln -sf gradienttest_$(WaveEq)_$(Solver)_$(Order)_$(Param) GradientTest )
 
 clean :
+	-(cd ../../FWI; rm *.o)
 	-rm main.o
 
 cleanall :
 	#System
-	(cd ../../Modules/System; make clean)
+	-(cd ../../Modules/System; make clean)
 	#Etc
-	(cd ../../Modules/Etc; make clean)
+	-(cd ../../Modules/Etc; make clean)
 	#Signal
-	(cd ../../Modules/Signal; make clean)
+	-(cd ../../Modules/Signal; make clean)
 	#Modeling
-	(cd ../../Modules/Modeling; make clean)
+	-(cd ../../Modules/Modeling; make clean)
 	#Kernel
-	(cd ../../Modules/Kernel; make clean)
+	-(cd ../../Modules/Kernel; make clean)
 	#Optimization
-	(cd ../../Modules/Optimization; rm *.o)
+	-(cd ../../Modules/Optimization; rm *.o)
 	#
-	(cd ../../mod; rm *.mod)
+	-(cd ../../mod; rm *.mod)
+	#
+	-(cd ../../FWI; rm *.o)
 	#
 	make clean
