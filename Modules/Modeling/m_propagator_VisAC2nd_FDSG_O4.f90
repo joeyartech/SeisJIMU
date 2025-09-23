@@ -642,7 +642,7 @@ use singleton
             write(*,*) 'Elapsed time to evolve adj field         ',tt11/mpiworld%max_threads
             ! write(*,*) 'Elapsed time to set adj field          ',tt9/mpiworld%max_threads
             write(*,*) 'Elapsed time to extract fields           ',tt12/mpiworld%max_threads
-            write(*,*) 'Elapsed time to compute Poynting vectors ',tt3/mpiworld%max_threads
+            ! write(*,*) 'Elapsed time to compute Poynting vectors ',tt3/mpiworld%max_threads
             write(*,*) 'Elapsed time to correlate                ',tt10/mpiworld%max_threads
 
         endif
@@ -1046,16 +1046,14 @@ use singleton
             !scaling gradients by model parameters
             ! corr%grho = corr%grho / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
             corr%gikpa=corr%gikpa*ppg%kpa(1:m%nz,1:m%nx,1:m%ny)
-                    
-            !preparing for projection back
-            iz=shot%src%iz-cb%ioz+1
-            ix=shot%src%ix-cb%iox+1
-            !iy=shot%src%iy-cb%ioy+1
 
             !remove singular point at the src position,
             !because we didn't consider src when deriving the gradient formula
-            ncells=size(corr%gikpa(iz-2:iz+2,ix-2:ix+2,1))
-            corr%gikpa(iz,ix,1) = sum(corr%gikpa(iz-2:iz+2,ix-2:ix+2,1))/ncells
+            iz=shot%src%iz-cb%ioz+1; ifz=either(iz-2,iz,iz>=3); ilz=either(iz+2,iz,iz<=m%nz-2) !safeguards
+            ix=shot%src%ix-cb%iox+1; ifx=either(ix-2,ix,ix>=3); ilx=either(ix+2,ix,ix<=m%nx-2)
+            
+            ncells=size(corr%gikpa(ifz:ilz,ifx:ilx,1))
+            corr%gikpa(iz,ix,1) = sum(corr%gikpa(ifz:ilz,ifx:ilx,1))/ncells
 
             !removing singular top boundary..
             ! corr%grho(1,:,:) = corr%grho(2,:,:)
