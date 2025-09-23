@@ -18,10 +18,11 @@ use m_Modeling
         type(t_string),dimension(:),allocatable :: list,sublist
 
         !print info
-        call hud('Empirical_laws module is invoked.')
-        call hud('Available empirical law: Gardner, Castagna.')
+        call hud('Empirical laws module is invoked.')
+        call hud('Available empirical law: Gardner, Castagna, VpQp.')
         call hud('  - If Gardner law is used, rho from PARAMETER setup (if loaded) will be neglected and become passive.')
         call hud('  - If Castagna law is used, vs from PARAMETER setup (if loaded) will be neglected and become passive.')
+        call hud('  - If VpQp law is used, vs, qp from PARAMETER setup (if loaded) will be neglected and become passive.')
 
         !read in empirical law
         list=setup%get_strs('EMPIRICAL_LAW')
@@ -68,6 +69,11 @@ use m_Modeling
 
                     call hud('Castagna law is enabled: a='//num2str(a)//', b='//num2str(b)//' m/s')
 
+                elseif(list(i)%s(1:4)=='VpQp') then
+                    is_vpqp=.true.
+                    
+                    call hud('Qp=sqrt(Vp) law is enabled')
+
                 endif
 
             enddo
@@ -98,6 +104,7 @@ use m_Modeling
         if(parametrization=='velocities-density') then
             if(is_gardner)  m%rho = a*m%vp**b
             if(is_castagna) m%vs = a*m%vp + b
+            if(is_vpqp)     m%qp = sqrt(m%vp)
         endif
 
         if(parametrization=='velocities-impedance') then
@@ -107,9 +114,9 @@ use m_Modeling
 
     end subroutine
 
-    subroutine empirical_gradient(parametrization,o_gvp,o_gvs,o_grho,o_gip)
+    subroutine empirical_gradient(parametrization,o_gvp,o_gvs,o_grho,o_gip,o_gqp)
         character(*) :: parametrization
-        real,dimension(:,:,:),optional :: o_gvp,o_gvs,o_grho,o_gip
+        real,dimension(:,:,:),optional :: o_gvp,o_gvs,o_grho,o_gip,o_gqp
 
         real,dimension(:,:,:),allocatable :: v_t !velocity model in pseudotime domain
 
@@ -127,7 +134,11 @@ use m_Modeling
             if(is_castagna) then
                 o_gvp = o_gvp + o_gvs * a
                 o_gvs = 0.
-           endif
+            endif
+
+            if(is_vpqp) then
+                !to be completed
+            endif
             
         endif
 
