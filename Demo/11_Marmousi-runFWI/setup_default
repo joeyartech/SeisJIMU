@@ -1,0 +1,51 @@
+MODEL_SIZE              '214 1215 1'
+MODEL_SPACING           '14  14   1'
+FILE_MODEL              'true'
+MODEL_ATTRIBUTES        'vp rho qp'
+MODEL_ATTRIBUTES_WRITE   vp
+#FILE_TOPO              'topo'
+
+IS_FREESURFACE          F
+
+ACQUI_GEOMETRY          spread
+FS                      '14   1200  0'
+#DS			'  0   100  0'
+#NS			 144
+DS			'  0   400  0'
+NS			 36
+FR                      '14    0  0'
+DR                      '  0    25  0'
+NR                       600
+
+SCOMP                   dpdz
+RCOMP                   dpdz #'p vz'
+
+WAVELET_TYPE	ricker
+
+FPEAK        6
+NT           2857
+DT           0.00175
+
+#SNAPSHOT      p
+#NSNAPSHOT    50
+
+#############
+## for FWI ##
+#############
+FILE_DATA_PREFIX    './results_obs/Ru_Shot'
+WEIGHTING           'none'
+
+UPDATE_WAVELET	no
+
+PARAMETER           'vp:1065:4700'
+
+SMOOTHING     'none'
+#PRECO         'z^0'
+
+JOB             gradient
+
+MAX_ITERATE     120
+MAX_MODELING    150
+
+
+IF_USE_CHECKPOINT   F
