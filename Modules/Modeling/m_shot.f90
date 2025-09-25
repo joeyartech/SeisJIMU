@@ -26,16 +26,16 @@ use m_model
         integer :: iz,ix,iy
         integer :: ifz,ilz,ifx,ilx,ify,ily
         character(4) :: comp
-        real,dimension(:,:,:),allocatable :: interp_coef
+        real,dimension(:,:,:),allocatable :: interp_coef, interp_coef_full, interp_coef_anti, interp_coef_symm, interp_coef_trunc
     end type
 
     type,public :: t_receiver
-        real    :: z,x,y, aoffset
+        real    :: z,x,y, aoffset, adist
         integer :: iz,ix,iy
         integer :: ifz,ilz,ifx,ilx,ify,ily
         logical :: is_badtrace=.false.
         character(4) :: comp
-        real,dimension(:,:,:),allocatable :: interp_coef
+        real,dimension(:,:,:),allocatable :: interp_coef, interp_coef_full, interp_coef_anti, interp_coef_symm, interp_coef_trunc
     end type
     
     type,public :: t_shot
@@ -54,8 +54,6 @@ use m_model
 
         real,dimension(:,:),allocatable :: dobs !observed seismogram
         real,dimension(:,:),allocatable :: dsyn !synthetic seismogram
-        real,dimension(:,:),allocatable :: dsyn_aux !auxiliary synthetic seismogram
-        !real,dimension(:,:),allocatable :: dres !residual seismogram
         real,dimension(:,:),allocatable :: dadj !adjoint source seismogram
         
         contains
@@ -65,6 +63,7 @@ use m_model
         procedure :: set_var_time
         procedure :: set_var_space
         procedure :: update_wavelet
+        procedure :: update_wavelet_alter
         procedure :: update_adjsource
         procedure :: write
         
@@ -129,6 +128,9 @@ use m_model
     subroutine read_from_data(self)
         class(t_shot) :: self
 
+        logical,save :: is_first_in=.true.
+        type(t_string),dimension(:),allocatable :: scomp, rcomp
+
         type(t_suformat) :: sudata
         character(:),allocatable :: str, zerophase, locut, hicut
         character(:),allocatable :: fstoplo,fpasslo,fpasshi,fstophi
@@ -143,6 +145,9 @@ use m_model
         scalel=sudata%hdrs(1)%scalel !assume same scalel for all traces
         scalco=sudata%hdrs(1)%scalco !assume same scalco for all traces
 
+        ! if(scalel>0.) scalel=scalel !no need
+        ! if(scalco>0.) scalco=scalco
+
         if(scalel==0.) scalel=1.
         if(scalco==0.) scalco=1.
 
@@ -154,25 +159,52 @@ use m_model
         self%src%x=sudata%hdrs(1)%sx    *scalco
         self%src%y=sudata%hdrs(1)%sy    *scalco
         
-        self%src%comp='p' !don't know which su header tells this info..
+        if(is_first_in) then
+            scomp=setup%get_strs('SOURCE_COMPONENT','SCOMP',o_mandatory=1)
+            if(size(scomp)>1) call hud('SeisJIMU only considers the 1st component from SOURCE_COMPONENT: '//scomp(1)%s)
+            self%src%comp=scomp(1)%s
+
+            is_first_in=.false.
+
+        endif
         
+        rcomp=setup%get_strs('RECEIVER_COMPONENT','RCOMP',o_default='p')
         do i=1,shot%nrcv
             self%rcv(i)%z=-sudata%hdrs(i)%gelev*scalel
             self%rcv(i)%x= sudata%hdrs(i)%gx   *scalco
             self%rcv(i)%y= sudata%hdrs(i)%gy   *scalco
-
-            self%rcv(i)%is_badtrace = sudata%hdrs(i)%trid==2 .or. sudata%hdrs(i)%trid==3  !dead or dummy trace
             
             select case (sudata%hdrs(i)%trid)
+            case (2,3)
+                self%rcv(i)%is_badtrace=.true.!dead or dummy trace
+                self%rcv(i)%comp=scomp(1)%s
+
             case (11); self%rcv(i)%comp='p'  !pressure
             case (12); self%rcv(i)%comp='vz' !vertical velocity
             case (14); self%rcv(i)%comp='vx' !horizontal velocity in in-line
             case (13); self%rcv(i)%comp='vy' !horizontal velocity in cross-line
+
+            case (21); self%rcv(i)%comp='ez' !ezz
+            case (22); self%rcv(i)%comp='ex' !exx
+            case (23); self%rcv(i)%comp='ey' !eyy
+            case (24); self%rcv(i)%comp='es' !ezx
+
+            case (32); self%rcv(i)%comp='pz' !vertical momenta
+            case (34); self%rcv(i)%comp='px' !in-line momenta
+            case (33); self%rcv(i)%comp='py' !cross-line momenta
             case default
-                self%rcv(i)%comp='p'
+                self%rcv(i)%comp=rcomp(1)%s
             end select
             
         enddo
+
+
+        if(setup%get_bool('IF_MUST_USE_RCOMP',o_default='F')) then
+            do i=1,shot%nrcv
+                self%rcv(i)%comp=rcomp(1)%s
+            enddo
+        endif
+
 
         !shift positions to be 0-based
         !then m%oz,ox,oy is no longer of use before writing shots
@@ -252,6 +284,11 @@ use m_model
             if(str=='sinexp') then
                 call hud('Use filtered sinexp wavelet')
                 self%wavelet=wavelet_sinexp(self%nt,self%dt,self%fpeak)
+
+            elseif(str=='ricker') then
+                call hud('Use Ricker wavelet')
+                self%wavelet=wavelet_ricker(self%nt,self%dt,self%fpeak)
+
             elseif(str=='ricker envelope') then
                 call hud('Use Ricker envelope wavelet')
                 call alloc(tmp1,self%nt,1)
@@ -260,9 +297,7 @@ use m_model
                 call hilbert_envelope(tmp1,tmp2,self%nt,1)
                 self%wavelet=tmp2(:,1)
                 deallocate(tmp1,tmp2)
-            else
-                call hud('Use Ricker wavelet')
-                self%wavelet=wavelet_ricker(self%nt,self%dt,self%fpeak)
+
             endif
 
         else !wavelet file exists
@@ -274,6 +309,16 @@ use m_model
 
         endif
 
+        !source time function, which should not have dt, dx info
+        file=setup%get_str('FILE_WAVELET_PREFIX')
+        if(file/='') then
+            call alloc(self%wavelet,self%nt)
+            call wavelet%read(file//self%sindex(5:8)//'.su')
+            call resampler(wavelet%trs(:,1),self%wavelet,1,&
+                            din=wavelet%dt,nin=wavelet%ns, &
+                            dout=self%dt,  nout=self%nt)
+        endif
+
         str=setup%get_str('WAVELET_SCALING')
         if(str=='') then
         elseif(str=='by dx3dt' .or. str=='by dtdx3') then
@@ -282,9 +327,7 @@ use m_model
             self%wavelet=self%wavelet*str2real(str)
         endif
 
-        if(mpiworld%is_master) then
-            call suformat_write('wavelet',     self%wavelet,     self%nt,ntr=1,o_dt=self%dt)
-        endif
+        if(mpiworld%is_master) call suformat_write('wavelet',self%wavelet,self%nt,ntr=1,o_dt=self%dt)
 
     end subroutine
 
@@ -297,9 +340,15 @@ use m_model
 
         !absolute offset
         do ir=1,self%nrcv
-            self%rcv(ir)%aoffset=sqrt( (self%src%z-self%rcv(ir)%z)**2 &
-                                      +(self%src%x-self%rcv(ir)%x)**2 &
+            self%rcv(ir)%aoffset=sqrt( (self%src%x-self%rcv(ir)%x)**2 &
                                       +(self%src%y-self%rcv(ir)%y)**2 )
+        enddo
+
+        !absolute distance
+        do ir=1,self%nrcv
+            self%rcv(ir)%adist=sqrt( (self%src%z-self%rcv(ir)%z)**2 &
+                                    +(self%src%x-self%rcv(ir)%x)**2 &
+                                    +(self%src%y-self%rcv(ir)%y)**2 )
         enddo
 
         if(is_first_in) then
@@ -320,15 +369,26 @@ use m_model
 
         !source
         select case (self%src%comp)
-        ! case('p','pbnd') !explosive source or non-vertical force
-        case default
+        case('vz','pz') !vertical force
+            call hicks_put_position(self%src%z+halfz, self%src%x,       self%src%y)
+        case('vx','px')
+            call hicks_put_position(self%src%z,       self%src%x+halfx, self%src%y)
+        case('vy','py')
+            call hicks_put_position(self%src%z,       self%src%x,       self%src%y+halfy)
+
+        case('p','szz','sxx','ez','ex') !explosive source or normal stress/strain
             call hicks_put_position(self%src%z,       self%src%x,       self%src%y)
-        ! case('vz') !vertical force
-        !     call hicks_put_position(self%src%z+halfz, self%src%x,       self%src%y)
-        ! case('vx')
-        !     call hicks_put_position(self%src%z,       self%src%x+halfx, self%src%y)
-        ! case('vy')
-        !     call hicks_put_position(self%src%z,       self%src%x,       self%src%y+halfy)
+
+        case('dpdz','dpdx') !monopole sources
+            call hicks_put_position(self%src%z,       self%src%x,       self%src%y)
+
+        case('szx','es') !shear stress/strain
+            call hicks_put_position(self%src%z+halfz, self%src%x+halfx, self%src%y)
+
+        case default
+            call warn('src%comp: '//self%src%comp//' has not yet implemented!')
+            call hicks_put_position(self%src%z,       self%src%x,       self%src%y)
+
         end select
 
         call hicks_get_position(self%src%ifz, self%src%ifx, self%src%ify,&
@@ -336,13 +396,31 @@ use m_model
                                 self%src%ilz, self%src%ilx, self%src%ily )
 
         select case (self%src%comp)
-        ! case('p','pbnd') !explosive source or non-vertical force
-        case default
+        case('vz','pz') !vertical force
+            !vz=0 above free surface, by Levander-Robertsson's stress image implemtation
+            call hicks_get_coefficient('truncate', self%src%interp_coef)
+        case('vx','px')
+            call hicks_get_coefficient('truncate', self%src%interp_coef)
+
+        case('p','szz','sxx')
+            call hicks_get_coefficient('antisymm', self%src%interp_coef_anti) !inject szz component
+            call hicks_get_coefficient('symmetric',self%src%interp_coef_symm) !inject sxx component
+            call hicks_get_coefficient('truncate', self%src%interp_coef_trunc)!extract sxx component
+            call hicks_get_coefficient('full', self%src%interp_coef_full)
+
+        case('dpdz','dpdx')
+            call hicks_get_coefficient('full', self%src%interp_coef)
+
+        case('ez','ex')
+            call hicks_get_coefficient('full', self%src%interp_coef_full)
+            call hicks_get_coefficient('antisymm', self%src%interp_coef_anti)
+            call hicks_get_coefficient('symmetric',self%src%interp_coef_symm)
+
+        case('szx','es')
             call hicks_get_coefficient('antisymm', self%src%interp_coef)
-        ! case('vz') !vertical force
-        !     call hicks_get_coefficient('symmetric',self%src%interp_coef)
-        ! case default
-        !     call hicks_get_coefficient('truncate', self%src%interp_coef)
+
+        case default
+            call hicks_get_coefficient('full', self%src%interp_coef)
         end select
 
         !set reference to balance pressure vs velocities data
@@ -350,19 +428,31 @@ use m_model
 
         is_first_in=.false.
 
+
         !receivers
         do i=1,self%nrcv
 
             select case (self%rcv(i)%comp)
-            ! case('p','pbnd') !explosive source or non-vertical force
-            case default
+            case('vz','pz')
+                call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x,       self%rcv(i)%y)
+            case('vx','px')
+                call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x+halfx, self%rcv(i)%y)
+            case('vy','py')
+                call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y+halfy)
+
+            case('p','szz','sxx','ez','ex')
                 call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y)
-            ! case('vz') !vertical force
-            !     call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x,       self%rcv(i)%y)
-            ! case('vx')
-            !     call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x+halfx, self%rcv(i)%y)
-            ! case('vy')
-            !     call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y+halfy)
+            
+            case('dpdz','dpdx') !monopole sources
+                call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y)
+
+            case('szx','es')
+                call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x+halfx, self%rcv(i)%y)
+
+            case default
+                call warn('rcv%comp: '//self%rcv(i)%comp//' has not yet implemented!')
+                call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y)
+
             end select
 
             call hicks_get_position(self%rcv(i)%ifz, self%rcv(i)%ifx, self%rcv(i)%ify,&
@@ -370,13 +460,31 @@ use m_model
                                     self%rcv(i)%ilz, self%rcv(i)%ilx, self%rcv(i)%ily )
 
             select case (self%rcv(i)%comp)
-            ! case('p','pbnd') !explosive source or non-vertical force
-            case default
+            case('vz','pz') !vertical force
+                !vz=0 above free surface, by Levander-Robertsson's stress image implemtation
+                call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
+            case('vx','px')
+                call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
+
+            case('p','szz','sxx')
+                call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef_anti) !inject szz component
+                call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef_symm) !inject sxx component
+                call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef_trunc)!extract sxx component
+                call hicks_get_coefficient('full', self%rcv(i)%interp_coef_full)
+
+            case('dpdz','dpdx')
+                call hicks_get_coefficient('full', self%rcv(i)%interp_coef)
+
+            case('ez','ex')
+                call hicks_get_coefficient('full', self%rcv(i)%interp_coef_full)
+                call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef_anti)
+                call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef_symm)
+
+            case('szx','es')
                 call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)
-            ! case('vz') !vertical force
-            !     call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef)
-            ! case default
-            !     call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
+            
+            case default
+                call hicks_get_coefficient('full', self%rcv(i)%interp_coef)
             end select
 
         enddo
@@ -422,18 +530,45 @@ use m_model
 
         type(t_suformat) :: sudata
 
-        call matchfilter_estimate(self%dsyn*weight,self%dobs*weight,self%nt,self%nrcv)!,self%index)
+!        call matchfilter_estimate(self%dsyn*weight,self%dobs*weight,self%nt,self%nrcv)!,self%index)
+!        call matchfilter_estimate(self%dsyn,self%dobs,self%nt,self%nrcv)!,self%index)
         
+        if(setup%get_str('UPDATE_WAVELET')=='per shot') then
+            call matchfilter_estimate(self%dsyn*weight,self%dobs*weight,self%nt,self%nrcv)
+        else
+            call hud('Will average wavelet over diff shots. If some MPI processors are idle, then MPI communication will be stuck.')
+            call matchfilter_estimate(self%dsyn*weight,self%dobs*weight,self%nt,self%nrcv,oif_stack=.true.)
+        endif
+
         call matchfilter_apply_to_wavelet(self%wavelet)
         
         call matchfilter_apply_to_data(self%dsyn)
 
-        call sudata%init(self%nt,1,o_dt=self%dt,o_data=self%wavelet)
-        sudata%hdrs%fldr=self%index
+    end subroutine
 
-        open(12,file=dir_out//'updated_wavelet.su',action='write',access='direct',recl=4*(60+self%nt))
-        write(12,rec=self%index) sudata%hdrs, sudata%trs
-        close(12)
+    subroutine update_wavelet_alter(self,weight)
+       class(t_shot) :: self
+       real,dimension(self%nt,self%nrcv) :: weight
+
+       real,dimension(self%nt,self%nrcv) :: tmp
+
+       type(t_suformat) :: sudata
+
+!        call matchfilter_estimate(self%dsyn*weight,self%dobs*weight,self%nt,self%nrcv)!,self%index)
+!        call matchfilter_estimate(self%dsyn,self%dobs,self%nt,self%nrcv)!,self%index)
+        
+        if(setup%get_str('UPDATE_WAVELET')=='per shot') then
+            call matchfilter_estimate(self%dsyn*weight,self%dobs*weight,self%nt,self%nrcv)
+        else
+            call hud('Will average wavelet over diff shots. If some MPI processors are idle, then MPI communication will be stuck.')
+            call matchfilter_estimate(self%dsyn*weight,self%dobs*weight,self%nt,self%nrcv,oif_stack=.true.)
+        endif
+
+        call matchfilter_apply_to_wavelet(self%wavelet)
+        
+        tmp=self%dsyn*weight
+        call matchfilter_apply_to_data(tmp)
+        self%dsyn=tmp
 
     end subroutine
     
@@ -898,8 +1033,17 @@ use m_model
                 scalco=setup%get_real('SU_SCALCO',o_default=num2str(find_proper_scalco()))
             endif
 
-            sudata%hdrs(:)%scalel=int(-scalel)
-            sudata%hdrs(:)%scalco=int(-scalco)
+            if(scalel>0.) scalel=1./scalel
+            if(scalco>0.) scalco=1./scalco
+
+            if(scalel==0.) scalel=1.
+            if(scalco==0.) scalco=1.
+
+            if(scalel<0.) scalel=-scalel
+            if(scalco<0.) scalco=-scalco
+
+            sudata%hdrs(:)%scalel=int(scalel)
+            sudata%hdrs(:)%scalco=int(scalco)
 
             do i=1,self%nrcv
                 sudata%hdrs(i)%tracl=i
@@ -912,11 +1056,21 @@ use m_model
                 sudata%hdrs(i)%gx=(self%rcv(i)%x+m%ox)      *scalco
                 sudata%hdrs(i)%gy=(self%rcv(i)%y+m%oy)      *scalco
 
-                select case (self%rcv(i)%comp)
-                case ('p');  sudata%hdrs(i)%trid=11 !pressure
+                select case (self%rcv(i)%comp)           
+                case ('p' ); sudata%hdrs(i)%trid=11 !pressure
+
                 case ('vz'); sudata%hdrs(i)%trid=12 !vertical velocity
                 case ('vx'); sudata%hdrs(i)%trid=14 !horizontal velocity in in-line
                 case ('vy'); sudata%hdrs(i)%trid=13 !horizontal velocity in cross-line
+                
+                case ('ez'); sudata%hdrs(i)%trid=21 !ezz
+                case ('ex'); sudata%hdrs(i)%trid=22 !exx
+                case ('ey'); sudata%hdrs(i)%trid=23 !eyy
+                case ('es'); sudata%hdrs(i)%trid=24 !ezx
+                
+                case ('pz'); sudata%hdrs(i)%trid=32 !vertical momenta
+                case ('px'); sudata%hdrs(i)%trid=34 !in-line momenta
+                case ('py'); sudata%hdrs(i)%trid=33 !cross-line momenta
                 end select
 
                 if(self%rcv(i)%is_badtrace) sudata%hdrs(i)%trid=3 !dummy trace
@@ -1085,4 +1239,3 @@ use m_model
     end subroutine
 
 end
-

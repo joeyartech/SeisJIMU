@@ -671,9 +671,7 @@ use singleton
                 ix=shot%src%ix-cb%iox+1
                 iy=shot%src%iy-cb%ioy+1
             endif
-
-            ! call hilbert_transform2(f%wavelet,wavelet_hilb,1,self%nt)
-            ! wl=time_dir*f%wavelet(1,it)*wavelet_scaler
+            
             wl=time_dir*f%wavelet(1,it)*wavelet_scaler
 
             if(if_hicks) then
