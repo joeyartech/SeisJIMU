@@ -1090,13 +1090,28 @@ use singleton
             corr%gikpa=corr%gikpa*ppg%kpa(1:m%nz,1:m%nx,1:m%ny)
 
             !remove singular point at the src position,
-            !because we didn't consider src when deriving the gradient formula
-            iz=shot%src%iz-cb%ioz+1; ifz=either(iz-2,iz,iz>=3); ilz=either(iz+2,iz,iz<=m%nz-2) !safeguards
-            ix=shot%src%ix-cb%iox+1; ifx=either(ix-2,ix,ix>=3); ilx=either(ix+2,ix,ix<=m%nx-2)
+            !because we didn't consider src when deriving the gradient formula    
+            iz=shot%src%iz-cb%ioz+1
+            ix=shot%src%ix-cb%iox+1
+
+            if(shot%src%comp=='dpdz') then !dipole source   
+                corr%gikpa(iz-1,ix,1) = corr%gikpa(iz,ix,1)
+                corr%gikpa(iz+1,ix,1) = corr%gikpa(iz,ix,1)
             
-            corr%gikpa(iz,ix,1)=0 !first remove otherwise will appear in the sum below
-            ncells=size(corr%gikpa(ifz:ilz,ifx:ilx,1))-1
-            corr%gikpa(iz,ix,1) = sum(corr%gikpa(ifz:ilz,ifx:ilx,1))/ncells
+            elseif(shot%src%comp=='dpdx') then !dipole source
+                corr%gikpa(iz,ix-1,1) = corr%gikpa(iz,ix,1)
+                corr%gikpa(iz,ix+1,1) = corr%gikpa(iz,ix,1)
+            
+            else !point source
+                !safeguards
+                ifz=either(iz-2,iz,iz>=3); ilz=either(iz+2,iz,iz<=m%nz-2)
+                ifx=either(ix-2,ix,ix>=3); ilx=either(ix+2,ix,ix<=m%nx-2)
+                
+                corr%gikpa(iz,ix,1)=0 !first remove otherwise will appear in the sum below
+                ncells=size(corr%gikpa(ifz:ilz,ifx:ilx,1))-1
+                corr%gikpa(iz,ix,1) = sum(corr%gikpa(ifz:ilz,ifx:ilx,1))/ncells
+            
+            endif
 
             !removing singular top boundary..
             ! corr%grho(1,:,:) = corr%grho(2,:,:)
