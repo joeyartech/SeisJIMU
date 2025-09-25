@@ -17,6 +17,7 @@ NR                      1
 
 SCOMP                   p
 RCOMP                   p
+IF_MUST_USE_RCOMP       T
 
 IF_HICKS        F
 IF_BLOOM        F

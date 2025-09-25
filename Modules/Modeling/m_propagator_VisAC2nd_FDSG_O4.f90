@@ -779,27 +779,70 @@ use singleton
                                 ifz,ilz,ifx,ilx)
         endif
 
+        ! !simple scheme for 1st-order time derivative
+        ! !use forward FD in backward vs backward FD in forward modeling
+        ! !which can NOT make the field disappear after backpropagation
+        ! if(.not. f_re%is_adjoint) then !PDE
+        !     if(time_dir>0. ) then !forward in time
+        !         Uprev = cmplx(f_re%p_prev,f_im%p_prev)
+        !         U     = cmplx(f_re%p     ,f_im%p     )
+        !         Lap   = cmplx(f_re%lap   ,f_im%lap   )
+        !
+        !        !Uⁿ⁺¹  =2Uⁿ -Uⁿ⁻¹  +  i C₁/C₂    (Uⁿ-Uⁿ⁻¹) dt      -   C₀/C₂ Uⁿdt² +      1/C₂*dt²*Lap
+        !         Unext =2*U -Uprev +c_i*self%C1n*(U-Uprev)*self%dt -self%C0n*U*dt2 +self%invC2*dt2*self%kpa*Lap
+        !         Unext =2*U -Uprev +dt2*self%kpa*Lap
+        !         f_re%p_next =  real(Unext)
+        !         f_im%p_next = aimag(Unext)
+        !
+        !     else !backward in time
+        !         Unext = cmplx(f_re%p_next,f_im%p_next)
+        !         U     = cmplx(f_re%p     ,f_im%p     )
+        !         Lap   = cmplx(f_re%lap   ,f_im%lap   )
+        !
+        !        !Uⁿ⁻¹  =2Uⁿ -Uⁿ⁺¹  +  i C₁/C₂    (Uⁿ⁺¹-Uⁿ) dt      -   C₀/C₂ Uⁿdt² +      1/C₂*dt²*Lap
+        !         Uprev =2*U -Unext +c_i*self%C1n*(Unext-U)*self%dt -self%C0n*U*dt2 +self%invC2*dt2*self%kpa*Lap
+        !         f_re%p_prev =  real(Uprev)
+        !         f_im%p_prev = aimag(Uprev)
+        !
+        !     endif
+        !
+        ! else !Adjoint, backward in time
+        !         Unext = cmplx(f_re%p_next,f_im%p_next)
+        !         U     = cmplx(f_re%p     ,f_im%p     )
+        !         Lap   = cmplx(f_re%lap   ,f_im%lap   )
+        !
+        !        !Uᵃⁿ⁻¹ =2Uᵃⁿ-Uᵃⁿ⁺¹ +  i    C₁/C₂ᴴ (Uᵃⁿ⁺¹-Uᵃⁿ)dt     -   C₀/C₂ᴴ Uᵃⁿdt² +     1/C₂ᴴ*dt²*Lap
+        !         Uprev =2*U -Unext +c_i*self%C1nH*(Unext-U)*self%dt -self%C0nH*U*dt2 +self%invC2H*dt2*self%kpa*Lap
+        !        ! Uprev =2*U -Unext +dt2*self%kpa*Lap
+        !         f_re%p_prev =  real(Uprev)
+        !         f_im%p_prev = aimag(Uprev)
+        ! endif
+
+        !advanced scheme for 1st-order time derivative
+        !use central FD in both backward & forward modeling
+        !which can make the field disappear after backpropagation
         if(.not. f_re%is_adjoint) then !PDE
             if(time_dir>0. ) then !forward in time
                 Uprev = cmplx(f_re%p_prev,f_im%p_prev)
                 U     = cmplx(f_re%p     ,f_im%p     )
                 Lap   = cmplx(f_re%lap   ,f_im%lap   )
 
-               !Uⁿ⁺¹  =2Uⁿ -Uⁿ⁻¹  +  i C₁/C₂    (Uⁿ-Uⁿ⁻¹) dt      -   C₀/C₂ Uⁿdt² +      1/C₂*dt²*Lap
-                Unext =2*U -Uprev +c_i*self%C1n*(U-Uprev)*self%dt -self%C0n*U*dt2 +self%invC2*dt2*self%kpa*Lap
-               ! Unext =2*U -Uprev +dt2*self%kpa*Lap
+                !Uⁿ⁺¹  =2Uⁿ -Uⁿ⁻¹  +  i C₁/C₂    (Uⁿ⁺¹-Uⁿ⁻¹) 0.5dt      -   C₀/C₂ Uⁿdt² +      1/C₂*dt²*Lap
+                !(1-iC₁/C₂ 0.5dt)Uⁿ⁺¹  =2Uⁿ -Uⁿ⁻¹  +  i C₁/C₂    (-Uⁿ⁻¹) 0.5dt      -   C₀/C₂ Uⁿdt² +      1/C₂*dt²*Lap
+                Unext              = ( 2*U  -Uprev +c_i*self%C1n*(-Uprev)*0.5*self%dt -self%C0n*U*dt2 +self%invC2*dt2*self%kpa*Lap ) &
+                    /(1-c_i*self%C1n*0.5*self%dt)
                 f_re%p_next =  real(Unext)
                 f_im%p_next = aimag(Unext)
 
             else !backward in time
-            !for 1st-order time derivative, use forward FD instead of backward FD like forward PDE
-            !this is fine but cannot make the field doesn't disappear after backpropagation
                 Unext = cmplx(f_re%p_next,f_im%p_next)
                 U     = cmplx(f_re%p     ,f_im%p     )
                 Lap   = cmplx(f_re%lap   ,f_im%lap   )
 
-               !Uⁿ⁻¹  =2Uⁿ -Uⁿ⁺¹  +  i C₁/C₂    (Uⁿ⁺¹-Uⁿ) dt      -   C₀/C₂ Uⁿdt² +      1/C₂*dt²*Lap
-                Uprev =2*U -Unext +c_i*self%C1n*(Unext-U)*self%dt -self%C0n*U*dt2 +self%invC2*dt2*self%kpa*Lap
+               !Uⁿ⁻¹  =2Uⁿ -Uⁿ⁺¹  +  i C₁/C₂    (Uⁿ⁺¹-Uⁿ⁻¹) 0.5dt      -   C₀/C₂ Uⁿdt² +      1/C₂*dt²*Lap
+               !(1+i C₁/C₂ 0.5dt)Uⁿ⁻¹  =2Uⁿ -Uⁿ⁺¹  +  i C₁/C₂    (Uⁿ⁺¹) 0.5dt      -   C₀/C₂ Uⁿdt² +      1/C₂*dt²*Lap
+                Uprev              = ( 2*U  -Unext +c_i*self%C1n*(Unext)*0.5*self%dt -self%C0n*U*dt2 +self%invC2*dt2*self%kpa*Lap ) &
+                    /(1+c_i*self%C1n*0.5*self%dt)
                 f_re%p_prev =  real(Uprev)
                 f_im%p_prev = aimag(Uprev)
 
@@ -810,9 +853,10 @@ use singleton
                 U     = cmplx(f_re%p     ,f_im%p     )
                 Lap   = cmplx(f_re%lap   ,f_im%lap   )
 
-               !Uᵃⁿ⁻¹ =2Uᵃⁿ-Uᵃⁿ⁺¹ +  i    C₁/C₂ᴴ (Uᵃⁿ⁺¹-Uᵃⁿ)dt     -   C₀/C₂ᴴ Uᵃⁿdt² +     1/C₂ᴴ*dt²*Lap
-                Uprev =2*U -Unext +c_i*self%C1nH*(Unext-U)*self%dt -self%C0nH*U*dt2 +self%invC2H*dt2*self%kpa*Lap
-               ! Uprev =2*U -Unext +dt2*self%kpa*Lap
+               !Uᵃⁿ⁻¹ =2Uᵃⁿ-Uᵃⁿ⁺¹ +  i    C₁/C₂ᴴ (Uᵃⁿ⁺¹-Uᵃⁿ⁻¹) 0.5dt     -   C₀/C₂ᴴ Uᵃⁿdt² +     1/C₂ᴴ*dt²*Lap
+               !(1+iC₁/C₂ᴴ 0.5dt)Uᵃⁿ⁻¹ =2Uᵃⁿ-Uᵃⁿ⁺¹ +  i    C₁/C₂ᴴ (Uᵃⁿ⁺¹) 0.5dt     -   C₀/C₂ᴴ Uᵃⁿdt² +     1/C₂ᴴ*dt²*Lap
+                Uprev              = ( 2*U  -Unext +c_i*self%C1nH*(Unext)*0.5*self%dt -self%C0nH*U*dt2 +self%invC2H*dt2*self%kpa*Lap ) &
+                /(1+c_i*self%C1nH*0.5*self%dt)
                 f_re%p_prev =  real(Uprev)
                 f_im%p_prev = aimag(Uprev)
         endif
@@ -1050,7 +1094,8 @@ use singleton
             iz=shot%src%iz-cb%ioz+1; ifz=either(iz-2,iz,iz>=3); ilz=either(iz+2,iz,iz<=m%nz-2) !safeguards
             ix=shot%src%ix-cb%iox+1; ifx=either(ix-2,ix,ix>=3); ilx=either(ix+2,ix,ix<=m%nx-2)
             
-            ncells=size(corr%gikpa(ifz:ilz,ifx:ilx,1))
+            corr%gikpa(iz,ix,1)=0 !first remove otherwise will appear in the sum below
+            ncells=size(corr%gikpa(ifz:ilz,ifx:ilx,1))-1
             corr%gikpa(iz,ix,1) = sum(corr%gikpa(ifz:ilz,ifx:ilx,1))/ncells
 
             !removing singular top boundary..
