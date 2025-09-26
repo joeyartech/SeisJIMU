@@ -106,37 +106,34 @@ use m_resampler
             case ('strain_L2averaged')
                 s_conversion=setup%get_str('DATA_CONVERSION_METHOD',o_default='fk')
                 
-                !first goto strain
+                !first goto strainZ
                 if(index(ppg%info,'Momemtum-Strain')>0) then !m_propagator_DAS
-                endif
                 
-                if(index(ppg%info,'Velocity-Stress')>0) then !m_propagator_PSV
+                elseif(index(ppg%info,'Velocity-Stress')>0) then !m_propagator_PSV
                     if(s_conversion=='fk') then
-                        call convert_in_fk(shot%dsyn,'v2e')
+                        call convert_in_fk(shot%dsyn,'k/w')
 
                     else ! s_conversion=='tx'
-                        call hud('v2e by int_t diff_x(shot%dsyn)')
+                        call hud('integrate_t(differentiate_x(shot%dsyn))')
                         call differentiate_x(shot%dsyn)
                         call integrate_t(shot%dsyn)
 
                     endif
 
-                endif
-
-                if(index(ppg%info,'Displacement-Strain formulation')>0) then !m_propagator_PSV2ndUE
-                endif
-
-                if(index(ppg%info,'Displacement formulation')>0) then !m_propagator_PSV2nd
+                elseif(index(ppg%info,'Displacement-Strain formulation')>0) then !m_propagator_PSV2ndUE
+                
+                elseif(index(ppg%info,'Displacement formulation')>0) then !m_propagator_PSV2nd
                     if(s_conversion=='fk') then
-                        call convert_in_fk(shot%dsyn,'u2e')
+                        call convert_in_fk(shot%dsyn,'ik')
 
                     else ! s_conversion=='tx'
-                        call hud('u2e by differentiate_x(shot%dsyn)')
+                        call hud('differentiate_x(shot%dsyn)')
                         call differentiate_x(shot%dsyn)
 
                     endif
 
                 endif
+
 
                 !then add gauge length
                 length=setup%get_int('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)
@@ -146,38 +143,33 @@ use m_resampler
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
                 call kernel_L2sq(shot%dadj)
 
-                !goback to velocity adjoint src
                 if(length>0) call moving_average(shot%dadj,length)
+
 
                 !finally convert back
                 if(index(ppg%info,'Momemtum-Strain')>0) then !m_propagator_DAS
-                endif
                 
-                if(index(ppg%info,'Velocity-Stress')>0) then !m_propagator_PSV
+                elseif(index(ppg%info,'Velocity-Stress')>0) then !m_propagator_PSV
                     if(s_conversion=='fk') then
-                        call convert_in_fk(shot%dadj,'e2v')
+                        call convert_in_fk(shot%dadj,'k/w')
 
                     else ! s_conversion=='tx'
-                        call hud('e2v by rev_int_t diff_x(shot%dadj)')
+                        call hud('rev_integrate_t(differentiate_x(shot%dadj))')
                         call differentiate_x(shot%dadj)
-                        call integrate_t(shot%dadj)
+                        call rev_integrate_t(shot%dadj)
 
                     endif
 
-                endif
-
-                if(index(ppg%info,'Displacement-Strain formulation')>0) then !m_propagator_PSV2ndUE
-                endif
-
-                if(index(ppg%info,'Displacement formulation')>0) then !m_propagator_PSV2nd
+                elseif(index(ppg%info,'Displacement-Strain formulation')>0) then !m_propagator_PSV2ndUE
+                
+                elseif(index(ppg%info,'Displacement formulation')>0) then !m_propagator_PSV2nd
                     if(s_conversion=='fk') then
                         shot%dadj=-shot%dadj
-                        call convert_in_fk(shot%dadj,'u2e') !this is correct..
+                        call convert_in_fk(shot%dadj,'ik') !this is correct..
 
                     else ! s_conversion=='tx'
-                        call hud('e2u by differentiate_x(-shot%dadj)')
-                        !call rev_integrate_t(shot%dadj)
-                        !call differentiate_x(-shot%dadj) !this is dangerous in fortran..
+                        call hud('differentiate_x(-shot%dadj)')
+                        !call differentiate_x(-shot%dadj) !this is wrong in fortran..
                         shot%dadj=-shot%dadj
                         call differentiate_x(shot%dadj) !so let's use functions instead of subroutines..
 
@@ -311,6 +303,8 @@ use m_resampler
 
         data=dout
 
+        deallocate(dout)
+
     end subroutine
 
     subroutine integrate_t(data) !integrate
@@ -327,6 +321,8 @@ use m_resampler
         enddo
 
         data=dout
+
+        deallocate(dout)
 
     end subroutine
 
@@ -345,12 +341,15 @@ use m_resampler
 
         data=dout
 
+        deallocate(dout)
+
     end subroutine
 
-    subroutine convert_in_fk(data,dir)
+    subroutine convert_in_fk(data,op)
+    use m_math
     use singleton
         real,dimension(:,:) :: data !nt x nrcv
-        character(*) :: dir
+        character(*) :: op
 
         real :: w(shot%nt), k(shot%nrcv)
 
@@ -382,34 +381,38 @@ use m_resampler
             k(  (n+1)/2+1:n)= -k((n+1)/2:2:-1)
         endif
 
-        select case (dir)
-        case ('v2e'); call hud('v2e')
+        shot_dx = shot%rcv(2)%x-shot%rcv(1)%x
+
+        call hud('convert_in_fk op: '//op)
+
+        select case (op)
+        case ('k/w') 
             eps=maxval(w*w)*1e-5
-            scalar=1.*shot%dt/(shot%rcv(2)%x-shot%rcv(1)%x)
+            scalar=1.*shot%dt/shot_dx
 
             do ik=1,shot%nrcv; do iw=1,shot%nt
                 filter(iw,ik) = k(ik)*w(iw) / (w(iw)*w(iw)+eps) *scalar
             enddo; enddo
 
-        case ('u2e'); call hud('u2e')
-            eps=maxval(w*w)*1e-5
-            scalar=         1/(shot%rcv(2)%x-shot%rcv(1)%x)
+        case ('ik')
+            ! eps=maxval(w*w)*1e-5
+            scalar=         1/shot_dx
 
             do ik=1,shot%nrcv
                 filter(:,ik) = c_i*k(ik) *scalar
             enddo
 
-        case ('e2v'); call hud('e2v')
+        case ('w/k')
             eps=maxval(k*k)*1e-5
-            scalar=1./shot%dt*(shot%rcv(2)%x-shot%rcv(1)%x)
+            scalar=1./shot%dt*shot_dx
 
             do ik=1,shot%nrcv; do iw=1,shot%nt
                 filter(iw,ik) = w(iw)*k(ik) / (k(ik)*k(ik)+eps) *scalar
             enddo; enddo
 
-        case ('e2u'); call hud('e2u')
+        case ('1/ik')
             eps=maxval(k*k)*1e-5
-            scalar=            shot%rcv(2)%x-shot%rcv(1)%x
+            scalar=            shot_dx
 
             do ik=1,shot%nrcv
                 filter(:,ik) = 1/(c_i*k(ik)+eps) *scalar
