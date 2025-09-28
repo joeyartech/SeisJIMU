@@ -395,7 +395,7 @@ use m_Modeling
         
         character(i_str_slen) :: text
         character(1)  :: delim
-        integer,parameter :: max_gain_length=20 !maximum number of points per line
+        integer,parameter :: max_gain_length=2000  !20 !maximum number of points per line
         real,dimension(max_gain_length) :: xgain, tgain, gain
         real,dimension(:,:),allocatable :: table, tmp_table
 
