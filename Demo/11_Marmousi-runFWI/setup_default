@@ -1,5 +1,5 @@
-MODEL_SIZE              '214 1215 1'
-MODEL_SPACING           '14  14   1'
+MODEL_SIZE              '143 810  1'
+MODEL_SPACING           '21  21   1'
 FILE_MODEL              'true'
 MODEL_ATTRIBUTES        'vp rho qp'
 MODEL_ATTRIBUTES_WRITE   vp
@@ -8,23 +8,24 @@ MODEL_ATTRIBUTES_WRITE   vp
 IS_FREESURFACE          F
 
 ACQUI_GEOMETRY          spread
-FS                      '14   1200  0'
-#DS			'  0   100  0'
+FS                      '  0   1200  0'
+#DS			'  0   100   0'
 #NS			 144
 DS			'  0   400  0'
 NS			 36
-FR                      '14    0  0'
-DR                      '  0    25  0'
-NR                       600
+FR                      '  0   0   0'
+DR                      '  0   25  0'
+NR                       670
 
 SCOMP                   dpdz
 RCOMP                   dpdz #'p vz'
+IF_MUST_USE_RCOMP       T
 
 WAVELET_TYPE	ricker
 
-FPEAK        6
-NT           2857
-DT           0.00175
+FPEAK        4
+NT           1923
+DT           0.0026
 
 #SNAPSHOT      p
 #NSNAPSHOT    50
