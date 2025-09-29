@@ -106,17 +106,17 @@ use m_resampler
             case ('strain_L2averaged')
                 s_conversion=setup%get_str('DATA_CONVERSION_METHOD',o_default='fk')
                 
-                !first goto strainZ
+                !first goto strain
                 if(index(ppg%info,'Momemtum-Strain')>0) then !m_propagator_DAS
                 
                 elseif(index(ppg%info,'Velocity-Stress')>0) then !m_propagator_PSV
                     if(s_conversion=='fk') then
-                        call convert_in_fk(shot%dsyn,'k/w')
+                        call convert_in_fk(shot%dsyn,'k/w') !call shot%write('k_w_dsyn',shot%dsyn)
 
                     else ! s_conversion=='tx'
                         call hud('integrate_t(differentiate_x(shot%dsyn))')
                         call differentiate_x(shot%dsyn)
-                        call integrate_t(shot%dsyn)
+                        call integrate_t(shot%dsyn) !call shot%write('diffx_intt_dsyn',shot%dsyn)
 
                     endif
 
@@ -124,12 +124,11 @@ use m_resampler
                 
                 elseif(index(ppg%info,'Displacement formulation')>0) then !m_propagator_PSV2nd
                     if(s_conversion=='fk') then
-                        call convert_in_fk(shot%dsyn,'ik')
+                        call convert_in_fk(shot%dsyn,'ik') !call shot%write('ik_dsyn',shot%dsyn)
 
                     else ! s_conversion=='tx'
                         call hud('differentiate_x(shot%dsyn)')
-                        call differentiate_x(shot%dsyn)
-
+                        call differentiate_x(shot%dsyn) !call shot%write('diffx_dsyn',shot%dsyn)
                     endif
 
                 endif
@@ -151,12 +150,14 @@ use m_resampler
                 
                 elseif(index(ppg%info,'Velocity-Stress')>0) then !m_propagator_PSV
                     if(s_conversion=='fk') then
-                        call convert_in_fk(shot%dadj,'k/w')
+                        call convert_in_fk(shot%dadj,'k/w') !call shot%write('k_w_dadj',shot%dadj)
 
                     else ! s_conversion=='tx'
-                        call hud('rev_integrate_t(differentiate_x(shot%dadj))')
+                        ! call hud('rev_integrate_t(differentiate_x(shot%dadj))')
                         call differentiate_x(shot%dadj)
-                        call rev_integrate_t(shot%dadj)
+                        ! call rev_integrate_t(shot%dadj)
+                        call integrate_t(shot%dadj) !why? 
+                        !call shot%write('diffx_intt_dadj',shot%dadj)
 
                     endif
 
@@ -165,13 +166,14 @@ use m_resampler
                 elseif(index(ppg%info,'Displacement formulation')>0) then !m_propagator_PSV2nd
                     if(s_conversion=='fk') then
                         shot%dadj=-shot%dadj
-                        call convert_in_fk(shot%dadj,'ik') !this is correct..
+                        call convert_in_fk(shot%dadj,'ik') !call shot%write('ik_ndadj',shot%dadj)
 
                     else ! s_conversion=='tx'
                         call hud('differentiate_x(-shot%dadj)')
                         !call differentiate_x(-shot%dadj) !this is wrong in fortran..
                         shot%dadj=-shot%dadj
                         call differentiate_x(shot%dadj) !so let's use functions instead of subroutines..
+                        !call shot%write('diffx_ndadj',shot%dadj)
 
                     endif
 
@@ -294,14 +296,14 @@ use m_resampler
         call alloc(dout,shot%nt,shot%nrcv)
 
         do ir=2,shot%nrcv-1
-            dout(:,ir) = (data(:,ir+1)-data(:,ir-1)) / (shot%rcv(ir+1)%x-shot%rcv(ir-1)%x)
+            dout(:,ir) = (data(:,ir+1)-data(:,ir-1)) !/(shot%rcv(ir+1)%x-shot%rcv(ir-1)%x)
         enddo
 
         !padding
         dout(:,1)=dout(:,2)
         dout(:,shot%nrcv)=dout(:,shot%nrcv-1)
 
-        data=dout
+        data=dout /(shot%rcv(3)%x-shot%rcv(1)%x)  !assuming const interval..
 
         deallocate(dout)
 
@@ -314,13 +316,13 @@ use m_resampler
         call alloc(dout,shot%nt,shot%nrcv)
 
         do ir=1,shot%nrcv
-                dout(1,ir)=data(1,ir)*shot%dt
+                dout(1,ir)=data(1,ir)
             do it=2,shot%nt
-                dout(it,ir) = dout(it-1,ir) + data(it,ir)*shot%dt
+                dout(it,ir) = dout(it-1,ir) + data(it,ir)
             enddo
         enddo
 
-        data=dout
+        data=dout *shot%dt
 
         deallocate(dout)
 
@@ -333,13 +335,13 @@ use m_resampler
         call alloc(dout,shot%nt,shot%nrcv)
 
         do ir=1,shot%nrcv
-                dout(shot%nt,ir)=data(shot%nt,ir)*shot%dt
+                dout(shot%nt,ir)=data(shot%nt,ir)
             do it=shot%nt-1,1,-1
-                dout(it,ir) = dout(it+1,ir) + data(it,ir)*shot%dt
+                dout(it,ir) = dout(it+1,ir) + data(it,ir)
             enddo
         enddo
 
-        data=dout
+        data=dout *shot%dt
 
         deallocate(dout)
 
@@ -372,6 +374,8 @@ use m_resampler
             w(  (n+1)/2+1:n)= -w((n+1)/2:2:-1)
         endif
 
+        w=w*2*r_pi/(n-1)/shot%dt
+
         n=shot%nrcv
         if(mod(n,2)==0) then !if n is even, 1 is DC; 2:n/2 are +f; n/2+1:n are -f
             k(1:n/2    )= [(i,i=1,n/2)]-1
@@ -381,41 +385,41 @@ use m_resampler
             k(  (n+1)/2+1:n)= -k((n+1)/2:2:-1)
         endif
 
-        shot_dx = shot%rcv(2)%x-shot%rcv(1)%x
+        k=k*2*r_pi/(n-1)/(shot%rcv(2)%x-shot%rcv(1)%x)  !assuming const interval..
 
         call hud('convert_in_fk op: '//op)
 
         select case (op)
         case ('k/w') 
-            eps=maxval(w*w)*1e-5
-            scalar=1.*shot%dt/shot_dx
+            ! eps=maxval(w)*1e-5
+            eps=w(2) !smallest w
 
             do ik=1,shot%nrcv; do iw=1,shot%nt
-                filter(iw,ik) = k(ik)*w(iw) / (w(iw)*w(iw)+eps) *scalar
+                filter(iw,ik) = k(ik)*w(iw) / (w(iw)*w(iw)+eps)
             enddo; enddo
 
         case ('ik')
-            ! eps=maxval(w*w)*1e-5
-            scalar=         1/shot_dx
+            ! eps=maxval(w)*1e-5
+            eps=w(2) !smallest w
 
             do ik=1,shot%nrcv
-                filter(:,ik) = c_i*k(ik) *scalar
+                filter(:,ik) = c_i*k(ik)
             enddo
 
         case ('w/k')
-            eps=maxval(k*k)*1e-5
-            scalar=1./shot%dt*shot_dx
+            ! eps=maxval(k)*1e-5
+            eps=k(2) !smallest k
 
             do ik=1,shot%nrcv; do iw=1,shot%nt
-                filter(iw,ik) = w(iw)*k(ik) / (k(ik)*k(ik)+eps) *scalar
+                filter(iw,ik) = w(iw)*k(ik) / (k(ik)*k(ik)+eps)
             enddo; enddo
 
         case ('1/ik')
-            eps=maxval(k*k)*1e-5
-            scalar=            shot_dx
+            ! eps=maxval(k)*1e-5
+            eps=k(2) !smallest k
 
             do ik=1,shot%nrcv
-                filter(:,ik) = 1/(c_i*k(ik)+eps) *scalar
+                filter(:,ik) = 1/(c_i*k(ik)+eps)
             enddo
             
         endselect
