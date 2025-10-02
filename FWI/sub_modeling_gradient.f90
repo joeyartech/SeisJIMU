@@ -21,11 +21,9 @@ use m_resampler
 
     type(t_field) :: fld_u,fld_a
     type(t_correlate) :: a_star_u
-    real,dimension(:,:),allocatable :: tmp
-    real,dimension(3) :: grad_term_weights
 
     character(:),allocatable :: s_dnorm
-    real,dimension(:,:),allocatable :: Eobs
+    real,dimension(:,:),allocatable :: tmp,Eobs
     
     type :: t_S
         real,dimension(:),allocatable :: scale
@@ -99,8 +97,10 @@ use m_resampler
             call hud('Using DNORM '//s_dnorm)
             select case (s_dnorm)
                 case ('L2sq')
+                tmp=shot%dobs-shot%dsyn
                 fobj%misfit = fobj%misfit &
-                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, tmp, shot%dt)
+                    
                 call kernel_L2sq(shot%dadj)
 
                 case('L2sq_scaled')
@@ -150,6 +150,7 @@ call kernel_Env2sq(shot%dadj,shot%nt,shot%nrcv)
 
             call shot%write('dadj_',shot%dadj)
 
+            if(allocated(tmp)) deallocate(tmp)
         
         call hud('----  Solving A(m)ᴴa = RᴴΔd and a★u  ----')
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite

@@ -146,11 +146,11 @@ use m_Hilbert
         call hilbert_transform(W2*DeltaQ*time_deri(u,dt), tmp2, nt,ntr)
         
         if(either(oif_stack,.false.,present(oif_stack))) then
-            kernel = kernel + 2*a*( W2*DeltaQ*time_deri(v,dt) + tmp1 &
+            kernel = kernel - 2*a*( W2*DeltaQ*time_deri(v,dt) + tmp1 & !why a minus sign?
                                    -time_deri(W2*DeltaQ*v,dt) - tmp2 )
 
         else
-            kernel =          2*a*( W2*DeltaQ*time_deri(v,dt) + tmp1 &
+            kernel =        - 2*a*( W2*DeltaQ*time_deri(v,dt) + tmp1 & !why a minus sign?
                                    -time_deri(W2*DeltaQ*v,dt) - tmp2 )
 
 
