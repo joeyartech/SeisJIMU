@@ -9,11 +9,11 @@ F77=mpiifort
 
 # FLAGF90= -xHost -O3 -Ofast -ipo -parallel -qopenmp -traceback -assume byterecl   $(OPTRPT)
 
-# TAG=compute #run on compute nodes
-# FLAGF90= -xAVX -O3 -Ofast -ipo -parallel -qopenmp -traceback -assume byterecl   $(OPTRPT)
+TAG=compute #run on compute nodes
+FLAGF90= -xCORE-AVX2 -O3 -Ofast -ipo -parallel -qopenmp -traceback -assume byterecl   $(OPTRPT)
 
-TAG=compute-phi #run on compute-phi nodes
-FLAGF90= -xMIC-AVX512 -O3 -Ofast -ipo -parallel -qopenmp -traceback -assume byterecl   $(OPTRPT)
+#TAG=compute-phi #run on compute-phi nodes
+#FLAGF90= -xMIC-AVX512 -O3 -Ofast -ipo -parallel -qopenmp -traceback -assume byterecl   $(OPTRPT)
 #FLAGF90= -xMIC-AVX512 -g -debug -check all -check noarg_temp_created  -W1 -WB -ipo -parallel -qopenmp -traceback -assume byterecl   $(OPTRPT)
 
 # TAG=debug

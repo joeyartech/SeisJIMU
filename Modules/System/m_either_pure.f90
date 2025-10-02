@@ -13,7 +13,7 @@ module m_either
     contains
 
 
-    function either2_short(i1,i2,switch) result(res)
+    pure function either2_short(i1,i2,switch) result(res)
         integer(2),intent(in) :: i1
         integer,intent(in) :: i2
         logical,intent(in) :: switch
@@ -25,7 +25,7 @@ module m_either
         endif
     end function
 
-    function either2_int(i1,i2,switch) result(res)
+    pure function either2_int(i1,i2,switch) result(res)
         integer,intent(in) :: i1,i2
         logical,intent(in) :: switch
         integer :: res
@@ -36,7 +36,7 @@ module m_either
         endif
     end function
 
-    function either2_ints(i1,i2,switch) result(res)
+    pure function either2_ints(i1,i2,switch) result(res)
         integer,dimension(:),intent(in) :: i1,i2
         logical,intent(in) :: switch
         integer,dimension(:),allocatable :: res
@@ -47,7 +47,7 @@ module m_either
         endif
     end function
 
-    function either2_real(r1,r2,switch) result(res)
+    pure function either2_real(r1,r2,switch) result(res)
         real,intent(in) :: r1,r2
         logical,intent(in) :: switch
         if(switch) then
@@ -57,7 +57,7 @@ module m_either
         endif
     end function
 
-    function either2_reals(r1,r2,switch) result(res)
+    pure function either2_reals(r1,r2,switch) result(res)
         real,dimension(:),intent(in) :: r1,r2
         logical,intent(in) :: switch
         real,dimension(:),allocatable :: res
@@ -68,7 +68,7 @@ module m_either
         endif
     end function
     
-    function either2_str(s1,s2,switch) result(res)
+    pure function either2_str(s1,s2,switch) result(res)
         character(*),intent(in) :: s1,s2
         logical,intent(in) :: switch
         character(:),allocatable :: res
@@ -79,7 +79,7 @@ module m_either
         endif
     end function
 
-    function either2_bool(b1,b2,switch) result(res)
+    pure function either2_bool(b1,b2,switch) result(res)
         logical,intent(in) :: b1,b2, switch
         logical :: res
         if(switch) then

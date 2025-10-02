@@ -92,6 +92,12 @@ use m_Modeling
                 call by_aoffset_range(weight,str2real(sublist(2)%s),str2real(sublist(3)%s))
             endif
 
+            if (index(list(i)%s,'rz_range')>0) then !use window defined by aoffset
+                sublist=split(list(i)%s,o_sep=':')
+                call hud('Will weight traces by rz range:'//sublist(2)%s//':'//sublist(3)%s)
+                call by_rz_range(weight,str2real(sublist(2)%s),str2real(sublist(3)%s))
+            endif
+
             if (index(list(i)%s,'time^')>0) then !weight traces by power of time
                 sublist=split(list(i)%s,o_sep='^')
                 call hud('Will weight traces by time^'//sublist(2)%s)
@@ -128,6 +134,12 @@ use m_Modeling
                 call by_pershot(weight,sublist(2)%s)
             endif
 
+            if (index(list(i)%s,'polyrz_pershot_prefix')>0) then !has tobe this way; otherwise using "polygon" or "per_shot" will enter other branches including these words
+                sublist=split(list(i)%s,o_sep=':')
+                call hud('Will weight traces with polygons based on t-rz per shot, defined in '//sublist(2)%s//'..')
+                call by_polygon_pershot(weight,sublist(2)%s)
+            endif
+
 
             select case(op)
                 case ('multiply')
@@ -149,7 +161,8 @@ use m_Modeling
             if (shot%rcv(ir)%is_badtrace) self%weight(:,ir)=0. !bad trace
         enddo
 
-        if(mpiworld%is_master) call suformat_write('weights'//suf,self%weight,nt,ntr,o_dt=dt)
+        ! if(mpiworld%is_master) call suformat_write('weights'//suf,self%weight,nt,ntr,o_dt=dt)
+        call suformat_write('weight'//suf//'_'//shot%sindex,self%weight,nt,ntr,o_dt=dt)
         
     end subroutine
 
@@ -261,13 +274,24 @@ use m_Modeling
 
     end subroutine
 
+    subroutine by_rz_range(weight,zmin,zmax)
+        real,dimension(:,:) :: weight
+
+        do i=1,shot%nrcv    
+            if (shot%rcv(i)%z<zmin) weight(:,i)=0.
+            if (shot%rcv(i)%z>zmax) weight(:,i)=0.
+        enddo
+
+    end subroutine
+
+
     ! Modified from sumute.c in Seismic Unix
     ! dir: SeisUnix/src/su/main/windowing_sorting_muting
     subroutine by_polygon(weight,file)
         real,dimension(:,:) :: weight
         character(*) :: file
 
-        character(i_str_slen) :: text
+        character(i_str_len) :: text
         integer,parameter :: max_gain_length=20 !maximum number of points
         real,dimension(max_gain_length) :: xgain,tgain
         
@@ -418,7 +442,7 @@ use m_Modeling
         real,dimension(:,:) :: weight
         character(*) :: file
         
-        character(i_str_slen) :: text
+        character(i_str_len) :: text
         character(1)  :: delim
         integer,parameter :: max_gain_length=20 !maximum number of points per line
         real,dimension(max_gain_length) :: xgain, tgain, gain
@@ -597,5 +621,170 @@ use m_Modeling
 
     end subroutine
 
+
+    ! Modified from sumute.c in Seismic Unix
+    ! dir: SeisUnix/src/su/main/windowing_sorting_muting
+    subroutine by_polygon_pershot(weight,file_prefix)
+        real,dimension(:,:) :: weight
+        character(*) :: file_prefix
+
+        character(:),allocatable :: file        
+
+        integer :: file_size
+
+        character(i_str_len) :: text
+        integer,parameter :: max_gain_length=20 !maximum number of points
+        real,dimension(max_gain_length) :: xgain,tgain
+
+        file=file_prefix//shot%sindex(5:8)        
+
+        open(10,file=file,action='read')
+
+        gain_old=1.
+
+        loopfile: do
+            !initialize
+            xgain=-99999.
+            tgain=-99999.
+
+            !read xgain vector as string
+            loopxline: do
+                read(10,"(a)",iostat=msg) text
+                text=trim(adjustl(text))
+                i=index(text,"#"); if(i>0) text=text(1:i-1) !remove comments after #
+                i=index(text,"!"); if(i>0) text=text(1:i-1) !remove comments after !
+
+                if (msg < 0) then !end of file
+                    call error(file//' is missing xgain points.')
+                endif
+                if (msg > 0) then
+                    call error('Check '//file//'.  Something is wrong..')
+                endif
+                if (text=='') then !blank line
+                    cycle
+                else
+                    exit loopxline
+                endif
+            enddo loopxline
+
+            if (text=='end' .or. text=='END') exit loopfile !end of file
+
+            !convert string to real numbers
+            read(text,*,iostat=msg) xgain
+            mx=count(xgain>=0.) !number of input xgain
+
+            !xgain should be increasing
+            do i=1,mx-1
+                if(xgain(i+1)<xgain(i)) then
+                    call error('xgain from '//file//' is NOT increasing!')
+                end if
+            end do
+
+            !read tgain vector as string
+            looptline: do
+                read(10,"(a)",iostat=msg) text
+                text=trim(adjustl(text))
+                i=index(text,"#"); if(i>0) text=text(1:i-1) !remove comments after #
+                i=index(text,"!"); if(i>0) text=text(1:i-1) !remove comments after !
+
+                if (msg < 0) then !end of file
+                    call error(file//' is missing tgain points.')
+                endif
+                if (msg > 0) then
+                    call error('Check '//file//'.  Something is wrong..')
+                endif
+                if (text=='') then !blank line
+                    cycle
+                else 
+                    exit looptline
+                endif
+            enddo looptline
+
+            !convert string to real numbers
+            read(text,*,iostat=msg) tgain(1:mx)
+
+            if (any(tgain(1:mx)<0.)) then
+                call error(file//' has unequal tgain & xgain pairs.')
+            endif
+
+
+            !read in gain value and taper
+            loopgline: do
+                read(10,"(a)",iostat=msg) text
+                text=trim(adjustl(text))
+                i=index(text,"#"); if(i>0) text=text(1:i-1) !remove comments after #
+                i=index(text,"!"); if(i>0) text=text(1:i-1) !remove comments after !
+
+                if (msg < 0) then !end of file
+                    call error(file//' is missing tgain points.')
+                endif
+                if (msg > 0) then
+                    call error('Check '//file//'.  Something is wrong..')
+                endif
+                if (text=='') then !blank line
+                    cycle
+                else 
+                    exit loopgline
+                endif
+            enddo loopgline
+
+            !convert string to real numbers
+            read(text,*,iostat=msg) gain, taper
+            ntaper=nint(taper/dt)
+
+            !loop of offset
+            do itr=1,ntr
+                
+                !find the two xgain's closest to rz ! aoffset
+                ! if(shot%rcv(itr)%aoffset<=xgain(1)) then
+                if(shot%rcv(itr)%z<=xgain(1)) then
+                    jx1=1
+                    jx2=1
+                    dx1=0.
+                    dx2=1.
+                ! elseif(shot%rcv(itr)%aoffset>=xgain(mx)) then
+                elseif(shot%rcv(itr)%z>=xgain(mx)) then
+                    jx1=mx
+                    jx2=mx
+                    dx1=1.
+                    dx2=0.
+                else
+                    !jx1=maxloc(xgain(1:mx), dim=1, mask=xgain(1:mx)<shot%rcv(itr)%aoffset)
+                    jx1=maxloc(xgain(1:mx), dim=1, mask=xgain(1:mx)<shot%rcv(itr)%z)
+                    jx2=jx1+1
+                    ! dx1=(shot%rcv(itr)%aoffset-xgain(jx1)) / (xgain(jx2)-xgain(jx1))  !reduced distance from aoffset to xgain(jx1)
+                    ! dx2=(xgain(jx2)-shot%rcv(itr)%aoffset) / (xgain(jx2)-xgain(jx1))  !reduced distance from aoffset to xgain(jx2)
+                    dx1=(shot%rcv(itr)%z-xgain(jx1)) / (xgain(jx2)-xgain(jx1))  !reduced distance from aoffset to xgain(jx1)
+                    dx2=(xgain(jx2)-shot%rcv(itr)%z) / (xgain(jx2)-xgain(jx1))  !reduced distance from aoffset to xgain(jx2)
+                endif
+                
+                !interp time by the two tgain & xgain pairs
+                time = tgain(jx1)*dx2 + tgain(jx2)*dx1
+
+                itime = nint(time/dt)+1  !assume all receivers have same dt ...
+                itime_start = itime-ntaper  !1 <= itime_start <= itime <= nt
+
+                !apply linear taper from itime_start+1 to itime
+                do it=min(max(itime_start+1,1),nt) , &
+                      min(max(itime        ,1),nt)
+                    
+                    k=it-itime_start-1
+
+                    weight(it,itr) = ( gain_old*(ntaper-k) + gain*k ) / ntaper
+                end do               
+
+                !apply constant gain from itime+1 to nt
+                it = min(max(itime+1,1),nt)
+                weight(it:nt,itr) = gain
+                
+            end do
+            
+            gain_old=gain
+
+        end do loopfile
+
+        close(10)
+
+    end subroutine
 
 end

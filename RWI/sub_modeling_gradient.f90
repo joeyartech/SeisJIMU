@@ -52,17 +52,6 @@ use m_resampler
         call ppg%forward(fld_u)
         call fld_u%acquire; call shot%write('Ru_',shot%dsyn)
 
-        !update wavelet
-        if(setup%get_str('UPDATE_WAVELET')/='no') then
-!            call wei%update
-            call shot%update_wavelet!(wei%weight)
-            call matchfilter_apply_to_data(shot%dsyn)
-
-            !write synthetic data
-            call shot%write('updated_Ru_',shot%dsyn)
-        endif
-
-
         if(setup%get_str('JOB')=='forward modeling') cycle
 
 
@@ -201,22 +190,10 @@ use m_resampler
         call ppg%forward(fld_u0)
         call fld_u0%acquire(o_seismo=shot%dsyn_aux);  call shot%write('Ru0_',shot%dsyn_aux)
 
-        !update wavelet
-        if(setup%get_str('UPDATE_WAVELET')/='no') then
-            call wei%update
-            call shot%update_wavelet!(wei%weight)
-            call matchfilter_apply_to_data(shot%dsyn)
-            call matchfilter_apply_to_data(shot%dsyn_aux)
-
-            !write synthetic data
-            call shot%write('updated_Ru_',shot%dsyn)
-            call shot%write('updated_Ru0_',shot%dsyn_aux)
-        endif
-
         if(setup%get_str('JOB')=='forward modeling') cycle
 
         call sepa%update
-        call wei%update!('_4IMAGING')
+        call wei%update
         call alloc(shot%dadj,shot%nt,shot%nrcv)
 
         call hud('-------------------------')

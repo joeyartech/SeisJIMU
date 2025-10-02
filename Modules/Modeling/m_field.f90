@@ -47,7 +47,7 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:,:),allocatable :: p !pressure
         
         real,dimension(:,:,:),allocatable :: pz,px !momenta
-        real,dimension(:,:,:),allocatable :: ez,ex,es !strains
+        real,dimension(:,:,:),allocatable :: ez,ex,es,thta !strains
         real,dimension(:,:,:),allocatable :: sz,sx,ss !stresses
 
         ! real,dimension(:,:,:),pointer :: p=> null(), p_prev=> null(), p_next=> null() !negated pressure
@@ -68,6 +68,7 @@ use, intrinsic :: ieee_arithmetic
 
         real,dimension(:,:,:),allocatable :: dpz_dz,dpx_dx,dpz_dx,dpx_dz
         real,dimension(:,:,:),allocatable :: dez_dz,dex_dx,dex_dz,dez_dx,des_dz,des_dx
+        real,dimension(:,:,:),allocatable :: dthta_dz,dthta_dx
 
         
         !real,dimension(:,:,:),allocatable :: lapz,lapx,laps
@@ -440,53 +441,45 @@ use, intrinsic :: ieee_arithmetic
         class(t_field) :: self
         real,dimension(:,:),optional :: o_wavelet !use external wavelet instead of shot%wavelet or %dadj
 
-        !add adjoint source
-        if(self%is_adjoint) then
+        nr=either(shot%nrcv,1,self%is_adjoint)
+        call alloc(self%wavelet,nr,nt)
 
-            if(present(o_wavelet)) then
-                if(all(shape(o_wavelet)==[nt,shot%nrcv])) then
-                    self%wavelet=transpose(o_wavelet)
-                else
-                    call hud('shape(o_wavelet) = '    //strcat(nums2strs(shape(o_wavelet))))
-                    call hud('required shape = '//num2str(nt)//' , '//num2str(shot%nrcv))
-                    call error('External o_wavelet do NOT have the required shape!')
-                endif
+        if(present(o_wavelet)) then
+            if(size(o_wavelet,2)/=nr) then
+                call hud('size(o_wavelet,2) vs required size = '//num2str(size(o_wavelet,2))//' vs '//num2str(nr))
+                call error('field%ignite: External o_wavelet do NOT have the required shape!')
+            endif
 
-            else
-                call alloc(self%wavelet,shot%nrcv,nt)
-                do i=1,shot%nrcv !implicit transpose
-                    call resampler(shot%dadj(:,i),self%wavelet(i,:),1,&
-                                    din=shot%dt,nin=shot%nt,&
+            if(size(o_wavelet,1)/=nt) then
+                call hud('size(o_wavelet,1) vs required size = '//num2str(size(o_wavelet,1))//' vs '//num2str(nt))
+                call warn('field%ignite: Resample o_wavelet to have the required size!')
+                 do i=1,nr !implicit transpose
+                    call resampler(o_wavelet(:,i),self%wavelet(i,:),1,&
+                                    din=shot%dt,nin=size(o_wavelet,1),&
                                     dout=dt,nout=nt)
                 enddo
-                
-            endif
-
-            !self%wavelet=self%wavelet*dt/m%cell_volume
-
-            return
-
-        endif
-
-        !add source
-            if(present(o_wavelet)) then
-                if(all(shape(o_wavelet)==[nt,1])) then
-                    self%wavelet=transpose(o_wavelet)
-                else
-                    call hud('shape(o_wavelet) = '//strcat(nums2strs(shape(o_wavelet))))
-                    call hud('required shape = '//num2str(nt)//', 1')
-                    call error('External o_wavelet do NOT have the required shape!')
-                endif
 
             else
-                call alloc(self%wavelet,1,nt)
-                call resampler(shot%wavelet,self%wavelet(1,:),1,&
+                self%wavelet=transpose(o_wavelet)
+            
+            endif
+            
+        endif
+
+        !w/o o_wavelet
+        if(self%is_adjoint) then
+            do i=1,shot%nrcv !implicit transpose
+                call resampler(shot%dadj(:,i),self%wavelet(i,:),1,&
                                 din=shot%dt,nin=shot%nt,&
                                 dout=dt,nout=nt)
-            endif
+            enddo
 
-            !self%wavelet=self%wavelet*dt/m%cell_volume
-
+        else
+            call resampler(shot%wavelet,self%wavelet(1,:),1,&
+                            din=shot%dt,nin=shot%nt,&
+                            dout=dt,nout=nt)
+        endif
+ 
     end subroutine
 
     subroutine acquire(self,o_seismo)

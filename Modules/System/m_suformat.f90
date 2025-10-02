@@ -414,7 +414,7 @@ use m_sysio
         character(*),optional :: o_sindex
 
         integer file_size
-        integer(2) :: dt
+        integer :: dt
 
         type(t_header) :: hdr1
         
@@ -422,25 +422,24 @@ use m_sysio
         file_size=file_size/4 !file_size in sizeof(float), single precision
         
         open(11,file=dir_in//file,action='read',access='stream')
-        !this actually does not work
-        ! read(11,pos=115) ns  !get number of samples from 1st trace
-        ! if(ns<0) ns=ns+32768*2  !ns keyword is unsigned short in C
-        ! read(11,pos=117) dt
-        ! if(dt<0) dt=dt+32768*2  !dt keyword is unsigned short in C        
         read(11) hdr1
         close(11)
 
-        if(hdr1%ns<0) hdr1%ns=hdr1%ns+32768*2  !ns keyword is unsigned short in C
-        if(hdr1%dt<0) hdr1%dt=hdr1%dt+32768*2  !dt keyword is unsigned short in C        
-        ns=hdr1%ns
-        
-        ntr=file_size/(hdr1%ns+60)
+        !if(hdr1%ns<0) hdr1%ns=hdr1%ns+32768*2  !ns keyword is unsigned short in C
+        !if(hdr1%dt<0) hdr1%dt=hdr1%dt+32768*2  !dt keyword is unsigned short in C
+        !ns=hdr1%ns
+        ns=either(hdr1%ns, hdr1%ns+32768*2, hdr1%ns>=0)
+        dt=either(hdr1%dt, hdr1%dt+32768*2, hdr1%dt>=0)
+print*,hdr1%ns+32768*2, hdr1%ns, ns
+
+
+        ntr=file_size/(ns+60)
 
         call hud('ntr, ns, file_size = '//num2str(ntr)//', '//num2str(ns)//', '//num2str(file_size))
 
         if(ntr*(ns+60)/=file_size) call error('ntr*(ns+60) /= file_size. Possibly traces do not have same length (ns)..')
 
-        call self%init(ns,ntr,hdr1%dt*1e-6)
+        call self%init(ns,ntr,dt*1e-6)
 
         if(present(o_sindex)) write(*,*) o_sindex//' will read '//num2str(self%ntr)//' traces, each trace has '//num2str(self%ns)//' samples.'       
         

@@ -16,7 +16,7 @@ use m_resampler
 
     logical,save :: is_first_in=.true.
 
-    character(:),allocatable :: update_wavelet
+    character(:),allocatable :: s_update_wavelet
     type(t_weighter) :: wei_wl
 
     type(t_field) :: fld_u,fld_a
@@ -71,28 +71,20 @@ use m_resampler
         call fld_u%acquire; call shot%write('Ru_',shot%dsyn)
 
 
-        ! if(index(setup%get_str('JOB',o_default='gradient'),'estimate wavelet')>0) then
-        !     call hud('--------------------------------')
-        !     call hud('        Estimate wavelet        ')
-        !     call hud('--------------------------------')
+        if(setup%get_str('JOB')=='forward') cycle
 
-        !     call wei_wl%update
+        call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
 
-        !     call shot%update_wavelet(wei_wl%weight) !call gradient_matchfilter_data
-        
-        if(setup%get_str('UPDATE_WAVELET')/='no') call shot%update_wavelet!(wei%weight) !call gradient_matchfilter_data
-        !     !write synthetic data
+        ! s_update_wavelet=setup%get_str('UPDATE_WAVELET')
+        ! if(s_update_wavelet/='') then
+        !     call hud('----  Update Wavelet  ----')    
+        !     call wei_wl%update(o_suffix='_4WAVELET')
+        !     call shot%update_wavelet(wei_wl%weight) !call gradient_matchfilter_data    
         !     call shot%write('updated_Ru_',shot%dsyn)
-
-        !     cycle
-
+        !     call suformat_write('updated_wavelet_'//shot%sindex,shot%wavelet,shot%nt,1,shot%dt)
         ! endif
-        
-        if(setup%get_str('JOB')=='forward modeling') cycle
 
         call hud('----  Computing obj func & dadj  ----')
-            call wei%update
-            call alloc(shot%dadj,shot%nt,shot%nrcv)
 
             call hud('Using DNORM '//s_dnorm)
             select case (s_dnorm)
@@ -120,9 +112,6 @@ use m_resampler
     !            if(shot%index==1)   print*, 'on '//shot%sindex,i,S(i)%scale
     !            if(shot%index==112) print*, 'on '//shot%sindex,i,S(i)%scale
 
-                fobj%misfit = fobj%misfit &
-                    + L2sq(0.5, shot%nt*shot%nrcv, wei%weight, shot%dobs-tmp_dsyn, shot%dt)
-                call kernel_L2sq(shot%dadj)
 
 
 
@@ -131,11 +120,6 @@ use m_resampler
                     + Envsq(0.5, shot%nt, shot%nrcv, wei%weight, shot%dsyn, Eobs, shot%dt)
                 call kernel_Envsq(shot%dadj,shot%nt,shot%nrcv)
 
-case('Env2sq')
-fobj%misfit = fobj%misfit &
-    + Env2sq(0.5, shot%nt, shot%nrcv, wei%weight, shot%dsyn, Eobs, shot%dt)
-call kernel_Env2sq(shot%dadj,shot%nt,shot%nrcv)
-                
 
                 case('Qsq')
                 fobj%misfit = fobj%misfit &
@@ -149,15 +133,14 @@ call kernel_Env2sq(shot%dadj,shot%nt,shot%nrcv)
             end select
 
             call shot%write('dadj_',shot%dadj)
-
             if(allocated(tmp)) deallocate(tmp)
-        
-        call hud('----  Solving A(m)ᴴa = RᴴΔd and a★u  ----')
+
+        call hud('----  Solving adjoint eqn & xcorrelate  ----')
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite
         call ppg%init_correlate(a_star_u,'a_star_u')
         call ppg%adjoint(fld_a,fld_u,a_star_u)
 
-        call hud('----  Assemble a★u  ----')
+        call hud('----  Assemble  ----')
         call ppg%assemble(a_star_u)
 
         call hud('---------------------------------')
