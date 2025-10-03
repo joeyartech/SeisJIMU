@@ -29,7 +29,7 @@ use m_cpml
             'Cartesian O(x⁴,t²) stencil'//s_NL// &
             'CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal'//s_NL// &
             '   -> dt ≤ 0.606(for 2D) or 0.494(3D) *Vmax/dx'//s_NL// &
-            'Required model attributes: vp, rho'//s_NL// &
+            'Required model attributes: vp, rho, rho0'//s_NL// &
             'Required field components: vz, vx, vy(3D), p'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
             'Imaging conditions: P-Pxcorr'//s_NL// &
@@ -111,10 +111,10 @@ use m_cpml
             call warn('Constant rho model (1000 kg/m³) is allocated by propagator.')
         endif
 
-        ! if(index(self%info,'rho0')>0 .and. .not. allocated(m%rho0)) then
-        !     call alloc(m%rho0,m%nz,m%nx,m%ny,o_init=1000.)
-        !     call warn('Constant rho0 model (1000 kg/m³) is allocated by propagator.')
-        ! endif
+        if(index(self%info,'rho0')>0 .and. .not. allocated(m%rho0)) then
+            call alloc(m%rho0,m%nz,m%nx,m%ny,o_init=1000.)
+            call warn('Constant rho0 model (1000 kg/m³) is allocated by propagator.')
+        endif
                 
     end subroutine
 
