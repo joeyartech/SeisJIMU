@@ -430,8 +430,6 @@ use m_sysio
         !ns=hdr1%ns
         ns=either(hdr1%ns, hdr1%ns+32768*2, hdr1%ns>=0)
         dt=either(hdr1%dt, hdr1%dt+32768*2, hdr1%dt>=0)
-print*,hdr1%ns+32768*2, hdr1%ns, ns
-
 
         ntr=file_size/(ns+60)
 

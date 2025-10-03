@@ -48,7 +48,7 @@ use m_empirical
 
     type(t_parametrizer),public :: param
 
-    logical :: is_AC=.false., is_EL=.false.
+    logical :: is_grho,is_gbuo,is_gkpa,is_gikpa,is_glda,is_gmu
     integer :: i_vp=0, i_vs=0, i_ip=0
 
     contains
@@ -63,10 +63,15 @@ use m_empirical
         if(allocated(   list)) deallocate(   list)
         if(allocated(sublist)) deallocate(sublist)
         
-        
-        !PDE info
-        is_AC = index(ppg%info,'AC')>0
-        is_EL = index(ppg%info,'EL')>0
+                !check basic gradients provided from propagator
+        is_grho = index(ppg%info,'grho')>0
+        is_gbuo = index(ppg%info,'gbuo')>0
+        is_gkpa = index(ppg%info,'gkpa')>0 
+        is_gikpa= index(ppg%info,'gikpa')>0
+        is_glda = index(ppg%info,'glda')>0
+        is_gmu  = index(ppg%info,'gmu')>0
+
+        if(is_gbuo.or.is_gikpa) call error("Parametrizer: Sorry, transformation from gbuo & gikpa hasn't been considered yet..")
 
         !read in active parameters and their allowed ranges
         list=setup%get_strs('PARAMETER',o_default='vp:1500:3400')
@@ -88,7 +93,7 @@ use m_empirical
                 vmax=str2real(sublist(3)%s)
 
             case ('vs' )
-                if(is_AC) then
+                if(index(ppg%info,'AC')>0) then
                     call hud('vs in PARAMETER is neglected as the PDE is ACoustic.')
                     cycle loop
                 endif
@@ -208,9 +213,19 @@ use m_empirical
         if(present(o_g)) then
             call alloc(o_g,self%n1,self%n2,self%n3,self%npars)
 
-            if(is_AC) then
+            n_entry=0
+
+            if(is_grho.and.is_gkpa) then
+                n_entry=n_entry+1
+                call hud('Parametrizer finds grho & gkpa')
                 !correlate_gradient(:,:,:,1) = grho0
                 !correlate_gradient(:,:,:,2) = gkpa
+                !
+                !kpa = rho*vp^2 = vp*ip
+                !rho0= rho      = ip/vp
+                !So,
+                !gvp = (gkpa*vp - grho0/vp)*rho
+                !gip =  gkpa*vp + grho0/vp
                 if(i_vp >0) then
                     call pseudotime_convert_gradient( &
                         (correlate_gradient(:,:,:,2)*m%vp - correlate_gradient(:,:,:,1)/m%vp)*m%rho, &
@@ -225,35 +240,51 @@ use m_empirical
                     o_g(:,:,:,i_ip)=tmp
                 endif
 
-                call empirical_gradient('velocities-impedance',o_gvp=o_g(:,:,:,i_vp),o_gip=o_g(:,:,:,i_ip))
+                call empirical_gradient('velocities-impedance_pseudotime',o_gvp=o_g(:,:,:,i_vp),o_gip=o_g(:,:,:,i_ip))
+
             endif
 
-            if(is_EL) then
+            if(is_grho.and.is_glda.and.is_gmu) then
+                n_entry=n_entry+1
+                call hud('Parametrizer finds grho glda & gmu')
                 !correlate_gradient(:,:,:,1) = grho0
                 !correlate_gradient(:,:,:,2) = glda
-                !correlate_gradient(:,:,:,2) = gmu
+                !correlate_gradient(:,:,:,2) = gmu 
+                !
+                !lda = rho(vp^2-2vs^2) = vp*ip - 2vs^2*ip/vp
+                !mu  = rho*vs^2        = vs^2*ip/vp
+                !rho0= rho             = ip/vp
+                !So,
+                !gvp = (glda*vp^2 + (2glda-gmu)vs^2 - grho0)*rho/vp
+                !gvs = (-2glda + gmu)*2vs*rho
+                !gip = (glda*vp^2 + (-2glda+gmu)*vs^2 +grho0) /vp
                 if(i_vp >0) then
                     call pseudotime_convert_gradient( &
-                        (correlate_gradient(:,:,:,1)*m%vp**2 + (2*correlate_gradient(:,:,:,1)-correlate_gradient(:,:,:,2))*m%vs**2 - correlate_gradient(:,:,:,3))*m%rho/m%vp, &
+                        (correlate_gradient(:,:,:,2)*m%vp**2 + (2*correlate_gradient(:,:,:,2)-correlate_gradient(:,:,:,3))*m%vs**2 - correlate_gradient(:,:,:,1))*m%rho/m%vp, &
                         m%vp,tmp)
                     o_g(:,:,:,i_vp)=tmp
                 endif
 
                 if(i_vs >0) then
                     call pseudotime_convert_gradient( &
-                        (-2*correlate_gradient(:,:,:,1) + correlate_gradient(:,:,:,2))*2*m%rho*m%vs, &
+                        (-2*correlate_gradient(:,:,:,2) + correlate_gradient(:,:,:,3))*2*m%rho*m%vs, &
                         m%vp,tmp)
                     o_g(:,:,:,i_vs)=tmp
                 endif
                 
                 if(i_ip >0) then
                     call pseudotime_convert_gradient( &
-                        (correlate_gradient(:,:,:,1)*m%vp**2 + (-2*correlate_gradient(:,:,:,1)+correlate_gradient(:,:,:,2))*m%vs**2 + correlate_gradient(:,:,:,3))/m%vp, &
+                        (correlate_gradient(:,:,:,2)*m%vp**2 + (-2*correlate_gradient(:,:,:,2)+correlate_gradient(:,:,:,3))*m%vs**2 + correlate_gradient(:,:,:,1))/m%vp, &
                         m%vp,tmp)
                     o_g(:,:,:,i_ip)=tmp
                 endif
-                                
+
                 call empirical_gradient('velocities-impedance_pseudotime',o_gvp=o_g(:,:,:,i_vp),o_gvs=o_g(:,:,:,i_vs),o_gip=o_g(:,:,:,i_ip))
+
+            endif
+
+            if(n_entry/=1) then
+                call error('Parametrizer has n_entry='//num2str(n_entry))
             endif
 
             !normaliz g by allowed parameter range

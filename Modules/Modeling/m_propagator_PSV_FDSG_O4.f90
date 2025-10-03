@@ -130,6 +130,11 @@ use, intrinsic :: ieee_arithmetic
             call alloc(m%rho,m%nz,m%nx,1,o_init=1000.)
             call warn('Constant rho model (1000 kg/m³) is allocated by propagator.')
         endif
+
+        if(index(self%info,'rho0')>0 .and. .not. allocated(m%rho0)) then
+            call alloc(m%rho0,m%nz,m%nx,m%ny,o_init=1000.)
+            call warn('Constant rho0 model (1000 kg/m³) is allocated by propagator.')
+        endif
                 
     end subroutine
     

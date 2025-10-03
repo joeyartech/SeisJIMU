@@ -25,13 +25,13 @@ use m_resampler
     character(:),allocatable :: s_dnorm
     real,dimension(:,:),allocatable :: tmp,Eobs
     
-    type :: t_S
-        real,dimension(:),allocatable :: scale
-    end type
-    type(t_S),dimension(:),allocatable,save :: S
-    real,dimension(:,:),allocatable :: tmp_dsyn, gmwindow
+    ! type :: t_S
+    !     real,dimension(:),allocatable :: scale
+    ! end type
+    ! type(t_S),dimension(:),allocatable,save :: S
+    ! real,dimension(:,:),allocatable :: tmp_dsyn, gmwindow
 
-    if(is_first_in) allocate(S(shls%nshots_per_processor)) !then can NOT randomly sample shots..
+    ! if(is_first_in) allocate(S(shls%nshots_per_processor)) !then can NOT randomly sample shots..
 
 
     !misfit
@@ -89,9 +89,8 @@ use m_resampler
             call hud('Using DNORM '//s_dnorm)
             select case (s_dnorm)
                 case ('L2sq')
-                tmp=shot%dobs-shot%dsyn
                 fobj%misfit = fobj%misfit &
-                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, tmp, shot%dt)
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
                     
                 call kernel_L2sq(shot%dadj)
 
@@ -118,7 +117,6 @@ use m_resampler
             end select
 
             call shot%write('dadj_',shot%dadj)
-            if(allocated(tmp)) deallocate(tmp)
 
         call hud('----  Solving adjoint eqn & xcorrelate  ----')
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite
