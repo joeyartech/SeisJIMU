@@ -5,8 +5,15 @@ GIT_BRANCH:=$(shell git rev-parse --abbrev-ref HEAD)
 F90=mpif90
 F77=mpif77
 
-FLAGF77= -Ofast -fopenmp                         -fbacktrace  #-flto
-FLAGF90= -Ofast -fopenmp -ffree-line-length-none -fbacktrace  -fno-unsafe-math-optimizations -frounding-math -fsignaling-nans
+#TAG=
+#FLAGF77= -O3 -Ofast -fopenmp                         -fbacktrace  #-flto
+#FLAGF90= -O3 -Ofast -fopenmp -ffree-line-length-none -fbacktrace  -fno-unsafe-math-optimizations -frounding-math -fsignaling-nans
+
+TAG=compute
+FLAGF77= -O3 -march=broadwell -mfma -fopenmp                         -fbacktrace -funroll-loops #-flto
+FLAGF90= -O3 -march=broadwell -mfma -fopenmp -ffree-line-length-none -fbacktrace -funroll-loops  -fsignaling-nans
+
+#TAG=debug
 #FLAGF77= -g -Wall -fopenmp -fcheck=all                         -fbacktrace
 #FLAGF90= -g -Wall -fopenmp -fcheck=all -ffree-line-length-none -fbacktrace -fno-strict-aliasing
 

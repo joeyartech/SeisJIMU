@@ -25,13 +25,13 @@ all : mod exe
 
 mod :
 	#System
-	(cd ../Modules/System; make)
+	+(cd ../Modules/System; $(MAKE))
 	#Etc
-	(cd ../Modules/Etc; make)
+	+(cd ../Modules/Etc; $(MAKE))
 	#Signal
-	(cd ../Modules/Signal; make)
+	+(cd ../Modules/Signal; $(MAKE))
 	#Modeling
-	(cd ../Modules/Modeling; make)
+	+(cd ../Modules/Modeling; $(MAKE))
 
 exe : main.o
 	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../exe/$(app)_$(WaveEq)_$(Solver)_$(Order)_$(TAG)
@@ -42,12 +42,12 @@ clean :
 
 cleanall :
 	#System
-	(cd ../Modules/System; make clean)
+	+(cd ../Modules/System; $(MAKE) clean)
 	#Etc
-	(cd ../Modules/Etc; make clean)
+	+(cd ../Modules/Etc; $(MAKE) clean)
 	#Signal
-	(cd ../Modules/Signal; make clean)
+	+(cd ../Modules/Signal; $(MAKE) clean)
 	#Modeling
-	(cd ../Modules/Modeling; make clean)
+	+(cd ../Modules/Modeling; $(MAKE) clean)
 	#$(APP)
-	make clean
+	$(MAKE) clean

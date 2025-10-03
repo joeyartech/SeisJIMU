@@ -7,38 +7,38 @@ prepare :
 mod : system etc signal modeling kernel optimization
 
 system : 
-	(cd Modules/System; make )
+	+(cd Modules/System; $(MAKE) )
 
 etc :
-	(cd Modules/Etc; make)
+	+(cd Modules/Etc; $(MAKE))
 
 signal :
-	(cd Modules/Signal; make)
+	+(cd Modules/Signal; $(MAKE))
 
 modeling :
-	(cd Modules/Modeling; make)
+	+(cd Modules/Modeling; $(MAKE))
 
 kernel :
-	(cd Modules/Kernel; make)
+	+(cd Modules/Kernel; $(MAKE))
 
 optimization :
-	(cd Modules/Optimization; make)
+	+(cd Modules/Optimization; $(MAKE))
 
 exe : fwd fwi rwi
 
 fwd :
-	(cd FWD; make)
+	+(cd FWD; $(MAKE))
 	@printf "\n"
 
 fwi :
-	(cd FWI; make)
+	+(cd FWI; $(MAKE))
 	@printf "\n"
 
 rwi :
-	(cd RWI; make)
+	+(cd RWI; $(MAKE))
 
 rtm :
-	(cd RTM; make)
+	+(cd RTM; $(MAKE))
 	@printf "\n"
 
 
@@ -46,12 +46,12 @@ clean :
 	-rm FWD/*.o FWI/*.o RWI/*.o RTM/*.o
 
 cleanmod :
-	(cd Modules/System; make clean)
-	(cd Modules/Etc; make clean)
-	(cd Modules/Signal; make clean)
-	(cd Modules/Modeling; make clean)
-	(cd Modules/Kernel; make clean)
-	(cd Modules/Optimization; make clean)
+	(cd Modules/System; $(MAKE) clean)
+	(cd Modules/Etc; $(MAKE) clean)
+	(cd Modules/Signal; $(MAKE) clean)
+	(cd Modules/Modeling; $(MAKE) clean)
+	(cd Modules/Kernel; $(MAKE) clean)
+	(cd Modules/Optimization; $(MAKE) clean)
 	(cd mod; rm -r *)
 
 cleanall : cleanmod clean
