@@ -84,6 +84,10 @@ use m_resampler
         !     call suformat_write('updated_wavelet_'//shot%sindex,shot%wavelet,shot%nt,1,shot%dt)
         ! endif
 
+        !data weighting
+        call wei%update
+        call alloc(shot%dadj,shot%nt,shot%nrcv)
+
         call hud('----  Computing obj func & dadj  ----')
 
             call hud('Using DNORM '//s_dnorm)

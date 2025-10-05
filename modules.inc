@@ -4,8 +4,8 @@
 ############
 # Modeling #
 ############
-#WaveEq=AC
-WaveEq=PSV
+WaveEq=AC
+#WaveEq=PSV
 Solver=FDSG
 Order=O4
 ShotDec=batching
@@ -14,8 +14,8 @@ ShotDec=batching
 # Kernel #
 ##########
 #Param=velocities-density
-Param=velocities-impedance
-#Param=velocities-impedance_pseudotime
+#Param=velocities-impedance
+Param=velocities-impedance_pseudotime
 App=FWI
 
 ################

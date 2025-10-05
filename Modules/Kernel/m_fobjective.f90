@@ -338,16 +338,15 @@ use m_preconditioner
     end subroutine
 
     subroutine eval(self,qp,oif_update_m,oif_approx,oif_gradient)
-    !use m_pseudotime
+     !use m_pseudotime
 
         class(t_fobjective) :: self
         type(t_querypoint) :: qp
         logical,optional :: oif_update_m,oif_approx,oif_gradient
 
         character(:),allocatable :: s_job
-
         type(t_string),dimension(:),allocatable :: smoothings
-        character(:),allocatable :: file_mask
+        character(:),allocatable :: smask
         real,dimension(:,:,:),allocatable :: mask
 
         real,dimension(:,:,:),allocatable :: freeze_zone_in_m, freeze_zone_in_x
@@ -369,39 +368,7 @@ use m_preconditioner
         endif
         ! endif
 
-
-        !soft mask on gradient
-        file_mask=setup%get_file('GRADIENT_SOFT_MASK','MASK')
-        if(file_mask/='') then
-            call alloc(mask,m%nz,m%nx,m%ny)
-            call sysio_read(file_mask,mask,size(mask))
-            
-            call correlate_mask(mask)
-        endif
-
-        !freeze gradient
-        call correlate_freeze
-
-        !linear smoothing in the physical (model) domain
-        smoothings=setup%get_strs('SMOOTHING','SMTH',o_default='Laplacian')
-
-        do i=1,size(smoothings)
-            !Laplacian smoothing
-            if(smoothings(i)%s=='Laplacian') then
-                call hud('Laplacian smoothing')
-                call smoother_Laplacian_init([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%fpeak)
-                do j=1,ppg%ngrad
-                    call smoother_Laplacian_extend_mirror(correlate_gradient(:,:,:,j),m%ibathy)
-                    call smoother_Laplacian_pseudo_nonstationary(correlate_gradient(:,:,:,j),m%vp) !wavelength based on Vp, even for Vs gradient
-                enddo
-            endif
-        enddo
-
-        !freeze in case of 'leakage'
-        call correlate_freeze
-
-
-        !transform to the parameter x-domain
+        !transform to x-domain
         call param%transform(o_g=qp%g)
 
         qp%f = sum(self%dnorm_weights*self%dnorms) ! + sum(self%xnorm_weights*self%xnorms)
@@ -409,12 +376,63 @@ use m_preconditioner
         if(.not. either(oif_gradient,.true.,present(oif_gradient))) return
 
 
+        !freeze_zone as hard mask
+        do i=1,param%npars
+            where(m%is_freeze_zone) qp%g(:,:,:,i)=0.
+        enddo
+
+        !soft mask
+        smask=setup%get_file('GRADIENT_SOFT_MASK','MASK')
+        if(smask/='') then
+            call alloc(mask,m%nz,m%nx,m%ny)
+            call sysio_read(smask,mask,size(mask))
+            
+            do i=1,param%npars
+                qp%g(:,:,:,i)=qp%g(:,:,:,i)*mask
+            enddo
+        endif
+
+        !post-modeling smoothing in physical (model) domain
+        smoothings=setup%get_strs('SMOOTHING','SMTH',o_default='Laplacian')
+
+        do i=1,size(smoothings)
+            !Laplacian smoothing
+            if(smoothings(i)%s=='Laplacian') then
+                call hud('Laplacian smoothing')
+                call smoother_Laplacian_init([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%fpeak)
+                do j=1,param%npars
+                    call smoother_Laplacian_extend_mirror(qp%g(:,:,:,j),m%ibathy)
+                    select case (param%pars(j)%name)
+                        case ('vp' ); call smoother_Laplacian_pseudo_nonstationary(qp%g(:,:,:,j),m%vp)
+                        case ('vs' ); call smoother_Laplacian_pseudo_nonstationary(qp%g(:,:,:,j),m%vs)
+                    end select
+                enddo
+            endif
+        enddo
+
+        !freeze_zone as hard mask
+        do i=1,param%npars
+            where(m%is_freeze_zone) qp%g(:,:,:,i)=0.
+        enddo
+
+        !soft mask
+        smask=setup%get_file('GRADIENT_SOFT_MASK','MASK')
+        if(smask/='') then
+            call alloc(mask,m%nz,m%nx,m%ny)
+            call sysio_read(smask,mask,size(mask))
+            
+            do i=1,param%npars
+                qp%g(:,:,:,i)=qp%g(:,:,:,i)*mask
+            enddo
+        endif
+
         !Regularization in x-domain
         ! if(either(oif_approx,.false.,present(oif_approx))) then
         !     call regularize_approximate(fobj,qp)
         ! else
         !    call regularize(self,qp)
         ! endif
+
 
         !preconditioner
         call preco%update
