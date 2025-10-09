@@ -209,7 +209,6 @@ CONTAINS
     RETURN
   END FUNCTION fft2d
 
-
   FUNCTION fft3d(array, dim, inv) RESULT(ft)
     !--- formal parameters
     COMPLEX(fftkind), DIMENSION(:,:,:), INTENT(IN)           :: array
