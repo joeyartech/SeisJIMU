@@ -44,7 +44,7 @@ use, intrinsic :: ieee_arithmetic
             'Basic gradients: grho(wait) glda gmu'
 
         integer :: nbndlayer=max(2,hicks_r) !minimum absorbing layer thickness
-        integer :: ngrad=3 !number of basic gradients
+        integer :: ngrad=66 !number of basic gradients
         ! integer :: nimag=3 !number of basic images
         !integer :: nengy=1 !number of energy terms
 
@@ -342,6 +342,16 @@ use, intrinsic :: ieee_arithmetic
             ! call alloc(corr%ifwsc,m%nz,m%nx,m%ny)
         ! endif
 
+call alloc(corr%g11,m%nz,m%nx,m%ny)
+call alloc(corr%g12,m%nz,m%nx,m%ny)
+call alloc(corr%g16,m%nz,m%nx,m%ny)
+call alloc(corr%g21,m%nz,m%nx,m%ny)
+call alloc(corr%g22,m%nz,m%nx,m%ny)
+call alloc(corr%g26,m%nz,m%nx,m%ny)
+call alloc(corr%g61,m%nz,m%nx,m%ny)
+call alloc(corr%g62,m%nz,m%nx,m%ny)
+call alloc(corr%g66,m%nz,m%nx,m%ny)
+
     end subroutine
 
     subroutine init_abslayer(self)
@@ -366,6 +376,16 @@ use, intrinsic :: ieee_arithmetic
             ! call correlate_assemble(corr%gbuo,  correlate_gradient(:,:,:,2))
             call correlate_assemble(corr%glda,  correlate_gradient(:,:,:,2))
             call correlate_assemble(corr%gmu,   correlate_gradient(:,:,:,3))
+
+call correlate_assemble(corr%g11, correlate_gradient(:,:,:,11))
+call correlate_assemble(corr%g12, correlate_gradient(:,:,:,12))
+call correlate_assemble(corr%g16, correlate_gradient(:,:,:,16))
+call correlate_assemble(corr%g21, correlate_gradient(:,:,:,21))
+call correlate_assemble(corr%g22, correlate_gradient(:,:,:,22))
+call correlate_assemble(corr%g26, correlate_gradient(:,:,:,26))
+call correlate_assemble(corr%g61, correlate_gradient(:,:,:,61))
+call correlate_assemble(corr%g62, correlate_gradient(:,:,:,62))
+call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
 
         endif        
         
@@ -605,6 +625,7 @@ use, intrinsic :: ieee_arithmetic
             if(mod(it,irdt)==0) then
                 call cpu_time(tic)
                 call cross_correlate(fld_a,fld_u,a_star_u,it)
+                call cross_correlate_gij(fld_a,fld_u,a_star_u,it)
                 call cpu_time(toc)
                 tt10=tt10+toc-tic
             endif
@@ -955,6 +976,56 @@ use, intrinsic :: ieee_arithmetic
                                  corr%glda,corr%gmu, &
                                  ifz,ilz,ifx,ilx)
         endif
+
+    end subroutine
+
+    subroutine cross_correlate_gij(rf,sf,corr,it)
+        type(t_field), intent(in) :: rf, sf
+        type(t_correlate) :: corr
+
+        real,dimension(:,:,:),allocatable :: sf_duz_dz, sf_dux_dx, sf_duz_dx, sf_dux_dz
+        real,dimension(:,:,:),allocatable :: rf_duz_dz, rf_dux_dx, rf_duz_dx, rf_dux_dz
+
+        !nonzero only when sf touches rf
+        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2) !
+        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
+        ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
+        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
+        
+        call alloc(rf_duz_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(rf_dux_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(rf_duz_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(rf_dux_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        
+        call alloc(sf_duz_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(sf_dux_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(sf_duz_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(sf_dux_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+
+        rf_duz_dz(ifz:ilz,ifx:ilx,1) = (rf%uz(ifz+1:ilz+1,ifx:ilx,1)-rf%uz(ifz:ilz,ifx:ilx,1))/m%dz
+        rf_dux_dx(ifz:ilz,ifx:ilx,1) = (rf%ux(ifz:ilz,ifx+1:ilx+1,1)-rf%ux(ifz:ilz,ifx:ilx,1))/m%dx
+        rf_duz_dx(ifz:ilz,ifx:ilx,1) = (rf%uz(ifz:ilz,ifx:ilx,1)-rf%uz(ifz:ilz,ifx-1:ilx-1,1))/m%dx
+        rf_dux_dz(ifz:ilz,ifx:ilx,1) = (rf%uz(ifz:ilz,ifx:ilx,1)-rf%uz(ifz-1:ilz-1,ifx:ilx,1))/m%dz
+
+        sf_duz_dz(ifz:ilz,ifx:ilx,1) = (sf%uz(ifz+1:ilz+1,ifx:ilx,1)-sf%uz(ifz:ilz,ifx:ilx,1))/m%dz
+        sf_dux_dx(ifz:ilz,ifx:ilx,1) = (sf%ux(ifz:ilz,ifx+1:ilx+1,1)-sf%ux(ifz:ilz,ifx:ilx,1))/m%dx
+        sf_duz_dx(ifz:ilz,ifx:ilx,1) = (sf%uz(ifz:ilz,ifx:ilx,1)-sf%uz(ifz:ilz,ifx-1:ilx-1,1))/m%dx
+        sf_dux_dz(ifz:ilz,ifx:ilx,1) = (sf%uz(ifz:ilz,ifx:ilx,1)-sf%uz(ifz-1:ilz-1,ifx:ilx,1))/m%dz
+
+        corr%g11(ifz:ilz,ifx:ilx,1) = corr%g11(ifz:ilz,ifx:ilx,1) + rf_duz_dz(ifz:ilz,ifx:ilx,1) *  sf_duz_dz(ifz:ilz,ifx:ilx,1)
+        corr%g12(ifz:ilz,ifx:ilx,1) = corr%g12(ifz:ilz,ifx:ilx,1) + rf_duz_dz(ifz:ilz,ifx:ilx,1) *  sf_dux_dx(ifz:ilz,ifx:ilx,1)
+        corr%g16(ifz:ilz,ifx:ilx,1) = corr%g16(ifz:ilz,ifx:ilx,1) + rf_duz_dz(ifz:ilz,ifx:ilx,1) * (sf_duz_dx(ifz:ilz,ifx:ilx,1)+sf_dux_dz(ifz:ilz,ifx:ilx,1))
+        
+        corr%g21(ifz:ilz,ifx:ilx,1) = corr%g21(ifz:ilz,ifx:ilx,1) + rf_dux_dx(ifz:ilz,ifx:ilx,1) *  sf_duz_dz(ifz:ilz,ifx:ilx,1)
+        corr%g22(ifz:ilz,ifx:ilx,1) = corr%g22(ifz:ilz,ifx:ilx,1) + rf_dux_dx(ifz:ilz,ifx:ilx,1) *  sf_dux_dx(ifz:ilz,ifx:ilx,1)
+        corr%g26(ifz:ilz,ifx:ilx,1) = corr%g26(ifz:ilz,ifx:ilx,1) + rf_dux_dx(ifz:ilz,ifx:ilx,1) * (sf_duz_dx(ifz:ilz,ifx:ilx,1)+sf_dux_dz(ifz:ilz,ifx:ilx,1))
+        
+        corr%g61(ifz:ilz,ifx:ilx,1) = corr%g61(ifz:ilz,ifx:ilx,1) + (rf_duz_dx(ifz:ilz,ifx:ilx,1)+rf_dux_dz(ifz:ilz,ifx:ilx,1)) &
+                                                                  *  sf_duz_dz(ifz:ilz,ifx:ilx,1) 
+        corr%g62(ifz:ilz,ifx:ilx,1) = corr%g62(ifz:ilz,ifx:ilx,1) + (rf_duz_dx(ifz:ilz,ifx:ilx,1)+rf_dux_dz(ifz:ilz,ifx:ilx,1)) &
+                                                                  *  sf_dux_dx(ifz:ilz,ifx:ilx,1) 
+        corr%g66(ifz:ilz,ifx:ilx,1) = corr%g66(ifz:ilz,ifx:ilx,1) + (rf_duz_dx(ifz:ilz,ifx:ilx,1)+rf_dux_dz(ifz:ilz,ifx:ilx,1)) &
+                                                                  * (sf_duz_dx(ifz:ilz,ifx:ilx,1)+sf_dux_dz(ifz:ilz,ifx:ilx,1)) 
 
     end subroutine
 

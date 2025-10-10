@@ -32,8 +32,7 @@ use m_resampler
     !misfit
     fobj%misfit=0.
 
-    !call alloc(correlate_gradient,m%nz,m%nx,m%ny,ppg%ngrad)
-call alloc(correlate_gradient,m%nz,m%nx,m%ny,33)
+    call alloc(correlate_gradient,m%nz,m%nx,m%ny,ppg%ngrad)
     
     call hud('===== START LOOP OVER SHOTS =====')
     
@@ -225,13 +224,13 @@ call alloc(correlate_gradient,m%nz,m%nx,m%ny,33)
     !allreduce energy, gradient
     ! call mpi_allreduce(mpi_in_place, correlate_energy  , m%n          , mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     !call mpi_allreduce(mpi_in_place, correlate_gradient, m%n*ppg%ngrad, mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
-call mpi_allreduce(mpi_in_place, correlate_gradient, size(correlate_gradient), mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
+    call mpi_allreduce(mpi_in_place, correlate_gradient, size(correlate_gradient), mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)
     
     !scale by shotlist
     call shls%scale(m%n*ppg%ngrad,o_from_sampled=correlate_gradient)
 
     !if(mpiworld%is_master) call sysio_write('correlate_gradient',correlate_gradient,m%n*ppg%ngrad)
-if(mpiworld%is_master) call sysio_write('correlate_gradient',correlate_gradient,size(correlate_gradient))
+    if(mpiworld%is_master) call sysio_write('correlate_gradient',correlate_gradient,size(correlate_gradient))
 
     call mpiworld%barrier
     

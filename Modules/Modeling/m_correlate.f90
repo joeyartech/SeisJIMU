@@ -25,7 +25,7 @@ use m_computebox
         real,dimension(:,:,:),allocatable :: glda, gmu
         real,dimension(:,:,:),allocatable :: grho, gbuo
 
-real,dimension(:,:,:),allocatable :: g11,g12,g13,g23,g31,g32,g33
+        real,dimension(:,:,:),allocatable :: g11,g12,g16,g21,g22,g26,g61,g62,g66
 
         !image components
         real,dimension(:,:,:),allocatable :: ipp
@@ -144,13 +144,13 @@ real,dimension(:,:,:),allocatable :: g11,g12,g13,g23,g31,g32,g33
 
 if(allocated(self%g11))  call sysio_write(self%name//'%g11'//suf ,self%g11, m%n)
 if(allocated(self%g12))  call sysio_write(self%name//'%g12'//suf ,self%g12, m%n)
-if(allocated(self%g13))  call sysio_write(self%name//'%g13'//suf ,self%g13, m%n)
-
-if(allocated(self%g23))  call sysio_write(self%name//'%g23'//suf ,self%g23, m%n)
-
-if(allocated(self%g33))  call sysio_write(self%name//'%g31'//suf ,self%g31, m%n)
-if(allocated(self%g32))  call sysio_write(self%name//'%g32'//suf ,self%g32, m%n)
-if(allocated(self%g33))  call sysio_write(self%name//'%g33'//suf ,self%g33, m%n)
+if(allocated(self%g16))  call sysio_write(self%name//'%g16'//suf ,self%g16, m%n)
+if(allocated(self%g21))  call sysio_write(self%name//'%g21'//suf ,self%g21, m%n)
+if(allocated(self%g22))  call sysio_write(self%name//'%g22'//suf ,self%g22, m%n)
+if(allocated(self%g26))  call sysio_write(self%name//'%g26'//suf ,self%g26, m%n)
+if(allocated(self%g61))  call sysio_write(self%name//'%g61'//suf ,self%g61, m%n)
+if(allocated(self%g62))  call sysio_write(self%name//'%g62'//suf ,self%g62, m%n)
+if(allocated(self%g66))  call sysio_write(self%name//'%g66'//suf ,self%g66, m%n)
 
             if(allocated(self%ipp))    call sysio_write(self%name//'%ipp'//suf   ,self%ipp,   m%n)
             if(allocated(self%ibksc))  call sysio_write(self%name//'%ibksc'//suf ,self%ibksc, m%n)
