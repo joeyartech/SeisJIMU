@@ -5,7 +5,7 @@
 # Modeling #
 ############
 #WaveEq=PSV
-WaveEq=VSS
+WaveEq=VSR
 #WaveEq=DAS
 #WaveEq=DASAC
 #WaveEq=PSV2nd
