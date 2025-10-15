@@ -5,9 +5,10 @@
 # Modeling #
 ############
 #WaveEq=PSV
+WaveEq=VSS
 #WaveEq=DAS
 #WaveEq=DASAC
-WaveEq=PSV2nd
+#WaveEq=PSV2nd
 #WaveEq=PSV2ndUE
 
 Solver=FDSG
