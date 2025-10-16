@@ -670,7 +670,7 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
             if(mod(it,irdt)==0) then
                 call cpu_time(tic)
                 call cross_correlate_glda_gmu(fld_a,fld_u,a_star_u,it)
-                call cross_correlate_gij(fld_a,fld_u,a_star_u,it)
+                !call cross_correlate_gij(fld_a,fld_u,a_star_u,it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             endif
@@ -717,6 +717,7 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
 !            !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
 !            if(if_compute_grad.and.mod(it,irdt)==0) then
 !                call cpu_time(tic)
+call cross_correlate_gij(fld_a,fld_u,a_star_u,it)
 !                call gradient_density(fld_a,fld_u,it,cb%grad(:,:,1,1))
 !                call cpu_time(toc)
 !                tt6=tt6+toc-tic
@@ -1365,7 +1366,8 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
         type(t_field), intent(in) :: rf, sf
         type(t_correlate) :: corr
 
-        real,dimension(:,:,:),allocatable :: rf_dvzdz,rf_dvxdx,rf_dvzdx,rf_dvxdz,sf_dvzdz,sf_dvxdx,sf_dvzdx,sf_dvxdz
+        real,dimension(:,:,:),allocatable :: rf_dvzdz,rf_dvxdx,rf_dvzdx,rf_dvxdz
+        real,dimension(:,:,:),allocatable :: sf_dvzdz,sf_dvxdx,sf_dvzdx,sf_dvxdz
 
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),rf%bloom(1,it),2) !
@@ -1395,18 +1397,18 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
         sf_dvxdz(ifz:ilz,ifx:ilx,1) = (sf%vx(ifz:ilz,ifx:ilx,1)-sf%vx(ifz-1:ilz-1,ifx:ilx,1))/m%dz
 
 
-        corr%g11(ifz:ilz,ifx:ilx,1) = corr%g11(ifz:ilz,ifx:ilx,1) + &
-            (rf_dvzdz(ifz:ilz,ifx:ilx,1)+rf_dvxdx(ifz:ilz,ifx:ilx,1)) * (sf_dvzdz(ifz:ilz,ifx:ilx,1)+sf_dvxdx(ifz:ilz,ifx:ilx,1))
+        corr%g11(ifz:ilz,ifx:ilx,1) = corr%g11(ifz:ilz,ifx:ilx,1) + (rf_dvzdz(ifz:ilz,ifx:ilx,1)+rf_dvxdx(ifz:ilz,ifx:ilx,1)) &
+                                                                   *(sf_dvzdz(ifz:ilz,ifx:ilx,1)+sf_dvxdx(ifz:ilz,ifx:ilx,1))
         
-        corr%g22(ifz:ilz,ifx:ilx,1) = corr%g22(ifz:ilz,ifx:ilx,1) + &
-            (rf_dvzdx(ifz:ilz,ifx:ilx,1)+rf_dvxdz(ifz:ilz,ifx:ilx,1)) * (sf_dvzdx(ifz:ilz,ifx:ilx,1)+sf_dvxdz(ifz:ilz,ifx:ilx,1))
-        corr%g26(ifz:ilz,ifx:ilx,1) = corr%g26(ifz:ilz,ifx:ilx,1) + &
-            (rf_dvzdx(ifz:ilz,ifx:ilx,1)+rf_dvxdz(ifz:ilz,ifx:ilx,1)) * (sf_dvzdx(ifz:ilz,ifx:ilx,1)-sf_dvxdz(ifz:ilz,ifx:ilx,1))
+        corr%g22(ifz:ilz,ifx:ilx,1) = corr%g22(ifz:ilz,ifx:ilx,1) + (rf_dvzdx(ifz:ilz,ifx:ilx,1)+rf_dvxdz(ifz:ilz,ifx:ilx,1)) &
+                                                                   *(sf_dvzdx(ifz:ilz,ifx:ilx,1)+sf_dvxdz(ifz:ilz,ifx:ilx,1))
+        corr%g26(ifz:ilz,ifx:ilx,1) = corr%g26(ifz:ilz,ifx:ilx,1) + (rf_dvzdx(ifz:ilz,ifx:ilx,1)+rf_dvxdz(ifz:ilz,ifx:ilx,1)) &
+                                                                   *(sf_dvzdx(ifz:ilz,ifx:ilx,1)-sf_dvxdz(ifz:ilz,ifx:ilx,1))
 
-        corr%g62(ifz:ilz,ifx:ilx,1) = corr%g62(ifz:ilz,ifx:ilx,1) + &
-            (rf_dvzdx(ifz:ilz,ifx:ilx,1)-rf_dvxdz(ifz:ilz,ifx:ilx,1)) * (sf_dvzdx(ifz:ilz,ifx:ilx,1)+sf_dvxdz(ifz:ilz,ifx:ilx,1))
-        corr%g66(ifz:ilz,ifx:ilx,1) = corr%g66(ifz:ilz,ifx:ilx,1) + &
-            (rf_dvzdx(ifz:ilz,ifx:ilx,1)-rf_dvxdz(ifz:ilz,ifx:ilx,1)) * (sf_dvzdx(ifz:ilz,ifx:ilx,1)-sf_dvxdz(ifz:ilz,ifx:ilx,1))
+        corr%g62(ifz:ilz,ifx:ilx,1) = corr%g62(ifz:ilz,ifx:ilx,1) + (rf_dvzdx(ifz:ilz,ifx:ilx,1)-rf_dvxdz(ifz:ilz,ifx:ilx,1)) &
+                                                                   *(sf_dvzdx(ifz:ilz,ifx:ilx,1)+sf_dvxdz(ifz:ilz,ifx:ilx,1))
+        corr%g66(ifz:ilz,ifx:ilx,1) = corr%g66(ifz:ilz,ifx:ilx,1) + (rf_dvzdx(ifz:ilz,ifx:ilx,1)-rf_dvxdz(ifz:ilz,ifx:ilx,1)) &
+                                                                   *(sf_dvzdx(ifz:ilz,ifx:ilx,1)-sf_dvxdz(ifz:ilz,ifx:ilx,1))
         
     end subroutine
 
