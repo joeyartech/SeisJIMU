@@ -193,6 +193,11 @@ use m_resampler
         call ppg%adjoint(fld_a,fld_u,a_star_u)
 
 
+!write correlate
+if(mpiworld%is_master) then
+    call a_star_u%write
+endif
+    
         call hud('----  Assemble  ----')
         call ppg%assemble(a_star_u)
 
@@ -216,10 +221,10 @@ use m_resampler
     call shls%scale(fobj%n_dnorms,o_from_sampled=fobj%dnorms)
 
 
-    !write correlate
-    if(mpiworld%is_master) then
-        call a_star_u%write
-    endif
+    ! !write correlate
+    ! if(mpiworld%is_master) then
+    !     call a_star_u%write
+    ! endif
 
     !allreduce energy, gradient
     ! call mpi_allreduce(mpi_in_place, correlate_energy  , m%n          , mpi_real, mpi_sum, mpiworld%communicator, mpiworld%ierr)

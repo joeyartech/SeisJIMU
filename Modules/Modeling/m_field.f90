@@ -83,6 +83,8 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:,:),allocatable :: dz_mu_duxdz_p_duzdx
         real,dimension(:,:,:),allocatable :: dx_mu_duxdz_p_duzdx
 
+        real,dimension(:,:,:),allocatable :: dz_kpa_V,dx_kpa_V,dz_mu_Szx,dx_mu_Sxz
+
         real,dimension(:,:,:),allocatable :: lapz,lapx,laps
 
         !source time function

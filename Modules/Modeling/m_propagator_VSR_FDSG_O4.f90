@@ -670,7 +670,7 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
             if(mod(it,irdt)==0) then
                 call cpu_time(tic)
                 call cross_correlate_glda_gmu(fld_a,fld_u,a_star_u,it)
-                !call cross_correlate_gij(fld_a,fld_u,a_star_u,it)
+                call cross_correlate_gij(fld_a,fld_u,a_star_u,it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             endif
@@ -717,7 +717,7 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
 !            !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
 !            if(if_compute_grad.and.mod(it,irdt)==0) then
 !                call cpu_time(tic)
-call cross_correlate_gij(fld_a,fld_u,a_star_u,it)
+! call cross_correlate_gij(fld_a,fld_u,a_star_u,it)
 !                call gradient_density(fld_a,fld_u,it,cb%grad(:,:,1,1))
 !                call cpu_time(toc)
 !                tt6=tt6+toc-tic
@@ -1350,11 +1350,11 @@ call cross_correlate_gij(fld_a,fld_u,a_star_u,it)
         ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
         ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
                     
-        !inexact greadient
-        ! call grad2d_glda_gmu(rf%szz,rf%sxx,rf%szx,sf%vz,sf%vx,  &
-        !                    ppg%ldap2mu,ppg%lda,ppg%two_ldapmu,&
-        !                    corr%glda,corr%gmu,            &
-        !                    ifz,ilz,ifx,ilx)
+        ! inexact greadient
+        call grad2d_glda_gmu(rf%szz,rf%sxx,rf%szx,sf%vz,sf%vx,  &
+                           ppg%ldap2mu,ppg%lda,ppg%two_ldapmu,&
+                           corr%glda,corr%gmu,            &
+                           ifz,ilz,ifx,ilx)
 
         ! if(m%is_freesurface) call grad2d_freesurf_glda_gmu(rf%sxx,sf%vx,&
         !                     corr%glda,corr%gmu,            &
@@ -1366,8 +1366,10 @@ call cross_correlate_gij(fld_a,fld_u,a_star_u,it)
         type(t_field), intent(in) :: rf, sf
         type(t_correlate) :: corr
 
-        real,dimension(:,:,:),allocatable :: rf_dvzdz,rf_dvxdx,rf_dvzdx,rf_dvxdz
-        real,dimension(:,:,:),allocatable :: sf_dvzdz,sf_dvxdx,sf_dvzdx,sf_dvxdz
+        real,save,dimension(:,:),allocatable :: rf_duzdz,rf_duxdx,rf_duzdx,rf_duxdz
+        real,save,dimension(:,:),allocatable :: sf_duzdz,sf_duxdx,sf_duzdx,sf_duxdz
+
+        logical,save :: is_first_in=.true.
 
         !nonzero only when sf touches rf
         ifz=max(sf%bloom(1,it),rf%bloom(1,it),2) !
@@ -1375,41 +1377,49 @@ call cross_correlate_gij(fld_a,fld_u,a_star_u,it)
         ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
         ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
 
-        call alloc(rf_dvzdz,[ifz,ilz],[ifx,ilx],[1,1])
-        call alloc(rf_dvxdx,[ifz,ilz],[ifx,ilx],[1,1])
-        call alloc(rf_dvzdx,[ifz,ilz],[ifx,ilx],[1,1])
-        call alloc(rf_dvxdz,[ifz,ilz],[ifx,ilx],[1,1])
-        call alloc(sf_dvzdz,[ifz,ilz],[ifx,ilx],[1,1])
-        call alloc(sf_dvxdx,[ifz,ilz],[ifx,ilx],[1,1])
-        call alloc(sf_dvzdx,[ifz,ilz],[ifx,ilx],[1,1])
-        call alloc(sf_dvxdz,[ifz,ilz],[ifx,ilx],[1,1])
+        ! call grad2d_gij(rf%vz,rf%vx,sf%vz,sf%vx,  &
+        !                 corr%g11,corr%g22,corr%g26,corr%g62,corr%g66,&
+        !                 ifz,ilz,ifx,ilx)
 
-        rf_dvzdz(ifz:ilz,ifx:ilx,1) = (rf%vz(ifz+1:ilz+1,ifx:ilx,1)-rf%vz(ifz:ilz,ifx:ilx,1))/m%dz
-        rf_dvxdx(ifz:ilz,ifx:ilx,1) = (rf%vx(ifz:ilz,ifx+1:ilx+1,1)-rf%vx(ifz:ilz,ifx:ilx,1))/m%dx
+        if(is_first_in) then
+            call alloc(rf_duzdz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+            call alloc(rf_duxdx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+            call alloc(rf_duzdx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+            call alloc(rf_duxdz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+            call alloc(sf_duzdz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+            call alloc(sf_duxdx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+            call alloc(sf_duzdx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+            call alloc(sf_duxdz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+            is_first_in=.false.
+        endif
 
-        rf_dvzdx(ifz:ilz,ifx:ilx,1) = (rf%vz(ifz:ilz,ifx:ilx,1)-rf%vz(ifz:ilz,ifx-1:ilx-1,1))/m%dx
-        rf_dvxdz(ifz:ilz,ifx:ilx,1) = (rf%vx(ifz:ilz,ifx:ilx,1)-rf%vx(ifz-1:ilz-1,ifx:ilx,1))/m%dz
+        rf_duzdz(ifz:ilz,ifx:ilx) = rf_duzdz(ifz:ilz,ifx:ilx) + (rf%vz(ifz+1:ilz+1,ifx:ilx,1)-rf%vz(ifz:ilz,ifx:ilx,1))!/m%dz
+        rf_duxdx(ifz:ilz,ifx:ilx) = rf_duxdx(ifz:ilz,ifx:ilx) + (rf%vx(ifz:ilz,ifx+1:ilx+1,1)-rf%vx(ifz:ilz,ifx:ilx,1))!/m%dx
 
-        sf_dvzdz(ifz:ilz,ifx:ilx,1) = (sf%vz(ifz+1:ilz+1,ifx:ilx,1)-sf%vz(ifz:ilz,ifx:ilx,1))/m%dz
-        sf_dvxdx(ifz:ilz,ifx:ilx,1) = (sf%vx(ifz:ilz,ifx+1:ilx+1,1)-sf%vx(ifz:ilz,ifx:ilx,1))/m%dx
+        rf_duzdx(ifz:ilz,ifx:ilx) = rf_duzdx(ifz:ilz,ifx:ilx) + (rf%vz(ifz:ilz,ifx:ilx,1)-rf%vz(ifz:ilz,ifx-1:ilx-1,1))!/m%dx
+        rf_duxdz(ifz:ilz,ifx:ilx) = rf_duxdz(ifz:ilz,ifx:ilx) + (rf%vx(ifz:ilz,ifx:ilx,1)-rf%vx(ifz-1:ilz-1,ifx:ilx,1))!/m%dz
 
-        sf_dvzdx(ifz:ilz,ifx:ilx,1) = (sf%vz(ifz:ilz,ifx:ilx,1)-sf%vz(ifz:ilz,ifx-1:ilx-1,1))/m%dx
-        sf_dvxdz(ifz:ilz,ifx:ilx,1) = (sf%vx(ifz:ilz,ifx:ilx,1)-sf%vx(ifz-1:ilz-1,ifx:ilx,1))/m%dz
+        sf_duzdz(ifz:ilz,ifx:ilx) = sf_duzdz(ifz:ilz,ifx:ilx) + (sf%vz(ifz+1:ilz+1,ifx:ilx,1)-sf%vz(ifz:ilz,ifx:ilx,1))!/m%dz
+        sf_duxdx(ifz:ilz,ifx:ilx) = sf_duxdx(ifz:ilz,ifx:ilx) + (sf%vx(ifz:ilz,ifx+1:ilx+1,1)-sf%vx(ifz:ilz,ifx:ilx,1))!/m%dx
+
+        sf_duzdx(ifz:ilz,ifx:ilx) = sf_duzdx(ifz:ilz,ifx:ilx) + (sf%vz(ifz:ilz,ifx:ilx,1)-sf%vz(ifz:ilz,ifx-1:ilx-1,1))!/m%dx
+        sf_duxdz(ifz:ilz,ifx:ilx) = sf_duxdz(ifz:ilz,ifx:ilx) + (sf%vx(ifz:ilz,ifx:ilx,1)-sf%vx(ifz-1:ilz-1,ifx:ilx,1))!/m%dz
 
 
-        corr%g11(ifz:ilz,ifx:ilx,1) = corr%g11(ifz:ilz,ifx:ilx,1) + (rf_dvzdz(ifz:ilz,ifx:ilx,1)+rf_dvxdx(ifz:ilz,ifx:ilx,1)) &
-                                                                   *(sf_dvzdz(ifz:ilz,ifx:ilx,1)+sf_dvxdx(ifz:ilz,ifx:ilx,1))
+        corr%g11(ifz:ilz,ifx:ilx,1) = corr%g11(ifz:ilz,ifx:ilx,1) + (rf_duzdz(ifz:ilz,ifx:ilx)+rf_duxdx(ifz:ilz,ifx:ilx)) &
+                                                                   *(sf_duzdz(ifz:ilz,ifx:ilx)+sf_duxdx(ifz:ilz,ifx:ilx))
         
-        corr%g22(ifz:ilz,ifx:ilx,1) = corr%g22(ifz:ilz,ifx:ilx,1) + (rf_dvzdx(ifz:ilz,ifx:ilx,1)+rf_dvxdz(ifz:ilz,ifx:ilx,1)) &
-                                                                   *(sf_dvzdx(ifz:ilz,ifx:ilx,1)+sf_dvxdz(ifz:ilz,ifx:ilx,1))
-        corr%g26(ifz:ilz,ifx:ilx,1) = corr%g26(ifz:ilz,ifx:ilx,1) + (rf_dvzdx(ifz:ilz,ifx:ilx,1)+rf_dvxdz(ifz:ilz,ifx:ilx,1)) &
-                                                                   *(sf_dvzdx(ifz:ilz,ifx:ilx,1)-sf_dvxdz(ifz:ilz,ifx:ilx,1))
+        corr%g22(ifz:ilz,ifx:ilx,1) = corr%g22(ifz:ilz,ifx:ilx,1) + (rf_duzdx(ifz:ilz,ifx:ilx)+rf_duxdz(ifz:ilz,ifx:ilx)) &
+                                                                   *(sf_duzdx(ifz:ilz,ifx:ilx)+sf_duxdz(ifz:ilz,ifx:ilx))
+        corr%g26(ifz:ilz,ifx:ilx,1) = corr%g26(ifz:ilz,ifx:ilx,1) + (rf_duzdx(ifz:ilz,ifx:ilx)+rf_duxdz(ifz:ilz,ifx:ilx)) &
+                                                                   *(sf_duzdx(ifz:ilz,ifx:ilx)-sf_duxdz(ifz:ilz,ifx:ilx))
 
-        corr%g62(ifz:ilz,ifx:ilx,1) = corr%g62(ifz:ilz,ifx:ilx,1) + (rf_dvzdx(ifz:ilz,ifx:ilx,1)-rf_dvxdz(ifz:ilz,ifx:ilx,1)) &
-                                                                   *(sf_dvzdx(ifz:ilz,ifx:ilx,1)+sf_dvxdz(ifz:ilz,ifx:ilx,1))
-        corr%g66(ifz:ilz,ifx:ilx,1) = corr%g66(ifz:ilz,ifx:ilx,1) + (rf_dvzdx(ifz:ilz,ifx:ilx,1)-rf_dvxdz(ifz:ilz,ifx:ilx,1)) &
-                                                                   *(sf_dvzdx(ifz:ilz,ifx:ilx,1)-sf_dvxdz(ifz:ilz,ifx:ilx,1))
-        
+        corr%g62(ifz:ilz,ifx:ilx,1) = corr%g62(ifz:ilz,ifx:ilx,1) + (rf_duzdx(ifz:ilz,ifx:ilx)-rf_duxdz(ifz:ilz,ifx:ilx)) &
+                                                                   *(sf_duzdx(ifz:ilz,ifx:ilx)+sf_duxdz(ifz:ilz,ifx:ilx))
+        corr%g66(ifz:ilz,ifx:ilx,1) = corr%g66(ifz:ilz,ifx:ilx,1) + (rf_duzdx(ifz:ilz,ifx:ilx)-rf_duxdz(ifz:ilz,ifx:ilx)) &
+                                                                   *(sf_duzdx(ifz:ilz,ifx:ilx)-sf_duxdz(ifz:ilz,ifx:ilx))
+
+                                                                   
     end subroutine
 
     subroutine cross_correlate_postprocess(corr)
@@ -1560,36 +1570,6 @@ call cross_correlate_gij(fld_a,fld_u,a_star_u,it)
         enddo
         !$omp end do
         !$omp end parallel
-        
-
-! do ix=ifx,ilx
-
-!     iz=1
-
-!         i=(iz-cb%ifz)+(ix-cb%ifx)*nz+1
-        
-!         izm2_ix=i-2  !iz-2,ix
-!         izm1_ix=i-1  !iz-1,ix
-!         iz_ix  =i    !iz,ix
-!         izp1_ix=i+1  !iz+1,ix
-!         izp2_ix=i+2  !iz+2,ix
-        
-!         iz_ixm2=i  -2*nz  !iz,ix-2
-!         iz_ixm1=i    -nz  !iz,ix-1
-!         iz_ixp1=i    +nz  !iz,ix+1
-!         iz_ixp2=i  +2*nz  !iz,ix+2
-        
-!         dszz_dz_= (szz(izp1_ix)-szz(iz_ix    ))/m%dz
-!         dsxx_dx_= (sxx(izp1_ix)-sxx(izp1_ixm1))/m%dx
-
-!         dszx_dz_= (szx(izp1_ix)           )/m%dz
-!         dszx_dx_= (szx(iz_ixp1)-szx(iz_ix))/m%dx
-        
-!         !velocity
-!         vz(iz_ixp1)=vz(iz_ixp1) + dt*   buoz(iz_ixp1)*(dszz_dz_+dszx_dx_)
-!         vx(iz_ix  )=vx(iz_ix  ) + dt*2.*buox(iz_ix  )*(dszx_dz_+dsxx_dx_)
-
-! enddo
 
     end subroutine
     
@@ -1670,255 +1650,179 @@ call cross_correlate_gij(fld_a,fld_u,a_star_u,it)
         
     end subroutine
 
-    ! subroutine grad2d_glda_gmu(rf_vz,rf_vx,&
-    !                          sf_vz,sf_vx,         &
-    !                          rho,&
-    !                          grad_kpa,grad_mu,    &
-    !                          ifz,ilz,ifx,ilx)
-    !     real,dimension(*) :: rf_vz,rf_vx,sf_vz,sf_vx
-    !     real,dimension(*) :: rho
-    !     real,dimension(*) :: grad_kpa,grad_mu
+    subroutine grad2d_glda_gmu(rf_szz,rf_sxx,rf_szx,&
+                             sf_vz,sf_vx,         &
+                             ldap2mu,lda,two_ldapmu,&
+                             grad_lda,grad_mu,    &
+                             ifz,ilz,ifx,ilx)
+        real,dimension(*) :: rf_szz,rf_sxx,rf_szx,sf_vz,sf_vx
+        real,dimension(*) :: ldap2mu,lda,two_ldapmu
+        real,dimension(*) :: grad_lda,grad_mu
         
-    !     nz=cb%nz
+        nz=cb%nz
         
-    !     sf_dvx_dx=0.
-    !     sf_dvz_dz=0.
-    !     sf_4_dvzdx_p_dvxdz=0.
-    !     rf_4_szx=0.
+        sf_dvx_dx=0.
+        sf_dvz_dz=0.
+        sf_4_dvzdx_p_dvxdz=0.
+        rf_4_szx=0.
         
-    !     !$omp parallel default (shared)&
-    !     !$omp private(iz,ix,i,j,&
-    !     !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-    !     !$omp         iz_ixm2,izp1_ixm2,iz_ixm1,izp1_ixm1,&
-    !     !$omp         izm2_ixp1,izm1_ixp1,iz_ixp1,izp1_ixp1,izp2_ixp1,&
-    !     !$omp         iz_ixp2,izp1_ixp2,&
-    !     !$omp         sf_dvx_dx,sf_dvz_dz,&
-    !     !$omp         sf_4_dvzdx_p_dvxdz,rf_4_szx)
-    !     !$omp do schedule(dynamic)
-    !     do ix=ifx,ilx
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,j,&
+        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
+        !$omp         iz_ixm2,izp1_ixm2,iz_ixm1,izp1_ixm1,&
+        !$omp         izm2_ixp1,izm1_ixp1,iz_ixp1,izp1_ixp1,izp2_ixp1,&
+        !$omp         iz_ixp2,izp1_ixp2,&
+        !$omp         sf_dvx_dx,sf_dvz_dz,&
+        !$omp         sf_4_dvzdx_p_dvxdz,rf_4_szx)
+        !$omp do schedule(dynamic)
+        do ix=ifx,ilx
         
-    !         !dir$ simd
-    !         do iz=ifz,ilz
+            !dir$ simd
+            do iz=ifz,ilz
                 
-    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
-    !             j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
 
-    !             izm2_ix= i-2  !iz-2,ix
-    !             izm1_ix= i-1  !iz-1,ix
-    !             iz_ix  = i    !iz  ,ix
-    !             izp1_ix= i+1  !iz+1,ix
-    !             izp2_ix= i+2  !iz+2,ix
+                izm2_ix= i-2  !iz-2,ix
+                izm1_ix= i-1  !iz-1,ix
+                iz_ix  = i    !iz  ,ix
+                izp1_ix= i+1  !iz+1,ix
+                izp2_ix= i+2  !iz+2,ix
 
-    !             iz_ixm2  = i    -2*nz  !iz  ,ix-2
-    !             izp1_ixm2= i+1  -2*nz  !iz+1,ix-2
-    !             iz_ixm1  = i      -nz  !iz  ,ix-1
-    !             izp1_ixm1= i+1    -nz  !iz+1,ix-1
+                iz_ixm2  = i    -2*nz  !iz  ,ix-2
+                izp1_ixm2= i+1  -2*nz  !iz+1,ix-2
+                iz_ixm1  = i      -nz  !iz  ,ix-1
+                izp1_ixm1= i+1    -nz  !iz+1,ix-1
 
-    !             izm2_ixp1= i-2    +nz  !iz-2,ix+1
-    !             izm1_ixp1= i-1    +nz  !iz-1,ix+1
-    !             iz_ixp1  = i      +nz  !iz  ,ix+1
-    !             izp1_ixp1= i+1    +nz  !iz+1,ix+1
-    !             izp2_ixp1= i+2    +nz  !iz+2,ix+1
+                izm2_ixp1= i-2    +nz  !iz-2,ix+1
+                izm1_ixp1= i-1    +nz  !iz-1,ix+1
+                iz_ixp1  = i      +nz  !iz  ,ix+1
+                izp1_ixp1= i+1    +nz  !iz+1,ix+1
+                izp2_ixp1= i+2    +nz  !iz+2,ix+1
 
-    !             iz_ixp2  = i    +2*nz  !iz  ,ix+2
-    !             izp1_ixp2= i+1  +2*nz  !iz+1,ix+2
+                iz_ixp2  = i    +2*nz  !iz  ,ix+2
+                izp1_ixp2= i+1  +2*nz  !iz+1,ix+2
+                
 
+                sf_dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
+                sf_dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
 
-    !             rf_dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
-    !             rf_dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))                
-
-    !             rf_dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
-    !             rf_dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
-
-    !             sf_dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
-    !             sf_dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
-
-    !             grad_lda(j)=grad_lda(j) + rf_szz(i)*(sf_dvz_dz + sf_dvx_dx) &
-    !                                     + rf_sxx(i)*(sf_dvz_dz + sf_dvx_dx)
+                grad_lda(j)=grad_lda(j) + rf_szz(i)*(sf_dvz_dz + sf_dvx_dx) &
+                                        + rf_sxx(i)*(sf_dvz_dz + sf_dvx_dx)
 
 
-    !             sf_4_dvzdx_p_dvxdz = &   !(dvz_dx+dvx_dz)(iz,ix)     [iz-0.5,ix-0.5]
-    !                                      c1x*(sf_vz(iz_ix    )-sf_vz(iz_ixm1  )) +c2x*(sf_vz(iz_ixp1  )-sf_vz(iz_ixm2  )) &
-    !                                    + c1z*(sf_vx(iz_ix    )-sf_vx(izm1_ix  )) +c2z*(sf_vx(izp1_ix  )-sf_vx(izm2_ix  )) &
-    !                                  & &
-    !                                  & & !(dvz_dx+dvx_dz)(iz,ix+1)   [iz-0.5,ix+0.5]
-    !                                    + c1x*(sf_vz(iz_ixp1  )-sf_vz(iz_ix    )) +c2x*(sf_vz(iz_ixp2  )-sf_vz(iz_ixm1  )) &
-    !                                    + c1z*(sf_vx(iz_ixp1  )-sf_vx(izm1_ixp1)) +c2z*(sf_vx(izp1_ixp1)-sf_vx(izm2_ixp1)) &
-    !                                  & &
-    !                                  & & !(dvz_dx+dvx_dz)(iz+1,ix)   [iz+0.5,ix-0.5]
-    !                                    + c1x*(sf_vz(izp1_ix  )-sf_vz(izp1_ixm1)) +c2x*(sf_vz(izp1_ixp1)-sf_vz(izp1_ixm2)) &
-    !                                    + c1z*(sf_vx(izp1_ix  )-sf_vx(iz_ix    )) +c2z*(sf_vx(izp2_ix  )-sf_vx(izm1_ix  )) &
-    !                                  & &
-    !                                  & & !(dvz_dx+dvx_dz)(iz+1,ix+1) [iz+0.5,ix+0.5]
-    !                                    + c1x*(sf_vz(izp1_ixp1)-sf_vz(izp1_ix  )) +c2x*(sf_vz(izp1_ixp2)-sf_vz(izp1_ixm1)) &
-    !                                    + c1z*(sf_vx(izp1_ixp1)-sf_vx(iz_ixp1  )) +c2z*(sf_vx(izp2_ixp1)-sf_vx(izm1_ixp1))
+                sf_4_dvzdx_p_dvxdz = &   !(dvz_dx+dvx_dz)(iz,ix)     [iz-0.5,ix-0.5]
+                                         c1x*(sf_vz(iz_ix    )-sf_vz(iz_ixm1  )) +c2x*(sf_vz(iz_ixp1  )-sf_vz(iz_ixm2  )) &
+                                       + c1z*(sf_vx(iz_ix    )-sf_vx(izm1_ix  )) +c2z*(sf_vx(izp1_ix  )-sf_vx(izm2_ix  )) &
+                                     & &
+                                     & & !(dvz_dx+dvx_dz)(iz,ix+1)   [iz-0.5,ix+0.5]
+                                       + c1x*(sf_vz(iz_ixp1  )-sf_vz(iz_ix    )) +c2x*(sf_vz(iz_ixp2  )-sf_vz(iz_ixm1  )) &
+                                       + c1z*(sf_vx(iz_ixp1  )-sf_vx(izm1_ixp1)) +c2z*(sf_vx(izp1_ixp1)-sf_vx(izm2_ixp1)) &
+                                     & &
+                                     & & !(dvz_dx+dvx_dz)(iz+1,ix)   [iz+0.5,ix-0.5]
+                                       + c1x*(sf_vz(izp1_ix  )-sf_vz(izp1_ixm1)) +c2x*(sf_vz(izp1_ixp1)-sf_vz(izp1_ixm2)) &
+                                       + c1z*(sf_vx(izp1_ix  )-sf_vx(iz_ix    )) +c2z*(sf_vx(izp2_ix  )-sf_vx(izm1_ix  )) &
+                                     & &
+                                     & & !(dvz_dx+dvx_dz)(iz+1,ix+1) [iz+0.5,ix+0.5]
+                                       + c1x*(sf_vz(izp1_ixp1)-sf_vz(izp1_ix  )) +c2x*(sf_vz(izp1_ixp2)-sf_vz(izp1_ixm1)) &
+                                       + c1z*(sf_vx(izp1_ixp1)-sf_vx(iz_ixp1  )) +c2z*(sf_vx(izp2_ixp1)-sf_vx(izm1_ixp1))
 
-    !                     ![iz-0.5,ix-0.5]   [iz+0.5,ix-0.5]   [iz-0.5,ix+0.5]     [iz+0.5,ix+0.5]
-    !             rf_4_szx = rf_szx(iz_ix) + rf_szx(izp1_ix) + rf_szx(iz_ixp1) + rf_szx(izp1_ixp1)
+                        ![iz-0.5,ix-0.5]   [iz+0.5,ix-0.5]   [iz-0.5,ix+0.5]     [iz+0.5,ix+0.5]
+                rf_4_szx = rf_szx(iz_ix) + rf_szx(izp1_ix) + rf_szx(iz_ixp1) + rf_szx(izp1_ixp1)
 
-    !             grad_mu(j)=grad_mu(j) + rf_szz(i)*( ldap2mu(i)*sf_dvz_dz -    lda(i)*sf_dvx_dx) &
-    !                                   + rf_sxx(i)*(-lda(i)    *sf_dvz_dz +ldap2mu(i)*sf_dvx_dx) &
-    !                                   + two_ldapmu(i)*0.0625*rf_4_szx*sf_4_dvzdx_p_dvxdz   !0.0625=1/16
+                grad_mu(j)=grad_mu(j) + rf_szz(i)*( ldap2mu(i)*sf_dvz_dz -    lda(i)*sf_dvx_dx) &
+                                      + rf_sxx(i)*(-lda(i)    *sf_dvz_dz +ldap2mu(i)*sf_dvx_dx) &
+                                      + two_ldapmu(i)*0.0625*rf_4_szx*sf_4_dvzdx_p_dvxdz   !0.0625=1/16
 
-    !         end do
+            end do
             
-    !     end do
-    !     !$omp end do
-    !     !$omp end parallel
+        end do
+        !$omp end do
+        !$omp end parallel
 
-    ! end subroutine
+    end subroutine
+
+    subroutine grad2d_gij(rf_vz,rf_vx,  &
+                         sf_vz,sf_vx,   &
+                         g11,g22,g26,g62,g66,   &
+                         ifz,ilz,ifx,ilx)
+        real,dimension(*) :: rf_vz,rf_vx,sf_vz,sf_vx
+        real,dimension(*) :: g11,g22,g26,g62,g66
+        
+        nz=cb%nz
+        dt=-1*ppg%dt
+
+        rf_dvx_dx=0.
+        rf_dvz_dz=0.
+        rf_dvz_dx=0.
+        rf_dvx_dz=0.
+
+        sf_dvx_dx=0.
+        sf_dvz_dz=0.
+        sf_dvz_dx=0.
+        sf_dvx_dz=0.
+        
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,j,&
+        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
+        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
+        !$omp         rf_dvx_dx,rf_dvz_dz,rf_dvz_dx,rf_dvx_dz,&
+        !$omp         sf_dvx_dx,sf_dvz_dz,sf_dvz_dx,sf_dvx_dz)
+        !$omp do schedule(dynamic)
+        do ix=ifx,ilx
+        
+            !dir$ simd
+            do iz=ifz,ilz
+                
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
+
+                izm2_ix= i-2  !iz-2,ix
+                izm1_ix= i-1  !iz-1,ix
+                iz_ix  = i    !iz  ,ix
+                izp1_ix= i+1  !iz+1,ix
+                izp2_ix= i+2  !iz+2,ix
+
+                iz_ixm2  = i    -2*nz  !iz  ,ix-2
+                iz_ixm1  = i      -nz  !iz  ,ix-1
+                iz_ixp1  = i      +nz  !iz  ,ix+1
+                iz_ixp2  = i    +2*nz  !iz  ,ix+2
+
+
+                rf_dvx_dx = dt * c1x*(rf_vx(iz_ixp1)-rf_vx(iz_ix)) +c2x*(rf_vx(iz_ixp2)-rf_vx(iz_ixm1))
+                rf_dvz_dz = dt * c1z*(rf_vz(izp1_ix)-rf_vz(iz_ix)) +c2z*(rf_vz(izp2_ix)-rf_vz(izm1_ix))
+
+                rf_dvz_dx = dt * c1x*(rf_vz(iz_ix)-rf_vz(iz_ixm1)) +c2x*(rf_vz(iz_ixp1)-rf_vz(iz_ixm2))
+                rf_dvx_dz = dt * c1z*(rf_vx(iz_ix)-rf_vx(izm1_ix)) +c2z*(rf_vx(izp1_ix)-rf_vx(izm2_ix))
+
+
+                sf_dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
+                sf_dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
+
+                sf_dvz_dx = c1x*(sf_vz(iz_ix)-sf_vz(iz_ixm1)) +c2x*(sf_vz(iz_ixp1)-sf_vz(iz_ixm2))
+                sf_dvx_dz = c1z*(sf_vx(iz_ix)-sf_vx(izm1_ix)) +c2z*(sf_vx(izp1_ix)-sf_vx(izm2_ix))
+
+
+                g11(j)=g11(j) + (rf_dvz_dz+rf_dvx_dx) &
+                               *(sf_dvz_dz+sf_dvx_dx)
+        
+                g22(j)=g22(j) + (rf_dvz_dx+rf_dvx_dz) &
+                               *(sf_dvz_dx+sf_dvx_dz)
+                g26(j)=g26(j) + (rf_dvz_dx+rf_dvx_dz) &
+                               *(sf_dvz_dx-sf_dvx_dz)
+
+                g62(j)=g62(j) + (rf_dvz_dx-rf_dvx_dz) &
+                               *(sf_dvz_dx+sf_dvx_dz)
+                g66(j)=g66(j) + (rf_dvz_dx-rf_dvx_dz) &
+                               *(sf_dvz_dx-sf_dvx_dz)
+
+            end do
+            
+        end do
+        !$omp end do
+        !$omp end parallel
+
+    end subroutine
     
-    ! subroutine grad2d_density(rf_vz,rf_vx,         &
-    !                           sf_szz,sf_sxx,sf_szx,&
-    !                           grad,                &
-    !                           ifz,ilz,ifx,ilx)
-    !     real,dimension(*) :: rf_vz,rf_vx
-    !     real,dimension(*) :: sf_szz,sf_sxx,sf_szx
-    !     real,dimension(*) :: grad
-        
-    !     nz=cb%nz
-        
-    !     sf_2_dszzdz_p_dszxdx=0.
-    !     sf_2_dsxxdx_p_dszxdz=0.
-    !     rf_2vz=0.
-    !     rf_2vx=0.
-        
-    !     !$omp parallel default (shared)&
-    !     !$omp private(iz,ix,i,j,&
-    !     !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-    !     !$omp         iz_ixm2,iz_ixm1,izp1_ixm1,&
-    !     !$omp         izm1_ixp1,iz_ixp1,izp1_ixp1,izp2_ixp1,&
-    !     !$omp         iz_ixp2,izp1_ixp2,&
-    !     !$omp         sf_2_dszzdz_p_dszxdx,sf_2_dsxxdx_p_dszxdz,&
-    !     !$omp         rf_2vz,rf_2vx)
-    !     !$omp do schedule(dynamic)
-    !     do ix=ifx,ilx
-        
-    !         !dir$ simd
-    !         do iz=ifz,ilz
-            
-    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
-    !             j=(iz-1)     +(ix-1)     *cb%mz+1 !corr has no boundary layers
-                
-    !             izm2_ix=i-2  !iz-2,ix
-    !             izm1_ix=i-1  !iz-1,ix
-    !             iz_ix  =i    !iz,ix
-    !             izp1_ix=i+1  !iz+1,ix
-    !             izp2_ix=i+2  !iz+2,ix
-                
-    !             iz_ixm2  = i    -2*nz  !iz  ,ix-2
-    !             iz_ixm1  = i      -nz  !iz  ,ix-1
-    !             izp1_ixm1= i+1    -nz  !iz-1,ix-1
-
-    !             izm1_ixp1= i-1    +nz  !iz-1,ix+1
-    !             iz_ixp1  = i      +nz  !iz  ,ix+1
-    !             izp1_ixp1= i+1    +nz  !iz+1,ix+1
-    !             izp2_ixp1= i+2    +nz  !iz+2,ix+1
-
-    !             iz_ixp2  = i    +2*nz  !iz ,ix+2
-    !             izp1_ixp2= i+1  +2*nz  !iz+1,ix+2
-
-    !             sf_2_dszzdz_p_dszxdx = &   !(dszx_dx+dszz_dz)(iz,ix)   [iz-0.5,ix]
-    !                                        c1z*(sf_szz(iz_ix    )-sf_szz(izm1_ix)) +c2z*(sf_szz(izp1_ix  )-sf_szz(izm2_ix  )) &
-    !                                      + c1x*(sf_szx(iz_ixp1  )-sf_szx(iz_ix  )) +c2x*(sf_szx(iz_ixp2  )-sf_szx(iz_ixm1  )) &
-    !                                    & &
-    !                                    & & !(dszx_dx+dszz_dz)(iz+1,ix) [iz+0.5,ix]
-    !                                      + c1z*(sf_szz(izp1_ix  )-sf_szz(iz_ix  )) +c2z*(sf_szz(izp2_ix  )-sf_szz(izm1_ix  )) &
-    !                                      + c1x*(sf_szx(izp1_ixp1)-sf_szx(izp1_ix)) +c2x*(sf_szx(izp1_ixp2)-sf_szx(izp1_ixm1))
-                
-    !             sf_2_dsxxdx_p_dszxdz = &   !(dsxx_dx+dszx_dz)(iz,ix)   [iz,ix-0.5]
-    !                                        c1x*(sf_sxx(iz_ix    )-sf_sxx(iz_ixm1)) +c2x*(sf_sxx(iz_ixp1  )-sf_sxx(iz_ixm2  )) &
-    !                                      + c1z*(sf_szx(izp1_ix  )-sf_szx(iz_ix  )) +c2z*(sf_szx(izp2_ix  )-sf_szx(izm1_ix  )) &
-    !                                    & &
-    !                                    & & !(dsxx_dx+dszx_dz)(iz,ix+1) [iz,ix+0.5]
-    !                                      + c1x*(sf_sxx(iz_ixp1  )-sf_sxx(iz_ix  )) +c2x*(sf_sxx(iz_ixp2  )-sf_sxx(iz_ixm1  )) &
-    !                                      + c1z*(sf_szx(izp1_ixp1)-sf_szx(iz_ixp1)) +c2z*(sf_szx(izp2_ixp1)-sf_szx(izm1_ixp1))
-                                         
-    !             rf_2vz = rf_vz(iz_ix) + rf_vz(izp1_ix)
-    !                      ![iz-0.5,ix]      [iz+0.5,ix]
-    !             rf_2vx = rf_vx(iz_ix) + rf_vx(iz_ixp1)
-    !                      ![iz,ix-0.5]      [iz,ix+0.5]
-                
-    !             grad(j)=grad(j) + 0.25*( rf_2vz*sf_2_dszzdz_p_dszxdx + rf_2vx*sf_2_dsxxdx_p_dszxdz )
-                
-    !         enddo
-            
-    !     enddo
-    !     !$omp end do
-    !     !$omp end parallel
-        
-    ! end subroutine
-
-    subroutine imag2d_xcorr(rf_szz,rf_sxx, &
-                            sf_szz,sf_sxx, &
-                            imag,          &
-                            ifz,ilz,ifx,ilx)
-        real,dimension(*) :: rf_szz,rf_sxx
-        real,dimension(*) :: sf_szz,sf_sxx
-        real,dimension(*) :: imag
-        
-        nz=cb%nz
-        
-        rp=0.
-        sp=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,j,&
-        !$omp         rp,sp)
-        !$omp do schedule(dynamic)
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-                
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
-                
-                rp = sn_p*( rf_szz(i) + rf_sxx(i) )
-                sp = sn_p*( sf_szz(i) + sf_sxx(i) )
-                
-                imag(j)=imag(j) + rp*sp !+rf_vz(i)*sf_vz(i) + rf_vx(i)*sf_vx(i)
-                
-            end do
-            
-        end do
-        !$omp end do
-        !$omp end parallel
-
-    end subroutine
-
-    subroutine engy2d_xcorr(sf_szz,sf_sxx, &
-                            engy,          &
-                            ifz,ilz,ifx,ilx)
-        real,dimension(*) :: sf_szz,sf_sxx
-        real,dimension(*) :: engy
-        
-        nz=cb%nz
-        
-        sp=0.
-        
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,j,&
-        !$omp         sp)
-        !$omp do schedule(dynamic)
-        do ix=ifx,ilx
-        
-            !dir$ simd
-            do iz=ifz,ilz
-                
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
-                
-                sp = sn_p* ( sf_szz(i) + sf_sxx(i) )
-                
-                engy(j)=engy(j) + sp*sp
-                
-            end do
-            
-        end do
-        !$omp end do
-        !$omp end parallel
-
-    end subroutine
 
 end
