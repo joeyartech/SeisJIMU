@@ -710,6 +710,12 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
                     if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl
                     f%ux(ifz:ilz,ifx:ilx,1) = f%ux(ifz:ilz,ifx:ilx,1) + wl*self%buox(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
                 
+                case ('mono','monopole','duzdz+duxdx') !size(SCOMP)=4..
+                    f%uz(ifz+1:ilz+1,ifx:ilx,1) = f%uz(ifz+1:ilz+1,ifx:ilx,1) + wl*self%buoz(ifz+1:ilz+1,ifx:ilx)*inv_2dz*shot%src%interp_coef(:,:,1)
+                    f%uz(ifz-1:ilz-1,ifx:ilx,1) = f%uz(ifz-1:ilz-1,ifx:ilx,1) - wl*self%buoz(ifz-1:ilz-1,ifx:ilx)*inv_2dz*shot%src%interp_coef(:,:,1)
+                    f%ux(ifz:ilz,ifx+1:ilx+1,1) = f%ux(ifz:ilz,ifx+1:ilx+1,1) + wl*self%buox(ifz:ilz,ifx+1:ilx+1)*inv_2dx*shot%src%interp_coef(:,:,1)
+                    f%ux(ifz:ilz,ifx-1:ilx-1,1) = f%ux(ifz:ilz,ifx-1:ilx-1,1) - wl*self%buox(ifz:ilz,ifx-1:ilx-1)*inv_2dx*shot%src%interp_coef(:,:,1)
+                
                 end select
                 
             else
@@ -721,6 +727,12 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
                     if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl
                     f%ux(iz,ix,1) = f%ux(iz,ix,1) + wl*self%buox(iz,ix)
                     
+                case ('mono','monopole','duzdz+duxdx')  !size(SCOMP)=4..
+                    f%uz(iz+1,ix,1) = f%uz(iz+1,ix,1) + wl*self%buoz(iz+1,ix)*inv_2dz
+                    f%uz(iz-1,ix,1) = f%uz(iz-1,ix,1) - wl*self%buoz(iz-1,ix)*inv_2dz
+                    f%ux(iz,ix+1,1) = f%ux(iz,ix+1,1) + wl*self%buox(iz,ix+1)*inv_2dx
+                    f%ux(iz,ix-1,1) = f%ux(iz,ix-1,1) - wl*self%buox(iz,ix-1)*inv_2dx
+
                 end select
                 
             endif
@@ -744,6 +756,12 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
                     case ('ux') !horizontal x adjsource
                         f%ux(ifz:ilz,ifx:ilx,1) = f%ux(ifz:ilz,ifx:ilx,1) + wl*self%buox(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1)
                         
+                    case ('monopole','duzdz+duxdx')
+                        f%uz(ifz+1:ilz+1,ifx:ilx,1) = f%uz(ifz+1:ilz+1,ifx:ilx,1) + wl*self%buoz(ifz+1:ilz+1,ifx:ilx)*inv_2dz*shot%rcv(i)%interp_coef(:,:,1)
+                        f%uz(ifz-1:ilz-1,ifx:ilx,1) = f%uz(ifz-1:ilz-1,ifx:ilx,1) - wl*self%buoz(ifz-1:ilz-1,ifx:ilx)*inv_2dz*shot%rcv(i)%interp_coef(:,:,1)
+                        f%ux(ifz:ilz,ifx+1:ilx+1,1) = f%ux(ifz:ilz,ifx+1:ilx+1,1) + wl*self%buox(ifz:ilz,ifx+1:ilx+1)*inv_2dx*shot%rcv(i)%interp_coef(:,:,1)
+                        f%ux(ifz:ilz,ifx-1:ilx-1,1) = f%ux(ifz:ilz,ifx-1:ilx-1,1) - wl*self%buox(ifz:ilz,ifx-1:ilx-1)*inv_2dx*shot%rcv(i)%interp_coef(:,:,1)
+                    
                     end select
                     
                 else
@@ -755,6 +773,12 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
                         if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl
                         f%ux(iz,ix,1) = f%ux(iz,ix,1) + wl*self%buox(iz,ix)
 
+                    case ('monopole','duzdz+duxdx')
+                        f%uz(iz+1,ix,1) = f%uz(iz+1,ix,1) + wl*self%buoz(iz+1,ix)*inv_2dz
+                        f%uz(iz-1,ix,1) = f%uz(iz-1,ix,1) - wl*self%buoz(iz-1,ix)*inv_2dz
+                        f%ux(iz,ix+1,1) = f%ux(iz,ix+1,1) + wl*self%buox(iz,ix+1)*inv_2dx
+                        f%ux(iz,ix-1,1) = f%ux(iz,ix-1,1) - wl*self%buox(iz,ix-1)*inv_2dx
+                    
                     end select
                     
                 endif
