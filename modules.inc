@@ -8,8 +8,9 @@
 #WaveEq=VSS
 #WaveEq=VSR
 
-WaveEq=PSV2nd
+#WaveEq=PSV2nd
 #WaveEq=VSS2nd
+WaveEq=swap2nd
 
 Solver=FDSG
 Order=O4

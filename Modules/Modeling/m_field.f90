@@ -83,7 +83,9 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:,:),allocatable :: dz_mu_duxdz_p_duzdx
         real,dimension(:,:,:),allocatable :: dx_mu_duxdz_p_duzdx
 
-        real,dimension(:,:,:),allocatable :: dz_kpa_V,dx_kpa_V,dz_mu_Szx,dx_mu_Sxz
+        ! real,dimension(:,:,:),allocatable :: dz_kpa_V,dx_kpa_V,dz_mu_Szx,dx_mu_Sxz
+        real,dimension(:,:,:),allocatable :: dz_ldap2mu_V, dx_ldap2mu_V
+        real,dimension(:,:,:),allocatable :: d1_mu_L2,d2_mu_L1,d2_mu_S12,d1_mu_S21,d2_mu_S21,d1_mu_S12
 
         real,dimension(:,:,:),allocatable :: lapz,lapx,laps
 
