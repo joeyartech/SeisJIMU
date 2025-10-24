@@ -1,4 +1,4 @@
-module m_propagator
+ibimodule m_propagator
 use m_System
 use m_hicks, only : hicks_r
 use m_resampler
@@ -265,7 +265,7 @@ use, intrinsic :: ieee_arithmetic
         rdt=irdt*self%dt
         call hud('rdt, irdt = '//num2str(rdt)//', '//num2str(irdt))
 
-        ibias=setup%get_int('IBIAS',o_default=num2str(1))
+        ibias=setup%get_int('IBIAS',o_default=num2str(2))
         call hud('ibias = '//num2str(ibias))
 
     end subroutine

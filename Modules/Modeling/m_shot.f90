@@ -369,11 +369,11 @@ use m_model
 
         !source
         select case (self%src%comp)
-        case('vz','pz') !vertical force
+        case('vz','pz','uz') !vertical force
             call hicks_put_position(self%src%z+halfz, self%src%x,       self%src%y)
-        case('vx','px')
+        case('vx','px','ux')
             call hicks_put_position(self%src%z,       self%src%x+halfx, self%src%y)
-        case('vy','py')
+        case('vy','py','uy')
             call hicks_put_position(self%src%z,       self%src%x,       self%src%y+halfy)
 
         case('p','szz','sxx','ez','ex') !explosive source or normal stress/strain
@@ -396,10 +396,10 @@ use m_model
                                 self%src%ilz, self%src%ilx, self%src%ily )
 
         select case (self%src%comp)
-        case('vz','pz') !vertical force
+        case('vz','pz','uz') !vertical force
             !vz=0 above free surface, by Levander-Robertsson's stress image implemtation
             call hicks_get_coefficient('truncate', self%src%interp_coef)
-        case('vx','px')
+        case('vx','px','ux')
             call hicks_get_coefficient('truncate', self%src%interp_coef)
 
         case('p','szz','sxx')
@@ -433,11 +433,11 @@ use m_model
         do i=1,self%nrcv
 
             select case (self%rcv(i)%comp)
-            case('vz','pz')
+            case('vz','pz','uz')
                 call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x,       self%rcv(i)%y)
-            case('vx','px')
+            case('vx','px','ux')
                 call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x+halfx, self%rcv(i)%y)
-            case('vy','py')
+            case('vy','py','uy')
                 call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y+halfy)
 
             case('p','szz','sxx','ez','ex')
@@ -460,10 +460,10 @@ use m_model
                                     self%rcv(i)%ilz, self%rcv(i)%ilx, self%rcv(i)%ily )
 
             select case (self%rcv(i)%comp)
-            case('vz','pz') !vertical force
+            case('vz','pz','uz') !vertical force
                 !vz=0 above free surface, by Levander-Robertsson's stress image implemtation
                 call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
-            case('vx','px')
+            case('vx','px','ux')
                 call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
 
             case('p','szz','sxx')
