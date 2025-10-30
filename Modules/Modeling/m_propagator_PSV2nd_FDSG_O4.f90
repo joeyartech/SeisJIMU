@@ -125,11 +125,6 @@ use, intrinsic :: ieee_arithmetic
             call alloc(m%rho,m%nz,m%nx,1,o_init=1000.)
             call warn('Constant rho model (1000 kg/m³) is allocated by propagator.')
         endif
-        
-        if(m%is_freesurface) then
-            call warn('Sorry, free surface has NOT yet considered in this propagator. Switch off free-surface condition.')
-            m%is_freesurface=.false.
-        endif
 
     end subroutine
 
@@ -286,15 +281,15 @@ use, intrinsic :: ieee_arithmetic
 
         f%is_adjoint=either(ois_adjoint,.false.,present(ois_adjoint))
 
-        ! call f%init_bloom
-        call warn("Disable field%bloom, otherwise back propagation of incident field is unstable (don't know why..)")
-        call alloc(f%bloom,6,self%nt)
-        f%bloom(1,:)=cb%ifz
-        f%bloom(2,:)=cb%ilz
-        f%bloom(3,:)=cb%ifx
-        f%bloom(4,:)=cb%ilx
-        f%bloom(5,:)=cb%ify
-        f%bloom(6,:)=cb%ily
+        call f%init_bloom
+        ! call warn("Disable field%bloom, otherwise back propagation of incident field is unstable (don't know why..)")
+        ! call alloc(f%bloom,6,self%nt)
+        ! f%bloom(1,:)=cb%ifz
+        ! f%bloom(2,:)=cb%ilz
+        ! f%bloom(3,:)=cb%ifx
+        ! f%bloom(4,:)=cb%ilx
+        ! f%bloom(5,:)=cb%ify
+        ! f%bloom(6,:)=cb%ily
 
 
         !f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
@@ -791,6 +786,8 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
         class(t_propagator) :: self
         type(t_field) :: f
 
+        real,dimension(:),allocatable :: Lda_duxdx
+
         ! !necessary after computing the secondary source
         ! f%lap=0.
 
@@ -807,18 +804,46 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
             !                    ifz,f%bloom(2,it),f%bloom(3,it),f%bloom(4,it))
         else
 
-            call fd2d_laplacian(f%uz,f%ux,&
-                                f%duz_dz,f%dux_dx,f%dux_dz,f%duz_dx,&
-                                f%dz_ldap2mu_duzdz_p_lda_duxdx,&
-                                f%dx_lda_duzdz_p_ldap2mu_duxdx,&
-                                f%dz_mu_duxdz_p_duzdx,&
-                                f%dx_mu_duxdz_p_duzdx,&
-                                f%lapz,f%lapx,&
-                                self%ldap2mu,self%lda,self%mu,&
-                                ifz,ilz,ifx,ilx)
+            if(m%is_freesurface) then
+                call fd2d_laplacian_freesurface(f%uz,f%ux,&
+                                    f%duz_dz,f%dux_dx,f%dux_dz,f%duz_dx,&
+                                    f%dz_ldap2mu_duzdz_p_lda_duxdx,&
+                                    f%dx_lda_duzdz_p_ldap2mu_duxdx,&
+                                    f%dz_mu_duxdz_p_duzdx,&
+                                    f%dx_mu_duxdz_p_duzdx,&
+                                    f%lapz,f%lapx,&
+                                    self%ldap2mu,self%lda,self%mu,&
+                                    ifz,ilz,ifx,ilx)
+            else
+                call fd2d_laplacian(f%uz,f%ux,&
+                                    f%duz_dz,f%dux_dx,f%dux_dz,f%duz_dx,&
+                                    f%dz_ldap2mu_duzdz_p_lda_duxdx,&
+                                    f%dx_lda_duzdz_p_ldap2mu_duxdx,&
+                                    f%dz_mu_duxdz_p_duzdx,&
+                                    f%dx_mu_duxdz_p_duzdx,&
+                                    f%lapz,f%lapx,&
+                                    self%ldap2mu,self%lda,self%mu,&
+                                    ifz,ilz,ifx,ilx)
+            endif
 
         endif
 
+        ! if(m%is_freesurface) then !Levendar & Roberttson's stress image method
+        !     !on FS, reduced weq:
+        !     ! ρ∂ₜₜux = ∂ₓΛ∂ₓux
+        !     ! where Λ=4μ(λ+μ)/(λ+2μ)
+
+        !     call alloc(Lda_duxdx, [cb%ifx,cb%ilx])
+
+        !     do ix=cb%ifx+2,cb%ilx-2
+        !         dux_dx_ = c1x*(f%ux(1,ix+1,1)-f%ux(1,ix,1))  +c2x*(f%ux(1,ix+2,1)-f%ux(1,ix-1,1)) !∂ₓᶠ
+        !         Lda_duxdx(ix) = 4.*self%mu(1,ix)*(self%lda(1,ix)+self%mu(1,ix))/self%ldap2mu(1,ix) * dux_dx_
+        !     enddo
+        !     do ix=cb%ifx+2,cb%ilx-2                    
+        !         f%lapx(1,ix,1) = c1x*(Lda_duxdx(ix)-Lda_duxdx(ix-1)) +c2x*(Lda_duxdx(ix+1)-Lda_duxdx(ix-2)) !∂ₓᵇ
+        !     enddo
+
+        ! endif
 
         if(time_dir>0.) then !in forward time
             f%uz_next(ifz:ilz,ifx:ilx,1) = 2*f%uz(ifz:ilz,ifx:ilx,1) -f%uz_prev(ifz:ilz,ifx:ilx,1) +dt2*self%buoz(ifz:ilz,ifx:ilx)*f%lapz(ifz:ilz,ifx:ilx,1)
@@ -1297,6 +1322,220 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
 
     end subroutine
 
+    subroutine fd2d_laplacian_freesurface(uz,ux,&
+                              duz_dz,dux_dx,dux_dz,duz_dx,&
+                              dz_ldap2mu_duzdz_p_lda_duxdx,&
+                              dx_lda_duzdz_p_ldap2mu_duxdx,&
+                              dz_mu_duxdz_p_duzdx,&
+                              dx_mu_duxdz_p_duzdx,&
+                              lapz,lapx,&
+                              ldap2mu,lda,mu,&
+                              ifz,ilz,ifx,ilx)
+        real,dimension(*) :: uz,ux
+        real,dimension(*) :: duz_dz,dux_dx,dux_dz,duz_dx
+        real,dimension(*) :: dz_ldap2mu_duzdz_p_lda_duxdx
+        real,dimension(*) :: dx_lda_duzdz_p_ldap2mu_duxdx
+        real,dimension(*) :: dz_mu_duxdz_p_duzdx
+        real,dimension(*) :: dx_mu_duxdz_p_duzdx
+        real,dimension(*) :: ldap2mu,lda,mu,lapz,lapx
+
+        real,dimension(:),allocatable :: ldap2mu_duzdz_p_lda_duxdx
+        real,dimension(:),allocatable :: lda_duzdz_p_ldap2mu_duxdx
+        real,dimension(:),allocatable :: mu_duxdz_p_duz_dx
+
+        call alloc(ldap2mu_duzdz_p_lda_duxdx, cb%n)
+        call alloc(lda_duzdz_p_ldap2mu_duxdx, cb%n)
+        call alloc(mu_duxdz_p_duz_dx,         cb%n)
+
+        nz=cb%nz
+        nx=cb%nx
+
+        
+        !       [λ+2μ  λ      ][∂zᶠ  0 ]       [λ+2μ  λ      ][∂zᶠuz]   [(λ+2μ)∂zᶠuz +  λ    ∂ₓᶠux]
+        !flux = | λ   λ+2μ    || 0  ∂ₓᶠ|[uz] = | λ   λ+2μ    ||∂ₓᶠux| = | λ    ∂zᶠuz + (λ+2μ)∂ₓᶠux|
+        !       |          μ μ|| 0  ∂zᵇ|[ux]   |          μ μ||∂zᵇux|   |    μ ∂zᵇux + μ     ∂ₓᵇuz|
+        !       [          μ μ][∂ₓᵇ  0 ]       [          μ μ][∂ₓᵇuz]   [    μ ∂zᵇux + μ     ∂ₓᵇuz]
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,&
+        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
+        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
+        !$omp         duz_dz_,dux_dx_,dux_dz_,duz_dx_)
+        !$omp do schedule(dynamic)
+        do ix = ifx+2,ilx-2
+            !dir$ simd
+            do iz = ifz+2,ilz-2
+
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+
+                izm2_ix=i-2  !iz-2,ix
+                izm1_ix=i-1  !iz-1,ix
+                iz_ix  =i    !iz,ix
+                izp1_ix=i+1  !iz+1,ix
+                izp2_ix=i+2  !iz+2,ix
+                
+                iz_ixm2=i  -2*nz !iz,ix-2
+                iz_ixm1=i  -nz  !iz,ix-1
+                iz_ixp1=i  +nz  !iz,ix+1
+                iz_ixp2=i  +2*nz  !iz,ix+2
+
+                duz_dz_ = c1z*(uz(izp1_ix)-uz(iz_ix)) +c2z*(uz(izp2_ix)-uz(izm1_ix)) !∂zᶠ
+                dux_dx_ = c1x*(ux(iz_ixp1)-ux(iz_ix)) +c2x*(ux(iz_ixp2)-ux(iz_ixm1)) !∂ₓᶠ
+
+                duz_dz(i)=cpml%b_z(iz)*duz_dz(i)+cpml%a_z(iz)*duz_dz_
+                dux_dx(i)=cpml%b_x(ix)*dux_dx(i)+cpml%a_x(ix)*dux_dx_
+
+                duz_dz_ = duz_dz_*cpml%kpa_z(iz) + duz_dz(iz_ix)
+                dux_dx_ = dux_dx_*cpml%kpa_x(ix) + dux_dx(iz_ix)
+
+
+                dux_dz_ = c1z*(ux(iz_ix)-ux(izm1_ix)) +c2z*(ux(izp1_ix)-ux(izm2_ix)) !∂zᵇ
+                duz_dx_ = c1x*(uz(iz_ix)-uz(iz_ixm1)) +c2x*(uz(iz_ixp1)-uz(iz_ixm2)) !∂ₓᵇ
+
+                dux_dz(i)=cpml%b_z_half(iz)*dux_dz(i)+cpml%a_z_half(iz)*dux_dz_
+                duz_dx(i)=cpml%b_x_half(ix)*duz_dx(i)+cpml%a_x_half(ix)*duz_dx_
+
+                dux_dz_ = dux_dz_*cpml%kpa_z_half(iz) + dux_dz(iz_ix)
+                duz_dx_ = duz_dx_*cpml%kpa_x_half(ix) + duz_dx(iz_ix)
+
+
+                ldap2mu_duzdz_p_lda_duxdx(iz_ix) = &
+                    ldap2mu(iz_ix)*duz_dz_ +lda    (iz_ix)*dux_dx_  !szz
+                lda_duzdz_p_ldap2mu_duxdx(iz_ix) = &
+                    lda    (iz_ix)*duz_dz_ +ldap2mu(iz_ix)*dux_dx_  !sxx
+
+                mu_duxdz_p_duz_dx(iz_ix) = mu(iz_ix)*(duz_dx_+dux_dz_) !szx
+
+            enddo
+        enddo
+        !$omp end do
+        !$omp end parallel
+
+
+        !Levandar & Roberttson's stress image method
+        !I don't have to do like this just for the free surface..
+        do ix = cb%ifx+2,cb%ilx-2
+        !do ix = ifx+2,ilx-2
+
+            !image szz   
+            iz = 1
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+                ldap2mu_duzdz_p_lda_duxdx(i)=0.
+
+            ! 0:cb%ifz:-1 <= 2:2-cb%ifz
+            do  iz_above = 0,cb%ifz,-1
+                iz_below = 2-iz_above
+
+                i_above=(iz_above-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+                i_below=(iz_below-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+
+                ldap2mu_duzdz_p_lda_duxdx(i_above)=-ldap2mu_duzdz_p_lda_duxdx(i_below)
+
+            enddo
+
+            !not image on sxx, use the reduced stiffness tensor
+            ! f%sxx(0:cb%ifz:-1,:,1)=0. !no needed
+            ! do ix=cb%ifx+1,cb%ilx-2
+            iz = 1
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+                iz_ixm2=i  -2*nz !iz,ix-2
+                iz_ixm1=i  -nz  !iz,ix-1
+                iz_ix  =i    !iz,ix
+                iz_ixp1=i  +nz  !iz,ix+1
+                iz_ixp2=i  +2*nz  !iz,ix+2
+
+                dux_dx_= c1x*(ux(iz_ixp1)-ux(iz_ix))  +c2x*(ux(iz_ixp2)-ux(iz_ixm1))
+                    
+                factor= 4.*mu(iz_ix)*(lda(iz_ix)+mu(iz_ix))/ldap2mu(iz_ix)
+                lda_duzdz_p_ldap2mu_duxdx(iz_ix)  = factor*dux_dx_
+            !enddo
+                
+            !image szx
+            ! 1:cb%ifz:-1 <= 2:3-cb%ifz
+            do  iz_above = 1,cb%ifz,-1
+                iz_below = 3-iz_above
+
+                i_above=(iz_above-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+                i_below=(iz_below-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+
+                mu_duxdz_p_duz_dx(i_above)=-mu_duxdz_p_duz_dx(i_below)
+
+            enddo
+                
+        enddo
+
+
+        !                          [ldap2mu_duzdz_p_lda_duxdx    ]
+        !Laplacian= [∂zᵇ 0   0 ∂ₓᶠ]|    lda_duzdz_p_ldap2mu_duxdx|
+        !           [0  ∂ₓᵇ ∂zᶠ 0 ]|     mu_duxdz_p_duz_dx       |
+        !                          [     mu_duxdz_p_duz_dx       ]
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,&
+        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
+        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
+        !$omp         dz_ldap2mu_duzdz_p_lda_duxdx_,&
+        !$omp         dx_lda_duzdz_p_ldap2mu_duxdx_,&
+        !$omp         dz_mu_duxdz_p_duzdx_,&
+        !$omp         dx_mu_duxdz_p_duzdx_)
+        !$omp do schedule(dynamic)
+        do ix = ifx+2,ilx-2
+            !dir$ simd
+            do iz = ifz+2,ilz-2
+
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+
+                izm2_ix=i-2  !iz-2,ix
+                izm1_ix=i-1  !iz-1,ix
+                iz_ix  =i    !iz,ix
+                izp1_ix=i+1  !iz+1,ix
+                izp2_ix=i+2  !iz+2,ix
+                
+                iz_ixm2=i  -2*nz !iz,ix-2
+                iz_ixm1=i  -nz  !iz,ix-1
+                iz_ixp1=i  +nz  !iz,ix+1
+                iz_ixp2=i  +2*nz  !iz,ix+2
+                
+                dz_ldap2mu_duzdz_p_lda_duxdx_ = & !∂zᵇ
+                     c1z*(ldap2mu_duzdz_p_lda_duxdx(iz_ix)  -ldap2mu_duzdz_p_lda_duxdx(izm1_ix)) &
+                    +c2z*(ldap2mu_duzdz_p_lda_duxdx(izp1_ix)-ldap2mu_duzdz_p_lda_duxdx(izm2_ix))
+
+                dx_lda_duzdz_p_ldap2mu_duxdx_ = & !∂ₓᵇ
+                     c1x*(lda_duzdz_p_ldap2mu_duxdx(iz_ix)  -lda_duzdz_p_ldap2mu_duxdx(iz_ixm1)) &
+                    +c2x*(lda_duzdz_p_ldap2mu_duxdx(iz_ixp1)-lda_duzdz_p_ldap2mu_duxdx(iz_ixm2))
+
+
+                dz_mu_duxdz_p_duzdx_ = & !∂zᶠ
+                     c1z*(mu_duxdz_p_duz_dx(izp1_ix)-mu_duxdz_p_duz_dx(iz_ix)  ) &
+                    +c2z*(mu_duxdz_p_duz_dx(izp2_ix)-mu_duxdz_p_duz_dx(izm1_ix))
+
+                dx_mu_duxdz_p_duzdx_ = & !∂ₓᶠ
+                     c1x*(mu_duxdz_p_duz_dx(iz_ixp1)-mu_duxdz_p_duz_dx(iz_ix)  ) &
+                    +c2x*(mu_duxdz_p_duz_dx(iz_ixp2)-mu_duxdz_p_duz_dx(iz_ixm1))
+
+
+                lapz(iz_ix) = dz_ldap2mu_duzdz_p_lda_duxdx_ + dx_mu_duxdz_p_duzdx_
+                lapx(iz_ix) = dx_lda_duzdz_p_ldap2mu_duxdx_ + dz_mu_duxdz_p_duzdx_
+
+            enddo
+
+        enddo
+        !$omp end do
+        !$omp end parallel
+
+
+        !Roberttson's 3rd method
+        do ix = cb%ifx+2,cb%ilx-2
+            do iz = cb%ifz,1
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+                lapz(i) = 0.
+            enddo
+
+            do iz = cb%ifz,0
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+                lapx(i) = 0.
+            enddo
+        enddo
+
+    end subroutine
 
     subroutine grad2d_glda_gmu(rf_uz,rf_ux,&
                                sf_uz,sf_ux,&
