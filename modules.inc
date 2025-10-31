@@ -5,12 +5,9 @@
 # Modeling #
 ############
 #WaveEq=PSV
-#WaveEq=VSS
-#WaveEq=VSR
 
-WaveEq=PSV2nd
-#WaveEq=VSS2nd
-#WaveEq=swap2nd
+#WaveEq=PSV2nd
+WaveEq=VR2nd
 
 Solver=FDSG
 Order=O4

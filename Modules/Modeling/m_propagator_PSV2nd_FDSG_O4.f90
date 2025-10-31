@@ -1240,14 +1240,7 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
 
         if(m%is_freesurface) then
             !Levandar & Roberttson's stress image method
-            ! call freesurf_stress( &
-            !     ldap2mu_duzdz_p_lda_duxdx(1:cb%n), &
-            !     lda_duzdz_p_ldap2mu_duxdx(1:cb%n), &
-            !     mu_duxdz_p_duz_dx(1:cb%n), &
-            !     ux(1:cb%n))
 
-            !I don't have to do like this just for the free surface..
-            
             !image szz = ldap2mu_duzdz_p_lda_duxdx
             do ix = ifx,ilx
             iz = 1
@@ -1371,40 +1364,18 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
 
         if(m%is_freesurface) then
             !Roberttson's 3rd method
-            do ix = cb%ifx,cb%ilx
+            do ix = ifx,ilx
             do iz = cb%ifz,1
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
                 lapz(i) = 0.  !uz(cb%ifz:1,:)=0.
             enddo; enddo
 
-            do ix = cb%ifx,cb%ilx
+            do ix = ifx,ilx
             do iz = cb%ifz,0
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
                 lapx(i) = 0. !ux(cb%ifz:0,:)=0.
             enddo; enddo
         endif
-
-    end subroutine
-
-    subroutine freesurf_stress(szz,sxx,szx,ux)
-        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: szz,sxx,szx,ux
-
-        !image szz
-        szz( 1,:)=0.
-        szz(0:cb%ifz:-1, :)=-szz(2:2+0-cb%ifz, :)
-
-        !not image on sxx
-        ! sxx(0:cb%ifz:-1,:)=0. !no needed
-        do ix=cb%ifx+1,cb%ilx-2
-            dux_dx_= c1x*(ux(1,ix+1)-ux(1,ix))  +c2x*(ux(1,ix+2)-ux(1,ix-1))
-            
-            factor=-ppg%lda(1,ix)**2/ppg%ldap2mu(1,ix) + ppg%ldap2mu(1,ix)
-
-            sxx(1,ix)  = factor*dux_dx_
-        enddo
-        
-        !image szx
-        szx(1:cb%ifz:-1, :)=-szx(2:2+1-cb%ifz, :)
 
     end subroutine
 

@@ -1,6 +1,7 @@
 #####################################
 # Don't track these files & folders #
 #####################################
+.DS_Store
 #Doc/
 Demo/
 devel/

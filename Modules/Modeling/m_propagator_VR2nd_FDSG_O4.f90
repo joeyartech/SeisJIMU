@@ -309,10 +309,8 @@ use, intrinsic :: ieee_arithmetic
         call alloc(f%dz_ldap2mu_V, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%dx_ldap2mu_V, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
-        call alloc(f%dx_mu_dzux, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dz_mu_dxuz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dx_mu_dxuz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dz_mu_dzux, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dx_mu_R, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dz_mu_R, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
         ! call alloc(f%dz_mu_Szx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         ! call alloc(f%dx_mu_Sxz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -1159,6 +1157,27 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
         !$omp end do
         !$omp end parallel
 
+
+        if(m%is_freesurface) then
+            !pressure = (λ+2μ)*V means szz=sxx (as in the acoustic case)
+            !so ldap2mu_V=0
+            do ix = ifx,ilx
+            iz = 1
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+                ldap2mu_V(i)=0.
+            enddo
+
+            !torque = μ*R means ∂zux =-∂ₓuz
+            !on FS, ∂zux+∂ₓuz = 2*shear strain = 2*shear stress = 0
+            !so mu_R = 0
+            do ix = ifx,ilx
+            iz = 1
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+                mu_R(i)=0.
+            enddo
+
+        endif
+
         !Laplacian = [∂zᵇ  ∂ₓᶠ][(λ+2μ)V] = [∂zᵇ(λ+2μ)V + ∂ₓᶠμR]
         !            [∂ₓᵇ -∂zᶠ][    μ R]   [∂ₓᵇ(λ+2μ)V - ∂zᶠμR]
         !$omp parallel default (shared)&
@@ -1201,16 +1220,31 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
                 dx_mu_R(i)=cpml%b_z(iz)*dx_mu_R(i)+cpml%a_z(iz)*dx_mu_R_
                 dz_mu_R(i)=cpml%b_x(ix)*dz_mu_R(i)+cpml%a_x(ix)*dz_mu_R_
                 
-                dx_mu_R = dx_mu_dxuz_*cpml%kpa_z(iz) + dx_mu_R(iz_ix)
-                dz_mu_R = dz_mu_dzux_*cpml%kpa_x(ix) + dz_mu_R(iz_ix)
+                dx_mu_R_ = dx_mu_R_*cpml%kpa_z(iz) + dx_mu_R(iz_ix)
+                dz_mu_R_ = dz_mu_R_*cpml%kpa_x(ix) + dz_mu_R(iz_ix)
                 
-                lapz(iz_ix) = dz_ldap2mu_V_ + dx_mu_R
-                lapx(iz_ix) = dx_ldap2mu_V_ - dz_mu_R
+                lapz(iz_ix) = dz_ldap2mu_V_ + dx_mu_R_
+                lapx(iz_ix) = dx_ldap2mu_V_ - dz_mu_R_
 
             enddo
         enddo
         !$omp end do
         !$omp end parallel
+
+        if(m%is_freesurface) then
+            !Roberttson's 3rd method
+            do ix = cb%ifx,cb%ilx
+            do iz = cb%ifz,1
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+                lapz(i) = 0.  !uz(cb%ifz:1,:)=0.
+            enddo; enddo
+
+            do ix = cb%ifx,cb%ilx
+            do iz = cb%ifz,0
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+                lapx(i) = 0. !ux(cb%ifz:0,:)=0.
+            enddo; enddo
+        endif
 
     end subroutine
 
