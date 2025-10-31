@@ -31,7 +31,7 @@ use, intrinsic :: ieee_arithmetic
     type,public :: t_propagator
         !info
         character(i_str_xxlen) :: info = &
-            'Time-domain ISOtropic 2D VSS (ELastic) propagation'//s_NL// &
+            'Time-domain ISOtropic 2D Volumetric strain-Rotation (ELastic) propagation'//s_NL// &
             '2nd-order Displacement formulation'//s_NL// &
             'Vireux-Levandar Staggered-Grid Finite-Difference (FDSG) method'//s_NL// &
             'Cartesian O(x⁴,t²) stencil'//s_NL// &
@@ -87,8 +87,6 @@ use, intrinsic :: ieee_arithmetic
     logical :: if_hicks
     integer :: irdt
     real :: rdt
-
-    integer :: ibias
 
     logical,public :: if_propagator_record_adjseismo=.false.
 
@@ -265,9 +263,6 @@ use, intrinsic :: ieee_arithmetic
         rdt=irdt*self%dt
         call hud('rdt, irdt = '//num2str(rdt)//', '//num2str(irdt))
 
-        ibias=setup%get_int('IBIAS',o_default=num2str(2))
-        call hud('ibias = '//num2str(ibias))
-
     end subroutine
 
     subroutine init_field(self,f,name,ois_adjoint,oif_will_reconstruct)
@@ -314,12 +309,10 @@ use, intrinsic :: ieee_arithmetic
         call alloc(f%dz_ldap2mu_V, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%dx_ldap2mu_V, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
-        call alloc(f%d1_mu_L2, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%d2_mu_L1, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%d2_mu_S12, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%d1_mu_S21, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%d2_mu_S21, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%d1_mu_S12, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dx_mu_dzux, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dz_mu_dxuz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dx_mu_dxuz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dz_mu_dzux, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
         ! call alloc(f%dz_mu_Szx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         ! call alloc(f%dx_mu_Sxz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -813,70 +806,12 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
             call fd2d_laplacian(f%uz,f%ux,&
                                 f%duz_dz,f%dux_dx,f%dux_dz,f%duz_dx,&
                                 f%dz_ldap2mu_V,f%dx_ldap2mu_V,&
-                                f%d1_mu_L2,f%d2_mu_L1,f%d2_mu_S12,f%d1_mu_S21,f%d2_mu_S21,f%d1_mu_S12,&
+                                f%dx_mu_R,f%dz_mu_R,&
                                 f%lapz,f%lapx,&
                                 self%ldap2mu,self%mu,&
                                 ifz,ilz,ifx,ilx)
 
         endif
-
-        ! !apply free surface boundary condition if needed
-        ! !free surface is located at [1,ix] level
-        ! if(m%is_freesurface) then
-        !     ! if (FS_method=='zero_stress') then
-        !     !     !so explicit boundary condition: szz(1,ix)=0
-        !     !     !and antisymmetric mirroring: szx[0.5,ix-0.5]=-szx[1.5,ix-0.5] -> szx(1,ix)=-szx(2,ix)
-        !     !     f%szz(1,:,1)=0.
-        !     !     f%szx(1,:,1)=-f%szx(2,:,1)
-
-        !     ! elseif (FS_method=='stress_image') then !Levandar & Roberttson
-
-        !         !Roberttson's 3rd method
-        !         f%uz(cb%ifz:1,:,1)=0.
-        !         f%ux(cb%ifz:0,:,1)=0.
-
-        !         !image szz
-        !         do iz=2,2+0-cb%ifz
-            
-        !             i=(iz-cb%ifz)+(ix-cb%ifx)*nz+1
-                    
-        !             izm2_ix=i-2  !iz-2,ix
-        !             izm1_ix=i-1  !iz-1,ix
-        !             iz_ix  =i    !iz,ix
-        !             izp1_ix=i+1  !iz+1,ix
-        !             izp2_ix=i+2  !iz+2,ix
-                    
-        !             iz_ixm2=i  -2*nz !iz,ix-2
-        !             iz_ixm1=i    -nz !iz,ix-1
-        !             iz_ixp1=i    +nz !iz,ix+1
-        !             iz_ixp2=i  +2*nz !iz,ix+2
-                    
-
-        !             duz_dz_= c1z*(uz(izp1_ix)-uz(iz_ix)) +c2z*(uz(izp2_ix)-uz(izm1_ix))
-        !             dux_dx_= c1x*(ux(iz_ixp1)-ux(iz_ix)) +c2x*(ux(iz_ixp2)-ux(iz_ixm1))
-                    
-        !             !normal stresses
-        !             szz(i) = (ldap2mu(i)*duz_dz_ + lda(i)*dux_dx_)
-
-        !         enddo
-
-        !         szz( 1,:,1)=0.
-        !         szz(0:cb%ifz:-1, :,1)=-szz(2:2+0-cb%ifz, :,1)
-
-        !         f%uz_next(ifz:ilz,ifx:ilx,1) = 2*f%uz(ifz:ilz,ifx:ilx,1) -f%uz_prev(ifz:ilz,ifx:ilx,1) +dt2*self%buoz(ifz:ilz,ifx:ilx)* (szz(ifz:ilz,ifx:ilx,1)-szz(ifz:ilz,ifx:ilx,1))/m%dz
-        !         f%ux_next(ifz:ilz,ifx:ilx,1) = 2*f%ux(ifz:ilz,ifx:ilx,1) -f%ux_prev(ifz:ilz,ifx:ilx,1) +dt2*self%buox(ifz:ilz,ifx:ilx)*f%lapx(ifz:ilz,ifx:ilx,1)
-                
-        !         !not image on sxx
-        !         ! f%sxx(0:cb%ifz:-1,:,1)=0. !no needed
-        !         do ix=cb%ifx+1,cb%ilx-2
-        !             dvx_dx_= c1x*(f%vx(1,ix+1,1)-f%vx(1,ix,1))  +c2x*(f%vx(1,ix+2,1)-f%vx(1,ix-1,1))
-                    
-        !             factor=-self%lda(1,ix)**2/self%ldap2mu(1,ix) + self%ldap2mu(1,ix)
-        !             f%sxx(1,ix,1)  = f%sxx(1,ix,1) + time_dir*self%dt * factor*dvx_dx_
-        !         enddo
-                
-        ! ! endif
-        ! endif
 
         if(time_dir>0.) then !in forward time
             f%uz_next(ifz:ilz,ifx:ilx,1) = 2*f%uz(ifz:ilz,ifx:ilx,1) -f%uz_prev(ifz:ilz,ifx:ilx,1) +dt2*self%buoz(ifz:ilz,ifx:ilx)*f%lapz(ifz:ilz,ifx:ilx,1)
@@ -885,18 +820,6 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
             f%uz_prev(ifz:ilz,ifx:ilx,1) = 2*f%uz(ifz:ilz,ifx:ilx,1) -f%uz_next(ifz:ilz,ifx:ilx,1) +dt2*self%buoz(ifz:ilz,ifx:ilx)*f%lapz(ifz:ilz,ifx:ilx,1)
             f%ux_prev(ifz:ilz,ifx:ilx,1) = 2*f%ux(ifz:ilz,ifx:ilx,1) -f%ux_next(ifz:ilz,ifx:ilx,1) +dt2*self%buox(ifz:ilz,ifx:ilx)*f%lapx(ifz:ilz,ifx:ilx,1)
         endif
-
-        ! !apply free surface boundary condition if needed
-        ! if(m%is_freesurface) call fd_freesurface_stresses(f%p)
-
-        ! ! apply Dirichlet conditions at the bottom of the C-PML layers,
-        ! ! the right condition to keep C-PML stable at long time
-        ! f%p_next(cb%ifz,:,:)=0.
-        ! f%p_next(cb%ilz,:,:)=0.
-        ! f%p_next(:,cb%ifx,:)=0.
-        ! f%p_next(:,cb%ilx,:)=0.
-        ! f%p_next(:,:,cb%ify)=0.
-        ! f%p_next(:,:,cb%ily)=0.
 
     end subroutine
 
@@ -1163,32 +1086,28 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
     subroutine fd2d_laplacian(uz,ux,&
                               duz_dz,dux_dx,dux_dz,duz_dx,&
                               dz_ldap2mu_V,dx_ldap2mu_V,&
-                              d1_mu_L2,d2_mu_L1,d2_mu_S12,d1_mu_S21,d2_mu_S21,d1_mu_S12,&
+                              dx_mu_R,dz_mu_R,&
                               lapz,lapx,&
                               ldap2mu,mu,&
                               ifz,ilz,ifx,ilx)
         real,dimension(*) :: uz,ux
         real,dimension(*) :: duz_dz,dux_dx,dux_dz,duz_dx
         real,dimension(*) :: dz_ldap2mu_V,dx_ldap2mu_V
-        real,dimension(*) :: d1_mu_L2,d2_mu_L1,d2_mu_S12,d1_mu_S21,d2_mu_S21,d1_mu_S12
-        real,dimension(*) :: ldap2mu,mu,lapz,lapx
+        real,dimension(*) :: dx_mu_R,dz_mu_R,lapz,lapx
+        real,dimension(*) :: ldap2mu,mu
 
         real,dimension(:),allocatable :: ldap2mu_V
-        real,dimension(:),allocatable :: mu_L1,mu_L2,mu_S12,mu_S21
+        real,dimension(:),allocatable :: mu_R
 
         call alloc(ldap2mu_V,  cb%n)
-        call alloc(mu_L1, cb%n)
-        call alloc(mu_L2, cb%n)
-        call alloc(mu_S12, cb%n)
-        call alloc(mu_S21, cb%n)
+        call alloc(mu_R,       cb%n)
 
         nz=cb%nz
         nx=cb%nx
 
         
-        !       [κ    ][∂zᶠ ∂ₓᶠ]       [κ(∂zᶠuz+∂ₓᶠux)]
-        !flux = |  μ  ||∂ₓᵇ  0 |[uz] = |μ∂ₓᵇuz        |
-        !       [    μ][ 0  ∂zᵇ][ux]   [μ∂zᵇux        ]
+        !flux = [λ+2μ ][∂zᶠ  ∂ₓᶠ][uz] = [(λ+2μ)(∂zᶠuz+∂ₓᶠux)] = [(λ+2μ)V]
+        !       [    μ][∂ₓᵇ -∂zᵇ][ux]   [    μ (∂ₓᵇuz-∂zᵇux)]   [    μ R]
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
@@ -1232,28 +1151,22 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
                 duz_dx_ = duz_dx_*cpml%kpa_x_half(ix) + duz_dx(iz_ix)
 
 
-                ldap2mu_V(iz_ix) = ldap2mu(iz_ix) *(duz_dz_ + dux_dx_)
-                mu_L1(iz_ix) =  mu(iz_ix) * duz_dz_
-                mu_L2(iz_ix) =  mu(iz_ix) * dux_dx_
-                mu_S21(iz_ix) = mu(iz_ix) * duz_dx_
-                mu_S12(iz_ix) = mu(iz_ix) * dux_dz_
+                ldap2mu_V(iz_ix) = ldap2mu(iz_ix) * (duz_dz_ + dux_dx_)
+                mu_R(iz_ix)      = mu(iz_ix)      * (duz_dx_ - dux_dz_)
                 
             enddo
         enddo
         !$omp end do
         !$omp end parallel
 
-    if(ibias==1) then !biased to normal strains
-        !                         [κ(∂zᶠuz+∂ₓᶠux)]                                 
-        !Laplacian = [∂zᵇ ∂ₓᶠ  0 ]|μ∂ₓᵇuz        | = [∂zᵇκ(∂zᶠuz+∂ₓᶠux) + ∂ₓᶠμ∂ₓᵇuz]
-        !            [∂ₓᵇ  0  ∂zᶠ][μ∂zᵇux        ]   [∂ₓᵇκ(∂zᶠuz+∂ₓᶠux) + ∂zᶠμ∂zᵇux]
+        !Laplacian = [∂zᵇ  ∂ₓᶠ][(λ+2μ)V] = [∂zᵇ(λ+2μ)V + ∂ₓᶠμR]
+        !            [∂ₓᵇ -∂zᶠ][    μ R]   [∂ₓᵇ(λ+2μ)V - ∂zᶠμR]
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
         !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
         !$omp         dz_ldap2mu_V_,dx_ldap2mu_V_,&
-        !$omp         d1_mu_L2_,d2_mu_L1_,&
-        !$omp         d2_mu_S21_,d1_mu_S12_)
+        !$omp         dz_mu_R_,dx_mu_R_)
         !$omp do schedule(dynamic)
         do ix = ifx+2,ilx-2
             !dir$ simd
@@ -1281,101 +1194,23 @@ call correlate_assemble(corr%g66, correlate_gradient(:,:,:,66))
                 dz_ldap2mu_V_ = dz_ldap2mu_V_*cpml%kpa_z_half(iz) + dz_ldap2mu_V(iz_ix)
                 dx_ldap2mu_V_ = dx_ldap2mu_V_*cpml%kpa_x_half(ix) + dx_ldap2mu_V(iz_ix)
 
-
-                d1_mu_L2_ = c1z*(mu_L2(izp1_ix)-mu_L2(iz_ix)) +c2z*(mu_L2(izp2_ix)-mu_L2(izm1_ix))  !∂zᶠ
-                d2_mu_L1_ = c1x*(mu_L1(iz_ixp1)-mu_L1(iz_ix)) +c2x*(mu_L1(iz_ixp2)-mu_L1(iz_ixm1))  !∂ₓᶠ
-
-                d1_mu_L2(i)=cpml%b_z(iz)*d1_mu_L2(i)+cpml%a_z(iz)*d1_mu_L2_
-                d2_mu_L1(i)=cpml%b_x(ix)*d2_mu_L1(i)+cpml%a_x(ix)*d2_mu_L1_
                 
-                d1_mu_L2_ = d1_mu_L2_*cpml%kpa_z(iz) + d1_mu_L2(iz_ix)
-                d2_mu_L1_ = d2_mu_L1_*cpml%kpa_x(ix) + d2_mu_L1(iz_ix)
+                dx_mu_R_ = c1x*(mu_R(iz_ixp1)-mu_R(iz_ix)) +c2x*(mu_R(iz_ixp2)-mu_R(iz_ixm1))  !∂ₓᶠ
+                dz_mu_R_ = c1z*(mu_R(izp1_ix)-mu_R(iz_ix)) +c2z*(mu_R(izp2_ix)-mu_R(izm1_ix))  !∂zᶠ
+
+                dx_mu_R(i)=cpml%b_z(iz)*dx_mu_R(i)+cpml%a_z(iz)*dx_mu_R_
+                dz_mu_R(i)=cpml%b_x(ix)*dz_mu_R(i)+cpml%a_x(ix)*dz_mu_R_
                 
-
-                d2_mu_S21_ = c1x*(mu_S21(iz_ixp1)-mu_S21(iz_ix)) +c2x*(mu_S21(iz_ixp2)-mu_S21(iz_ixm1))  !∂ₓᶠ
-                d1_mu_S12_ = c1z*(mu_S12(izp1_ix)-mu_S12(iz_ix)) +c2z*(mu_S12(izp2_ix)-mu_S12(izm1_ix))  !∂zᶠ
-
-                d2_mu_S21(i)=cpml%b_x(ix)*d2_mu_S21(i)+cpml%a_x(ix)*d2_mu_S21_
-                d1_mu_S12(i)=cpml%b_z(iz)*d1_mu_S12(i)+cpml%a_z(iz)*d1_mu_S12_
+                dx_mu_R = dx_mu_dxuz_*cpml%kpa_z(iz) + dx_mu_R(iz_ix)
+                dz_mu_R = dz_mu_dzux_*cpml%kpa_x(ix) + dz_mu_R(iz_ix)
                 
-                d2_mu_S21_ = d2_mu_S21_*cpml%kpa_x(ix) + d2_mu_S21(iz_ix)
-                d1_mu_S12_ = d1_mu_S12_*cpml%kpa_z(iz) + d1_mu_S12(iz_ix)
-
-
-                lapz(iz_ix) = dz_ldap2mu_V_ -d1_mu_L2_ +d2_mu_S21_
-                lapx(iz_ix) = dx_ldap2mu_V_ -d2_mu_L1_ +d1_mu_S12_
+                lapz(iz_ix) = dz_ldap2mu_V_ + dx_mu_R
+                lapx(iz_ix) = dx_ldap2mu_V_ - dz_mu_R
 
             enddo
         enddo
         !$omp end do
         !$omp end parallel
-        
-    else !biased to shear strains
-
-        !                         [κ(∂zᶠuz+∂ₓᶠux)]                                 
-        !Laplacian = [∂zᵇ ∂ₓᶠ  0 ]|μ∂ₓᵇuz        | = [∂zᵇκ(∂zᶠuz+∂ₓᶠux) + ∂ₓᶠμ∂ₓᵇuz]
-        !            [∂ₓᵇ  0  ∂zᶠ][μ∂zᵇux        ]   [∂ₓᵇκ(∂zᶠuz+∂ₓᶠux) + ∂zᶠμ∂zᵇux]
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,&
-        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dz_ldap2mu_V_,dx_ldap2mu_V_,&
-        !$omp         d1_mu_S12_,d1_mu_S21_,d2_mu_S12_,d2_mu_S21_)
-        !$omp do schedule(dynamic)
-        do ix = ifx+2,ilx-2
-            !dir$ simd
-            do iz = ifz+2,ilz-2
-
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
-
-                izm2_ix=i-2  !iz-2,ix
-                izm1_ix=i-1  !iz-1,ix
-                iz_ix  =i    !iz,ix
-                izp1_ix=i+1  !iz+1,ix
-                izp2_ix=i+2  !iz+2,ix
-                
-                iz_ixm2=i  -2*nz !iz,ix-2
-                iz_ixm1=i  -nz  !iz,ix-1
-                iz_ixp1=i  +nz  !iz,ix+1
-                iz_ixp2=i  +2*nz  !iz,ix+2
-                
-                dz_ldap2mu_V_ = c1z*(ldap2mu_V(iz_ix)-ldap2mu_V(izm1_ix)) +c2z*(ldap2mu_V(izp1_ix)-ldap2mu_V(izm2_ix))  !∂zᵇ
-                dx_ldap2mu_V_ = c1x*(ldap2mu_V(iz_ix)-ldap2mu_V(iz_ixm1)) +c2x*(ldap2mu_V(iz_ixp1)-ldap2mu_V(iz_ixm2))  !∂ₓᵇ
-
-                dz_ldap2mu_V(i)=cpml%b_z_half(iz)*dz_ldap2mu_V(i)+cpml%a_z_half(iz)*dz_ldap2mu_V_
-                dx_ldap2mu_V(i)=cpml%b_x_half(ix)*dx_ldap2mu_V(i)+cpml%a_x_half(ix)*dx_ldap2mu_V_
-
-                dz_ldap2mu_V_ = dz_ldap2mu_V_*cpml%kpa_z_half(iz) + dz_ldap2mu_V(iz_ix)
-                dx_ldap2mu_V_ = dx_ldap2mu_V_*cpml%kpa_x_half(ix) + dx_ldap2mu_V(iz_ix)
-
-
-                d2_mu_S12_ = c1x*(mu_S12(iz_ixp1)-mu_S12(iz_ix)) +c2x*(mu_S12(iz_ixp2)-mu_S12(iz_ixm1))  !∂ₓᶠ
-                d1_mu_S21_ = c1z*(mu_S21(izp1_ix)-mu_S21(iz_ix)) +c2z*(mu_S21(izp2_ix)-mu_S21(izm1_ix))  !∂zᶠ
-                
-                d2_mu_S21_ = c1x*(mu_S21(iz_ixp1)-mu_S21(iz_ix)) +c2x*(mu_S21(iz_ixp2)-mu_S21(iz_ixm1))  !∂ₓᶠ
-                d1_mu_S12_ = c1z*(mu_S12(izp1_ix)-mu_S12(iz_ix)) +c2z*(mu_S12(izp2_ix)-mu_S12(izm1_ix))  !∂zᶠ
-
-                d2_mu_S12(i)=cpml%b_z(iz)*d2_mu_S12(i)+cpml%a_z(iz)*d2_mu_S12_
-                d1_mu_S21(i)=cpml%b_x(ix)*d1_mu_S21(i)+cpml%a_x(ix)*d1_mu_S21_
-
-                d2_mu_S21(i)=cpml%b_z(iz)*d2_mu_S21(i)+cpml%a_z(iz)*d2_mu_S21_
-                d1_mu_S12(i)=cpml%b_x(ix)*d1_mu_S12(i)+cpml%a_x(ix)*d1_mu_S12_
-                
-                d2_mu_S12_ = d2_mu_S12_*cpml%kpa_z(iz) + d2_mu_S12(iz_ix)
-                d1_mu_S21_ = d1_mu_S21_*cpml%kpa_x(ix) + d1_mu_S21(iz_ix)
-
-                d2_mu_S21_ = d2_mu_S21_*cpml%kpa_z(iz) + d2_mu_S21(iz_ix)
-                d1_mu_S12_ = d1_mu_S12_*cpml%kpa_x(ix) + d1_mu_S12(iz_ix)
-                
-                lapz(iz_ix) = dz_ldap2mu_V_ -d2_mu_S12_ +d2_mu_S21_
-                lapx(iz_ix) = dx_ldap2mu_V_ -d1_mu_S21_ +d1_mu_S12_
-
-            enddo
-        enddo
-        !$omp end do
-        !$omp end parallel
-
-    endif
 
     end subroutine
 
