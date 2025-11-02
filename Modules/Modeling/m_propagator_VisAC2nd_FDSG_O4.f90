@@ -34,6 +34,8 @@ use singleton
     ! logical :: is_Q_attenuation
     character(:),allocatable :: stablize_method
 
+    character(:),allocatable :: FS_method
+
     !local const
     real :: dt2, inv_2dt, inv_2dz, inv_2dx
 
@@ -218,6 +220,8 @@ use singleton
         wavelet_scaler=dt2/m%cell_volume
 
         if_hicks=shot%if_hicks
+
+        FS_method=setup%get_str('FS_METHOD',o_default='stress_image')
 
         call alloc(self%buoz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(self%buox,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -899,8 +903,13 @@ use singleton
         endif
 
         ! !apply free surface boundary condition if needed
-        if(m%is_freesurface) call fd_freesurface_stresses(f_re%p_next)
-        if(m%is_freesurface) call fd_freesurface_stresses(f_im%p_next)
+        ! if(m%is_freesurface) call fd_freesurface_stresses(f_re%p_next)
+        ! if(m%is_freesurface) call fd_freesurface_stresses(f_im%p_next)
+
+        if(m%is_freesurface) call fd_freesurface_pressure(f_re%p)
+        if(m%is_freesurface) call fd_freesurface_pressure(f_im%p)
+        ! if(m%is_freesurface) call fd_freesurface_pressure(f_re%p_next)
+        ! if(m%is_freesurface) call fd_freesurface_pressure(f_im%p_next)
         ! if(m%is_freesurface) then
         !     f_re%p(1,:,:)=0.
         !     f_re%p(0,:,:)=-f_re%p(2,:,:)
@@ -920,6 +929,36 @@ use singleton
         ! f%p_next(:,cb%ilx,:)=0.
         ! f%p_next(:,:,cb%ify)=0.
         ! f%p_next(:,:,cb%ily)=0.
+
+    end subroutine
+
+    subroutine fd_freesurface_acceleration(az,ax)
+        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: az,ax
+
+        !stress image for free surface boundary condition
+        !free surface is located at [1,ix,1] level
+        if (FS_method=='stress_image_2nd') then !Levandar & Roberttson's 2nd method
+            !symmetric mirroring: az[0.5]=az[1.5], ie. az(1,ix,iy)=az(2,ix,iy) -> p(1,ix,iy)=0.
+            az(1,:)=az(2,:)
+
+        elseif (FS_method=='stress_image') then !Levandar & Roberttson's method
+            az(cb%ifz:1,:)=0.
+            ax(cb%ifz:0,:)=0.
+
+        endif
+
+    end subroutine
+
+    subroutine fd_freesurface_pressure(p)
+        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: p
+
+        !stress image for free surface boundary condition
+        !free surface is located at [1,ix,1] level
+        p(1,:)=0. !explicit null pressure: p(1,ix,iy)=0
+
+        !antisymmetric mirroring including p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
+        p( 1,:)=0.
+        p(0:cb%ifz:-1, :)=-p(2:2+0-cb%ifz, :)
 
     end subroutine
 

@@ -77,8 +77,8 @@ use m_hilbert
         call fld_reU%ignite
         call fld_imU%ignite(o_wavelet=reshape(hilbert(shot%wavelet),[shot%nt,1]))
 
-        ! call ppg%forward(fld_reU,fld_imU)
-        call ppg%forward(fld_reU)
+        call ppg%forward(fld_reU,fld_imU)
+        ! call ppg%forward(fld_reU)
         call fld_reU%acquire; call shot%write('Ru_',shot%dsyn)
         ! call fld_imU%acquire; call shot%write('imRU_',shot%dsyn)
 
