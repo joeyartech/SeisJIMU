@@ -24,6 +24,8 @@ use m_cpml
     !scaling source wavelet
     real :: wavelet_scaler
 
+    character(:),allocatable :: FS_method
+
     type,public :: t_propagator
         !info
         character(i_str_xxlen) :: info = &
@@ -169,6 +171,8 @@ use m_cpml
         wavelet_scaler=self%dt/m%cell_volume
 
         if_hicks=shot%if_hicks
+
+        FS_method=setup%get_str('FS_METHOD',o_default='stress_image')
 
         call alloc(self%buoz,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(self%buox,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -813,11 +817,24 @@ use m_cpml
 
         endif
 
-        !apply free surface boundary condition if needed
-        if(m%is_freesurface) call fd_freesurface_velocities(f%vz)
+        !stress image for free surface boundary condition
+        !free surface is located at [1,ix,1] level
+        if(m%is_freesurface) then
+            if (FS_method=='stress_image_2nd') then !Levandar & Roberttson's 2nd method
+                !symmetric mirroring: vz[0.5]=vz[1.5], ie. vz(1,ix,iy)=vz(2,ix,iy) -> p(1,ix,iy)=0.
+                f%vz(1,:,:)=f%vz(2,:,:)
+
+            elseif (FS_method=='stress_image') then !Levandar & Roberttson's method
+                f%vz(cb%ifz:1,:,1)=0.
+                f%vx(cb%ifz:0,:,1)=0.
+
+            endif
+
+        endif
 
     end subroutine
     
+
     !forward: add RHS to s^it+0.5
     !adjoint: add RHS to s^it+1.5
     subroutine inject_stresses(self,f,time_dir,it)
@@ -903,9 +920,18 @@ use m_cpml
                                ifz,ilz,ifx,ilx,time_dir*self%dt)
         endif
         
-        !apply free surface boundary condition if needed
-        if(m%is_freesurface) call fd_freesurface_stresses(f%p)
 
+        !stress image for free surface boundary condition
+        !free surface is located at [1,ix,1] level
+        if(m%is_freesurface) then
+            f%p(1,:,:)=0. !explicit null pressure: p(1,ix,iy)=0
+
+            !antisymmetric mirroring including p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
+            f%p( 1,:,1)=0.
+            f%p(0:cb%ifz:-1, :,1)=-f%p(2:2+0-cb%ifz, :,1)
+
+        endif
+    
     end subroutine
 
     subroutine compute_poynting(v,u,it)
@@ -1677,53 +1703,6 @@ use m_cpml
         !$omp enddo 
         !$omp end parallel
         
-    end subroutine
-
-
-    subroutine fd_freesurface_velocities(vz)
-        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: vz
-
-        !free surface is located at [1,ix,iy] level
-        !so symmetric mirroring: vz[0.5]=vz[1.5], ie. vz(1,ix,iy)=vz(2,ix,iy) -> dp(1,ix,iy)=0.
-            vz(1,:,:)=vz(2,:,:)
-            ! !$omp parallel default (shared)&
-            ! !$omp private(ix,iy,i)
-            ! !$omp do schedule(dynamic)
-            ! do iy=ify,ily
-            ! do ix=ifx,ilx
-            !     i=(1-cb%ifz) + (ix-cb%ifx)*nz + (iy-cb%ify)*nz*nx +1 !iz=1,ix,iy
-                
-            !     f%vz(i)=f%vz(i+1)
-            ! enddo
-            ! enddo
-            ! !$omp enddo
-            ! !$omp end parallel
-
-    end subroutine
-
-    subroutine fd_freesurface_stresses(p)
-        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: p
-
-        !free surface is located at [1,ix,iy] level
-        !so explicit boundary condition: p(1,ix,iy)=0
-        !and antisymmetric mirroring: p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
-            p(1,:,:)=0.
-            p(0,:,:)=-p(2,:,:)
-            ! !$omp parallel default (shared)&
-            ! !$omp private(ix,iy,i)
-            ! !$omp do schedule(dynamic)
-            ! do iy=ify,ily
-            ! do ix=ifx,ilx
-            !     i=(1-cb%ifz) + (ix-cb%ifx)*nz + (iy-cb%ify)*nz*nx +1 !iz=1,ix,iy 
-                
-            !     f%p(i)=0.
-                
-            !     f%p(i-1)=-f%p(i+1)
-            ! enddo
-            ! enddo
-            ! !$omp enddo
-            ! !$omp end parallel
-
     end subroutine
 
     

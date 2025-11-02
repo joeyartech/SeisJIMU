@@ -4,9 +4,9 @@
 ############
 # Modeling #
 ############
-#WaveEq=AC2nd
+WaveEq=AC2nd
 #WaveEq=AC
-WaveEq=VisAC2nd
+#WaveEq=VisAC2nd
 #WaveEq=AC_VTI
 #WaveEq=PSV
 Solver=FDSG

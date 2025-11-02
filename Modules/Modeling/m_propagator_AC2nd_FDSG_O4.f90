@@ -20,6 +20,7 @@ use m_cpml
     !local const
     real :: dt2, inv_2dt, inv_2dz, inv_2dx
 
+    character(:),allocatable :: FS_method
 
     !scaling source wavelet
     real :: wavelet_scaler
@@ -170,6 +171,8 @@ use m_cpml
         wavelet_scaler=dt2/m%cell_volume
 
         if_hicks=shot%if_hicks
+
+        FS_method=setup%get_str('FS_METHOD',o_default='stress_image')
 
         call alloc(self%buoz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(self%buox,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -931,7 +934,9 @@ use m_cpml
         enddo
         !$omp end do
         !$omp end parallel
-        
+
+        if(m%is_freesurface) call fd_freesurface_acceleration(pzz,pxx)
+
         !laplacian: ∇·b∇u ~= ∂zᶠ(bz*∂zᵇp) + ∂ₓᶠ(bx*∂ₓᵇp)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
@@ -969,6 +974,38 @@ use m_cpml
         enddo
         !$omp end do
         !$omp end parallel
+
+        if(m%is_freesurface) call fd_freesurface_pressure(lap)
+
+    end subroutine
+
+    subroutine fd_freesurface_acceleration(az,ax)
+        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: az,ax
+
+        !stress image for free surface boundary condition
+        !free surface is located at [1,ix,1] level
+        if (FS_method=='stress_image_2nd') then !Levandar & Roberttson's 2nd method
+            !symmetric mirroring: az[0.5]=az[1.5], ie. az(1,ix,iy)=az(2,ix,iy) -> p(1,ix,iy)=0.
+            az(1,:)=az(2,:)
+
+        elseif (FS_method=='stress_image') then !Levandar & Roberttson's method
+            az(cb%ifz:1,:)=0.
+            ax(cb%ifz:0,:)=0.
+
+        endif
+
+    end subroutine
+
+    subroutine fd_freesurface_pressure(p)
+        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: p
+
+        !stress image for free surface boundary condition
+        !free surface is located at [1,ix,1] level
+        p(1,:)=0. !explicit null pressure: p(1,ix,iy)=0
+
+        !antisymmetric mirroring including p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
+        p( 1,:)=0.
+        p(0:cb%ifz:-1, :)=-p(2:2+0-cb%ifz, :)
 
     end subroutine
 
