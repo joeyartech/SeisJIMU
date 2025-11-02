@@ -769,6 +769,11 @@ use singleton
         ifx=f_re%bloom(3,it)
         ilx=f_re%bloom(4,it)
         
+        
+        ! if(m%is_freesurface) call fd_freesurface_stresses(f_re%p)
+        ! if(m%is_freesurface) call fd_freesurface_stresses(f_im%p)
+        
+
         if(m%is_cubic) then
             ! call fd3d_pressure(f%p,                                      &
             !                    f%dp_dz,f%dp_dx,f%dp_dy,                  &
@@ -893,10 +898,19 @@ use singleton
 
         endif
 
+        ! !apply free surface boundary condition if needed
+        if(m%is_freesurface) call fd_freesurface_stresses(f_re%p_next)
+        if(m%is_freesurface) call fd_freesurface_stresses(f_im%p_next)
+        ! if(m%is_freesurface) then
+        !     f_re%p(1,:,:)=0.
+        !     f_re%p(0,:,:)=-f_re%p(2,:,:)
+        !     f_im%p(1,:,:)=0.
+        !     f_im%p(0,:,:)=-f_im%p(2,:,:)
+        ! endif
+
+
         deallocate(Uprev, U, Unext, Lap) !save some RAM
 
-        ! !apply free surface boundary condition if needed
-        ! if(m%is_freesurface) call fd_freesurface_stresses(f%p)
 
         ! ! apply Dirichlet conditions at the bottom of the C-PML layers,
         ! ! the right condition to keep C-PML stable at long time
@@ -906,6 +920,34 @@ use singleton
         ! f%p_next(:,cb%ilx,:)=0.
         ! f%p_next(:,:,cb%ify)=0.
         ! f%p_next(:,:,cb%ily)=0.
+
+    end subroutine
+
+    subroutine fd_freesurface_stresses(p)
+        ! real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: p
+        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: p
+
+        !free surface is located at [1,ix,iy] level
+        !so explicit boundary condition: p(1,ix,iy)=0
+        !and antisymmetric mirroring: p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
+            p(1,:,:)=0.
+            p(0,:,:)=-p(2,:,:)
+            ! p(cb%ifz,:,:)=0.
+            ! p(cb%ifz-1,:,:)=-p(cb%ifz+1,:,:)
+            ! !$omp parallel default (shared)&
+            ! !$omp private(ix,iy,i)
+            ! !$omp do schedule(dynamic)
+            ! do iy=ify,ily
+            ! do ix=ifx,ilx
+            !     i=(1-cb%ifz) + (ix-cb%ifx)*nz + (iy-cb%ify)*nz*nx +1 !iz=1,ix,iy 
+                
+            !     f%p(i)=0.
+                
+            !     f%p(i-1)=-f%p(i+1)
+            ! enddo
+            ! enddo
+            ! !$omp enddo
+            ! !$omp end parallel
 
     end subroutine
 
