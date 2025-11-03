@@ -385,7 +385,7 @@ use m_cpml
         do it=ift,ilt
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
-                call fld_u%check_value
+                call fld_u%check_value(fld_u%p)
             endif
 
             !do forward time stepping (step# conforms with backward & adjoint time stepping)
@@ -468,8 +468,8 @@ use m_cpml
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
-                call fld_a%check_value
-                call fld_u%check_value
+                call fld_a%check_value(fld_a%p)
+                call fld_u%check_value(fld_u%p)
             endif
 
             ! if(present(o_sf)) then

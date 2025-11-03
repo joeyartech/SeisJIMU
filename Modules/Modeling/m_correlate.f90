@@ -21,8 +21,9 @@ use m_computebox
         ! integer :: ifz,ilz,ifx,ilx,ify,ily,ift,ilt
 
         !gradient components
-        real,dimension(:,:,:),allocatable :: gkpa, gikpa
         real,dimension(:,:,:),allocatable :: grho, gbuo
+        real,dimension(:,:,:),allocatable :: gkpa, gikpa
+        real,dimension(:,:,:),allocatable :: glda, gmu
 
         !image components
         real,dimension(:,:,:),allocatable :: ipp

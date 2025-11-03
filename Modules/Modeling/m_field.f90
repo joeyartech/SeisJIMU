@@ -19,6 +19,20 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:),allocatable :: vy_front,vy_rear
         real,dimension(:,:),allocatable :: vx_top,vx_bot,vz_left,vz_right
 
+        real,dimension(:,:),allocatable :: pz_top,  pz_bot
+        real,dimension(:,:),allocatable :: px_left, px_right
+        real,dimension(:,:),allocatable :: py_front,py_rear
+        real,dimension(:,:),allocatable :: px_top,px_bot,pz_left,pz_right
+
+        ! real,dimension(:,:),allocatable :: ez_top,  ez_bot, ez_left, ez_right
+        ! real,dimension(:,:),allocatable :: ex_top,  ex_bot, ex_left, ex_right
+        ! real,dimension(:,:),allocatable :: es_top,  es_bot, es_left, es_right
+
+        real,dimension(:,:),allocatable :: uz_top,  uz_bot
+        real,dimension(:,:),allocatable :: ux_left, ux_right
+        real,dimension(:,:),allocatable :: uy_front,uy_rear
+        real,dimension(:,:),allocatable :: ux_top,ux_bot,uz_left,uz_right
+
         real,dimension(:,:),allocatable :: p_top,  p_bot , p_next_top, p_next_bot
         real,dimension(:,:),allocatable :: p_left, p_right , p_next_left, p_next_right
         real,dimension(:,:),allocatable :: p_front,p_rear
@@ -35,13 +49,24 @@ use, intrinsic :: ieee_arithmetic
         
         !wavefield components in computation domain
         real,dimension(:,:,:),allocatable :: vz,vx,vy !velocities
-        real,dimension(:,:,:),allocatable :: szz,szx,szy !stress tensor
-        real,dimension(:,:,:),allocatable ::     sxx,sxy
-        real,dimension(:,:,:),allocatable ::         syy
-        real,dimension(:,:,:),allocatable :: shh !szz, sxx or syy
-        ! real,dimension(:,:,:),allocatable :: p !negated pressure
+        real,dimension(:,:,:),allocatable :: szz,szx!,szy !stress tensor
+        real,dimension(:,:,:),allocatable ::     sxx!,sxy
+        !real,dimension(:,:,:),allocatable ::         syy
+        ! real,dimension(:,:,:),allocatable :: shh !szz, sxx or syy
+        
+        !real,dimension(:,:,:),allocatable :: pz,px !momenta
+        !real,dimension(:,:,:),allocatable :: ez,ex,es,thta !strains
+        real,dimension(:,:,:),allocatable :: sz,sx,ss !stresses
+
         real,dimension(:,:,:),pointer :: p=> null(), p_prev=> null(), p_next=> null() !negated pressure
         !N.B. pressure is defined >0 for inward stress, but here tobe compatible with szz etc, p is defined >0 for outward stress
+        ! real,dimension(:,:,:),pointer :: ez=> null(), ez_prev=> null(), ez_next=> null()
+        ! real,dimension(:,:,:),pointer :: ex=> null(), ex_prev=> null(), ex_next=> null()
+        ! real,dimension(:,:,:),pointer :: es=> null(), es_prev=> null(), es_next=> null()
+
+        real,dimension(:,:,:),pointer :: uz=>null(), ux=>null() !displacement
+        real,dimension(:,:,:),pointer :: uz_prev=>null(), ux_prev=>null()
+        real,dimension(:,:,:),pointer :: uz_next=>null(), ux_next=>null()
 
         !boundary components for wavefield recontruction
         logical :: if_will_reconstruct=.false.
@@ -55,10 +80,22 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:,:),allocatable :: dszz_dz,dszx_dz
         real,dimension(:,:,:),allocatable :: dszx_dx,dsxx_dx        
         real,dimension(:,:,:),allocatable :: dshh_dz,dshh_dx,dshh_dy
+
         real,dimension(:,:,:),allocatable :: dp_dz,dp_dx,dp_dy
         real,dimension(:,:,:),allocatable :: dpzz_dz,dpxx_dx,dpyy_dy
+
+        real,dimension(:,:,:),allocatable :: dpz_dz,dpx_dx,dpz_dx,dpx_dz
+        real,dimension(:,:,:),allocatable :: dez_dz,dex_dx,dex_dz,dez_dx,des_dz,des_dx
+        real,dimension(:,:,:),allocatable :: dthta_dz,dthta_dx
+
+        real,dimension(:,:,:),allocatable :: duz_dz,dux_dx,dux_dz,duz_dx
+        real,dimension(:,:,:),allocatable :: dz_ldap2mu_duzdz_p_lda_duxdx
+        real,dimension(:,:,:),allocatable :: dx_lda_duzdz_p_ldap2mu_duxdx
+        real,dimension(:,:,:),allocatable :: dz_mu_duxdz_p_duzdx
+        real,dimension(:,:,:),allocatable :: dx_mu_duxdz_p_duzdx
+
         real,dimension(:,:,:),allocatable :: lap
-        real,dimension(:,:,:),allocatable :: lapz,lapx,lapy
+        real,dimension(:,:,:),allocatable :: lapz,lapx,laps
 
         real,dimension(:,:,:),allocatable :: poynz,poynx
 
@@ -81,7 +118,8 @@ use, intrinsic :: ieee_arithmetic
         contains
         ! procedure :: init
         procedure :: init_bloom
-        procedure :: init_boundary
+        procedure :: init_boundary !_velocities
+        procedure :: init_boundary_displacement
         procedure :: init_boundary_pressure
         procedure :: reinit
         procedure :: check_value
@@ -89,12 +127,13 @@ use, intrinsic :: ieee_arithmetic
         procedure :: acquire
         procedure :: write
         procedure :: write_ext
-        procedure :: boundary_transport
+        procedure :: boundary_transport !_velocities
+        procedure :: boundary_transport_displacement
         procedure :: boundary_transport_pressure
         final :: final
         
-        procedure :: is_registered
-        procedure :: register
+        ! procedure :: is_registered
+        ! procedure :: register
 
     end type
 
@@ -214,7 +253,7 @@ use, intrinsic :: ieee_arithmetic
 
     end subroutine
 
-    subroutine init_boundary(self)
+    subroutine init_boundary(self) !_velocities(self)
         class(t_field) :: self
         !save 3 grid points, for 4th order FD only
         !different indexing
@@ -234,10 +273,26 @@ use, intrinsic :: ieee_arithmetic
             call alloc(self%bnd%vz_right,n,nt)
         endif
 
-        if(m%is_cubic) then
-            n=cb%mz*cb%mx*3
-            call alloc(self%bnd%vy_front,n,nt)
-            call alloc(self%bnd%vy_rear, n,nt)
+    end subroutine
+
+    subroutine init_boundary_displacement(self)
+        class(t_field) :: self
+        !save 3 grid points, for 4th order FD only
+        !different indexing
+        n=3*cb%mx*cb%my
+        call alloc(self%bnd%uz_top,n,nt)
+        call alloc(self%bnd%uz_bot,n,nt)
+        if(if_shear) then
+            call alloc(self%bnd%ux_top,n,nt)
+            call alloc(self%bnd%ux_bot,n,nt)
+        endif
+        
+        n=cb%mz*3*cb%my
+        call alloc(self%bnd%ux_left, n,nt)
+        call alloc(self%bnd%ux_right,n,nt)
+        if(if_shear) then
+            call alloc(self%bnd%uz_left, n,nt)
+            call alloc(self%bnd%uz_right,n,nt)
         endif
 
     end subroutine
@@ -255,7 +310,7 @@ use, intrinsic :: ieee_arithmetic
         !     call alloc(self%bnd%p_top,n,nt)
         !     call alloc(self%bnd%p_bot,n,nt)
         ! endif
-        
+
         n=cb%mz*3*cb%my
         call alloc(self%bnd%p_left, n,nt)
         call alloc(self%bnd%p_right,n,nt)
@@ -277,31 +332,32 @@ use, intrinsic :: ieee_arithmetic
     subroutine reinit(self)
         class(t_field) :: self
 
-        if(allocated(self%dp_dz))   self%dp_dz=0.
-        if(allocated(self%dp_dx))   self%dp_dx=0.
-        if(allocated(self%dp_dy))   self%dp_dy=0.
-
-        if(allocated(self%dpzz_dz))   self%dpzz_dz=0.
-        if(allocated(self%dpxx_dx))   self%dpxx_dx=0.
-        if(allocated(self%dpyy_dy))   self%dpyy_dy=0.
-
-        if(allocated(self%lap)) self%lap=0.
-
-        if(allocated(self%lapz)) self%lapz=0.
-        if(allocated(self%lapx)) self%lapx=0.
-        if(allocated(self%lapy)) self%lapy=0.
+!         if(allocated(self%dp_dz))   self%dp_dz=0.
+!         if(allocated(self%dp_dx))   self%dp_dx=0.
+!         if(allocated(self%dp_dy))   self%dp_dy=0.
+!
+!         if(allocated(self%dpzz_dz))   self%dpzz_dz=0.
+!         if(allocated(self%dpxx_dx))   self%dpxx_dx=0.
+!         if(allocated(self%dpyy_dy))   self%dpyy_dy=0.
+!
+!         if(allocated(self%lap)) self%lap=0.
+!
+!         if(allocated(self%lapz)) self%lapz=0.
+!         if(allocated(self%lapx)) self%lapx=0.
+!         if(allocated(self%lapy)) self%lapy=0.
 
     end subroutine
     
-    subroutine check_value(self)
+    subroutine check_value(self,a)
         class(t_field) :: self
-        
-        if(mpiworld%is_master) write(*,*) self%name//' minmax values:',minval(self%p),maxval(self%p)
-        
-        if(any(.not. ieee_is_finite(self%p))) then
+        real,dimension(:,:,:) :: a
+                
+        if(mpiworld%is_master) write(*,*) self%name//' minmax values:',minval(a),maxval(a)
+                
+        if(any(.not. ieee_is_finite(a))) then
             call error(self%name//' values become Infinity on '//shot%sindex//' !!')
         endif
-        if(any(ieee_is_nan(self%p))) then
+        if(any(ieee_is_nan(a))) then
             call error(self%name//' values become NaN on '//shot%sindex//' !!')
         endif
         
@@ -324,32 +380,45 @@ use, intrinsic :: ieee_arithmetic
                         call sysio_write('snap_'//self%name//'%vz'//suf,self%vz,cb%n,o_mode='append')
                     case ('vx')
                         call sysio_write('snap_'//self%name//'%vx'//suf,self%vx,cb%n,o_mode='append')
-                    ! case ('vy')
-                    !     call sysio_write('snap_'//self%name//'%vx'//suf,self%vy,size(self%vy),o_mode='append')
+
+                    case ('uz')
+                        call sysio_write('snap_'//self%name//'%uz'//suf,self%uz,cb%n,o_mode='append')
+                    case ('ux')
+                        call sysio_write('snap_'//self%name//'%ux'//suf,self%ux,cb%n,o_mode='append')
                         
+
+                    case ('szz')
+                        call sysio_write('snap_'//self%name//'%szz'//suf,self%szz, cb%n,o_mode='append')
+                    case ('sxx')
+                        call sysio_write('snap_'//self%name//'%sxx'//suf,self%sxx, cb%n,o_mode='append')
+                    case ('szx')
+                        call sysio_write('snap_'//self%name//'%szx'//suf,self%szx, cb%n,o_mode='append')
+
+
                     case ('p')
                         call sysio_write('snap_'//self%name//'%p'//suf,self%p,cb%n,o_mode='append')
-                    case ('p_prev')
-                        call sysio_write('snap_'//self%name//'%p_prev'//suf,self%p_prev,cb%n,o_mode='append')
-                    case ('p_next')
-                        call sysio_write('snap_'//self%name//'%p_next'//suf,self%p_next,cb%n,o_mode='append')
+                    !  case ('p_prev')
+                    !      call sysio_write('snap_'//self%name//'%p_prev'//suf,self%p_prev,cb%n,o_mode='append')
+                    !  case ('p_next')
+                    !     call sysio_write('snap_'//self%name//'%p_next'//suf,self%p_next,cb%n,o_mode='append')
+
                     ! case ('szz')
                     !     call sysio_write('snap_'//self%name//'%szz'//suf,self%szz,size(self%szz),o_mode='append')
                     ! case ('sxx')
                     !     call sysio_write('snap_'//self%name//'%sxx'//suf,self%sxx,size(self%sxx),o_mode='append')
                     ! case ('szx')
                     !     call sysio_write('snap_'//self%name//'%szx'//suf,self%szx,size(self%szx),o_mode='append')
-                    case ('dp_dz')
-                        call sysio_write('snap_'//self%name//'%dp_dz'//suf,self%dp_dz,cb%n,o_mode='append')
-                    case ('lapz')
-                        call sysio_write('snap_'//self%name//'%lapz'//suf,self%lapz,cb%n,o_mode='append')
-                    case ('lapx')
-                        call sysio_write('snap_'//self%name//'%lapx'//suf,self%lapx,cb%n,o_mode='append')
+                    ! case ('dp_dz')
+                    !     call sysio_write('snap_'//self%name//'%dp_dz'//suf,self%dp_dz,cb%n,o_mode='append')
+                    ! case ('lapz')
+                    !     call sysio_write('snap_'//self%name//'%lapz'//suf,self%lapz,cb%n,o_mode='append')
+                    ! case ('lapx')
+                    !     call sysio_write('snap_'//self%name//'%lapx'//suf,self%lapx,cb%n,o_mode='append')
 
-                    case ('poynz')
-                        call sysio_write('snap_'//self%name//'%poynz'//suf,self%poynz,cb%n,o_mode='append')
-                    case ('poynx')
-                        call sysio_write('snap_'//self%name//'%poynx'//suf,self%poynx,cb%n,o_mode='append')
+                    ! case ('poynz')
+                    !     call sysio_write('snap_'//self%name//'%poynz'//suf,self%poynz,cb%n,o_mode='append')
+                    ! case ('poynx')
+                    !     call sysio_write('snap_'//self%name//'%poynx'//suf,self%poynx,cb%n,o_mode='append')
 
                     end select
                 enddo
@@ -400,23 +469,21 @@ use, intrinsic :: ieee_arithmetic
                 self%wavelet=transpose(o_wavelet)
             
             endif
-
-            return
             
-        endif
-
-        !w/o o_wavelet
-        if(self%is_adjoint) then
-            do i=1,shot%nrcv !implicit transpose
-                call resampler(shot%dadj(:,i),self%wavelet(i,:),1,&
+        else !w/o o_wavelet
+            if(self%is_adjoint) then
+                do i=1,shot%nrcv !implicit transpose
+                    call resampler(shot%dadj(:,i),self%wavelet(i,:),1,&
+                                    din=shot%dt,nin=shot%nt,&
+                                    dout=dt,nout=nt)
+                enddo
+                
+            else
+                call resampler(shot%wavelet,self%wavelet(1,:),1,&
                                 din=shot%dt,nin=shot%nt,&
                                 dout=dt,nout=nt)
-            enddo
+            endif
 
-        else
-            call resampler(shot%wavelet,self%wavelet(1,:),1,&
-                            din=shot%dt,nin=shot%nt,&
-                            dout=dt,nout=nt)
         endif
  
     end subroutine
@@ -440,8 +507,8 @@ use, intrinsic :: ieee_arithmetic
         endif
 
     end subroutine
-        
-    subroutine boundary_transport(self,action,it)
+
+    subroutine boundary_transport(self,action,it) !_velocities(self,action,it)
         class(t_field) :: self
         character(4) :: action
         integer :: it
@@ -450,18 +517,18 @@ use, intrinsic :: ieee_arithmetic
         nx=cb%mx
         ny=cb%my
         if(m%is_cubic) then
-            !top
-            call copy(action,self%vz,self%bnd%vz_top(:,it),  [1,3],    [1,nx],[1,ny])  !old version: [0,2],[1,nx],[1,nx]
-            !bottom
-            call copy(action,self%vz,self%bnd%vz_bot(:,it),  [nz-1,nz+1],[1,nx],[1,ny])  !old version: [nz,nz+2],[1,nx],[1,nx]
-            !left
-            call copy(action,self%vx,self%bnd%vx_left(:,it), [1,nz],[1,3],    [1,ny])
-            !right
-            call copy(action,self%vx,self%bnd%vx_right(:,it),[1,nz],[nx-1,nx+1],[1,ny])
-            !front
-            call copy(action,self%vy,self%bnd%vy_front(:,it),[1,nz],[1,nx],[1,3])
-            !rear
-            call copy(action,self%vy,self%bnd%vy_rear(:,it), [1,nz],[1,nx],[ny-1,ny+1])
+            ! !top
+            ! call copy(action,self%vz,self%bnd%vz_top(:,it),  [1,3],    [1,nx],[1,ny])  !old version: [0,2],[1,nx],[1,nx]
+            ! !bottom
+            ! call copy(action,self%vz,self%bnd%vz_bot(:,it),  [nz-1,nz+1],[1,nx],[1,ny])  !old version: [nz,nz+2],[1,nx],[1,nx]
+            ! !left
+            ! call copy(action,self%vx,self%bnd%vx_left(:,it), [1,nz],[1,3],    [1,ny])
+            ! !right
+            ! call copy(action,self%vx,self%bnd%vx_right(:,it),[1,nz],[nx-1,nx+1],[1,ny])
+            ! !front
+            ! call copy(action,self%vy,self%bnd%vy_front(:,it),[1,nz],[1,nx],[1,3])
+            ! !rear
+            ! call copy(action,self%vy,self%bnd%vy_rear(:,it), [1,nz],[1,nx],[ny-1,ny+1])
         else
             !top
             call copy(action,self%vz,self%bnd%vz_top(:,it),  [1,3],    [1,nx],[1,1])
@@ -489,12 +556,63 @@ use, intrinsic :: ieee_arithmetic
         endif
         
     end subroutine
-    
-    subroutine boundary_transport_pressure(self,action,it)
+
+    subroutine boundary_transport_displacement(self,action,it)
         class(t_field) :: self
         character(4) :: action
         integer :: it
         
+        nz=cb%mz
+        nx=cb%mx
+        ny=cb%my
+        if(m%is_cubic) then
+            ! !top
+            ! call copy(action,self%pz,self%bnd%pz_top(:,it),  [1,3],    [1,nx],[1,ny])  !old version: [0,2],[1,nx],[1,nx]
+            ! !bottom
+            ! call copy(action,self%pz,self%bnd%pz_bot(:,it),  [nz-1,nz+1],[1,nx],[1,ny])  !old version: [nz,nz+2],[1,nx],[1,nx]
+            ! !left
+            ! call copy(action,self%px,self%bnd%px_left(:,it), [1,nz],[1,3],    [1,ny])
+            ! !right
+            ! call copy(action,self%px,self%bnd%px_right(:,it),[1,nz],[nx-1,nx+1],[1,ny])
+            ! !front
+            ! call copy(action,self%vy,self%bnd%vy_front(:,it),[1,nz],[1,nx],[1,3])
+            ! !rear
+            ! call copy(action,self%vy,self%bnd%vy_rear(:,it), [1,nz],[1,nx],[ny-1,ny+1])
+        else
+            !top
+            ! if(.not. m%is_freesurface) &
+            call copy(action,self%uz,self%bnd%uz_top(:,it),  [1,3],    [1,nx],[1,1])
+            !bottom
+            call copy(action,self%uz,self%bnd%uz_bot(:,it),  [nz-1,nz+1],[1,nx],[1,1])
+            !left
+            call copy(action,self%ux,self%bnd%ux_left(:,it), [1,nz],[1,3],    [1,1])
+            !right
+            call copy(action,self%ux,self%bnd%ux_right(:,it),[1,nz],[nx-1,nx+1],[1,1])
+        endif
+
+        !shear part
+        if(if_shear) then
+            if(m%is_cubic) then
+            else
+                !top
+                ! if(.not. m%is_freesurface) &
+                call copy(action,self%ux,self%bnd%ux_top(:,it),  [1,3],    [1,nx],[1,1])
+                !bottom
+                call copy(action,self%ux,self%bnd%ux_bot(:,it),  [nz-2,nz  ],[1,nx],[1,1])
+                !left
+                call copy(action,self%uz,self%bnd%uz_left(:,it), [1,nz],[1,3],    [1,1])
+                !right
+                call copy(action,self%uz,self%bnd%uz_right(:,it),[1,nz],[nx-2,nx  ],[1,1])
+            endif
+        endif
+        
+    end subroutine
+
+    subroutine boundary_transport_pressure(self,action,it)
+        class(t_field) :: self
+        character(4) :: action
+        integer :: it
+
         nz=cb%mz
         nx=cb%mx
         ny=cb%my
@@ -545,9 +663,9 @@ use, intrinsic :: ieee_arithmetic
         !         call copy(action,self%vz,self%bnd%vz_right(:,it),[1,nz],[nx-2,nx  ],[1,1])
         !     endif
         ! endif
-        
+
     end subroutine
-    
+
     subroutine copy(action,v,bv,iiz,iix,iiy)
         character(4) :: action
         real,dimension(cb%n) :: v
@@ -594,24 +712,48 @@ use, intrinsic :: ieee_arithmetic
         
         !deallocate(self%name)
 
-        call dealloc(self%vz,self%vx,self%vy)
-        call dealloc(self%szz,self%szx,self%szy,self%sxx,self%sxy,self%shh)!,self%p)
+        call dealloc(self%vz,self%vx)
+        call dealloc(self%szz,self%sxx,self%szx)
 
-        call dealloc(self%bnd%vz_top,  self%bnd%vz_bot)
-        call dealloc(self%bnd%vx_left, self%bnd%vx_right)
-        call dealloc(self%bnd%vy_front,self%bnd%vy_rear)
-        call dealloc(self%bnd%vx_top,  self%bnd%vx_bot)
-        call dealloc(self%bnd%vz_left, self%bnd%vz_right)
+        call dealloc(self%bnd%vz_top,  self%bnd%vz_bot, self%bnd%vz_left, self%bnd%vz_right)
+        call dealloc(self%bnd%vx_top,  self%bnd%vx_bot, self%bnd%vx_left, self%bnd%vx_right)
 
-        call dealloc(self%dvz_dz,self%dvz_dx,self%dvz_dy)
-        call dealloc(self%dvx_dz,self%dvx_dx,self%dvx_dy)
-        call dealloc(self%dvy_dz,self%dvy_dx,self%dvy_dy)
-        call dealloc(self%dszz_dz,self%dszx_dz)
-        call dealloc(self%dszx_dx,self%dsxx_dx)
-        call dealloc(self%dshh_dz,self%dshh_dx,self%dshh_dy)
-        call dealloc(self%dp_dz,self%dp_dx,self%dp_dy)
+        call dealloc(self%dvz_dz, self%dvz_dx, self%dvx_dx, self%dvx_dz)
+        call dealloc(self%dszz_dz,self%dsxx_dx,self%dszx_dz,self%dszx_dx)
 
-        call dealloc(self%lap)
+        ! call dealloc(self%dpz_dz, self%dpx_dx, self%dpz_dx, self%dpx_dx)
+        ! call dealloc(self%dez_dz, self%dex_dx, self%dex_dz, self%dez_dx, self%des_dz, self%des_dx)
+
+!         call dealloc(self%pz,self%px)
+!         call dealloc(self%ez,self%ex,self%es)
+
+        call dealloc(self%bnd%pz_top,  self%bnd%pz_bot, self%bnd%pz_left, self%bnd%pz_right)
+        call dealloc(self%bnd%px_top,  self%bnd%px_bot, self%bnd%px_left, self%bnd%px_right)
+
+        call dealloc(self%dpz_dz, self%dpx_dx, self%dpz_dx, self%dpx_dx)
+        call dealloc(self%dez_dz, self%dex_dx, self%dex_dz, self%dez_dx, self%des_dz, self%des_dx)
+        ! call dealloc(self%bnd%ez_top,  self%bnd%ez_bot, self%bnd%ez_left, self%bnd%ez_right)
+        ! call dealloc(self%bnd%ex_top,  self%bnd%ex_bot, self%bnd%ex_left, self%bnd%ex_right)
+        ! call dealloc(self%bnd%es_top,  self%bnd%es_bot, self%bnd%es_left, self%bnd%es_right)
+
+        ! call dealloc(self%dz_bz_dz_ldap2mu_ez, self%dz_bz_dz_lda_ex,     self%dz_bz_dx_mu_es)
+        ! call dealloc(self%dx_bx_dx_lda_ez,     self%dx_bx_dx_ldap2mu_ex, self%dx_bx_dz_mu_es)
+        ! call dealloc(self%dz_bz_dx_lda_ez,     self%dz_bz_dx_ldap2mu_ex, self%dz_bz_dz_mu_es)
+        ! call dealloc(self%dx_bx_dz_ldap2mu_ez, self%dx_bx_dz_lda_ex,     self%dx_bx_dx_mu_es)
+
+        ! call dealloc(self%uz,self%ux)
+
+        call dealloc(self%bnd%uz_top,  self%bnd%uz_bot, self%bnd%uz_left, self%bnd%uz_right)
+        call dealloc(self%bnd%ux_top,  self%bnd%ux_bot, self%bnd%ux_left, self%bnd%ux_right)
+
+        call dealloc(self%duz_dz, self%dux_dx, self%duz_dx, self%dux_dx)
+        call dealloc(self%dz_ldap2mu_duzdz_p_lda_duxdx, &
+                     self%dx_lda_duzdz_p_ldap2mu_duxdx, &
+                     self%dz_mu_duxdz_p_duzdx, &
+                     self%dx_mu_duxdz_p_duzdx)
+
+
+        call dealloc(self%lapz,self%lapx,self%laps)
 
         call dealloc(self%wavelet)
 
@@ -623,87 +765,87 @@ use, intrinsic :: ieee_arithmetic
     end subroutine
 
     
-    logical function is_registered(self,chp,str)
-        class(t_field) :: self
-        type(t_checkpoint) :: chp
-        character(*) :: str
+    ! logical function is_registered(self,chp,str)
+    !     class(t_field) :: self
+    !     type(t_checkpoint) :: chp
+    !     character(*) :: str
 
-        type(t_string),dimension(:),allocatable :: list
+    !     type(t_string),dimension(:),allocatable :: list
 
-        list=split(str)
+    !     list=split(str)
 
-        do i=1,size(list)
-            is_registered=chp%check(self%name//'%'//list(i)%s)
-            if(.not.is_registered) return
-        enddo
+    !     do i=1,size(list)
+    !         is_registered=chp%check(self%name//'%'//list(i)%s)
+    !         if(.not.is_registered) return
+    !     enddo
 
-        do i=1,size(list)
-            select case (list(i)%s)
-            case ('seismo')
-                call chp%open(self%name//'%seismo')
-                call chp%read(self%seismo)
-                call chp%close
-                call hud('Read '//self%name//'%seismo from '//chp%name//', size='//num2str(size(self%seismo)))
-            case ('comp')
-                call chp%open(self%name//'%comp')
-                call chp%read(self%vz, self%vx, self%vy )
-                call chp%read(self%szz,self%szx,self%szy)
-                call chp%read(self%sxx,self%sxy,self%syy)
-                call chp%read(self%shh)!,self%p)
-                call chp%close
-                call hud('Read '//self%name//'%vz,vx,vy from '//chp%name//', size='//num2str(total_size(self%vz,self%vx,self%vy)))
-                call hud('Read '//self%name//'%szz,szx,szy from '//chp%name//', size='//num2str(total_size(self%szz,self%szx,self%szy)))
-                call hud('Read '//self%name//'%sxx,sxy,syy from '//chp%name//', size='//num2str(total_size(self%sxx,self%sxy,self%syy)))
-                !call hud('Read '//self%name//'%shh,p from '//chp%name//', size='//num2str(total_size(self%shh,self%p)))
-            case ('boundary')
-                call chp%open(self%name//'%boundary')
-                call chp%read(self%bnd%vz_top,  self%bnd%vz_bot  )
-                call chp%read(self%bnd%vx_left, self%bnd%vx_right)
-                call chp%read(self%bnd%vy_front,self%bnd%vy_rear )
-                call chp%read(self%bnd%vx_top  ,self%bnd%vx_bot  )
-                call chp%read(self%bnd%vz_left ,self%bnd%vz_right)
-                call chp%close
-                call hud('Read '//self%name//'%boundary vz_top, vz_bot from '//chp%name//', size='//num2str(total_size(self%bnd%vz_top,self%bnd%vz_bot)))
-            end select
+    !     do i=1,size(list)
+    !         select case (list(i)%s)
+    !         case ('seismo')
+    !             call chp%open(self%name//'%seismo')
+    !             call chp%read(self%seismo)
+    !             call chp%close
+    !             call hud('Read '//self%name//'%seismo from '//chp%name//', size='//num2str(size(self%seismo)))
+    !         case ('comp')
+    !             call chp%open(self%name//'%comp')
+    !             call chp%read(self%vz, self%vx, self%vy )
+    !             call chp%read(self%szz,self%szx,self%szy)
+    !             call chp%read(self%sxx,self%sxy,self%syy)
+    !             call chp%read(self%shh)!,self%p)
+    !             call chp%close
+    !             call hud('Read '//self%name//'%vz,vx,vy from '//chp%name//', size='//num2str(total_size(self%vz,self%vx,self%vy)))
+    !             call hud('Read '//self%name//'%szz,szx,szy from '//chp%name//', size='//num2str(total_size(self%szz,self%szx,self%szy)))
+    !             call hud('Read '//self%name//'%sxx,sxy,syy from '//chp%name//', size='//num2str(total_size(self%sxx,self%sxy,self%syy)))
+    !             !call hud('Read '//self%name//'%shh,p from '//chp%name//', size='//num2str(total_size(self%shh,self%p)))
+    !         case ('boundary')
+    !             call chp%open(self%name//'%boundary')
+    !             call chp%read(self%bnd%vz_top,  self%bnd%vz_bot  )
+    !             call chp%read(self%bnd%vx_left, self%bnd%vx_right)
+    !             call chp%read(self%bnd%vy_front,self%bnd%vy_rear )
+    !             call chp%read(self%bnd%vx_top  ,self%bnd%vx_bot  )
+    !             call chp%read(self%bnd%vz_left ,self%bnd%vz_right)
+    !             call chp%close
+    !             call hud('Read '//self%name//'%boundary vz_top, vz_bot from '//chp%name//', size='//num2str(total_size(self%bnd%vz_top,self%bnd%vz_bot)))
+    !         end select
 
-        enddo
+    !     enddo
 
-    end function
+    ! end function
 
-    subroutine register(self,chp,str)
-        class(t_field) :: self
-        type(t_checkpoint) :: chp
-        character(*) :: str
+    ! subroutine register(self,chp,str)
+    !     class(t_field) :: self
+    !     type(t_checkpoint) :: chp
+    !     character(*) :: str
 
-        type(t_string),dimension(:),allocatable :: list
+    !     type(t_string),dimension(:),allocatable :: list
 
-        list=split(str)
+    !     list=split(str)
 
-        do i=1,size(list)
-            select case (list(i)%s)
-            case ('seismo')
-                call chp%open(self%name//'%seismo')
-                call chp%write(self%seismo)
-                call chp%close
-            case ('comp')
-                call chp%open(self%name//'%comp')
-                call chp%write(self%vz, self%vx, self%vy )
-                call chp%write(self%szz,self%szx,self%szy)
-                call chp%write(self%sxx,self%sxy,self%syy)
-                call chp%write(self%shh)!,self%p)
-                call chp%close
-            case ('boundary')
-                call chp%open(self%name//'%boundary')
-                call chp%write(self%bnd%vz_top  ,self%bnd%vz_bot  )
-                call chp%write(self%bnd%vx_left ,self%bnd%vx_right)
-                call chp%write(self%bnd%vy_front,self%bnd%vy_rear )
-                call chp%write(self%bnd%vx_top  ,self%bnd%vx_bot  )
-                call chp%write(self%bnd%vz_left ,self%bnd%vz_right)
-                call chp%close
-            end select
+    !     do i=1,size(list)
+    !         select case (list(i)%s)
+    !         case ('seismo')
+    !             call chp%open(self%name//'%seismo')
+    !             call chp%write(self%seismo)
+    !             call chp%close
+    !         case ('comp')
+    !             call chp%open(self%name//'%comp')
+    !             call chp%write(self%vz, self%vx, self%vy )
+    !             call chp%write(self%szz,self%szx,self%szy)
+    !             call chp%write(self%sxx,self%sxy,self%syy)
+    !             call chp%write(self%shh)!,self%p)
+    !             call chp%close
+    !         case ('boundary')
+    !             call chp%open(self%name//'%boundary')
+    !             call chp%write(self%bnd%vz_top  ,self%bnd%vz_bot  )
+    !             call chp%write(self%bnd%vx_left ,self%bnd%vx_right)
+    !             call chp%write(self%bnd%vy_front,self%bnd%vy_rear )
+    !             call chp%write(self%bnd%vx_top  ,self%bnd%vx_bot  )
+    !             call chp%write(self%bnd%vz_left ,self%bnd%vz_right)
+    !             call chp%close
+    !         end select
 
-        enddo
+    !     enddo
 
-    end subroutine
+    ! end subroutine
 
 end
