@@ -5,9 +5,8 @@
 # Modeling #
 ############
 #WaveEq=AC
-WaveEq=AC2nd
-
-#WaveEq=VisAC2nd
+#WaveEq=AC2nd
+WaveEq=VisAC2nd
 
 #WaveEq=PSV
 #WaveEq=PSV2nd

@@ -34,13 +34,13 @@ use singleton
     ! logical :: is_Q_attenuation
     character(:),allocatable :: stablize_method
 
-    character(:),allocatable :: FS_method
-
     !local const
     real :: dt2, inv_2dt, inv_2dz, inv_2dx
 
     !scaling source wavelet
     real :: wavelet_scaler
+
+    character(:),allocatable :: FS_method
 
     type,public :: t_propagator
         !info
@@ -87,9 +87,10 @@ use singleton
         procedure :: forward
         procedure :: adjoint
         
-        procedure :: inject_pressure
-        procedure :: update_pressure
-        procedure :: evolve_pressure
+        procedure :: inject
+        procedure :: differentiate
+        procedure :: update
+        procedure :: evolve
         procedure :: extract
         ! procedure :: gaussian_smooth
 
@@ -295,23 +296,22 @@ use singleton
 
         !f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
         !if(f%if_will_reconstruct) call f%init_boundary
-        call f%init_boundary_pressure
+        call f%init_boundary
 
         call alloc(f%p     , [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%p_prev, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%p_next, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
-        ! if(.not.either(ois_simple,.false.,present(ois_simple))) then
-            call alloc(f%dp_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-            call alloc(f%dp_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-            call alloc(f%dp_dy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%az, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%ax, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
-            call alloc(f%dpzz_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-            call alloc(f%dpxx_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-            call alloc(f%dpyy_dy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dz_p, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dx_p, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        
+        call alloc(f%dz_z, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dz_x, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
-            call alloc(f%lap, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        ! endif
+        call alloc(f%lap, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
     end subroutine
 
@@ -416,8 +416,8 @@ use singleton
             !do forward time stepping (step# conforms with backward & adjoint time stepping)
             !step 1: add pressure
             call cpu_time(tic)
-            call self%inject_pressure(fld_reU,time_dir,it)
-            call self%inject_pressure(fld_imU,time_dir,it)
+            call self%inject(fld_reU,time_dir,it)
+            call self%inject(fld_imU,time_dir,it)
             ! print *, 'time=',it,'wavelet for u:',size(fld_reU%wavelet,1),size(fld_reU%wavelet,2),'wavelet for v:',size(fld_imU%wavelet,1),size(fld_imU%wavelet,2)
             call cpu_time(toc)
             tt1=tt1+toc-tic
@@ -425,8 +425,8 @@ use singleton
             !step 2: save p^it+1 in boundary layers
             ! if(fld_E0%if_will_reconstruct) then
                 call cpu_time(tic)
-                call fld_reU%boundary_transport_pressure('save',it)
-                call fld_imU%boundary_transport_pressure('save',it)
+                call fld_reU%boundary_transport('save',it)
+                call fld_imU%boundary_transport('save',it)
                 call cpu_time(toc)
                 tt2=tt2+toc-tic
             ! endif
@@ -439,7 +439,9 @@ use singleton
 
             !step 4: update pressure
             call cpu_time(tic)
-            call self%update_pressure(fld_reU,fld_imU,time_dir,it)
+            call self%differentiate(fld_reU,time_dir,it)
+            call self%differentiate(fld_imU,time_dir,it)
+            call self%update(fld_reU,fld_imU,time_dir,it)
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
@@ -464,8 +466,8 @@ use singleton
 
             !step 5: evolve pressure, it -> it+1
             call cpu_time(tic)
-            call self%evolve_pressure(fld_reU,time_dir,it)
-            call self%evolve_pressure(fld_imU,time_dir,it)
+            call self%evolve(fld_reU,time_dir,it)
+            call self%evolve(fld_imU,time_dir,it)
             call cpu_time(toc)
             tt6=tt6+toc-tic
 
@@ -534,21 +536,23 @@ use singleton
             ! if(present(o_sf)) then
                 !backward step 5: it+1 -> it
                 call cpu_time(tic)
-                call self%evolve_pressure(fld_reU,time_dir,it)
-                call self%evolve_pressure(fld_imU,time_dir,it)
+                call self%evolve(fld_reU,time_dir,it)
+                call self%evolve(fld_imU,time_dir,it)
                 call cpu_time(toc)
                 tt1=tt1+toc-tic
 
                 ! !backward step 2: retrieve p^it+1 at boundary layers (BC)
                 call cpu_time(tic)
-                call fld_reU%boundary_transport_pressure('load',it)
-                call fld_imU%boundary_transport_pressure('load',it)
+                call fld_reU%boundary_transport('load',it)
+                call fld_imU%boundary_transport('load',it)
                 call cpu_time(toc)
                 tt2=tt2+toc-tic
 
                 !backward step 4:
                 call cpu_time(tic)
-                call self%update_pressure(fld_reU,fld_imU,time_dir,it)
+                call self%differentiate(fld_reU,time_dir,it)
+                call self%differentiate(fld_imU,time_dir,it)
+                call self%update(fld_reU,fld_imU,time_dir,it)
                 call cpu_time(toc)
                 tt4=tt4+toc-tic
 
@@ -571,23 +575,23 @@ use singleton
 
                 !backward step 1: rm p^it at source
                 call cpu_time(tic)
-                call self%inject_pressure(fld_reU,time_dir,it)
-                call self%inject_pressure(fld_imU,time_dir,it)
+                call self%inject(fld_reU,time_dir,it)
+                call self%inject(fld_imU,time_dir,it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             ! endif
 
             !adjoint step 6: inject to p^it+1 at receivers
             call cpu_time(tic)
-            call self%inject_pressure(fld_reA,time_dir,it)
-            call self%inject_pressure(fld_imA,time_dir,it)
+            call self%inject(fld_reA,time_dir,it)
+            call self%inject(fld_imA,time_dir,it)
             call cpu_time(toc)
             tt8=tt8+toc-tic
 
             !adjoint step 4:
             call cpu_time(tic)
-            call self%update_pressure(fld_reA,fld_imA,time_dir,it)
-            ! call self%update_pressure(fld_reA,time_dir,it)
+            call self%update(fld_reA,fld_imA,time_dir,it)
+            ! call self%update(fld_reA,time_dir,it)
             call cpu_time(toc)
             tt9=tt9+toc-tic
 
@@ -607,10 +611,10 @@ use singleton
             endif
 
             !adjoint step 5
-            ! this step is moved to update_pressure for easier management
+            ! this step is moved to update for easier management
             call cpu_time(tic)
-            call self%evolve_pressure(fld_reA,time_dir,it)
-            call self%evolve_pressure(fld_imA,time_dir,it)
+            call self%evolve(fld_reA,time_dir,it)
+            call self%evolve(fld_imA,time_dir,it)
             call cpu_time(toc)
             tt11=tt11+toc-tic
 
@@ -668,7 +672,7 @@ use singleton
     end subroutine
 
 
-    subroutine inject_pressure(self,f,time_dir,it)
+    subroutine inject(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
 
@@ -757,44 +761,76 @@ use singleton
         
     end subroutine
 
-    subroutine update_pressure(self,f_re,f_im,time_dir,it)
+    subroutine differentiate(self,f,time_dir,it)
         class(t_propagator) :: self
-        type(t_field) :: f_re, f_im
-
-        complex,dimension(:,:,:),allocatable :: Uprev, U, Unext, Lap
-
+        type(t_field) :: f
                 
         ! !necessary after computing the secondary source
         ! f%lap=0.
 
-        ifz=f_re%bloom(1,it)
+        ifz=f%bloom(1,it)
         if(m%is_freesurface) ifz=max(ifz,1)
-        ilz=f_re%bloom(2,it)
-        ifx=f_re%bloom(3,it)
-        ilx=f_re%bloom(4,it)
+        ilz=f%bloom(2,it)
+        ifx=f%bloom(3,it)
+        ilx=f%bloom(4,it)
         
-        
-        ! if(m%is_freesurface) call fd_freesurface_stresses(f_re%p)
-        ! if(m%is_freesurface) call fd_freesurface_stresses(f_im%p)
-        
-
+        !flux
         if(m%is_cubic) then
-            ! call fd3d_pressure(f%p,                                      &
-            !                    f%dp_dz,f%dp_dx,f%dp_dy,                  &
-            !                    self%buoz,self%buox,self%buoy,self%kpa,   &
-            !                    ifz,f%bloom(2,it),f%bloom(3,it),f%bloom(4,it))
         else
-            call fd2d_laplacian(f_re%p,                                         &
-                                f_re%dp_dz,f_re%dp_dx,f_re%dpzz_dz,f_re%dpxx_dx,&
-                                f_re%lap,                                       &
-                                self%buoz,self%buox,                            &
-                                ifz,ilz,ifx,ilx)
-            call fd2d_laplacian(f_im%p,                                         &
-                                f_im%dp_dz,f_im%dp_dx,f_im%dpzz_dz,f_im%dpxx_dx,&
-                                f_im%lap,                                       &
-                                self%buoz,self%buox,                            &
+            call fd2d_flux(f%p,f%dz_p,f%dx_p,  &
+                           f%az,f%ax,          &
+                           self%buoz,self%buox,&
+                           ifz,ilz,ifx,ilx)
+        endif
+
+        !Levandar & Roberttson's stress image for free surface boundary condition
+        !free surface is located at [1,ix,1] level
+        if(m%is_freesurface) then
+            if (FS_method=='stress_vel_image') then
+                !symmetric mirroring: vz[0.5]=vz[1.5], ie. vz(1,ix,iy)=vz(2,ix,iy) -> p(1,ix,iy)=0.
+                f%az(1,:,:)=f%az(2,:,:)
+
+            elseif (FS_method=='stress_image') then
+                f%az(cb%ifz:1,:,:)=0.
+                f%ax(cb%ifz:0,:,:)=0.
+
+            endif
+
+        endif
+
+        !laplacian
+        if(m%is_cubic) then
+        else
+            call fd2d_laplacian(f%az,f%ax,f%dz_z,f%dx_x,&
+                                f%lap,                  &
                                 ifz,ilz,ifx,ilx)
         endif
+
+        if(m%is_freesurface) then
+            f%lap(1,:,:)=0. !explicit null pressure: p(1,ix,iy)=0
+
+            !antisymmetric mirroring including p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
+            f%lap( 1,:,:)=0.
+            f%lap(0:cb%ifz:-1, :,:)=-f%lap(2:2+0-cb%ifz, :,:)
+        endif
+
+
+        !update pressure
+        if(time_dir>0.) then !in forward time
+            f%p_next(ifz:ilz,ifx:ilx,:) = 2*f%p(ifz:ilz,ifx:ilx,:) -f%p_prev(ifz:ilz,ifx:ilx,:) & 
+                +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*f%lap(ifz:ilz,ifx:ilx,:)
+        else !in reverse time
+            f%p_prev(ifz:ilz,ifx:ilx,:) = 2*f%p(ifz:ilz,ifx:ilx,:) -f%p_next(ifz:ilz,ifx:ilx,:) &
+                +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*f%lap(ifz:ilz,ifx:ilx,:)
+        endif
+
+    end subroutine
+
+    subroutine update(self,f_re,f_im,time_dir,it)
+        class(t_propagator) :: self
+        type(t_field) :: f_re, f_im
+
+        complex,dimension(:,:,:),allocatable :: Uprev, U, Unext, Lap
 
         ! !simple scheme for 1st-order time derivative
         ! !use forward FD in backward vs backward FD in forward modeling
@@ -906,8 +942,8 @@ use singleton
         ! if(m%is_freesurface) call fd_freesurface_stresses(f_re%p_next)
         ! if(m%is_freesurface) call fd_freesurface_stresses(f_im%p_next)
 
-        if(m%is_freesurface) call fd_freesurface_pressure(f_re%p)
-        if(m%is_freesurface) call fd_freesurface_pressure(f_im%p)
+        ! if(m%is_freesurface) call fd_freesurface_pressure(f_re%p)
+        ! if(m%is_freesurface) call fd_freesurface_pressure(f_im%p)
         ! if(m%is_freesurface) call fd_freesurface_pressure(f_re%p_next)
         ! if(m%is_freesurface) call fd_freesurface_pressure(f_im%p_next)
         ! if(m%is_freesurface) then
@@ -932,63 +968,94 @@ use singleton
 
     end subroutine
 
-    subroutine fd_freesurface_acceleration(az,ax)
-        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: az,ax
+    ! subroutine fd_freesurface_acceleration(az,ax)
+    !     real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: az,ax
 
-        !stress image for free surface boundary condition
-        !free surface is located at [1,ix,1] level
-        if (FS_method=='stress_image_2nd') then !Levandar & Roberttson's 2nd method
-            !symmetric mirroring: az[0.5]=az[1.5], ie. az(1,ix,iy)=az(2,ix,iy) -> p(1,ix,iy)=0.
-            az(1,:)=az(2,:)
+    !     !stress image for free surface boundary condition
+    !     !free surface is located at [1,ix,1] level
+    !     if (FS_method=='stress_image_2nd') then !Levandar & Roberttson's 2nd method
+    !         !symmetric mirroring: az[0.5]=az[1.5], ie. az(1,ix,iy)=az(2,ix,iy) -> p(1,ix,iy)=0.
+    !         az(1,:)=az(2,:)
 
-        elseif (FS_method=='stress_image') then !Levandar & Roberttson's method
-            az(cb%ifz:1,:)=0.
-            ax(cb%ifz:0,:)=0.
+    !     elseif (FS_method=='stress_image') then !Levandar & Roberttson's method
+    !         az(cb%ifz:1,:)=0.
+    !         ax(cb%ifz:0,:)=0.
 
-        endif
+    !     endif
 
-    end subroutine
+    ! end subroutine
 
-    subroutine fd_freesurface_pressure(p)
-        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: p
+    ! subroutine fd_freesurface_pressure(p)
+    !     real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: p
 
-        !stress image for free surface boundary condition
-        !free surface is located at [1,ix,1] level
-        p(1,:)=0. !explicit null pressure: p(1,ix,iy)=0
+    !     !stress image for free surface boundary condition
+    !     !free surface is located at [1,ix,1] level
+    !     p(1,:)=0. !explicit null pressure: p(1,ix,iy)=0
 
-        !antisymmetric mirroring including p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
-        p( 1,:)=0.
-        p(0:cb%ifz:-1, :)=-p(2:2+0-cb%ifz, :)
+    !     !antisymmetric mirroring including p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
+    !     p( 1,:)=0.
+    !     p(0:cb%ifz:-1, :)=-p(2:2+0-cb%ifz, :)
 
-    end subroutine
+    ! end subroutine
 
-    subroutine fd_freesurface_stresses(p)
-        ! real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: p
-        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: p
+    ! subroutine fd_freesurface_stresses(p)
+    !     ! real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: p
+    !     real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: p
 
-        !free surface is located at [1,ix,iy] level
-        !so explicit boundary condition: p(1,ix,iy)=0
-        !and antisymmetric mirroring: p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
-            p(1,:,:)=0.
-            p(0,:,:)=-p(2,:,:)
-            ! p(cb%ifz,:,:)=0.
-            ! p(cb%ifz-1,:,:)=-p(cb%ifz+1,:,:)
-            ! !$omp parallel default (shared)&
-            ! !$omp private(ix,iy,i)
-            ! !$omp do schedule(dynamic)
-            ! do iy=ify,ily
-            ! do ix=ifx,ilx
-            !     i=(1-cb%ifz) + (ix-cb%ifx)*nz + (iy-cb%ify)*nz*nx +1 !iz=1,ix,iy 
+    !     !free surface is located at [1,ix,iy] level
+    !     !so explicit boundary condition: p(1,ix,iy)=0
+    !     !and antisymmetric mirroring: p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
+    !         p(1,:,:)=0.
+    !         p(0,:,:)=-p(2,:,:)
+    !         ! p(cb%ifz,:,:)=0.
+    !         ! p(cb%ifz-1,:,:)=-p(cb%ifz+1,:,:)
+    !         ! !$omp parallel default (shared)&
+    !         ! !$omp private(ix,iy,i)
+    !         ! !$omp do schedule(dynamic)
+    !         ! do iy=ify,ily
+    !         ! do ix=ifx,ilx
+    !         !     i=(1-cb%ifz) + (ix-cb%ifx)*nz + (iy-cb%ify)*nz*nx +1 !iz=1,ix,iy 
                 
-            !     f%p(i)=0.
+    !         !     f%p(i)=0.
                 
-            !     f%p(i-1)=-f%p(i+1)
-            ! enddo
-            ! enddo
-            ! !$omp enddo
-            ! !$omp end parallel
+    !         !     f%p(i-1)=-f%p(i+1)
+    !         ! enddo
+    !         ! enddo
+    !         ! !$omp enddo
+    !         ! !$omp end parallel
 
-    end subroutine
+    ! end subroutine
+
+    ! subroutine fd_freesurface_acceleration(az,ax)
+    !     real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: az,ax
+
+    !     !stress image for free surface boundary condition
+    !     !free surface is located at [1,ix,1] level
+    !     if (FS_method=='stress_image_2nd') then !Levandar & Roberttson's 2nd method
+    !         !symmetric mirroring: az[0.5]=az[1.5], ie. az(1,ix,iy)=az(2,ix,iy) -> p(1,ix,iy)=0.
+    !         az(1,:)=az(2,:)
+
+    !     elseif (FS_method=='stress_image') then !Levandar & Roberttson's method
+    !         az(cb%ifz:1,:)=0.
+    !         ax(cb%ifz:0,:)=0.
+
+    !     endif
+
+    ! end subroutine
+
+    ! subroutine fd_freesurface_pressure(p)
+    !     real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: p
+
+    !     !stress image for free surface boundary condition
+    !     !free surface is located at [1,ix,1] level
+    !     p(1,:)=0. !explicit null pressure: p(1,ix,iy)=0
+
+    !     !antisymmetric mirroring including p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
+    !     p( 1,:)=0.
+    !     p(0:cb%ifz:-1, :)=-p(2:2+0-cb%ifz, :)
+
+    ! end subroutine
+    
 
     subroutine stablize_complex(p) !by fft
 use singleton
@@ -1091,7 +1158,7 @@ use singleton
 
     end subroutine stablize
 
-    subroutine evolve_pressure(self,f,time_dir,it)
+    subroutine evolve(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
 
@@ -1103,19 +1170,11 @@ use singleton
             f%p     =>f%p_next
             f%p_next=>tmp
 
-            ! f%p_prev = f%p
-            ! f%p      = f%p_next
-            ! !f%p_next = f%p_prev
-
         else !in reverse time
             tmp=>f%p_next
             f%p_next=>f%p
             f%p     =>f%p_prev
             f%p_prev=>tmp
-
-            ! f%p_next = f%p
-            ! f%p      = f%p_prev
-            ! !f%p_prev = f%p_next
 
         endif
 
@@ -1342,20 +1401,13 @@ use singleton
     end subroutine
 
     !========= Finite-Difference on flattened arrays ==================
-
-    subroutine fd2d_laplacian(p,dp_dz,dp_dx,&
-                                dpzz_dz,dpxx_dx,&
-                                lap,&
-                                buoz,buox,&
-                                ifz,ilz,ifx,ilx)
+   subroutine fd2d_flux(p,dp_dz,dp_dx,&
+                         az,ax,&
+                         buoz,buox,&
+                         ifz,ilz,ifx,ilx)
         real,dimension(*) :: p,dp_dz,dp_dx
-        real,dimension(*) :: dpzz_dz,dpxx_dx
-        real,dimension(*) :: lap
+        real,dimension(*) :: az,ax
         real,dimension(*) :: buoz,buox
-
-        real,dimension(:),allocatable :: pzz,pxx
-        call alloc(pzz,cb%n)
-        call alloc(pxx,cb%n)
 
         nz=cb%nz
         nx=cb%nx
@@ -1391,46 +1443,8 @@ use singleton
                 dp_dz_ = dp_dz_/cpml%kpa_z_half(iz) + dp_dz(iz_ix)
                 dp_dx_ = dp_dx_/cpml%kpa_x_half(ix) + dp_dx(iz_ix)
 
-                pzz(iz_ix) = buoz(iz_ix)*dp_dz_
-                pxx(iz_ix) = buox(iz_ix)*dp_dx_
-
-            enddo
-        enddo
-        !$omp end do
-        !$omp end parallel
-        
-        !laplacian: ∇·b∇u ~= ∂zᶠ(bz*∂zᵇp) + ∂ₓᶠ(bx*∂ₓᵇp)
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,&
-        !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-        !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dpzz_dz_,dpxx_dx_)
-        !$omp do schedule(dynamic)
-        do ix = ifx+1,ilx-2
-            !dir$ simd
-            do iz = ifz+1,ilz-2
-
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
-
-                izm1_ix=i-1  !iz-1,ix
-                iz_ix  =i    !iz,ix
-                izp1_ix=i+1  !iz+1,ix
-                izp2_ix=i+2  !iz+2,ix
-                
-                iz_ixm1=i  -nz  !iz,ix-1
-                iz_ixp1=i  +nz  !iz,ix+1
-                iz_ixp2=i  +2*nz !iz,ix+2
-                
-                dpzz_dz_ = c1z*(pzz(izp1_ix) - pzz(iz_ix))  +c2z*(pzz(izp2_ix) - pzz(izm1_ix))
-                dpxx_dx_ = c1x*(pxx(iz_ixp1) - pxx(iz_ix))  +c2x*(pxx(iz_ixp2) - pxx(iz_ixm1))
-
-                dpzz_dz(iz_ix) = cpml%b_z(iz)*dpzz_dz(iz_ix) + cpml%a_z(iz)*dpzz_dz_
-                dpxx_dx(iz_ix) = cpml%b_x(ix)*dpxx_dx(iz_ix) + cpml%a_x(ix)*dpxx_dx_
-
-                dpzz_dz_ = dpzz_dz_/cpml%kpa_z(iz) + dpzz_dz(iz_ix)
-                dpxx_dx_ = dpxx_dx_/cpml%kpa_x(ix) + dpxx_dx(iz_ix)
-
-                lap(iz_ix) = dpzz_dz_ + dpxx_dx_
+                az(iz_ix) = buoz(iz_ix)*dp_dz_
+                ax(iz_ix) = buox(iz_ix)*dp_dx_
 
             enddo
         enddo
@@ -1439,60 +1453,21 @@ use singleton
 
     end subroutine
 
-    subroutine fd2d_laplacian_nocpml(p,&
-                                    lap,&
-                                    buoz,buox,&
-                                    ifz,ilz,ifx,ilx)
-        real,dimension(*) :: p
+    subroutine fd2d_laplacian(az,ax,daz_dz,dax_dx,&
+                              lap,&
+                              ifz,ilz,ifx,ilx)
+        real,dimension(*) :: az,ax,daz_dz,dax_dx
         real,dimension(*) :: lap
-        real,dimension(*) :: buoz,buox
-
-        real,dimension(:),allocatable :: pzz,pxx
-        call alloc(pzz,cb%n)
-        call alloc(pxx,cb%n)
 
         nz=cb%nz
         nx=cb%nx
-        
-        !flux: b∇u ~= ( bz*∂zᵇp , bx*∂ₓᵇp )
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,&
-        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,&
-        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,&
-        !$omp         dp_dz_,dp_dx_)
-        !$omp do schedule(dynamic)
-        do ix = ifx+2,ilx-1
-            !dir$ simd
-            do iz = ifz+2,ilz-1
 
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
-
-                izm2_ix=i-2  !iz-2,ix
-                izm1_ix=i-1  !iz-1,ix
-                iz_ix  =i    !iz,ix
-                izp1_ix=i+1  !iz+1,ix
-                
-                iz_ixm2=i  -2*nz !iz,ix-2
-                iz_ixm1=i  -nz  !iz,ix-1
-                iz_ixp1=i  +nz  !iz,ix+1
-
-                dp_dz_ = c1z*(p(iz_ix) - p(izm1_ix)) +c2z*(p(izp1_ix)-p(izm2_ix))
-                dp_dx_ = c1x*(p(iz_ix) - p(iz_ixm1)) +c2x*(p(iz_ixp1)-p(iz_ixm2))
-
-                pzz(iz_ix) = buoz(iz_ix)*dp_dz_
-                pxx(iz_ix) = buox(iz_ix)*dp_dx_
-
-            enddo
-        enddo
-        !$omp end do
-        !$omp end parallel
-        
         !laplacian: ∇·b∇u ~= ∂zᶠ(bz*∂zᵇp) + ∂ₓᶠ(bx*∂ₓᵇp)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
         !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
         !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dpzz_dz_,dpxx_dx_)
+        !$omp         daz_dz_,dax_dx_)
         !$omp do schedule(dynamic)
         do ix = ifx+1,ilx-2
             !dir$ simd
@@ -1509,10 +1484,16 @@ use singleton
                 iz_ixp1=i  +nz  !iz,ix+1
                 iz_ixp2=i  +2*nz !iz,ix+2
                 
-                dpzz_dz_ = c1z*(pzz(izp1_ix) - pzz(iz_ix))  +c2z*(pzz(izp2_ix) - pzz(izm1_ix))
-                dpxx_dx_ = c1x*(pxx(iz_ixp1) - pxx(iz_ix))  +c2x*(pxx(iz_ixp2) - pxx(iz_ixm1))
+                daz_dz_ = c1z*(az(izp1_ix) - az(iz_ix))  +c2z*(az(izp2_ix) - az(izm1_ix))
+                dax_dx_ = c1x*(ax(iz_ixp1) - ax(iz_ix))  +c2x*(ax(iz_ixp2) - ax(iz_ixm1))
 
-                lap(iz_ix) = dpzz_dz_ + dpxx_dx_
+                daz_dz(iz_ix) = cpml%b_z(iz)*daz_dz(iz_ix) + cpml%a_z(iz)*daz_dz_
+                dax_dx(iz_ix) = cpml%b_x(ix)*dax_dx(iz_ix) + cpml%a_x(ix)*dax_dx_
+
+                daz_dz_ = daz_dz_/cpml%kpa_z(iz) + daz_dz(iz_ix)
+                dax_dx_ = dax_dx_/cpml%kpa_x(ix) + dax_dx(iz_ix)
+
+                lap(iz_ix) = daz_dz_ + dax_dx_
 
             enddo
         enddo

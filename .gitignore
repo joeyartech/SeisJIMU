@@ -22,6 +22,8 @@ test
 *.smod
 *.exe
 
+.DS_store
+
 
 
 ###############

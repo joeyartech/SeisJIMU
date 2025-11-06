@@ -14,28 +14,12 @@ use, intrinsic :: ieee_arithmetic
     !boundary components for wavefield recontruction
     type t_boundary
 
-        real,dimension(:,:),allocatable :: vz_top,  vz_bot
-        real,dimension(:,:),allocatable :: vx_left, vx_right
-        real,dimension(:,:),allocatable :: vy_front,vy_rear
-        real,dimension(:,:),allocatable :: vx_top,vx_bot,vz_left,vz_right
-
-        real,dimension(:,:),allocatable :: pz_top,  pz_bot
-        real,dimension(:,:),allocatable :: px_left, px_right
-        real,dimension(:,:),allocatable :: py_front,py_rear
-        real,dimension(:,:),allocatable :: px_top,px_bot,pz_left,pz_right
-
-        ! real,dimension(:,:),allocatable :: ez_top,  ez_bot, ez_left, ez_right
-        ! real,dimension(:,:),allocatable :: ex_top,  ex_bot, ex_left, ex_right
-        ! real,dimension(:,:),allocatable :: es_top,  es_bot, es_left, es_right
-
-        real,dimension(:,:),allocatable :: uz_top,  uz_bot
-        real,dimension(:,:),allocatable :: ux_left, ux_right
-        real,dimension(:,:),allocatable :: uy_front,uy_rear
-        real,dimension(:,:),allocatable :: ux_top,ux_bot,uz_left,uz_right
-
-        real,dimension(:,:),allocatable :: p_top,  p_bot , p_next_top, p_next_bot
-        real,dimension(:,:),allocatable :: p_left, p_right , p_next_left, p_next_right
-        real,dimension(:,:),allocatable :: p_front,p_rear
+        real,dimension(:,:),allocatable :: top_z, top_x, top_y, top_curr, top_next
+        real,dimension(:,:),allocatable :: bot_z, bot_x, bot_y, bot_curr, bot_next
+        real,dimension(:,:),allocatable :: left_z, left_x, left_y, left_curr, left_next
+        real,dimension(:,:),allocatable :: rite_z, rite_x, rite_y, rite_curr, rite_next
+        real,dimension(:,:),allocatable :: frnt_z, frnt_x, frnt_y
+        real,dimension(:,:),allocatable :: rear_z, rear_x, rear_y
 
     end type
 
@@ -47,64 +31,50 @@ use, intrinsic :: ieee_arithmetic
         !adjointness
         logical :: is_adjoint
         
-        !wavefield components in computation domain
-        real,dimension(:,:,:),allocatable :: vz,vx,vy !velocities
-        real,dimension(:,:,:),allocatable :: szz,szx!,szy !stress tensor
-        real,dimension(:,:,:),allocatable ::     sxx!,sxy
-        !real,dimension(:,:,:),allocatable ::         syy
-        ! real,dimension(:,:,:),allocatable :: shh !szz, sxx or syy
+        !following the staggered-grid scheme
+
+        !components on the shifted grid
+        real,dimension(:,:,:),allocatable :: vz,vx,vy !velocity
+        real,dimension(:,:,:),allocatable :: pz,px,py !momenta
+        real,dimension(:,:,:),allocatable :: az,ax,ay !acceleration
+
+        real,dimension(:,:,:),pointer :: uz=>null(),      ux=>null()      !displacement
+        real,dimension(:,:,:),pointer :: uz_prev=>null(), ux_prev=>null() !previous displacement
+        real,dimension(:,:,:),pointer :: uz_next=>null(), ux_next=>null() !future displacement
+
+        !components on the shifted grid
+        real,dimension(:,:,:),allocatable :: szx,szy,sxy !shear stress
+        real,dimension(:,:,:),allocatable :: ss          !shear stress in 2D
+        real,dimension(:,:,:),allocatable :: es          !shear strains in 2D
+
+        !components on the reference grid
+        real,dimension(:,:,:),allocatable :: szz,sxx,syy !normal stress
+        real,dimension(:,:,:),allocatable :: sz, sx      !normal stress in 2D
+        real,dimension(:,:,:),pointer :: p=> null(), p_prev=> null(), p_next=> null() !pressure
         
-        !real,dimension(:,:,:),allocatable :: pz,px !momenta
-        !real,dimension(:,:,:),allocatable :: ez,ex,es,thta !strains
-        real,dimension(:,:,:),allocatable :: sz,sx,ss !stresses
+        real,dimension(:,:,:),allocatable :: ez,ex       !normal strains in 2D
 
-        real,dimension(:,:,:),pointer :: p=> null(), p_prev=> null(), p_next=> null() !negated pressure
-        !N.B. pressure is defined >0 for inward stress, but here tobe compatible with szz etc, p is defined >0 for outward stress
-        ! real,dimension(:,:,:),pointer :: ez=> null(), ez_prev=> null(), ez_next=> null()
-        ! real,dimension(:,:,:),pointer :: ex=> null(), ex_prev=> null(), ex_next=> null()
-        ! real,dimension(:,:,:),pointer :: es=> null(), es_prev=> null(), es_next=> null()
+        !laplacian
+        real,dimension(:,:,:),allocatable :: lap,lapz,lapx
 
-        real,dimension(:,:,:),pointer :: uz=>null(), ux=>null() !displacement
-        real,dimension(:,:,:),pointer :: uz_prev=>null(), ux_prev=>null()
-        real,dimension(:,:,:),pointer :: uz_next=>null(), ux_next=>null()
+        ! !Poynting vector
+        ! real,dimension(:,:,:),allocatable :: poynz,poynx
 
         !boundary components for wavefield recontruction
         logical :: if_will_reconstruct=.false.
+        logical :: if_boundary_vector=.true.
         type(t_boundary) :: bnd
 
-        !cpml components for absorbing boundary wavefield
-        real,dimension(:,:,:),allocatable :: dvz_dz,dvz_dx,dvz_dy
-        real,dimension(:,:,:),allocatable :: dvx_dz,dvx_dx,dvx_dy
-        real,dimension(:,:,:),allocatable :: dvy_dz,dvy_dx,dvy_dy
-        
-        real,dimension(:,:,:),allocatable :: dszz_dz,dszx_dz
-        real,dimension(:,:,:),allocatable :: dszx_dx,dsxx_dx        
-        real,dimension(:,:,:),allocatable :: dshh_dz,dshh_dx,dshh_dy
+        !derivatives for absorbing boundary wavefield
+        !1st-order
+        real,dimension(:,:,:),allocatable :: dz_z, dz_x, dz_y, dz_p, dz_zz, dz_zx
+        real,dimension(:,:,:),allocatable :: dx_z, dx_x, dx_y, dx_p, dx_xx, dx_zx
+        real,dimension(:,:,:),allocatable :: dy_z, dy_x, dy_y, dy_p
+        !2nd-order
+        real,dimension(:,:,:),allocatable :: dz_dz_z, dz_dz_x, dz_dz_y, dz_dz_p
+        real,dimension(:,:,:),allocatable :: dx_dx_z, dx_dx_x, dx_dx_y, dx_dx_p
 
-        real,dimension(:,:,:),allocatable :: dp_dz,dp_dx,dp_dy
-        real,dimension(:,:,:),allocatable :: dpzz_dz,dpxx_dx,dpyy_dy
-
-        real,dimension(:,:,:),allocatable :: dpz_dz,dpx_dx,dpz_dx,dpx_dz
-        real,dimension(:,:,:),allocatable :: dez_dz,dex_dx,dex_dz,dez_dx,des_dz,des_dx
-        real,dimension(:,:,:),allocatable :: dthta_dz,dthta_dx
-
-        real,dimension(:,:,:),allocatable :: duz_dz,dux_dx,dux_dz,duz_dx
-        real,dimension(:,:,:),allocatable :: dz_ldap2mu_duzdz_p_lda_duxdx
-        real,dimension(:,:,:),allocatable :: dx_lda_duzdz_p_ldap2mu_duxdx
-        real,dimension(:,:,:),allocatable :: dz_mu_duxdz_p_duzdx
-        real,dimension(:,:,:),allocatable :: dx_mu_duxdz_p_duzdx
-
-        real,dimension(:,:,:),allocatable :: lap
-        real,dimension(:,:,:),allocatable :: lapz,lapx,laps
-
-        real,dimension(:,:,:),allocatable :: poynz,poynx
-
-        !source time function
-        ! real,dimension(:,:),allocatable :: fz,fx,fy !forces
-        ! real,dimension(:,:),allocatable :: mzz,mzx,mzy !moments
-        ! real,dimension(:,:),allocatable ::     mxx,mxy
-        ! real,dimension(:,:),allocatable ::         myy
-        ! real,dimension(:,:),allocatable :: mhh,p
+        !source wavelet
         real,dimension(:,:),allocatable :: wavelet
 
         !synthetic seismograms (receiver time function)
@@ -113,23 +83,18 @@ use, intrinsic :: ieee_arithmetic
         !blooming
         integer,dimension(:,:),allocatable :: bloom
 
-        !snapshot
-
+        
         contains
         ! procedure :: init
         procedure :: init_bloom
-        procedure :: init_boundary !_velocities
-        procedure :: init_boundary_displacement
-        procedure :: init_boundary_pressure
+        procedure :: init_boundary
+        procedure :: boundary_transport
         procedure :: reinit
         procedure :: check_value
         procedure :: ignite
         procedure :: acquire
         procedure :: write
         procedure :: write_ext
-        procedure :: boundary_transport !_velocities
-        procedure :: boundary_transport_displacement
-        procedure :: boundary_transport_pressure
         final :: final
         
         ! procedure :: is_registered
@@ -150,7 +115,6 @@ use, intrinsic :: ieee_arithmetic
 
     !snapshot
     logical :: if_snapshot
-    type(t_string),dimension(:),allocatable :: snapshot
     integer :: i_snapshot, n_snapshot
     
     contains
@@ -165,8 +129,7 @@ use, intrinsic :: ieee_arithmetic
         dt=dt_in
 
         !snapshot
-        snapshot=setup%get_strs('SNAPSHOT')
-        if_snapshot=size(snapshot)>0 .and. mpiworld%is_master
+        if_snapshot=setup%get_bool('IF_SNAPSHOT') .and. mpiworld%is_master
         if(if_snapshot) then
             n_snapshot=setup%get_int('REF_NUMBER_SNAPSHOT','NSNAPSHOT',o_default='50')
             if(n_snapshot==0) n_snapshot=50
@@ -253,81 +216,61 @@ use, intrinsic :: ieee_arithmetic
 
     end subroutine
 
-    subroutine init_boundary(self) !_velocities(self)
+    subroutine init_boundary(self)
         class(t_field) :: self
-        !save 3 grid points, for 4th order FD only
-        !different indexing
-        n=3*cb%mx*cb%my
-        call alloc(self%bnd%vz_top,n,nt)
-        call alloc(self%bnd%vz_bot,n,nt)
-        if(if_shear) then
-            call alloc(self%bnd%vx_top,n,nt)
-            call alloc(self%bnd%vx_bot,n,nt)
-        endif
         
-        n=cb%mz*3*cb%my
-        call alloc(self%bnd%vx_left, n,nt)
-        call alloc(self%bnd%vx_right,n,nt)
-        if(if_shear) then
-            call alloc(self%bnd%vz_left, n,nt)
-            call alloc(self%bnd%vz_right,n,nt)
-        endif
+        if(self%if_boundary_vector) then
+            !save 3 grid points, for 4th order FD only
+            !different indexing
+            n=3*cb%mx*cb%my
+            call alloc(self%bnd%top_z,n,nt)
+            call alloc(self%bnd%bot_z,n,nt)
+            if(if_shear) then
+                call alloc(self%bnd%top_x,n,nt)
+                call alloc(self%bnd%bot_x,n,nt)
+            endif
+            
+            n=cb%mz*3*cb%my
+            call alloc(self%bnd%left_x, n,nt)
+            call alloc(self%bnd%rite_x,n,nt)
+            if(if_shear) then
+                call alloc(self%bnd%left_z, n,nt)
+                call alloc(self%bnd%rite_z,n,nt)
+            endif
+
+        return; endif
+
+        !boundary values are scalar
+            !save 3 grid points, for 4th order FD only
+            !different indexing
+            n=3*cb%mx*cb%my
+            call alloc(self%bnd%top_curr,n,nt)
+            call alloc(self%bnd%top_next,n,nt)
+            call alloc(self%bnd%bot_curr,n,nt)
+            call alloc(self%bnd%bot_next,n,nt)
+            ! if(if_shear) then
+            !     call alloc(self%bnd%p_top,n,nt)
+            !     call alloc(self%bnd%p_bot,n,nt)
+            ! endif
+
+            n=cb%mz*3*cb%my
+            call alloc(self%bnd%left_curr, n,nt)
+            call alloc(self%bnd%left_next, n,nt)
+            call alloc(self%bnd%rite_curr, n,nt)
+            call alloc(self%bnd%rite_next, n,nt)
+            ! if(if_shear) then
+            !     call alloc(self%bnd%p_left, n,nt)
+            !     call alloc(self%bnd%p_right,n,nt)
+            ! endif
+
+            ! if(m%is_cubic) then
+            !     n=cb%mz*cb%mx*3
+            !     call alloc(self%bnd%vy_front,n,nt)
+            !     call alloc(self%bnd%vy_rear, n,nt)
+            ! endif
 
     end subroutine
 
-    subroutine init_boundary_displacement(self)
-        class(t_field) :: self
-        !save 3 grid points, for 4th order FD only
-        !different indexing
-        n=3*cb%mx*cb%my
-        call alloc(self%bnd%uz_top,n,nt)
-        call alloc(self%bnd%uz_bot,n,nt)
-        if(if_shear) then
-            call alloc(self%bnd%ux_top,n,nt)
-            call alloc(self%bnd%ux_bot,n,nt)
-        endif
-        
-        n=cb%mz*3*cb%my
-        call alloc(self%bnd%ux_left, n,nt)
-        call alloc(self%bnd%ux_right,n,nt)
-        if(if_shear) then
-            call alloc(self%bnd%uz_left, n,nt)
-            call alloc(self%bnd%uz_right,n,nt)
-        endif
-
-    end subroutine
-
-    subroutine init_boundary_pressure(self)
-        class(t_field) :: self
-        !save 3 grid points, for 4th order FD only
-        !different indexing
-        n=3*cb%mx*cb%my
-        call alloc(self%bnd%p_top,n,nt)
-        call alloc(self%bnd%p_bot,n,nt)
-        call alloc(self%bnd%p_next_top,n,nt)
-        call alloc(self%bnd%p_next_bot,n,nt)
-        ! if(if_shear) then
-        !     call alloc(self%bnd%p_top,n,nt)
-        !     call alloc(self%bnd%p_bot,n,nt)
-        ! endif
-
-        n=cb%mz*3*cb%my
-        call alloc(self%bnd%p_left, n,nt)
-        call alloc(self%bnd%p_right,n,nt)
-        call alloc(self%bnd%p_next_left, n,nt)
-        call alloc(self%bnd%p_next_right,n,nt)
-        ! if(if_shear) then
-        !     call alloc(self%bnd%p_left, n,nt)
-        !     call alloc(self%bnd%p_right,n,nt)
-        ! endif
-
-        ! if(m%is_cubic) then
-        !     n=cb%mz*cb%mx*3
-        !     call alloc(self%bnd%vy_front,n,nt)
-        !     call alloc(self%bnd%vy_rear, n,nt)
-        ! endif
-
-    end subroutine
 
     subroutine reinit(self)
         class(t_field) :: self
@@ -348,9 +291,21 @@ use, intrinsic :: ieee_arithmetic
 
     end subroutine
     
-    subroutine check_value(self,a)
+    subroutine check_value(self)
         class(t_field) :: self
-        real,dimension(:,:,:) :: a
+        real,dimension(:,:,:),pointer :: a
+
+        if(allocated(self%vz)) then
+            a=self%vz
+        elseif(associated(self%uz)) then
+            a=self%uz
+        elseif(allocated(self%pz)) then
+            a=self%pz
+        elseif(allocated(self%az)) then
+            a=self%az
+        elseif(associated(self%p)) then
+            a=self%p
+        endif
                 
         if(mpiworld%is_master) write(*,*) self%name//' minmax values:',minval(a),maxval(a)
                 
@@ -374,59 +329,63 @@ use, intrinsic :: ieee_arithmetic
         if(if_snapshot) then
 
             if(it==1 .or. mod(it,i_snapshot)==0 .or. it==nt) then
-                do i=1,size(snapshot)
-                    select case (snapshot(i)%s)
-                    case ('vz')
-                        call sysio_write('snap_'//self%name//'%vz'//suf,self%vz,cb%n,o_mode='append')
-                    case ('vx')
-                        call sysio_write('snap_'//self%name//'%vx'//suf,self%vx,cb%n,o_mode='append')
 
-                    case ('uz')
-                        call sysio_write('snap_'//self%name//'%uz'//suf,self%uz,cb%n,o_mode='append')
-                    case ('ux')
-                        call sysio_write('snap_'//self%name//'%ux'//suf,self%ux,cb%n,o_mode='append')
-                        
+                call write_snaps_pointer(self%name,suf,self%uz,'uz', self%ux,'ux')!, self%uy,'uy')
+                call write_snaps_pointer(self%name,suf,self%p,'p')
 
-                    case ('szz')
-                        call sysio_write('snap_'//self%name//'%szz'//suf,self%szz, cb%n,o_mode='append')
-                    case ('sxx')
-                        call sysio_write('snap_'//self%name//'%sxx'//suf,self%sxx, cb%n,o_mode='append')
-                    case ('szx')
-                        call sysio_write('snap_'//self%name//'%szx'//suf,self%szx, cb%n,o_mode='append')
+                call write_snaps(self%name,suf,self%vz,'vz', self%vx,'vx', self%vy,'vy')
+                call write_snaps(self%name,suf,self%pz,'pz', self%px,'px', self%py,'py')
+                call write_snaps(self%name,suf,self%az,'az', self%ax,'ax', self%ay,'ay')
 
+                call write_snaps(self%name,suf,self%szz,'szz', self%sxx,'sxx', self%szx,'szx')
+                call write_snaps(self%name,suf,self%sz,'sz', self%sx,'sx', self%ss,'ss')
 
-                    case ('p')
-                        call sysio_write('snap_'//self%name//'%p'//suf,self%p,cb%n,o_mode='append')
-                    !  case ('p_prev')
-                    !      call sysio_write('snap_'//self%name//'%p_prev'//suf,self%p_prev,cb%n,o_mode='append')
-                    !  case ('p_next')
-                    !     call sysio_write('snap_'//self%name//'%p_next'//suf,self%p_next,cb%n,o_mode='append')
-
-                    ! case ('szz')
-                    !     call sysio_write('snap_'//self%name//'%szz'//suf,self%szz,size(self%szz),o_mode='append')
-                    ! case ('sxx')
-                    !     call sysio_write('snap_'//self%name//'%sxx'//suf,self%sxx,size(self%sxx),o_mode='append')
-                    ! case ('szx')
-                    !     call sysio_write('snap_'//self%name//'%szx'//suf,self%szx,size(self%szx),o_mode='append')
-                    ! case ('dp_dz')
-                    !     call sysio_write('snap_'//self%name//'%dp_dz'//suf,self%dp_dz,cb%n,o_mode='append')
-                    ! case ('lapz')
-                    !     call sysio_write('snap_'//self%name//'%lapz'//suf,self%lapz,cb%n,o_mode='append')
-                    ! case ('lapx')
-                    !     call sysio_write('snap_'//self%name//'%lapx'//suf,self%lapx,cb%n,o_mode='append')
-
-                    ! case ('poynz')
-                    !     call sysio_write('snap_'//self%name//'%poynz'//suf,self%poynz,cb%n,o_mode='append')
-                    ! case ('poynx')
-                    !     call sysio_write('snap_'//self%name//'%poynx'//suf,self%poynx,cb%n,o_mode='append')
-
-                    end select
-                enddo
             endif
 
         endif
 
     end subroutine
+
+    subroutine write_snaps(name,suf, a1,c1, o_a2,o_c2, o_a3,o_c3)
+        character(*) :: name,suf
+        real,dimension(:,:,:),allocatable :: a1, o_a2, o_a3
+        character(*) :: c1, o_c2, o_c3
+
+        optional :: o_a2, o_c2, o_a3, o_c3
+
+        if(allocated(a1)) then
+            call sysio_write('snap_'//name//'%'//  c1//suf,  a1,cb%n,o_mode='append')
+        endif
+
+        if(present(o_a2).and.allocated(o_a2)) then
+            call sysio_write('snap_'//name//'%'//o_c2//suf,o_a2,cb%n,o_mode='append')
+        endif
+        if(present(o_a3).and.allocated(o_a3)) then
+            call sysio_write('snap_'//name//'%'//o_c3//suf,o_a3,cb%n,o_mode='append')
+        endif
+
+    end subroutine
+
+    subroutine write_snaps_pointer(name,suf, a1,c1, o_a2,o_c2, o_a3,o_c3)
+        character(*) :: name,suf
+        real,dimension(:,:,:),pointer :: a1, o_a2, o_a3
+        character(*) :: c1, o_c2, o_c3
+
+        optional :: o_a2, o_c2, o_a3, o_c3
+
+        if(associated(a1)) then
+            call sysio_write('snap_'//name//'%'//  c1//suf,  a1,cb%n,o_mode='append')
+        endif
+
+        if(present(o_a2).and.associated(o_a2)) then
+            call sysio_write('snap_'//name//'%'//o_c2//suf,o_a2,cb%n,o_mode='append')
+        endif
+        if(present(o_a3).and.associated(o_a3)) then
+            call sysio_write('snap_'//name//'%'//o_c3//suf,o_a3,cb%n,o_mode='append')
+        endif
+
+    end subroutine
+
 
     subroutine write_ext(self,it,name,data,n)
         class(t_field) :: self
@@ -450,7 +409,7 @@ use, intrinsic :: ieee_arithmetic
         nr=either(shot%nrcv,1,self%is_adjoint)
         call alloc(self%wavelet,nr,nt)
 
-        if(present(o_wavelet)) then
+        if(present(o_wavelet)) then !w/ wavelet
             if(size(o_wavelet,2)/=nr) then
                 call hud('size(o_wavelet,2) vs required size = '//num2str(size(o_wavelet,2))//' vs '//num2str(nr))
                 call error('field%ignite: External o_wavelet do NOT have the required shape!')
@@ -470,7 +429,9 @@ use, intrinsic :: ieee_arithmetic
             
             endif
             
-        else !w/o o_wavelet
+        return; endif
+
+        !w/o o_wavelet
             if(self%is_adjoint) then
                 do i=1,shot%nrcv !implicit transpose
                     call resampler(shot%dadj(:,i),self%wavelet(i,:),1,&
@@ -483,8 +444,6 @@ use, intrinsic :: ieee_arithmetic
                                 din=shot%dt,nin=shot%nt,&
                                 dout=dt,nout=nt)
             endif
-
-        endif
  
     end subroutine
 
@@ -508,162 +467,73 @@ use, intrinsic :: ieee_arithmetic
 
     end subroutine
 
-    subroutine boundary_transport(self,action,it) !_velocities(self,action,it)
+    subroutine boundary_transport(self,action,it)
         class(t_field) :: self
         character(4) :: action
         integer :: it
         
+        !aliases
+        real,dimension(:,:,:),pointer :: vz, vx, vy
+
         nz=cb%mz
         nx=cb%mx
         ny=cb%my
-        if(m%is_cubic) then
-            ! !top
-            ! call copy(action,self%vz,self%bnd%vz_top(:,it),  [1,3],    [1,nx],[1,ny])  !old version: [0,2],[1,nx],[1,nx]
-            ! !bottom
-            ! call copy(action,self%vz,self%bnd%vz_bot(:,it),  [nz-1,nz+1],[1,nx],[1,ny])  !old version: [nz,nz+2],[1,nx],[1,nx]
-            ! !left
-            ! call copy(action,self%vx,self%bnd%vx_left(:,it), [1,nz],[1,3],    [1,ny])
-            ! !right
-            ! call copy(action,self%vx,self%bnd%vx_right(:,it),[1,nz],[nx-1,nx+1],[1,ny])
-            ! !front
-            ! call copy(action,self%vy,self%bnd%vy_front(:,it),[1,nz],[1,nx],[1,3])
-            ! !rear
-            ! call copy(action,self%vy,self%bnd%vy_rear(:,it), [1,nz],[1,nx],[ny-1,ny+1])
-        else
-            !top
-            call copy(action,self%vz,self%bnd%vz_top(:,it),  [1,3],    [1,nx],[1,1])
-            !bottom
-            call copy(action,self%vz,self%bnd%vz_bot(:,it),  [nz-1,nz+1],[1,nx],[1,1])
-            !left
-            call copy(action,self%vx,self%bnd%vx_left(:,it), [1,nz],[1,3],    [1,1])
-            !right
-            call copy(action,self%vx,self%bnd%vx_right(:,it),[1,nz],[nx-1,nx+1],[1,1])
-        endif
 
-        !shear part
-        if(if_shear) then
-            if(m%is_cubic) then
-            else
-                !top
-                call copy(action,self%vx,self%bnd%vx_top(:,it),  [1,3],    [1,nx],[1,1])
-                !bottom
-                call copy(action,self%vx,self%bnd%vx_bot(:,it),  [nz-2,nz  ],[1,nx],[1,1])
-                !left
-                call copy(action,self%vz,self%bnd%vz_left(:,it), [1,nz],[1,3],    [1,1])
-                !right
-                call copy(action,self%vz,self%bnd%vz_right(:,it),[1,nz],[nx-2,nx  ],[1,1])
+        if(self%if_boundary_vector) then
+
+            if(allocated(self%vz)) then
+                                vz=self%vz
+                                vx=self%vx
+                if(m%is_cubic)  vy=self%vy
+            elseif(associated(self%uz)) then
+                                vz=self%uz
+                                vx=self%ux
+                !if(m%is_cubic)  vy=self%uy
+            elseif(allocated(self%pz)) then
+                                vz=self%pz
+                                vx=self%px
+                if(m%is_cubic)  vy=self%py
+            elseif(allocated(self%az)) then
+                                vz=self%az
+                                vx=self%ax
+                if(m%is_cubic)  vy=self%ay
             endif
-        endif
         
-    end subroutine
+                call copy(action,vz,self%bnd%top_z (:,it), [1,3],      [1,nx],[1,ny])  !old version: [0,2],[1,nx],[1,nx]
+                call copy(action,vz,self%bnd%bot_z (:,it), [nz-1,nz+1],[1,nx],[1,ny])  !old version: [nz,nz+2],[1,nx],[1,nx]
+                call copy(action,vx,self%bnd%left_x(:,it), [1,nz],[1,3],      [1,ny])
+                call copy(action,vx,self%bnd%rite_x(:,it), [1,nz],[nx-1,nx+1],[1,ny])
 
-    subroutine boundary_transport_displacement(self,action,it)
-        class(t_field) :: self
-        character(4) :: action
-        integer :: it
-        
-        nz=cb%mz
-        nx=cb%mx
-        ny=cb%my
-        if(m%is_cubic) then
-            ! !top
-            ! call copy(action,self%pz,self%bnd%pz_top(:,it),  [1,3],    [1,nx],[1,ny])  !old version: [0,2],[1,nx],[1,nx]
-            ! !bottom
-            ! call copy(action,self%pz,self%bnd%pz_bot(:,it),  [nz-1,nz+1],[1,nx],[1,ny])  !old version: [nz,nz+2],[1,nx],[1,nx]
-            ! !left
-            ! call copy(action,self%px,self%bnd%px_left(:,it), [1,nz],[1,3],    [1,ny])
-            ! !right
-            ! call copy(action,self%px,self%bnd%px_right(:,it),[1,nz],[nx-1,nx+1],[1,ny])
-            ! !front
-            ! call copy(action,self%vy,self%bnd%vy_front(:,it),[1,nz],[1,nx],[1,3])
-            ! !rear
-            ! call copy(action,self%vy,self%bnd%vy_rear(:,it), [1,nz],[1,nx],[ny-1,ny+1])
-        else
-            !top
-            ! if(.not. m%is_freesurface) &
-            call copy(action,self%uz,self%bnd%uz_top(:,it),  [1,3],    [1,nx],[1,1])
-            !bottom
-            call copy(action,self%uz,self%bnd%uz_bot(:,it),  [nz-1,nz+1],[1,nx],[1,1])
-            !left
-            call copy(action,self%ux,self%bnd%ux_left(:,it), [1,nz],[1,3],    [1,1])
-            !right
-            call copy(action,self%ux,self%bnd%ux_right(:,it),[1,nz],[nx-1,nx+1],[1,1])
-        endif
-
-        !shear part
-        if(if_shear) then
             if(m%is_cubic) then
-            else
-                !top
-                ! if(.not. m%is_freesurface) &
-                call copy(action,self%ux,self%bnd%ux_top(:,it),  [1,3],    [1,nx],[1,1])
-                !bottom
-                call copy(action,self%ux,self%bnd%ux_bot(:,it),  [nz-2,nz  ],[1,nx],[1,1])
-                !left
-                call copy(action,self%uz,self%bnd%uz_left(:,it), [1,nz],[1,3],    [1,1])
-                !right
-                call copy(action,self%uz,self%bnd%uz_right(:,it),[1,nz],[nx-2,nx  ],[1,1])
+                call copy(action,vy,self%bnd%frnt_y(:,it), [1,nz],[1,nx], [1,3])
+                call copy(action,vy,self%bnd%rear_y(:,it), [1,nz],[1,nx], [ny-1,ny+1])
             endif
-        endif
+
+            !shear part
+            if(if_shear) then
+                call copy(action,vx,self%bnd%top_x (:,it), [1,3],     [1,nx],[1,ny])
+                call copy(action,vx,self%bnd%bot_x (:,it), [nz-2,nz], [1,nx],[1,ny])
+                call copy(action,vz,self%bnd%left_z(:,it), [1,nz],[1,3],     [1,ny])
+                call copy(action,vz,self%bnd%rite_z(:,it), [1,nz],[nx-2,nx], [1,ny])
+
+            if(m%is_cubic) then
+            endif
+
+            endif
+
+        return; endif
+
+
+        !boundary values are scalar
+                call copy(action,self%p,self%bnd%top_curr (:,it), [1,3],      [1,nx],[1,ny])
+                call copy(action,self%p,self%bnd%bot_curr (:,it), [nz-1,nz+1],[1,nx],[1,ny])
+                call copy(action,self%p,self%bnd%left_curr(:,it), [1,nz],[1,3],      [1,ny])
+                call copy(action,self%p,self%bnd%rite_curr(:,it), [1,nz],[nx-1,nx+1],[1,ny])
+
+            if(m%is_cubic) then
+
+            endif
         
-    end subroutine
-
-    subroutine boundary_transport_pressure(self,action,it)
-        class(t_field) :: self
-        character(4) :: action
-        integer :: it
-
-        nz=cb%mz
-        nx=cb%mx
-        ny=cb%my
-        if(m%is_cubic) then
-            !top
-            ! call copy(action,self%p,self%bnd%vz_top(:,it),  [1,3],    [1,nx],[1,ny])  !old version: [0,2],[1,nx],[1,nx]
-            ! !bottom
-            ! call copy(action,self%p,self%bnd%vz_bot(:,it),  [nz-1,nz+1],[1,nx],[1,ny])  !old version: [nz,nz+2],[1,nx],[1,nx]
-            ! !left
-            ! call copy(action,self%p,self%bnd%vx_left(:,it), [1,nz],[1,3],    [1,ny])
-            ! !right
-            ! call copy(action,self%p,self%bnd%vx_right(:,it),[1,nz],[nx-1,nx+1],[1,ny])
-            ! !front
-            ! call copy(action,self%p,self%bnd%vy_front(:,it),[1,nz],[1,nx],[1,3])
-            ! !rear
-            ! call copy(action,self%p,self%bnd%vy_rear(:,it), [1,nz],[1,nx],[ny-1,ny+1])
-        else
-            !top
-            call copy(action,self%p,self%bnd%p_top(:,it),  [1,3],    [1,nx],[1,1])
-            !bottom
-            call copy(action,self%p,self%bnd%p_bot(:,it),  [nz-1,nz+1],[1,nx],[1,1])
-            !left
-            call copy(action,self%p,self%bnd%p_left(:,it), [1,nz],[1,3],    [1,1])
-            !right
-            call copy(action,self%p,self%bnd%p_right(:,it),[1,nz],[nx-1,nx+1],[1,1])
-            !for p_next
-            !top
-            ! call copy(action,self%p_next,self%bnd%p_next_top(:,it),  [1,3],    [1,nx],[1,1])
-            ! !bottom
-            ! call copy(action,self%p_next,self%bnd%p_next_bot(:,it),  [nz-1,nz+1],[1,nx],[1,1])
-            ! !left
-            ! call copy(action,self%p_next,self%bnd%p_next_left(:,it), [1,nz],[1,3],    [1,1])
-            ! !right
-            ! call copy(action,self%p_next,self%bnd%p_next_right(:,it),[1,nz],[nx-1,nx+1],[1,1])
-        endif
-
-        ! !shear part
-        ! if(if_shear) then
-        !     if(m%is_cubic) then
-        !     else
-        !         !top
-        !         call copy(action,self%vx,self%bnd%vx_top(:,it),  [1,3],    [1,nx],[1,1])
-        !         !bottom
-        !         call copy(action,self%vx,self%bnd%vx_bot(:,it),  [nz-2,nz  ],[1,nx],[1,1])
-        !         !left
-        !         call copy(action,self%vz,self%bnd%vz_left(:,it), [1,nz],[1,3],    [1,1])
-        !         !right
-        !         call copy(action,self%vz,self%bnd%vz_right(:,it),[1,nz],[nx-2,nx  ],[1,1])
-        !     endif
-        ! endif
-
     end subroutine
 
     subroutine copy(action,v,bv,iiz,iix,iiy)
@@ -712,49 +582,49 @@ use, intrinsic :: ieee_arithmetic
         
         !deallocate(self%name)
 
-        call dealloc(self%vz,self%vx)
-        call dealloc(self%szz,self%sxx,self%szx)
+        !components on the shifted grid
+        !call dealloc(self%uz,self%ux,self%uy) !displacement
+        call dealloc(self%uz,self%ux) !displacement
+        call dealloc(self%vz,self%vx,self%vy) !velocity
+        call dealloc(self%pz,self%px,self%py) !momenta
+        call dealloc(self%az,self%ax,self%ay) !acceleration
 
-        call dealloc(self%bnd%vz_top,  self%bnd%vz_bot, self%bnd%vz_left, self%bnd%vz_right)
-        call dealloc(self%bnd%vx_top,  self%bnd%vx_bot, self%bnd%vx_left, self%bnd%vx_right)
+        call dealloc(self%uz,self%ux)           !displacement
+        call dealloc(self%uz_prev,self%ux_prev) !previous displacement
+        call dealloc(self%uz_next,self%ux_next) !future displacement
 
-        call dealloc(self%dvz_dz, self%dvz_dx, self%dvx_dx, self%dvx_dz)
-        call dealloc(self%dszz_dz,self%dsxx_dx,self%dszx_dz,self%dszx_dx)
+        !components on the shifted grid
+        call dealloc(self%szx,self%szy,self%sxy) !shear stress
+        call dealloc(self%ss) !shear stress in 2D
+        call dealloc(self%es) !shear strains in 2D
 
-        ! call dealloc(self%dpz_dz, self%dpx_dx, self%dpz_dx, self%dpx_dx)
-        ! call dealloc(self%dez_dz, self%dex_dx, self%dex_dz, self%dez_dx, self%des_dz, self%des_dx)
+        !components on the reference grid
+        call dealloc(self%szz,self%sxx,self%syy) !normal stress
+        call dealloc(self%sz, self%sx, self%ss ) !normal stress in 2D
+        call dealloc(self%p, self%p_prev, self%p_next) !pressure
+        
+        call dealloc(self%ez,self%ex)       !normal strains in 2D
 
-!         call dealloc(self%pz,self%px)
-!         call dealloc(self%ez,self%ex,self%es)
-
-        call dealloc(self%bnd%pz_top,  self%bnd%pz_bot, self%bnd%pz_left, self%bnd%pz_right)
-        call dealloc(self%bnd%px_top,  self%bnd%px_bot, self%bnd%px_left, self%bnd%px_right)
-
-        call dealloc(self%dpz_dz, self%dpx_dx, self%dpz_dx, self%dpx_dx)
-        call dealloc(self%dez_dz, self%dex_dx, self%dex_dz, self%dez_dx, self%des_dz, self%des_dx)
-        ! call dealloc(self%bnd%ez_top,  self%bnd%ez_bot, self%bnd%ez_left, self%bnd%ez_right)
-        ! call dealloc(self%bnd%ex_top,  self%bnd%ex_bot, self%bnd%ex_left, self%bnd%ex_right)
-        ! call dealloc(self%bnd%es_top,  self%bnd%es_bot, self%bnd%es_left, self%bnd%es_right)
-
-        ! call dealloc(self%dz_bz_dz_ldap2mu_ez, self%dz_bz_dz_lda_ex,     self%dz_bz_dx_mu_es)
-        ! call dealloc(self%dx_bx_dx_lda_ez,     self%dx_bx_dx_ldap2mu_ex, self%dx_bx_dz_mu_es)
-        ! call dealloc(self%dz_bz_dx_lda_ez,     self%dz_bz_dx_ldap2mu_ex, self%dz_bz_dz_mu_es)
-        ! call dealloc(self%dx_bx_dz_ldap2mu_ez, self%dx_bx_dz_lda_ex,     self%dx_bx_dx_mu_es)
-
-        ! call dealloc(self%uz,self%ux)
-
-        call dealloc(self%bnd%uz_top,  self%bnd%uz_bot, self%bnd%uz_left, self%bnd%uz_right)
-        call dealloc(self%bnd%ux_top,  self%bnd%ux_bot, self%bnd%ux_left, self%bnd%ux_right)
-
-        call dealloc(self%duz_dz, self%dux_dx, self%duz_dx, self%dux_dx)
-        call dealloc(self%dz_ldap2mu_duzdz_p_lda_duxdx, &
-                     self%dx_lda_duzdz_p_ldap2mu_duxdx, &
-                     self%dz_mu_duxdz_p_duzdx, &
-                     self%dx_mu_duxdz_p_duzdx)
+        !laplacian
+        call dealloc(self%lap,self%lapz,self%lapx)
 
 
-        call dealloc(self%lapz,self%lapx,self%laps)
+        !boundary components
+        call dealloc(self%bnd%top_z,  self%bnd%top_x,  self%bnd%top_y,  self%bnd%top_curr,  self%bnd%top_next)
+        call dealloc(self%bnd%bot_z,  self%bnd%bot_x,  self%bnd%bot_y,  self%bnd%bot_curr,  self%bnd%bot_next)
+        call dealloc(self%bnd%left_z, self%bnd%left_x, self%bnd%left_y, self%bnd%left_curr, self%bnd%left_next)
+        call dealloc(self%bnd%rite_z, self%bnd%rite_x, self%bnd%rite_y, self%bnd%rite_curr, self%bnd%rite_next)
+        call dealloc(self%bnd%frnt_z, self%bnd%frnt_x, self%bnd%frnt_y)
+        call dealloc(self%bnd%rear_z, self%bnd%rear_x, self%bnd%rear_y)
 
+        !derivatives
+        call dealloc(self%dz_z, self%dz_x, self%dz_y, self%dz_p)
+        call dealloc(self%dx_z, self%dx_x, self%dx_y, self%dx_p)
+        call dealloc(self%dy_z, self%dy_x, self%dy_y, self%dy_p)
+        call dealloc(self%dz_zz, self%dz_zx)
+        call dealloc(self%dx_xx, self%dx_zx)
+
+        !etc
         call dealloc(self%wavelet)
 
         call dealloc(self%seismo)

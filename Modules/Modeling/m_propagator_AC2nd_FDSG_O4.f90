@@ -20,10 +20,10 @@ use m_cpml
     !local const
     real :: dt2, inv_2dt, inv_2dz, inv_2dx
 
-    character(:),allocatable :: FS_method
-
     !scaling source wavelet
     real :: wavelet_scaler
+
+    character(:),allocatable :: FS_method
 
     type,public :: t_propagator
         !info
@@ -42,13 +42,13 @@ use m_cpml
 
         integer :: nbndlayer=max(1,hicks_r) !minimum absorbing layer thickness
         integer :: ngrad=2 !number of basic gradients
-        ! integer :: nimag=3 !number of basic images
-        !integer :: nengy=1 !number of energy terms
+        integer :: nimag=1 !number of basic images
+        integer :: nengy=1 !number of energy terms
 
         logical :: if_compute_engy=.false.
 
         !local models shared between fields
-        real,dimension(:,:,:),allocatable :: buoz, buox, buoy, kpa !r2, tilD_vp2
+        real,dimension(:,:,:),allocatable :: buoz, buox, buoy, kpa
 
         !time frames
         integer :: nt
@@ -70,10 +70,10 @@ use m_cpml
 
         procedure :: forward
         procedure :: adjoint
-        
-        procedure :: inject_pressure
-        procedure :: update_pressure
-        procedure :: evolve_pressure
+
+        procedure :: inject
+        procedure :: update
+        procedure :: evolve
         procedure :: extract
 
 
@@ -88,8 +88,6 @@ use m_cpml
     real :: rdt
 
     logical :: if_record_adjseismo=.false.
-
-    ! logical :: is_absolute_virtual
 
     contains
     
@@ -233,23 +231,25 @@ use m_cpml
 
         !f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
         !if(f%if_will_reconstruct) call f%init_boundary
-        call f%init_boundary_pressure
+        call f%init_boundary
 
         call alloc(f%p     , [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%p_prev, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%p_next, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
-        ! if(.not.either(ois_simple,.false.,present(ois_simple))) then
-            call alloc(f%dp_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-            call alloc(f%dp_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-            call alloc(f%dp_dy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%az, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%ax, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
-            call alloc(f%dpzz_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-            call alloc(f%dpxx_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-            call alloc(f%dpyy_dy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        !derivative of pressure
+        call alloc(f%dz_p, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dx_p, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        ! call alloc(f%dy_p, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        !derivative of acceleration
+        call alloc(f%dz_z, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dx_x, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        ! call alloc(f%dy_dy_p, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
-            call alloc(f%lap, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        ! endif
+        call alloc(f%lap, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
     end subroutine
 
@@ -260,15 +260,13 @@ use m_cpml
         
         corr%name=name
 
-        ! if(name(1:1)=='g') then !gradient components
-            call alloc(corr%gikpa,m%nz,m%nx,m%ny)
-            call alloc(corr%gbuo, m%nz,m%nx,m%ny)
-        ! else !image components
-            ! call alloc(corr%ipp,m%nz,m%nx,m%ny)
-            ! call alloc(corr%ibksc,m%nz,m%nx,m%ny)
-            ! call alloc(corr%ifwsc,m%nz,m%nx,m%ny)
-        ! endif
-
+        !gradients
+        call alloc(corr%gikpa,m%nz,m%nx,m%ny)
+        call alloc(corr%gbuo, m%nz,m%nx,m%ny)
+        
+        !images
+        ! call alloc(corr%ipp,m%nz,m%nx,m%ny)
+        
     end subroutine
 
     subroutine init_abslayer(self)
@@ -385,20 +383,20 @@ use m_cpml
         do it=ift,ilt
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
-                call fld_u%check_value(fld_u%p)
+                call fld_u%check_value
             endif
 
             !do forward time stepping (step# conforms with backward & adjoint time stepping)
             !step 1: add pressure
             call cpu_time(tic)
-            call self%inject_pressure(fld_u,time_dir,it)
+            call self%inject(fld_u,time_dir,it)
             call cpu_time(toc)
             tt1=tt1+toc-tic
 
             !step 2: save p^it+1 in boundary layers
             ! if(fld_E0%if_will_reconstruct) then
                 call cpu_time(tic)
-                call fld_u%boundary_transport_pressure('save',it)
+                call fld_u%boundary_transport('save',it)
                 call cpu_time(toc)
                 tt2=tt2+toc-tic
             ! endif
@@ -411,13 +409,13 @@ use m_cpml
 
             !step 4: update pressure
             call cpu_time(tic)
-            call self%update_pressure(fld_u,time_dir,it)
+            call self%update(fld_u,time_dir,it)
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
             !step 5: evolve pressure, it -> it+1
             call cpu_time(tic)
-            call self%evolve_pressure(fld_u,time_dir,it)
+            call self%evolve(fld_u,time_dir,it)
             call cpu_time(toc)
             tt6=tt6+toc-tic
 
@@ -456,7 +454,10 @@ use m_cpml
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
         call fld_u%reinit
-        
+
+        !for adjoint test
+        if(if_record_adjseismo)  call alloc(fld_a%seismo,1,self%nt)
+
         !timing
         tt1=0.; tt2=0.; tt3=0.
         tt4=0.; tt5=0.; tt6=0.
@@ -468,61 +469,61 @@ use m_cpml
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
-                call fld_a%check_value(fld_a%p)
-                call fld_u%check_value(fld_u%p)
+                call fld_a%check_value
+                call fld_u%check_value
             endif
 
             ! if(present(o_sf)) then
                 !backward step 5: it+1 -> it
                 call cpu_time(tic)
-                call self%evolve_pressure(fld_u,time_dir,it)
+                call self%evolve(fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt1=tt1+toc-tic
 
                 ! !backward step 2: retrieve p^it+1 at boundary layers (BC)
                 call cpu_time(tic)
-                call fld_u%boundary_transport_pressure('load',it)
+                call fld_u%boundary_transport('load',it)
                 call cpu_time(toc)
                 tt2=tt2+toc-tic
 
                 !backward step 4:
                 call cpu_time(tic)
-                call self%update_pressure(fld_u,time_dir,it)
+                call self%update(fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt4=tt4+toc-tic
 
                 !backward step 1: rm p^it at source
                 call cpu_time(tic)
-                call self%inject_pressure(fld_u,time_dir,it)
+                call self%inject(fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             ! endif
 
             !adjoint step 6: inject to p^it+1 at receivers
             call cpu_time(tic)
-            call self%inject_pressure(fld_a,time_dir,it)
+            call self%inject(fld_a,time_dir,it)
             call cpu_time(toc)
             tt8=tt8+toc-tic
 
             !adjoint step 4:
             call cpu_time(tic)
-            call self%update_pressure(fld_a,time_dir,it)
+            call self%update(fld_a,time_dir,it)
             call cpu_time(toc)
             tt9=tt9+toc-tic
 
             !image: rf%p^it star sf%p^it
             if(mod(it,irdt)==0) then
                 call cpu_time(tic)
-                ! call cross_correlate_image(fld_p,fld_u,a_star_u,it)
+                call cross_correlate_image   (fld_a,fld_u,a_star_u,it)
                 call cross_correlate_gradient(fld_a,fld_u,a_star_u,it)
                 call cpu_time(toc)
                 tt10=tt10+toc-tic
             endif
 
             !adjoint step 5
-            ! this step is moved to update_pressure for easier management
+            ! this step is moved to update for easier management
             call cpu_time(tic)
-            call self%evolve_pressure(fld_a,time_dir,it)
+            call self%evolve(fld_a,time_dir,it)
             call cpu_time(toc)
             tt11=tt11+toc-tic
 
@@ -577,7 +578,7 @@ use m_cpml
     end subroutine
 
 
-    subroutine inject_pressure(self,f,time_dir,it)
+    subroutine inject(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
 
@@ -605,9 +606,7 @@ use m_cpml
                 f%p(iz,ix,iy)                = f%p(iz,ix,iy)                + wl*self%kpa(iz,ix,iy)
             endif
 
-            return
-
-        endif
+        return; endif
 
 !this loop takes more time when nthreads>1.
 !e.g. 38s vs 8.7s from Elapased time to add adj source  (tt6)
@@ -637,7 +636,7 @@ use m_cpml
         
     end subroutine
 
-    subroutine update_pressure(self,f,time_dir,it)
+    subroutine update(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
 
@@ -650,20 +649,48 @@ use m_cpml
         ifx=f%bloom(3,it)
         ilx=f%bloom(4,it)
 
+        !flux
         if(m%is_cubic) then
-            ! call fd3d_pressure(f%p,                                      &
-            !                    f%dp_dz,f%dp_dx,f%dp_dy,                  &
-            !                    self%buoz,self%buox,self%buoy,self%kpa,   &
-            !                    ifz,f%bloom(2,it),f%bloom(3,it),f%bloom(4,it))
         else
-            call fd2d_laplacian(f%p,                            &
-                                f%dp_dz,f%dp_dx,f%dpzz_dz,f%dpxx_dx,&
-                                f%lap,&
-                                self%buoz,self%buox,            &
+            call fd2d_flux(f%p,f%dz_p,f%dx_p,  &
+                           f%az,f%ax,          &
+                           self%buoz,self%buox,&
+                           ifz,ilz,ifx,ilx)
+        endif
+
+        !Levandar & Roberttson's stress image for free surface boundary condition
+        !free surface is located at [1,ix,1] level
+        if(m%is_freesurface) then
+            if (FS_method=='stress_vel_image') then
+                !symmetric mirroring: vz[0.5]=vz[1.5], ie. vz(1,ix,iy)=vz(2,ix,iy) -> p(1,ix,iy)=0.
+                f%az(1,:,:)=f%az(2,:,:)
+
+            elseif (FS_method=='stress_image') then
+                f%az(cb%ifz:1,:,:)=0.
+                f%ax(cb%ifz:0,:,:)=0.
+
+            endif
+
+        endif
+
+        !laplacian
+        if(m%is_cubic) then
+        else
+            call fd2d_laplacian(f%az,f%ax,f%dz_z,f%dx_x,&
+                                f%lap,                  &
                                 ifz,ilz,ifx,ilx)
         endif
 
+        if(m%is_freesurface) then
+            f%lap(1,:,:)=0. !explicit null pressure: p(1,ix,iy)=0
 
+            !antisymmetric mirroring including p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
+            f%lap( 1,:,:)=0.
+            f%lap(0:cb%ifz:-1, :,:)=-f%lap(2:2+0-cb%ifz, :,:)
+        endif
+
+
+        !update pressure
         if(time_dir>0.) then !in forward time
             f%p_next(ifz:ilz,ifx:ilx,:) = 2*f%p(ifz:ilz,ifx:ilx,:) -f%p_prev(ifz:ilz,ifx:ilx,:) & 
                 +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*f%lap(ifz:ilz,ifx:ilx,:)
@@ -672,21 +699,9 @@ use m_cpml
                 +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*f%lap(ifz:ilz,ifx:ilx,:)
         endif
 
-        ! !apply free surface boundary condition if needed
-        ! if(m%is_freesurface) call fd_freesurface_stresses(f%p)
-
-        ! ! apply Dirichlet conditions at the bottom of the C-PML layers,
-        ! ! the right condition to keep C-PML stable at long time
-        ! f%p_next(cb%ifz,:,:)=0.
-        ! f%p_next(cb%ilz,:,:)=0.
-        ! f%p_next(:,cb%ifx,:)=0.
-        ! f%p_next(:,cb%ilx,:)=0.
-        ! f%p_next(:,:,cb%ify)=0.
-        ! f%p_next(:,:,cb%ily)=0.
-
     end subroutine
 
-    subroutine evolve_pressure(self,f,time_dir,it)
+    subroutine evolve(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
 
@@ -856,6 +871,30 @@ use m_cpml
 
     end subroutine
 
+    subroutine cross_correlate_image(rf,sf,corr,it)
+        type(t_field), intent(in) :: rf, sf
+        type(t_correlate) :: corr
+        
+        !nonzero only when sf touches rf
+        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
+        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
+        ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
+        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
+        ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
+        ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
+        
+        if(m%is_cubic) then
+                                    
+        else
+            call imag2d(rf%p,sf%p,               &
+                        rf%az,rf%ax,sf%az,sf%az, &
+                        corr%ipp,                &
+                        ifz,ilz,ifx,ilx)
+
+        endif
+
+    end subroutine
+
     subroutine cross_correlate_postprocess(corr)
         type(t_correlate) :: corr
 
@@ -879,19 +918,13 @@ use m_cpml
 
     !========= Finite-Difference on flattened arrays ==================
     
-    subroutine fd2d_laplacian(p,dp_dz,dp_dx,&
-                                dpzz_dz,dpxx_dx,&
-                                lap,&
-                                buoz,buox,&
-                                ifz,ilz,ifx,ilx)
+    subroutine fd2d_flux(p,dp_dz,dp_dx,&
+                         az,ax,&
+                         buoz,buox,&
+                         ifz,ilz,ifx,ilx)
         real,dimension(*) :: p,dp_dz,dp_dx
-        real,dimension(*) :: dpzz_dz,dpxx_dx
-        real,dimension(*) :: lap
+        real,dimension(*) :: az,ax
         real,dimension(*) :: buoz,buox
-
-        real,dimension(:),allocatable :: pzz,pxx
-        call alloc(pzz,cb%n)
-        call alloc(pxx,cb%n)
 
         nz=cb%nz
         nx=cb%nx
@@ -927,142 +960,31 @@ use m_cpml
                 dp_dz_ = dp_dz_/cpml%kpa_z_half(iz) + dp_dz(iz_ix)
                 dp_dx_ = dp_dx_/cpml%kpa_x_half(ix) + dp_dx(iz_ix)
 
-                pzz(iz_ix) = buoz(iz_ix)*dp_dz_
-                pxx(iz_ix) = buox(iz_ix)*dp_dx_
+                az(iz_ix) = buoz(iz_ix)*dp_dz_
+                ax(iz_ix) = buox(iz_ix)*dp_dx_
 
             enddo
         enddo
         !$omp end do
         !$omp end parallel
 
-        if(m%is_freesurface) call fd_freesurface_acceleration(pzz,pxx)
-
-        !laplacian: ∇·b∇u ~= ∂zᶠ(bz*∂zᵇp) + ∂ₓᶠ(bx*∂ₓᵇp)
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,&
-        !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-        !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dpzz_dz_,dpxx_dx_)
-        !$omp do schedule(dynamic)
-        do ix = ifx+1,ilx-2
-            !dir$ simd
-            do iz = ifz+1,ilz-2
-
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
-
-                izm1_ix=i-1  !iz-1,ix
-                iz_ix  =i    !iz,ix
-                izp1_ix=i+1  !iz+1,ix
-                izp2_ix=i+2  !iz+2,ix
-                
-                iz_ixm1=i  -nz  !iz,ix-1
-                iz_ixp1=i  +nz  !iz,ix+1
-                iz_ixp2=i  +2*nz !iz,ix+2
-                
-                dpzz_dz_ = c1z*(pzz(izp1_ix) - pzz(iz_ix))  +c2z*(pzz(izp2_ix) - pzz(izm1_ix))
-                dpxx_dx_ = c1x*(pxx(iz_ixp1) - pxx(iz_ix))  +c2x*(pxx(iz_ixp2) - pxx(iz_ixm1))
-
-                dpzz_dz(iz_ix) = cpml%b_z(iz)*dpzz_dz(iz_ix) + cpml%a_z(iz)*dpzz_dz_
-                dpxx_dx(iz_ix) = cpml%b_x(ix)*dpxx_dx(iz_ix) + cpml%a_x(ix)*dpxx_dx_
-
-                dpzz_dz_ = dpzz_dz_/cpml%kpa_z(iz) + dpzz_dz(iz_ix)
-                dpxx_dx_ = dpxx_dx_/cpml%kpa_x(ix) + dpxx_dx(iz_ix)
-
-                lap(iz_ix) = dpzz_dz_ + dpxx_dx_
-
-            enddo
-        enddo
-        !$omp end do
-        !$omp end parallel
-
-        if(m%is_freesurface) call fd_freesurface_pressure(lap)
-
     end subroutine
 
-    subroutine fd_freesurface_acceleration(az,ax)
-        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: az,ax
-
-        !stress image for free surface boundary condition
-        !free surface is located at [1,ix,1] level
-        if (FS_method=='stress_image_2nd') then !Levandar & Roberttson's 2nd method
-            !symmetric mirroring: az[0.5]=az[1.5], ie. az(1,ix,iy)=az(2,ix,iy) -> p(1,ix,iy)=0.
-            az(1,:)=az(2,:)
-
-        elseif (FS_method=='stress_image') then !Levandar & Roberttson's method
-            az(cb%ifz:1,:)=0.
-            ax(cb%ifz:0,:)=0.
-
-        endif
-
-    end subroutine
-
-    subroutine fd_freesurface_pressure(p)
-        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: p
-
-        !stress image for free surface boundary condition
-        !free surface is located at [1,ix,1] level
-        p(1,:)=0. !explicit null pressure: p(1,ix,iy)=0
-
-        !antisymmetric mirroring including p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
-        p( 1,:)=0.
-        p(0:cb%ifz:-1, :)=-p(2:2+0-cb%ifz, :)
-
-    end subroutine
-
-    subroutine fd2d_laplacian_nocpml(p,&
-                                    lap,&
-                                    buoz,buox,&
-                                    ifz,ilz,ifx,ilx)
-        real,dimension(*) :: p
+    subroutine fd2d_laplacian(az,ax,daz_dz,dax_dx,&
+                              lap,&
+                              ifz,ilz,ifx,ilx)
+        real,dimension(*) :: az,ax,daz_dz,dax_dx
         real,dimension(*) :: lap
-        real,dimension(*) :: buoz,buox
-
-        real,dimension(:),allocatable :: pzz,pxx
-        call alloc(pzz,cb%n)
-        call alloc(pxx,cb%n)
 
         nz=cb%nz
         nx=cb%nx
-        
-        !flux: b∇u ~= ( bz*∂zᵇp , bx*∂ₓᵇp )
-        !$omp parallel default (shared)&
-        !$omp private(iz,ix,i,&
-        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,&
-        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,&
-        !$omp         dp_dz_,dp_dx_)
-        !$omp do schedule(dynamic)
-        do ix = ifx+2,ilx-1
-            !dir$ simd
-            do iz = ifz+2,ilz-1
 
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
-
-                izm2_ix=i-2  !iz-2,ix
-                izm1_ix=i-1  !iz-1,ix
-                iz_ix  =i    !iz,ix
-                izp1_ix=i+1  !iz+1,ix
-                
-                iz_ixm2=i  -2*nz !iz,ix-2
-                iz_ixm1=i  -nz  !iz,ix-1
-                iz_ixp1=i  +nz  !iz,ix+1
-
-                dp_dz_ = c1z*(p(iz_ix) - p(izm1_ix)) +c2z*(p(izp1_ix)-p(izm2_ix))
-                dp_dx_ = c1x*(p(iz_ix) - p(iz_ixm1)) +c2x*(p(iz_ixp1)-p(iz_ixm2))
-
-                pzz(iz_ix) = buoz(iz_ix)*dp_dz_
-                pxx(iz_ix) = buox(iz_ix)*dp_dx_
-
-            enddo
-        enddo
-        !$omp end do
-        !$omp end parallel
-        
         !laplacian: ∇·b∇u ~= ∂zᶠ(bz*∂zᵇp) + ∂ₓᶠ(bx*∂ₓᵇp)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
         !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
         !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dpzz_dz_,dpxx_dx_)
+        !$omp         daz_dz_,dax_dx_)
         !$omp do schedule(dynamic)
         do ix = ifx+1,ilx-2
             !dir$ simd
@@ -1079,10 +1001,16 @@ use m_cpml
                 iz_ixp1=i  +nz  !iz,ix+1
                 iz_ixp2=i  +2*nz !iz,ix+2
                 
-                dpzz_dz_ = c1z*(pzz(izp1_ix) - pzz(iz_ix))  +c2z*(pzz(izp2_ix) - pzz(izm1_ix))
-                dpxx_dx_ = c1x*(pxx(iz_ixp1) - pxx(iz_ix))  +c2x*(pxx(iz_ixp2) - pxx(iz_ixm1))
+                daz_dz_ = c1z*(az(izp1_ix) - az(iz_ix))  +c2z*(az(izp2_ix) - az(izm1_ix))
+                dax_dx_ = c1x*(ax(iz_ixp1) - ax(iz_ix))  +c2x*(ax(iz_ixp2) - ax(iz_ixm1))
 
-                lap(iz_ix) = dpzz_dz_ + dpxx_dx_
+                daz_dz(iz_ix) = cpml%b_z(iz)*daz_dz(iz_ix) + cpml%a_z(iz)*daz_dz_
+                dax_dx(iz_ix) = cpml%b_x(ix)*dax_dx(iz_ix) + cpml%a_x(ix)*dax_dx_
+
+                daz_dz_ = daz_dz_/cpml%kpa_z(iz) + daz_dz(iz_ix)
+                dax_dx_ = dax_dx_/cpml%kpa_x(ix) + dax_dx(iz_ix)
+
+                lap(iz_ix) = daz_dz_ + dax_dx_
 
             enddo
         enddo
@@ -1090,6 +1018,36 @@ use m_cpml
         !$omp end parallel
 
     end subroutine
+
+    ! subroutine fd_freesurface_acceleration(az,ax)
+    !     real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: az,ax
+
+    !     !stress image for free surface boundary condition
+    !     !free surface is located at [1,ix,1] level
+    !     if (FS_method=='stress_image_2nd') then !Levandar & Roberttson's 2nd method
+    !         !symmetric mirroring: az[0.5]=az[1.5], ie. az(1,ix,iy)=az(2,ix,iy) -> p(1,ix,iy)=0.
+    !         az(1,:)=az(2,:)
+
+    !     elseif (FS_method=='stress_image') then !Levandar & Roberttson's method
+    !         az(cb%ifz:1,:)=0.
+    !         ax(cb%ifz:0,:)=0.
+
+    !     endif
+
+    ! end subroutine
+
+    ! subroutine fd_freesurface_pressure(p)
+    !     real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: p
+
+    !     !stress image for free surface boundary condition
+    !     !free surface is located at [1,ix,1] level
+    !     p(1,:)=0. !explicit null pressure: p(1,ix,iy)=0
+
+    !     !antisymmetric mirroring including p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
+    !     p( 1,:)=0.
+    !     p(0:cb%ifz:-1, :)=-p(2:2+0-cb%ifz, :)
+
+    ! end subroutine
 
     subroutine fd2d_grho(rp,sp,corr,&
                         ifz,ilz,ifx,ilx)
@@ -1139,6 +1097,38 @@ use m_cpml
                 corr(j) = corr(j) + (drp_dz*dsp_dz + drp_dx*dsp_dx)
             enddo
         enddo
+        !$omp end do
+        !$omp end parallel
+
+    end subroutine
+
+
+    subroutine imag2d(rf_p,sf_p,&
+                      rf_az,rf_ax,sf_az,sf_ax,&
+                      ipp, &
+                      ifz,ilz,ifx,ilx)
+        real,dimension(*) :: rf_p,sf_p
+        real,dimension(*) :: rf_az,rf_ax,sf_az,sf_ax
+        real,dimension(*) :: ipp
+        
+        nz=cb%nz
+        
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,j)
+        !$omp do schedule(dynamic)
+        do ix=ifx,ilx
+        
+            !dir$ simd
+            do iz=ifz,ilz
+                
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
+                
+                ipp(j)=ipp(j) + rf_p(i)*sf_p(i) !+ rf_az(i)*sf_az(i) + rf_ax(i)*sf_ax(i)
+
+            end do
+            
+        end do
         !$omp end do
         !$omp end parallel
 

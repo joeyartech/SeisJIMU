@@ -15,7 +15,7 @@ use m_mpienv
         module procedure alloc_real1
         module procedure alloc_real2
         module procedure alloc_real3
-        module procedure alloc_real3_pointer
+        module procedure alloc_pointer_real3
         module procedure alloc_real4
     end interface
 
@@ -24,6 +24,8 @@ use m_mpienv
         module procedure dealloc_real2
         module procedure dealloc_real3
         module procedure dealloc_real4
+
+        module procedure dealloc_pointer_real3
     end interface
 
     interface add
@@ -366,7 +368,7 @@ use m_mpienv
         
     end subroutine
 
-    subroutine alloc_real3_pointer(a,n1,n2,n3,old2,oif_protect,o_init)
+    subroutine alloc_pointer_real3(a,n1,n2,n3,old2,oif_protect,o_init)
         integer,dimension(2) :: n1,n2,n3
         real,dimension(:,:,:),pointer :: a
         real,dimension(:,:,:),optional :: old2
@@ -515,6 +517,46 @@ use m_mpienv
         endif
         if(present(g)) then
             if(allocated(g)) deallocate(g)
+        endif
+
+    end subroutine
+
+    subroutine dealloc_pointer_real3(a,b,c,d,e,f,g)
+        real,dimension(:,:,:),pointer :: a,b,c,d,e,f,g
+        optional :: b,c,d,e,f,g
+        
+            if( associated(a)) then
+                deallocate(a);  nullify(a)
+            endif
+        if(present(b)) then
+            if( associated(b)) then
+                deallocate(b);  nullify(b)
+            endif
+        endif
+        if(present(c)) then
+            if( associated(c)) then
+                deallocate(c);  nullify(c)
+            endif
+        endif
+        if(present(d)) then
+            if( associated(d)) then
+                deallocate(d);  nullify(d)
+            endif
+        endif
+        if(present(e)) then
+            if( associated(e)) then
+                deallocate(e);  nullify(e)
+            endif
+        endif
+        if(present(f)) then
+            if( associated(f)) then
+                deallocate(f);  nullify(f)
+            endif
+        endif
+        if(present(g)) then
+            if( associated(g)) then
+                deallocate(g);  nullify(g)
+            endif
         endif
 
     end subroutine

@@ -44,14 +44,14 @@ use, intrinsic :: ieee_arithmetic
             'Basic gradients: grho(wait) glda gmu'
 
         integer :: nbndlayer=max(2,hicks_r) !minimum absorbing layer thickness
-        integer :: ngrad=66 !number of basic gradients
-        ! integer :: nimag=3 !number of basic images
-        !integer :: nengy=1 !number of energy terms
+        integer :: ngrad=3 !number of basic gradients
+        integer :: nimag=1 !number of basic images
+        integer :: nengy=1 !number of energy terms
 
         logical :: if_compute_engy=.false.
 
         !local models shared between fields
-        real,dimension(:,:),allocatable :: buoz, buox!, buoy
+        real,dimension(:,:),allocatable :: buoz, buox
         real,dimension(:,:),allocatable :: ldap2mu, lda, mu
 
         !time frames
@@ -72,7 +72,7 @@ use, intrinsic :: ieee_arithmetic
         procedure :: forward
         procedure :: adjoint
         
-        procedure :: inject_displacement
+        procedure :: inject
         procedure :: update
         procedure :: evolve
         procedure :: extract
@@ -294,7 +294,7 @@ use, intrinsic :: ieee_arithmetic
 
         !f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
         !if(f%if_will_reconstruct) call f%init_boundary
-        call f%init_boundary_displacement
+        call f%init_boundary
 
         call alloc(f%uz     , [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%uz_prev, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -304,15 +304,16 @@ use, intrinsic :: ieee_arithmetic
         call alloc(f%ux_prev, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%ux_next, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
-        call alloc(f%duz_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dux_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dux_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%duz_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        
-        call alloc(f%dz_ldap2mu_duzdz_p_lda_duxdx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dx_lda_duzdz_p_ldap2mu_duxdx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dz_mu_duxdz_p_duzdx         ,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dx_mu_duxdz_p_duzdx         ,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        !derivative of displacement
+        call alloc(f%dz_z,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dx_x,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dz_x,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dx_z,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        !derivative of stresses
+        call alloc(f%dz_zz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dx_xx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dz_zx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dx_zx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
         call alloc(f%lapz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%lapx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -357,8 +358,7 @@ use, intrinsic :: ieee_arithmetic
         ! endif
 
         if(allocated(correlate_gradient)) then
-            ! call correlate_assemble(corr%gikpa, correlate_gradient(:,:,:,1))
-            ! call correlate_assemble(corr%gbuo,  correlate_gradient(:,:,:,2))
+            ! call correlate_assemble(corr%gbuo,  correlate_gradient(:,:,:,1))
             call correlate_assemble(corr%glda,  correlate_gradient(:,:,:,2))
             call correlate_assemble(corr%gmu,   correlate_gradient(:,:,:,3))
             
@@ -461,19 +461,19 @@ use, intrinsic :: ieee_arithmetic
         do it=ift,ilt
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
-                call fld_u%check_value(fld_u%uz)
+                call fld_u%check_value
             endif
 
             !do forward time stepping (step# conforms with backward & adjoint time stepping)
             !step 1: add force
             call cpu_time(tic)
-            call self%inject_displacement(fld_u,time_dir,it)
+            call self%inject(fld_u,time_dir,it)
             call cpu_time(toc)
             tt1=tt1+toc-tic
 
             !step 2: save p^it+1 in boundary layers
             call cpu_time(tic)
-            call fld_u%boundary_transport_displacement('save',it)
+            call fld_u%boundary_transport('save',it)
             call cpu_time(toc)
             tt2=tt2+toc-tic
 
@@ -546,8 +546,8 @@ use, intrinsic :: ieee_arithmetic
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
-                call fld_a%check_value(fld_a%uz)
-                call fld_u%check_value(fld_u%uz)
+                call fld_a%check_value
+                call fld_u%check_value
             endif   
 
             ! if(present(o_sf)) then
@@ -559,7 +559,7 @@ use, intrinsic :: ieee_arithmetic
 
                 ! !backward step 2: retrieve p^it+1 at boundary layers (BC)
                 call cpu_time(tic)
-                call fld_u%boundary_transport_displacement('load',it)
+                call fld_u%boundary_transport('load',it)
                 call cpu_time(toc)
                 tt2=tt2+toc-tic
 
@@ -571,14 +571,14 @@ use, intrinsic :: ieee_arithmetic
 
                 !backward step 1: rm p^it at source
                 call cpu_time(tic)
-                call self%inject_displacement(fld_u,time_dir,it)
+                call self%inject(fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             ! endif
 
             !adjoint step 1: inject to p^it+1 at receivers
             call cpu_time(tic)
-            call self%inject_displacement(fld_a,time_dir,it)
+            call self%inject(fld_a,time_dir,it)
             call cpu_time(toc)
             tt8=tt8+toc-tic
 
@@ -664,7 +664,7 @@ use, intrinsic :: ieee_arithmetic
 
     !forward: add RHS to pz^it
     !adjoint: add RHS to pz^it+1
-    subroutine inject_displacement(self,f,time_dir,it)
+    subroutine inject(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
         
@@ -765,52 +765,68 @@ use, intrinsic :: ieee_arithmetic
         class(t_propagator) :: self
         type(t_field) :: f
 
-        real,dimension(:),allocatable :: Lda_duxdx
-
         ! !necessary after computing the secondary source
         ! f%lap=0.
 
         ifz=f%bloom(1,it)
-        !if(m%is_freesurface) ifz=max(ifz,1)
+        if(m%is_freesurface) ifz=max(ifz,1)
         ilz=f%bloom(2,it)
         ifx=f%bloom(3,it)
         ilx=f%bloom(4,it)
 
+        !flux
         if(m%is_cubic) then
-            ! call fd3d_pressure(f%p,                                      &
-            !                    f%dp_dz,f%dp_dx,f%dp_dy,                  &
-            !                    self%buoz,self%buox,self%buoy,self%kpa,   &
-            !                    ifz,f%bloom(2,it),f%bloom(3,it),f%bloom(4,it))
         else
-            call fd2d_laplacian(f%uz,f%ux,&
-                                f%duz_dz,f%dux_dx,f%dux_dz,f%duz_dx,&
-                                f%dz_ldap2mu_duzdz_p_lda_duxdx,&
-                                f%dx_lda_duzdz_p_ldap2mu_duxdx,&
-                                f%dz_mu_duxdz_p_duzdx,&
-                                f%dx_mu_duxdz_p_duzdx,&
+            call fd2d_flux(f%uz,f%ux,                    &
+                           f%dz_z,f%dx_x,f%dz_x,f%dx_z,  &
+                           f%sz,f%sx,f%ss,               &
+                           self%ldap2mu,self%lda,self%mu,&
+                           ifz,ilz,ifx,ilx)
+        endif
+
+        !Levandar & Roberttson's stress image for free surface boundary condition
+        !free surface is located at [1,ix,1] level
+        if(m%is_freesurface) then
+            !image sz
+            f%sz( 1,:,1)=0.
+            f%sz(0:cb%ifz:-1, :,1)=-f%sz(2:2+0-cb%ifz, :,1)
+
+            !not image on sx, use the reduced stiffness tensor
+            ! f%sx(0:cb%ifz:-1,:,1)=0. !no needed
+            do ix=cb%ifx+1,cb%ilx-2
+                dux_dx_= c1x*(f%ux(1,ix+1,1)-f%ux(1,ix,1))  +c2x*(f%ux(1,ix+2,1)-f%ux(1,ix-1,1))
+                
+                factor= 4.*self%mu(1,ix)*(self%lda(1,ix)+self%mu(1,ix))/self%ldap2mu(1,ix)
+                f%sx(1,ix,1) = factor*dux_dx_
+            enddo
+            
+            !image ss
+            f%ss(1:cb%ifz:-1, :,1)=-f%ss(2:2+1-cb%ifz, :,1)
+
+        !laplacian
+        if(m%is_cubic) then
+        else
+            call fd2d_laplacian(f%sz,f%sx,f%ss,                 &
+                                f%dz_zz,f%dx_xx,f%dz_zx,f%dx_zx,&
                                 f%lapz,f%lapx,&
-                                self%ldap2mu,self%lda,self%mu,&
                                 ifz,ilz,ifx,ilx)
+        endif
+
+        if(m%is_freesurface) then
+            if (FS_method=='stress_vel_image') then
+                !symmetric mirroring: vz[0.5]=vz[1.5], ie. vz(1,ix,iy)=vz(2,ix,iy) -> p(1,ix,iy)=0.
+                f%lapz(1,:,:)=f%lapz(2,:,:)
+
+            elseif (FS_method=='stress_image') then
+                f%lapz(cb%ifz:1,:,:)=0.
+                f%lapx(cb%ifz:0,:,:)=0.
+
+            endif
 
         endif
 
-        ! if(m%is_freesurface) then !Levendar & Roberttson's stress image method
-        !     !on FS, reduced weq:
-        !     ! ρ∂ₜₜux = ∂ₓΛ∂ₓux
-        !     ! where Λ=4μ(λ+μ)/(λ+2μ)
 
-        !     call alloc(Lda_duxdx, [cb%ifx,cb%ilx])
-
-        !     do ix=cb%ifx+2,cb%ilx-2
-        !         dux_dx_ = c1x*(f%ux(1,ix+1,1)-f%ux(1,ix,1))  +c2x*(f%ux(1,ix+2,1)-f%ux(1,ix-1,1)) !∂ₓᶠ
-        !         Lda_duxdx(ix) = 4.*self%mu(1,ix)*(self%lda(1,ix)+self%mu(1,ix))/self%ldap2mu(1,ix) * dux_dx_
-        !     enddo
-        !     do ix=cb%ifx+2,cb%ilx-2                    
-        !         f%lapx(1,ix,1) = c1x*(Lda_duxdx(ix)-Lda_duxdx(ix-1)) +c2x*(Lda_duxdx(ix+1)-Lda_duxdx(ix-2)) !∂ₓᵇ
-        !     enddo
-
-        ! endif
-
+        !update displacement
         if(time_dir>0.) then !in forward time
             f%uz_next(ifz:ilz,ifx:ilx,1) = 2*f%uz(ifz:ilz,ifx:ilx,1) -f%uz_prev(ifz:ilz,ifx:ilx,1) +dt2*self%buoz(ifz:ilz,ifx:ilx)*f%lapz(ifz:ilz,ifx:ilx,1)
             f%ux_next(ifz:ilz,ifx:ilx,1) = 2*f%ux(ifz:ilz,ifx:ilx,1) -f%ux_prev(ifz:ilz,ifx:ilx,1) +dt2*self%buox(ifz:ilz,ifx:ilx)*f%lapx(ifz:ilz,ifx:ilx,1)
@@ -1079,30 +1095,15 @@ use, intrinsic :: ieee_arithmetic
 
     !========= Finite-Difference on flattened arrays ==================
     
-    subroutine fd2d_laplacian(uz,ux,&
-                              duz_dz,dux_dx,dux_dz,duz_dx,&
-                              dz_ldap2mu_duzdz_p_lda_duxdx,&
-                              dx_lda_duzdz_p_ldap2mu_duxdx,&
-                              dz_mu_duxdz_p_duzdx,&
-                              dx_mu_duxdz_p_duzdx,&
-                              lapz,lapx,&
-                              ldap2mu,lda,mu,&
-                              ifz,ilz,ifx,ilx)
+    subroutine fd2d_flux(uz,ux,&
+                         duz_dz,dux_dx,dux_dz,duz_dx,&
+                         sz,sx,ss,&
+                         ldap2mu,lda,mu,&
+                         ifz,ilz,ifx,ilx)
         real,dimension(*) :: uz,ux
         real,dimension(*) :: duz_dz,dux_dx,dux_dz,duz_dx
-        real,dimension(*) :: dz_ldap2mu_duzdz_p_lda_duxdx
-        real,dimension(*) :: dx_lda_duzdz_p_ldap2mu_duxdx
-        real,dimension(*) :: dz_mu_duxdz_p_duzdx
-        real,dimension(*) :: dx_mu_duxdz_p_duzdx
-        real,dimension(*) :: ldap2mu,lda,mu,lapz,lapx
-
-        real,dimension(:),allocatable :: ldap2mu_duzdz_p_lda_duxdx
-        real,dimension(:),allocatable :: lda_duzdz_p_ldap2mu_duxdx
-        real,dimension(:),allocatable :: mu_duxdz_p_duz_dx
-
-        call alloc(ldap2mu_duzdz_p_lda_duxdx, cb%n)
-        call alloc(lda_duzdz_p_ldap2mu_duxdx, cb%n)
-        call alloc(mu_duxdz_p_duz_dx,         cb%n)
+        real,dimension(*) :: sz,sx,ss
+        real,dimension(*) :: ldap2mu,lda,mu
 
         nz=cb%nz
         nx=cb%nx
@@ -1155,85 +1156,38 @@ use, intrinsic :: ieee_arithmetic
                 duz_dx_ = duz_dx_*cpml%kpa_x_half(ix) + duz_dx(iz_ix)
 
 
-                ldap2mu_duzdz_p_lda_duxdx(iz_ix) = &
-                    ldap2mu(iz_ix)*duz_dz_ +lda    (iz_ix)*dux_dx_
-                lda_duzdz_p_ldap2mu_duxdx(iz_ix) = &
-                    lda    (iz_ix)*duz_dz_ +ldap2mu(iz_ix)*dux_dx_
+                sz(iz_ix) = ldap2mu(iz_ix)*duz_dz_ +lda    (iz_ix)*dux_dx_
+                sx(iz_ix) = lda    (iz_ix)*duz_dz_ +ldap2mu(iz_ix)*dux_dx_
 
-                mu_duxdz_p_duz_dx(iz_ix) = mu(iz_ix)*(duz_dx_+dux_dz_)
+                ss(iz_ix) = mu(iz_ix)*(duz_dx_+dux_dz_)
                 
             enddo
         enddo
         !$omp end do
         !$omp end parallel
 
-        if(m%is_freesurface) then
-            !Levandar & Roberttson's stress image method
+    end subroutine
 
-            !image szz = ldap2mu_duzdz_p_lda_duxdx
-            do ix = ifx,ilx
-            iz = 1
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
-                ldap2mu_duzdz_p_lda_duxdx(i)=0.
+    subroutine fd2d_laplacian(sz,sx,ss,&
+                              dsz_dz,dsx_dx,dss_dz,dss_dx,&
+                              lapz,lapx,&
+                              ifz,ilz,ifx,ilx)
+        real,dimension(*) :: sz,sx,ss
+        real,dimension(*) :: dsz_dz,dsx_dx,dss_dz,dss_dx
+        real,dimension(*) :: lapz,lapx
 
-            ! 0:cb%ifz:-1 <= 2:2-cb%ifz
-            do  iz_above = 0,cb%ifz,-1
-                iz_below = 2-iz_above
+        nz=cb%nz
+        nx=cb%nx
 
-                i_above=(iz_above-cb%ifz)+(ix-cb%ifx)*cb%nz+1
-                i_below=(iz_below-cb%ifz)+(ix-cb%ifx)*cb%nz+1
-
-                ldap2mu_duzdz_p_lda_duxdx(i_above)=-ldap2mu_duzdz_p_lda_duxdx(i_below)
-
-            enddo
-            enddo
-
-            !not image on sxx, use the reduced stiffness tensor
-            ! sxx = lda_duzdz_p_ldap2mu_duxdx
-            do ix = ifx+1,ilx-2
-            iz = 1
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
-                iz_ixm2=i  -2*nz !iz,ix-2
-                iz_ixm1=i  -nz  !iz,ix-1
-                iz_ix  =i    !iz,ix
-                iz_ixp1=i  +nz  !iz,ix+1
-                iz_ixp2=i  +2*nz  !iz,ix+2
-
-                dux_dx_= c1x*(ux(iz_ixp1)-ux(iz_ix))  +c2x*(ux(iz_ixp2)-ux(iz_ixm1))
-                    
-                factor= 4.*mu(iz_ix)*(lda(iz_ix)+mu(iz_ix))/ldap2mu(iz_ix)
-                lda_duzdz_p_ldap2mu_duxdx(iz_ix)  = factor*dux_dx_
-
-            enddo    
-
-            !image szx = mu_duxdz_p_duz_dx
-            do ix = ifx,ilx
-            ! 1:cb%ifz:-1 <= 2:3-cb%ifz
-            do  iz_above = 1,cb%ifz,-1
-                iz_below = 3-iz_above
-
-                i_above=(iz_above-cb%ifz)+(ix-cb%ifx)*cb%nz+1
-                i_below=(iz_below-cb%ifz)+(ix-cb%ifx)*cb%nz+1
-
-                mu_duxdz_p_duz_dx(i_above)=-mu_duxdz_p_duz_dx(i_below)
-
-            enddo;enddo
-
-        endif
-
-
-        !                          [ldap2mu_duzdz_p_lda_duxdx    ]
-        !Laplacian= [∂zᵇ 0   0 ∂ₓᶠ]|    lda_duzdz_p_ldap2mu_duxdx|
-        !           [0  ∂ₓᵇ ∂zᶠ 0 ]|     mu_duxdz_p_duz_dx       |
-        !                          [     mu_duxdz_p_duz_dx       ]
+        !                          [sz]
+        !Laplacian= [∂zᵇ 0   0 ∂ₓᶠ]|sx|
+        !           [0  ∂ₓᵇ ∂zᶠ 0 ]|ss|
+        !                          [ss]
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
         !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dz_ldap2mu_duzdz_p_lda_duxdx_,&
-        !$omp         dx_lda_duzdz_p_ldap2mu_duxdx_,&
-        !$omp         dz_mu_duxdz_p_duzdx_,&
-        !$omp         dx_mu_duxdz_p_duzdx_)
+        !$omp         dsz_dz_,dsx_dx_,dss_dz_,dss_dx_)
         !$omp do schedule(dynamic)
         do ix = ifx+2,ilx-2
             !dir$ simd
@@ -1252,59 +1206,33 @@ use, intrinsic :: ieee_arithmetic
                 iz_ixp1=i  +nz  !iz,ix+1
                 iz_ixp2=i  +2*nz  !iz,ix+2
                 
-                dz_ldap2mu_duzdz_p_lda_duxdx_ = & !∂zᵇ
-                     c1z*(ldap2mu_duzdz_p_lda_duxdx(iz_ix)  -ldap2mu_duzdz_p_lda_duxdx(izm1_ix)) &
-                    +c2z*(ldap2mu_duzdz_p_lda_duxdx(izp1_ix)-ldap2mu_duzdz_p_lda_duxdx(izm2_ix))
+                dsz_dz_ = c1z*(sz(iz_ix)-sz(izm1_ix)) +c2z*(sz(izp1_ix)-sz(izm2_ix)) !∂zᵇ
+                dsx_dx_ = c1x*(sx(iz_ix)-sx(iz_ixm1)) +c2x*(sx(iz_ixp1)-sx(iz_ixm2)) !∂ₓᵇ
 
-                dx_lda_duzdz_p_ldap2mu_duxdx_ = & !∂ₓᵇ
-                     c1x*(lda_duzdz_p_ldap2mu_duxdx(iz_ix)  -lda_duzdz_p_ldap2mu_duxdx(iz_ixm1)) &
-                    +c2x*(lda_duzdz_p_ldap2mu_duxdx(iz_ixp1)-lda_duzdz_p_ldap2mu_duxdx(iz_ixm2))
+                dsz_dz(i)=cpml%b_z_half(iz)*dsz_dz(i)+cpml%a_z_half(iz)*dsz_dz_
+                dsx_dx(i)=cpml%b_x_half(ix)*dsx_dx(i)+cpml%a_x_half(ix)*dsx_dx_
 
-                dz_ldap2mu_duzdz_p_lda_duxdx(i)=cpml%b_z_half(iz)*dz_ldap2mu_duzdz_p_lda_duxdx(i)+cpml%a_z_half(iz)*dz_ldap2mu_duzdz_p_lda_duxdx_
-                dx_lda_duzdz_p_ldap2mu_duxdx(i)=cpml%b_x_half(ix)*dx_lda_duzdz_p_ldap2mu_duxdx(i)+cpml%a_x_half(ix)*dx_lda_duzdz_p_ldap2mu_duxdx_
-
-                dz_ldap2mu_duzdz_p_lda_duxdx_ = dz_ldap2mu_duzdz_p_lda_duxdx_*cpml%kpa_z_half(iz) + dz_ldap2mu_duzdz_p_lda_duxdx(iz_ix)
-                dx_lda_duzdz_p_ldap2mu_duxdx_ = dx_lda_duzdz_p_ldap2mu_duxdx_*cpml%kpa_x_half(ix) + dx_lda_duzdz_p_ldap2mu_duxdx(iz_ix)
+                dsz_dz_ = dsz_dz_*cpml%kpa_z_half(iz) + dsz_dz(iz_ix)
+                dsx_dx_ = dsx_dx_*cpml%kpa_x_half(ix) + dsx_dx(iz_ix)
 
 
-                dz_mu_duxdz_p_duzdx_ = & !∂zᶠ
-                     c1z*(mu_duxdz_p_duz_dx(izp1_ix)-mu_duxdz_p_duz_dx(iz_ix)  ) &
-                    +c2z*(mu_duxdz_p_duz_dx(izp2_ix)-mu_duxdz_p_duz_dx(izm1_ix))
+                dss_dz_ = c1z*(ss(izp1_ix)-ss(iz_ix)  ) +c2z*(ss(izp2_ix)-ss(izm1_ix)) !∂zᶠ
+                dss_dx_ = c1x*(ss(iz_ixp1)-ss(iz_ix)  ) +c2x*(ss(iz_ixp2)-ss(iz_ixm1)) !∂ₓᶠ
 
-                dx_mu_duxdz_p_duzdx_ = & !∂ₓᶠ
-                     c1x*(mu_duxdz_p_duz_dx(iz_ixp1)-mu_duxdz_p_duz_dx(iz_ix)  ) &
-                    +c2x*(mu_duxdz_p_duz_dx(iz_ixp2)-mu_duxdz_p_duz_dx(iz_ixm1))
-
-                dz_mu_duxdz_p_duzdx(i)=cpml%b_z(iz)*dz_mu_duxdz_p_duzdx(i)+cpml%a_z(iz)*dz_mu_duxdz_p_duzdx_
-                dx_mu_duxdz_p_duzdx(i)=cpml%b_x(ix)*dx_mu_duxdz_p_duzdx(i)+cpml%a_x(ix)*dx_mu_duxdz_p_duzdx_
+                dss_dz(i)=cpml%b_z(iz)*dss_dz(i)+cpml%a_z(iz)*dss_dz_
+                dss_dx(i)=cpml%b_x(ix)*dss_dx(i)+cpml%a_x(ix)*dss_dx_
                 
-                dz_mu_duxdz_p_duzdx_ = dz_mu_duxdz_p_duzdx_*cpml%kpa_z(iz) + dz_mu_duxdz_p_duzdx(iz_ix)
-                dx_mu_duxdz_p_duzdx_ = dx_mu_duxdz_p_duzdx_*cpml%kpa_x(ix) + dx_mu_duxdz_p_duzdx(iz_ix)
+                dss_dz_ = dss_dz_*cpml%kpa_z(iz) + dss_dz(iz_ix)
+                dss_dx_ = dss_dx_*cpml%kpa_x(ix) + dss_dx(iz_ix)
                 
 
-                lapz(iz_ix) = dz_ldap2mu_duzdz_p_lda_duxdx_ + dx_mu_duxdz_p_duzdx_
-                lapx(iz_ix) = dx_lda_duzdz_p_ldap2mu_duxdx_ + dz_mu_duxdz_p_duzdx_
+                lapz(iz_ix) = dsz_dz_ + dss_dx_
+                lapx(iz_ix) = dsx_dx_ + dss_dz_
 
             enddo
         enddo
         !$omp end do
         !$omp end parallel
-
-
-        if(m%is_freesurface) then
-            !Roberttson's 3rd method
-            do ix = ifx,ilx
-            do iz = cb%ifz,1
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
-                lapz(i) = 0.  !uz(cb%ifz:1,:)=0.
-            enddo; enddo
-
-            do ix = ifx,ilx
-            do iz = cb%ifz,0
-                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
-                lapx(i) = 0. !ux(cb%ifz:0,:)=0.
-            enddo; enddo
-        endif
 
     end subroutine
 

@@ -29,6 +29,9 @@ use m_computebox
         real,dimension(:,:,:),allocatable :: ipp
         real,dimension(:,:,:),allocatable :: ibksc, ifwsc !backward & forward scatters
 
+        !energy components
+        real,dimension(:,:,:),allocatable :: epp
+
         contains
 
         ! procedure :: init
