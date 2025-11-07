@@ -70,7 +70,8 @@ use m_correlate
         procedure :: forward
         procedure :: adjoint
 
-        procedure :: inject
+        procedure :: inject_pressure
+        procedure :: inject_acceleration
         procedure :: update
         procedure :: evolve
         procedure :: extract
@@ -86,7 +87,7 @@ use m_correlate
     integer :: irdt
     real :: rdt
 
-    logical :: if_record_adjseismo=.false.
+    logical,public :: if_propagator_record_adjseismo=.false.
 
     contains
     
@@ -117,7 +118,7 @@ use m_correlate
             call alloc(m%rho,m%nz,m%nx,m%ny,o_init=1000.)
             call warn('Constant rho model (1000 kg/m³) is allocated by propagator.')
         endif
-                
+
     end subroutine
 
     subroutine check_discretization(self)
@@ -176,8 +177,6 @@ use m_correlate
         call alloc(self%buoy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(self%kpa, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
-        self%kpa=cb%rho*cb%vp**2
-
         self%buoz(cb%ifz,:,:)=1./cb%rho(cb%ifz,:,:)
         self%buox(:,cb%ifx,:)=1./cb%rho(:,cb%ifx,:)
         self%buoy(:,:,cb%ify)=1./cb%rho(:,:,cb%ify)
@@ -194,6 +193,8 @@ use m_correlate
             self%buoy(:,:,iy)=0.5/cb%rho(:,:,iy)+0.5/cb%rho(:,:,iy-1)
         enddo
 
+        self%kpa=cb%rho*cb%vp**2
+
         ! call alloc(self%r2,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         ! self%r2 = (cb%vp*self%dt/m%dx)**2
 
@@ -201,7 +202,8 @@ use m_correlate
         call field_init(.false.,self%nt,self%dt)
 
         !initialize m_correlate
-        call correlate_init(ppg%nt,ppg%dt)
+        call correlate_init(self%nt,self%dt)
+        
 
         !rectified interval for time integration
         !default to Nyquist, and must be a multiple of dt
@@ -213,12 +215,12 @@ use m_correlate
 
     end subroutine
 
-    subroutine init_field(self,f,name,ois_simple,ois_adjoint,oif_will_reconstruct)
+    subroutine init_field(self,f,name,ois_adjoint,oif_will_reconstruct)
         class(t_propagator) :: self
         type(t_field) :: f
         character(*) :: name
         logical,optional :: oif_will_reconstruct
-        logical,optional :: ois_adjoint, ois_simple
+        logical,optional :: ois_adjoint
 
         !field
         ! call f%init(name)
@@ -230,6 +232,7 @@ use m_correlate
 
         !f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
         !if(f%if_will_reconstruct) call f%init_boundary
+        f%if_boundary_vector=.false.
         call f%init_boundary
 
         call alloc(f%p     , [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -382,20 +385,20 @@ use m_correlate
         do it=ift,ilt
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
-                call fld_u%check_value
+                call fld_u%check_value(fld_u%az)
             endif
 
             !do forward time stepping (step# conforms with backward & adjoint time stepping)
             !step 1: add pressure
             call cpu_time(tic)
-            call self%inject(fld_u,time_dir,it)
+            call self%inject_pressure(fld_u,time_dir,it)
             call cpu_time(toc)
             tt1=tt1+toc-tic
 
             !step 2: save p^it+1 in boundary layers
             ! if(fld_E0%if_will_reconstruct) then
                 call cpu_time(tic)
-                call fld_u%boundary_transport('save',it)
+                call fld_u%boundary_transport('save',it,o_p=fld_u%p)
                 call cpu_time(toc)
                 tt2=tt2+toc-tic
             ! endif
@@ -444,7 +447,7 @@ use m_correlate
 
     end subroutine
 
-    subroutine adjoint(self, fld_a,fld_u, a_star_u)
+    subroutine adjoint(self,fld_a,fld_u,a_star_u)
         class(t_propagator) :: self
         type(t_field) :: fld_a,fld_u
         type(t_correlate) :: a_star_u
@@ -455,7 +458,7 @@ use m_correlate
         call fld_u%reinit
 
         !for adjoint test
-        if(if_record_adjseismo)  call alloc(fld_a%seismo,1,self%nt)
+        if(if_propagator_record_adjseismo)  call alloc(fld_a%seismo,1,self%nt)
 
         !timing
         tt1=0.; tt2=0.; tt3=0.
@@ -468,8 +471,8 @@ use m_correlate
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
-                call fld_a%check_value
-                call fld_u%check_value
+                call fld_a%check_value(fld_a%az)
+                call fld_u%check_value(fld_u%az)
             endif
 
             ! if(present(o_sf)) then
@@ -481,7 +484,7 @@ use m_correlate
 
                 ! !backward step 2: retrieve p^it+1 at boundary layers (BC)
                 call cpu_time(tic)
-                call fld_u%boundary_transport('load',it)
+                call fld_u%boundary_transport('load',it,o_p=fld_u%p)
                 call cpu_time(toc)
                 tt2=tt2+toc-tic
 
@@ -493,14 +496,14 @@ use m_correlate
 
                 !backward step 1: rm p^it at source
                 call cpu_time(tic)
-                call self%inject(fld_u,time_dir,it)
+                call self%inject_pressure(fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
             ! endif
 
             !adjoint step 6: inject to p^it+1 at receivers
             call cpu_time(tic)
-            call self%inject(fld_a,time_dir,it)
+            call self%inject_pressure(fld_a,time_dir,it)
             call cpu_time(toc)
             tt8=tt8+toc-tic
 
@@ -527,7 +530,7 @@ use m_correlate
             tt11=tt11+toc-tic
 
             !adjoint step 1: sample p^it at source position
-            if(if_record_adjseismo) then
+            if(if_propagator_record_adjseismo) then
                 call cpu_time(tic)
                 call self%extract(fld_a,it)
                 call cpu_time(toc)
@@ -577,7 +580,7 @@ use m_correlate
     end subroutine
 
 
-    subroutine inject(self,f,time_dir,it)
+    subroutine inject_pressure(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
 
@@ -599,10 +602,12 @@ use m_correlate
             wl=time_dir*f%wavelet(1,it)*wavelet_scaler
 
             !explosion
-            if(if_hicks) then
-                f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
-            else
-                f%p(iz,ix,iy)                = f%p(iz,ix,iy)                + wl*self%kpa(iz,ix,iy)
+            if(shot%src%comp=='p') then
+                if(if_hicks) then
+                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef_anti
+                else
+                    f%p(iz,ix,iy)                = f%p(iz,ix,iy)                + wl*self%kpa(iz,ix,iy)
+                endif
             endif
 
         return; endif
@@ -625,13 +630,108 @@ use m_correlate
             !adjsource for pressure
             wl = f%wavelet(i,it)*wavelet_scaler    !no time_dir needed!
 
-            if(if_hicks) then 
-                f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef
-            else
-                f%p(iz,ix,iy)                = f%p(iz,ix,iy)                +wl*self%kpa(iz,ix,iy)
+            if(shot%src%comp=='p') then
+                if(if_hicks) then 
+                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef_anti
+                else
+                    f%p(iz,ix,iy)                = f%p(iz,ix,iy)                +wl*self%kpa(iz,ix,iy)
+                endif
             endif
 
         enddo
+        
+    end subroutine
+
+    subroutine inject_acceleration(self,f,time_dir,it)
+        class(t_propagator) :: self
+        type(t_field) :: f
+        
+        if(.not. f%is_adjoint) then
+
+            ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
+            ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
+            ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
+            
+            wl=time_dir*f%wavelet(1,it)/m%cell_volume !as no time derivative
+            
+            if(if_hicks) then
+                select case (shot%src%comp)
+                    case ('az')
+                    f%az(ifz:ilz,ifx:ilx,ify:ily) = f%az(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoz(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
+                    
+                    case ('ax')
+                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
+                    f%ax(ifz:ilz,ifx:ilx,ify:ily) = f%ax(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buox(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
+                    
+                    case ('ay')
+                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
+                    f%ay(ifz:ilz,ifx:ilx,ify:ily) = f%ay(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoy(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
+                    
+                end select
+                
+            else
+                select case (shot%src%comp)
+                    case ('az') !vertical force     on vz[iz-0.5,ix,iy]
+                    f%az(iz,ix,iy) = f%az(iz,ix,iy) + wl*self%buoz(iz,ix,iy)
+                    
+                    case ('ax') !horizontal x force on vx[iz,ix-0.5,iy]
+                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
+                    f%ax(iz,ix,iy) = f%ax(iz,ix,iy) + wl*self%buox(iz,ix,iy)
+                    
+                    case ('ay') !horizontal y force on vy[iz,ix,iy-0.5]
+                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
+                    f%ay(iz,ix,iy) = f%ay(iz,ix,iy) + wl*self%buoy(iz,ix,iy)
+                    
+                end select
+                
+            endif
+
+        return; endif
+
+
+            do i=1,shot%nrcv
+                ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
+                ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
+                ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
+                
+                 wl=f%wavelet(i,it)/m%cell_volume !as no time derivative
+                
+                if(if_hicks) then
+                    select case (shot%rcv(i)%comp)
+                        case ('az') !vertical z adjsource
+                        f%az(ifz:ilz,ifx:ilx,ify:ily) = f%az(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
+
+                        case ('ax') !horiontal x adjsource
+                        if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
+                        f%ax(ifz:ilz,ifx:ilx,ify:ily) = f%ax(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buox(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
+                        
+                        case ('ay') !horizontal y adjsource
+                        if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
+                        f%ay(ifz:ilz,ifx:ilx,ify:ily) = f%ay(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
+                        
+                    end select
+                    
+                else
+                    select case (shot%rcv(i)%comp)
+                        case ('az') !vertical z adjsource
+                        !vz[ix,iy,iz-0.5]
+                        f%az(iz,ix,iy) = f%az(iz,ix,iy) + wl*self%buoz(iz,ix,iy) !no time_dir needed!
+
+                        case ('ax') !horizontal x adjsource
+                        !vx[ix-0.5,iy,iz]
+                        if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
+                        f%ax(iz,ix,iy) = f%ax(iz,ix,iy) + wl*self%buox(iz,ix,iy) !no time_dir needed!
+                        
+                        case ('ay') !horizontal y adjsource
+                        !vy[ix,iy-0.5,iz]
+                        if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
+                        f%ay(iz,ix,iy) = f%ay(iz,ix,iy) + wl*self%buoy(iz,ix,iy) !no time_dir needed!
+                        
+                    end select
+                    
+                endif
+                
+            enddo
         
     end subroutine
 
@@ -643,11 +743,12 @@ use m_correlate
         ! f%lap=0.
 
         ifz=f%bloom(1,it)
-        if(m%is_freesurface) ifz=max(ifz,1)
         ilz=f%bloom(2,it)
         ifx=f%bloom(3,it)
         ilx=f%bloom(4,it)
 
+        ! if(m%is_freesurface) ifz=max(ifz,1) !no need
+        
         !flux
         if(m%is_cubic) then
         else
@@ -657,8 +758,11 @@ use m_correlate
                            ifz,ilz,ifx,ilx)
         endif
 
-        if(m%is_freesurface) call freesurface_velocities(f%az,f%ax)
+        call self%inject_acceleration(f,time_dir,it)
+
+        if(m%is_freesurface) call freesurface_velocity(f%az,f%ax)
         
+
         !laplacian
         if(m%is_cubic) then
         else
@@ -667,7 +771,7 @@ use m_correlate
                                 ifz,ilz,ifx,ilx)
         endif
 
-        if(m%is_freesurface) call freesurface_stresses(f%lap)
+        if(m%is_freesurface) call freesurface_stress(f%lap)
         
         !update pressure
         if(time_dir>0.) then !in forward time
@@ -718,29 +822,29 @@ use m_correlate
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
                         case default
-                        !case ('p')
-                        f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef)
+                        case ('p')
+                        f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef_anti)
 
-                        ! case ('vz')
-                        ! f%seismo(i,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
-                        ! case ('vx')
-                        ! f%seismo(i,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
-                        ! case ('vy')
-                        ! f%seismo(i,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                        case ('az')
+                        f%seismo(i,it)=sum(f%az(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                        case ('ax')
+                        f%seismo(i,it)=sum(f%ax(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                        case ('ay')
+                        f%seismo(i,it)=sum(f%ay(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
                     end select
                     
                 else
                     select case (shot%rcv(i)%comp)
                         case default
-                        !case ('p') !p[iz,ix,iy]
+                        case ('p') !p[iz,ix,iy]
                         f%seismo(i,it)=f%p(iz,ix,iy)
 
-                        ! case ('vz') !vz[iz-0.5,ix,iy]
-                        ! f%seismo(i,it)=f%vz(iz,ix,iy)
-                        ! case ('vx') !vx[iz,ix-0.5,iy]
-                        ! f%seismo(i,it)=f%vx(iz,ix,iy)
-                        ! case ('vy') !vy[iz,ix,iy-0.5]
-                        ! f%seismo(i,it)=f%vy(iz,ix,iy)
+                        case ('az') !vz[iz-0.5,ix,iy]
+                        f%seismo(i,it)=f%az(iz,ix,iy)
+                        case ('ax') !vx[iz,ix-0.5,iy]
+                        f%seismo(i,it)=f%ax(iz,ix,iy)
+                        case ('ay') !vy[iz,ix,iy-0.5]
+                        f%seismo(i,it)=f%ay(iz,ix,iy)
                     end select
                     
                 endif
@@ -758,34 +862,34 @@ use m_correlate
             if(if_hicks) then
                 select case (shot%src%comp)
                     case default
-                    !case ('p')
-                    f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef)
+                    case ('p')
+                    f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef_anti)
                     
-                    ! case ('vz')
-                    ! f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    case ('az')
+                    f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
                     
-                    ! case ('vx')
-                    ! f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    case ('ax')
+                    f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
                     
-                    ! case ('vy')
-                    ! f%seismo(1,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    case ('ay')
+                    f%seismo(1,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
                     
                 end select
                 
             else
                 select case (shot%src%comp)
                     case default
-                    !case ('p') !p[iz,ix,iy]
+                    case ('p') !p[iz,ix,iy]
                     f%seismo(1,it)=f%p(iz,ix,iy)
                     
-                    ! case ('vz') !vz[iz-0.5,ix,iy]
-                    ! f%seismo(1,it)=f%vz(iz,ix,iy)
+                    case ('az') !vz[iz-0.5,ix,iy]
+                    f%seismo(1,it)=f%az(iz,ix,iy)
                     
-                    ! case ('vx') !vx[iz,ix-0.5,iy]
-                    ! f%seismo(1,it)=f%vx(iz,ix,iy)
+                    case ('ax') !vx[iz,ix-0.5,iy]
+                    f%seismo(1,it)=f%ax(iz,ix,iy)
                     
-                    ! case ('vy') !vy[iz,ix,iy-0.5]
-                    ! f%seismo(1,it)=f%vy(iz,ix,iy)
+                    case ('ay') !vy[iz,ix,iy-0.5]
+                    f%seismo(1,it)=f%ay(iz,ix,iy)
                     
                 end select
                 

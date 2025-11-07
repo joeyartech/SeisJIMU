@@ -291,22 +291,10 @@ use, intrinsic :: ieee_arithmetic
 
     end subroutine
     
-    subroutine check_value(self)
+    subroutine check_value(self,a)
         class(t_field) :: self
-        real,dimension(:,:,:),pointer :: a
+        real,dimension(:,:,:) :: a
 
-        if(allocated(self%vz)) then
-            a=self%vz
-        elseif(associated(self%uz)) then
-            a=self%uz
-        elseif(allocated(self%pz)) then
-            a=self%pz
-        elseif(allocated(self%az)) then
-            a=self%az
-        elseif(associated(self%p)) then
-            a=self%p
-        endif
-                
         if(mpiworld%is_master) write(*,*) self%name//' minmax values:',minval(a),maxval(a)
                 
         if(any(.not. ieee_is_finite(a))) then
@@ -350,7 +338,6 @@ use, intrinsic :: ieee_arithmetic
         character(*) :: name,suf
         real,dimension(:,:,:),allocatable :: a1, o_a2, o_a3
         character(*) :: c1, o_c2, o_c3
-
         optional :: o_a2, o_c2, o_a3, o_c3
 
         if(allocated(a1)) then
@@ -370,18 +357,22 @@ use, intrinsic :: ieee_arithmetic
         character(*) :: name,suf
         real,dimension(:,:,:),pointer :: a1, o_a2, o_a3
         character(*) :: c1, o_c2, o_c3
-
         optional :: o_a2, o_c2, o_a3, o_c3
 
         if(associated(a1)) then
             call sysio_write('snap_'//name//'%'//  c1//suf,  a1,cb%n,o_mode='append')
         endif
 
-        if(present(o_a2).and.associated(o_a2)) then
+        if(present(o_a2)) then
+        if(associated(o_a2)) then
             call sysio_write('snap_'//name//'%'//o_c2//suf,o_a2,cb%n,o_mode='append')
         endif
-        if(present(o_a3).and.associated(o_a3)) then
+        endif
+
+        if(present(o_a3)) then
+        if(associated(o_a3)) then
             call sysio_write('snap_'//name//'%'//o_c3//suf,o_a3,cb%n,o_mode='append')
+        endif
         endif
 
     end subroutine
@@ -467,72 +458,53 @@ use, intrinsic :: ieee_arithmetic
 
     end subroutine
 
-    subroutine boundary_transport(self,action,it)
+    subroutine boundary_transport(self,action,it,o_vz,o_vx,o_vy,o_p)
         class(t_field) :: self
         character(4) :: action
         integer :: it
-        
-        !aliases
-        real,dimension(:,:,:),pointer :: vz, vx, vy
+        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily),optional :: o_vz, o_vx, o_vy, o_p
 
         nz=cb%mz
         nx=cb%mx
         ny=cb%my
 
-        if(self%if_boundary_vector) then
+        !boundary values are vectors
+        if(present(o_vz)) then
+            call copy(action,o_vz,self%bnd%top_z (:,it), [1,3],      [1,nx],[1,ny])  !old version: [0,2],[1,nx],[1,nx]
+            call copy(action,o_vz,self%bnd%bot_z (:,it), [nz-1,nz+1],[1,nx],[1,ny])  !old version: [nz,nz+2],[1,nx],[1,nx]
+        endif
+        if(present(o_vx)) then
+            call copy(action,o_vx,self%bnd%left_x(:,it), [1,nz],[1,3],      [1,ny])
+            call copy(action,o_vx,self%bnd%rite_x(:,it), [1,nz],[nx-1,nx+1],[1,ny])
+        endif
 
-            if(allocated(self%vz)) then
-                                vz=self%vz
-                                vx=self%vx
-                if(m%is_cubic)  vy=self%vy
-            elseif(associated(self%uz)) then
-                                vz=self%uz
-                                vx=self%ux
-                !if(m%is_cubic)  vy=self%uy
-            elseif(allocated(self%pz)) then
-                                vz=self%pz
-                                vx=self%px
-                if(m%is_cubic)  vy=self%py
-            elseif(allocated(self%az)) then
-                                vz=self%az
-                                vx=self%ax
-                if(m%is_cubic)  vy=self%ay
+        ! if(m%is_cubic) then
+        ! if(present(o_vy)) then
+        !     call copy(action,o_vy,self%bnd%frnt_y(:,it), [1,nz],[1,nx], [1,3])
+        !     call copy(action,o_vy,self%bnd%rear_y(:,it), [1,nz],[1,nx], [ny-1,ny+1])
+        ! endif
+        ! endif
+
+        !shear part
+        if(if_shear) then
+            if(present(o_vx)) then
+                call copy(action,o_vx,self%bnd%top_x (:,it), [1,3],     [1,nx],[1,ny])
+                call copy(action,o_vx,self%bnd%bot_x (:,it), [nz-2,nz], [1,nx],[1,ny])
             endif
-        
-                call copy(action,vz,self%bnd%top_z (:,it), [1,3],      [1,nx],[1,ny])  !old version: [0,2],[1,nx],[1,nx]
-                call copy(action,vz,self%bnd%bot_z (:,it), [nz-1,nz+1],[1,nx],[1,ny])  !old version: [nz,nz+2],[1,nx],[1,nx]
-                call copy(action,vx,self%bnd%left_x(:,it), [1,nz],[1,3],      [1,ny])
-                call copy(action,vx,self%bnd%rite_x(:,it), [1,nz],[nx-1,nx+1],[1,ny])
-
-            if(m%is_cubic) then
-                call copy(action,vy,self%bnd%frnt_y(:,it), [1,nz],[1,nx], [1,3])
-                call copy(action,vy,self%bnd%rear_y(:,it), [1,nz],[1,nx], [ny-1,ny+1])
+            if(present(o_vz)) then
+                call copy(action,o_vz,self%bnd%left_z(:,it), [1,nz],[1,3],     [1,ny])
+                call copy(action,o_vz,self%bnd%rite_z(:,it), [1,nz],[nx-2,nx], [1,ny])
             endif
 
-            !shear part
-            if(if_shear) then
-                call copy(action,vx,self%bnd%top_x (:,it), [1,3],     [1,nx],[1,ny])
-                call copy(action,vx,self%bnd%bot_x (:,it), [nz-2,nz], [1,nx],[1,ny])
-                call copy(action,vz,self%bnd%left_z(:,it), [1,nz],[1,3],     [1,ny])
-                call copy(action,vz,self%bnd%rite_z(:,it), [1,nz],[nx-2,nx], [1,ny])
-
-            if(m%is_cubic) then
-            endif
-
-            endif
-
-        return; endif
-
+        endif
 
         !boundary values are scalar
-                call copy(action,self%p,self%bnd%top_curr (:,it), [1,3],      [1,nx],[1,ny])
-                call copy(action,self%p,self%bnd%bot_curr (:,it), [nz-1,nz+1],[1,nx],[1,ny])
-                call copy(action,self%p,self%bnd%left_curr(:,it), [1,nz],[1,3],      [1,ny])
-                call copy(action,self%p,self%bnd%rite_curr(:,it), [1,nz],[nx-1,nx+1],[1,ny])
-
-            if(m%is_cubic) then
-
-            endif
+        if(present(o_p)) then
+            call copy(action,o_p,self%bnd%top_curr (:,it), [1,3],      [1,nx],[1,ny])
+            call copy(action,o_p,self%bnd%bot_curr (:,it), [nz-1,nz+1],[1,nx],[1,ny])
+            call copy(action,o_p,self%bnd%left_curr(:,it), [1,nz],[1,3],      [1,ny])
+            call copy(action,o_p,self%bnd%rite_curr(:,it), [1,nz],[nx-1,nx+1],[1,ny])
+        endif
         
     end subroutine
 

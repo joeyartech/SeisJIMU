@@ -54,7 +54,6 @@ use m_computebox
 
     !snapshot
     logical :: if_snapshot
-    type(t_string),dimension(:),allocatable :: snapshot
     integer :: i_snapshot, n_snapshot
 
     contains
@@ -66,8 +65,7 @@ use m_computebox
         dt=dt_in
 
         !snapshot
-        snapshot=setup%get_strs('SNAPSHOT')
-        if_snapshot=size(snapshot)>0 .and. mpiworld%is_master
+        if_snapshot=setup%get_bool('IF_SNAPSHOT') .and. mpiworld%is_master
         if(if_snapshot) then
             n_snapshot=setup%get_int('REF_NUMBER_SNAPSHOT','NSNAPSHOT',o_default='50')
             if(n_snapshot==0) n_snapshot=50
@@ -132,32 +130,47 @@ use m_computebox
         suf=either(o_suffix,'',present(o_suffix))
 
         if(.not.present(o_it)) then !just write
-            if(allocated(self%grho))   call sysio_write(self%name//'%grho'//suf  ,self%grho,  m%n)
-            if(allocated(self%gbuo))   call sysio_write(self%name//'%gbuo'//suf  ,self%gbuo,  m%n)
-            if(allocated(self%gkpa))   call sysio_write(self%name//'%gkpa'//suf  ,self%gkpa,  m%n)
-            if(allocated(self%gikpa))  call sysio_write(self%name//'%gikpa'//suf ,self%gikpa, m%n)
+            call write_snaps(self%name,suf, self%grho,'grho', self%gbuo,'gbuo')
+            call write_snaps(self%name,suf, self%gkpa,'gkpa', self%gikpa,'gikpa')
+            call write_snaps(self%name,suf, self%glda,'glda', self%gmu,'gmu')
 
-            if(allocated(self%ipp))    call sysio_write(self%name//'%ipp'//suf   ,self%ipp,   m%n)
-            if(allocated(self%ibksc))  call sysio_write(self%name//'%ibksc'//suf ,self%ibksc, m%n)
-            if(allocated(self%ifwsc))  call sysio_write(self%name//'%ifwsc'//suf ,self%ifwsc, m%n)
-            return
+            call write_snaps(self%name,suf, self%ipp,'ipp')
+            ! call write_snaps(self%name,suf, self%ibksc,'ibksc', self%ifwsc,'ifwsc', o_mode='append')
 
-        endif
+        return; endif
 
         if(if_snapshot) then !write snapshots
 
             if(o_it==1 .or. mod(o_it,i_snapshot)==0 .or. o_it==nt) then
-                if(allocated(self%grho))  call sysio_write('snap_'//self%name//'%grho'//suf, self%grho, m%n,o_mode='append')
-                if(allocated(self%gbuo))  call sysio_write('snap_'//self%name//'%gbuo'//suf, self%gbuo, m%n,o_mode='append')
-                if(allocated(self%gkpa))  call sysio_write('snap_'//self%name//'%gkpa'//suf, self%gkpa, m%n,o_mode='append')
-                if(allocated(self%gikpa)) call sysio_write('snap_'//self%name//'%gikpa'//suf,self%gikpa,m%n,o_mode='append')
-  
-                if(allocated(self%ipp))    call sysio_write('snap_'//self%name//'%ipp'//suf   ,self%ipp,   m%n,o_mode='append')
-                if(allocated(self%ibksc))  call sysio_write('snap_'//self%name//'%ibksc'//suf ,self%ibksc, m%n,o_mode='append')
-                if(allocated(self%ifwsc))  call sysio_write('snap_'//self%name//'%ifwsc'//suf ,self%ifwsc, m%n,o_mode='append')
-
+                call write_snaps(self%name,suf, self%grho,'grho', self%gbuo,'gbuo', o_mode='append')
+                call write_snaps(self%name,suf, self%gkpa,'gkpa', self%gikpa,'gikpa', o_mode='append')
+                call write_snaps(self%name,suf, self%glda,'glda', self%gmu,'gmu', o_mode='append')
+                
+                call write_snaps(self%name,suf, self%ipp,'ipp', o_mode='append')
+                ! call write_snaps(self%name,suf, self%ibksc,'ibksc', self%ifwsc,'ifwsc', o_mode='append')
+                
             endif
 
+        endif
+
+    end subroutine
+
+    subroutine write_snaps(name,suf, a1,c1, o_a2,o_c2, o_a3,o_c3, o_mode)
+        character(*) :: name,suf        
+        real,dimension(:,:,:),allocatable :: a1, o_a2, o_a3
+        character(*) :: c1, o_c2, o_c3
+        optional :: o_a2, o_c2, o_a3, o_c3
+        character(*),optional :: o_mode
+
+        if(allocated(a1)) then
+            call sysio_write('snap_'//name//'%'//  c1//suf,  a1,m%n,o_mode=o_mode)
+        endif
+
+        if(present(o_a2).and.allocated(o_a2)) then
+            call sysio_write('snap_'//name//'%'//o_c2//suf,o_a2,m%n,o_mode=o_mode)
+        endif
+        if(present(o_a3).and.allocated(o_a3)) then
+            call sysio_write('snap_'//name//'%'//o_c3//suf,o_a3,m%n,o_mode=o_mode)
         endif
 
     end subroutine

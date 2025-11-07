@@ -16,7 +16,7 @@ use m_computebox
 	end subroutine
 
 
-	subroutine freesurface_velocities(vz,vx)
+	subroutine freesurface_velocity(vz,vx)
 		real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: vz,vx
 
 		select case(FS_method)
@@ -32,16 +32,16 @@ use m_computebox
 
 	end subroutine
 
-	subroutine freesurface_stresses(sz,o_ss)
+	subroutine freesurface_stress(sz,o_ss)
 		real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: sz, o_ss
 		optional :: o_ss
 		
-        !image sz
+        !image szz
         sz( 1,:,1)=0.
         sz(0:cb%ifz:-1, :,1)=-sz(2:2+0-cb%ifz, :,1)
 
         !image ss
-        if(present(o_ss)) o_ss(1:cb%ifz:-1, :,1)=-o_ss(2:2+1-cb%ifz, :,1)
+        if(present(o_ss)) o_ss(1:cb%ifz:-1, :,1)= -o_ss(2:2+1-cb%ifz, :,1)
 
     end subroutine
 

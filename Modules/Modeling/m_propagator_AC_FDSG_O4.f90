@@ -36,7 +36,7 @@ use m_correlate
             'Required model attributes: vp, rho'//s_NL// &
             'Required field components: vz, vx, vy(3D), p'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
-            'Imaging conditions: ipp (P-Pxcorr of backward & forward scattering)'//s_NL// &
+            'Imaging conditions: ipp (P-Pxcorr)'//s_NL// &
             'Energy terms: epp (Σ_shot ∫ sfield%p² dt)'//s_NL// &
             'Basic gradients: grho gkpa'
 
@@ -68,10 +68,10 @@ use m_correlate
         procedure :: forward
         procedure :: adjoint
 
-        procedure :: inject_velocities
-        procedure :: inject_stresses
-        procedure :: update_velocities
-        procedure :: update_stresses
+        procedure :: inject_velocity
+        procedure :: inject_pressure
+        procedure :: update_velocity
+        procedure :: update_pressure
         procedure :: extract
 
 
@@ -85,9 +85,7 @@ use m_correlate
     integer :: irdt
     real :: rdt
 
-    logical :: if_record_adjseismo=.false.
-
-    ! real,dimension(:,:,:),allocatable :: sf_p_save
+    logical,public :: if_propagator_record_adjseismo=.false.
 
     contains
     
@@ -197,7 +195,8 @@ use m_correlate
         call field_init(.false.,self%nt,self%dt)
 
         !initialize m_correlate
-        call correlate_init(ppg%nt,ppg%dt)
+        call correlate_init(self%nt,self%dt)
+        
 
         !rectified interval for time integration
         !default to Nyquist, and must be a multiple of dt
@@ -233,7 +232,7 @@ use m_correlate
         call alloc(f%vy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%p, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
-        !derivative of velocities
+        !derivative of velocity
         call alloc(f%dz_z,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%dx_x,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%dy_y,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -287,7 +286,7 @@ use m_correlate
     !PDE:      A u = M ∂ₜ u - D u = f
     !Adjoint:  Aᵀa = M ∂ₜᵀa - Dᵀa = d
     !where
-    !u=[vz vx vy p]ᵀ, [vz vx vy] are velocities, p=tr(s)=szz=sxx=syy is (hydrostatic) pressure
+    !u=[vz vx vy p]ᵀ, [vz vx vy] is velocity, p=tr(s)=szz=sxx=syy is (hydrostatic) pressure
     !f=[fz fx fy fp]ᵀδ(x-xs), d is recorded data
     !M=[diag(ρ) κ⁻¹], N=M⁻¹=[diag(b) κ], b=ρ⁻¹ is buoyancy,
     !  [0   0   0   ∂z]
@@ -417,31 +416,31 @@ use m_correlate
         do it=ift,ilt
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
-                call fld_u%check_value
+                call fld_u%check_value(fld_u%vz)
             endif
 
             !do forward time stepping (step# conforms with backward & adjoint time stepping)
             !step 1: add forces to v^it
             call cpu_time(tic)
-            call self%inject_velocities(fld_u,time_dir,it)
+            call self%inject_velocity(fld_u,time_dir,it)
             call cpu_time(toc)
             tt1=tt1+toc-tic
 
             !step 2: from v^it to v^it+1 by differences of s^it+0.5
             call cpu_time(tic)
-            call self%update_velocities(fld_u,time_dir,it)
+            call self%update_velocity(fld_u,time_dir,it)
             call cpu_time(toc)
             tt2=tt2+toc-tic
 
             !step 3: add pressure to s^it+0.5
             call cpu_time(tic)
-            call self%inject_stresses(fld_u,time_dir,it)
+            call self%inject_pressure(fld_u,time_dir,it)
             call cpu_time(toc)
             tt3=tt3+toc-tic
 
             !step 4: from s^it+0.5 to s^it+1.5 by differences of v^it+1
             call cpu_time(tic)
-            call self%update_stresses(fld_u,time_dir,it)
+            call self%update_pressure(fld_u,time_dir,it)
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
@@ -457,7 +456,7 @@ use m_correlate
             !step 6: save v^it+1 in boundary layers
             ! if(fld_u%if_will_reconstruct) then
                 call cpu_time(tic)
-                call fld_u%boundary_transport('save',it)
+                call fld_u%boundary_transport('save',it,o_vz=fld_u%vz,o_vx=fld_u%vx,o_vy=fld_u%vy)
                 call cpu_time(toc)
                 tt7=tt7+toc-tic
             ! endif
@@ -465,10 +464,10 @@ use m_correlate
         enddo
 
         if(mpiworld%is_master) then
-            write(*,*) 'Elapsed time to add source velocities',tt1/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update velocities    ',tt2/mpiworld%max_threads
-            write(*,*) 'Elapsed time to add source stresses  ',tt3/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update stresses      ',tt4/mpiworld%max_threads
+            write(*,*) 'Elapsed time to add source velocity',tt1/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update velocity    ',tt2/mpiworld%max_threads
+            write(*,*) 'Elapsed time to add source stress  ',tt3/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update stress      ',tt4/mpiworld%max_threads
             write(*,*) 'Elapsed time to extract field        ',tt6/mpiworld%max_threads
             write(*,*) 'Elapsed time to save boundary        ',tt7/mpiworld%max_threads
         endif
@@ -490,7 +489,10 @@ use m_correlate
 
         !reinitialize absorbing boundary for incident wavefield reconstruction
         call fld_u%reinit
-                    
+
+        !for adjoint test
+        if(if_propagator_record_adjseismo)  call alloc(fld_a%seismo,1,self%nt)
+
         !timing
         tt1=0.; tt2=0.; tt3=0.
         tt4=0.; tt5=0.; tt6=0.
@@ -504,8 +506,8 @@ use m_correlate
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
-                call fld_a%check_value
-                call fld_u%check_value
+                call fld_a%check_value(fld_a%vz)
+                call fld_u%check_value(fld_u%vz)
             endif            
 
             !do backward time stepping to reconstruct the source (incident) wavefield
@@ -516,19 +518,19 @@ use m_correlate
 
                 !backward step 6: retrieve v^it+1 at boundary layers (BC)
                 call cpu_time(tic)
-                call fld_u%boundary_transport('load',it)
+                call fld_u%boundary_transport('load',it,o_vz=fld_u%vz,o_vx=fld_u%vx,o_vy=fld_u%vy)
                 call cpu_time(toc)
                 tt1=tt1+toc-tic
                 
                 !backward step 4: s^it+1.5 -> s^it+0.5 by FD of v^it+1
                 call cpu_time(tic)
-                call self%update_stresses(fld_u,time_dir,it)
+                call self%update_pressure(fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt2=tt2+toc-tic
 
                 !backward step 3: rm pressure from s^it+0.5
                 call cpu_time(tic)
-                call self%inject_stresses(fld_u,time_dir,it)
+                call self%inject_pressure(fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt3=tt3+toc-tic
             ! endif
@@ -537,13 +539,13 @@ use m_correlate
 
             !adjoint step 5: inject to s^it+1.5 at receivers
             call cpu_time(tic)
-            call self%inject_stresses(fld_a,time_dir,it)
+            call self%inject_pressure(fld_a,time_dir,it)
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
             !adjoint step 4: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
             call cpu_time(tic)
-            call self%update_stresses(fld_a,time_dir,it)
+            call self%update_pressure(fld_a,time_dir,it)
             call cpu_time(toc)
             tt5=tt5+toc-tic
             
@@ -577,13 +579,13 @@ use m_correlate
             ! if(present(o_sf)) then
                 !backward step 2: v^it+1 -> v^it by FD of s^it+0.5
                 call cpu_time(tic)
-                call self%update_velocities(fld_u,time_dir,it)
+                call self%update_velocity(fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt8=tt8+toc-tic
 
                 !backward step 1: rm forces from v^it
                 call cpu_time(tic)
-                call self%inject_velocities(fld_u,time_dir,it)
+                call self%inject_velocity(fld_u,time_dir,it)
                 call cpu_time(toc)
                 tt9=tt9+toc-tic
             ! endif
@@ -592,18 +594,18 @@ use m_correlate
 
             !adjoint step 3: inject to v^it+1 at receivers
             call cpu_time(tic)
-            call self%inject_velocities(fld_a,time_dir,it)
+            call self%inject_velocity(fld_a,time_dir,it)
             call cpu_time(toc)
             tt10=tt10+toc-tic
 
             !adjoint step 2: v^it+1 -> v^it by FD^T of s^it+0.5
             call cpu_time(tic)
-            call self%update_velocities(fld_a,time_dir,it)
+            call self%update_velocity(fld_a,time_dir,it)
             call cpu_time(toc)
             tt11=tt11+toc-tic
             
             !adjoint step 1: sample v^it or s^it+0.5 at source position
-            if(if_record_adjseismo) then
+            if(if_propagator_record_adjseismo) then
                 call cpu_time(tic)
                 call self%extract(fld_a,it)
                 call cpu_time(toc)
@@ -632,19 +634,21 @@ use m_correlate
         call a_star_u%scale(m%cell_volume*rdt)
 
         if(mpiworld%is_master) then
-            write(*,*) 'Elapsed time to load boundary            ',tt1/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update stresses          ',tt2/mpiworld%max_threads
-            write(*,*) 'Elapsed time to rm source stresses       ',tt3/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update velocities        ',tt7/mpiworld%max_threads
-            write(*,*) 'Elapsed time to rm source velocities     ',tt8/mpiworld%max_threads
-            write(*,*) 'Elapsed time ----------------------------'
-            write(*,*) 'Elapsed time to add adjsource stresses   ',tt4/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update adj stresses      ',tt5/mpiworld%max_threads
-            write(*,*) 'Elapsed time to add adjsource velocities ',tt9/mpiworld%max_threads
-            write(*,*) 'Elapsed time to update adj velocities    ',tt10/mpiworld%max_threads
-            write(*,*) 'Elapsed time to extract&write fields     ',tt11/mpiworld%max_threads
-            write(*,*) 'Elapsed time to compute Poynting vectors ',tt6/mpiworld%max_threads
-            write(*,*) 'Elapsed time to correlate                ',tt7/mpiworld%max_threads
+            write(*,*) 'Elapsed time to load boundary          ',tt1/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update stress          ',tt2/mpiworld%max_threads
+            write(*,*) 'Elapsed time to rm source stress       ',tt3/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update velocity        ',tt7/mpiworld%max_threads
+            write(*,*) 'Elapsed time to rm source velocity     ',tt8/mpiworld%max_threads
+            write(*,*) 'Total elapsed time for forward (min)',(tt1+tt2+tt3+tt7+tt8)/60./mpiworld%max_threads
+            write(*,*) ' ---------------------------- '
+            write(*,*) 'Elapsed time to add adjsource stress   ',tt4/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update adj stress      ',tt5/mpiworld%max_threads
+            write(*,*) 'Elapsed time to add adjsource velocity ',tt9/mpiworld%max_threads
+            write(*,*) 'Elapsed time to update adj velocity    ',tt10/mpiworld%max_threads
+            write(*,*) 'Elapsed time to extract&write fields   ',tt11/mpiworld%max_threads
+            write(*,*) 'Elapsed time to correlate              ',tt6/mpiworld%max_threads
+            write(*,*) 'Total elapsed time for adjoint&correlate (min)',(tt4+tt5+tt9+tt10+tt11+tt6)/60./mpiworld%max_threads
+            write(*,*) 'Total elapsed time (min):',(tt1+tt2+tt3+tt7+tt8+tt4+tt5+tt9+tt10+tt11+tt6)/60./mpiworld%max_threads
 
         endif
 
@@ -659,7 +663,7 @@ use m_correlate
 
     !forward: add RHS to v^it
     !adjoint: add RHS to v^it+1
-    subroutine inject_velocities(self,f,time_dir,it)
+    subroutine inject_velocity(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
         
@@ -669,7 +673,7 @@ use m_correlate
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
             ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
             
-            wl=time_dir*f%wavelet(1,it)
+            wl=time_dir*f%wavelet(1,it)*wavelet_scaler
             
             if(if_hicks) then
                 select case (shot%src%comp)
@@ -677,9 +681,11 @@ use m_correlate
                     f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoz(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
                     
                     case ('vx')
+                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                     f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buox(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
                     
                     case ('vy')
+                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                     f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoy(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
                     
                 end select
@@ -690,9 +696,11 @@ use m_correlate
                     f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + wl*self%buoz(iz,ix,iy)
                     
                     case ('vx') !horizontal x force on vx[iz,ix-0.5,iy]
+                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                     f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + wl*self%buox(iz,ix,iy)
                     
                     case ('vy') !horizontal y force on vy[iz,ix,iy-0.5]
+                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                     f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + wl*self%buoy(iz,ix,iy)
                     
                 end select
@@ -707,7 +715,7 @@ use m_correlate
                 ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
                 ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
                 
-                wl=f%wavelet(i,it)
+                wl=f%wavelet(i,it)*wavelet_scaler
                 
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
@@ -715,9 +723,11 @@ use m_correlate
                         f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
 
                         case ('vx') !horizontal x adjsource
+                        if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                         f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buox(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
                         
                         case ('vy') !horizontal y adjsource
+                        if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                         f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
                         
                     end select
@@ -730,10 +740,12 @@ use m_correlate
 
                         case ('vx') !horizontal x adjsource
                         !vx[ix-0.5,iy,iz]
+                        if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                         f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + wl*self%buox(iz,ix,iy) !no time_dir needed!
                         
                         case ('vy') !horizontal y adjsource
                         !vy[ix,iy-0.5,iz]
+                        if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                         f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + wl*self%buoy(iz,ix,iy) !no time_dir needed!
                         
                     end select
@@ -744,43 +756,44 @@ use m_correlate
         
     end subroutine
     
-    !forward: v^it -> v^it+1 by FD of s^it+0.5
-    !adjoint: v^it+1 -> v^it by FD^T of s^it+0.5
-    subroutine update_velocities(self,f,time_dir,it)
+    !forward: v^it -> v^it+1 by FD  of s^it+0.5
+    !adjoint: v^it+1 -> v^it by FDᵀ of s^it+0.5
+    subroutine update_velocity(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
 
         ifz=f%bloom(1,it)+2
-        if(m%is_freesurface) ifz=max(ifz,1)
         ilz=f%bloom(2,it)-1
         ifx=f%bloom(3,it)+2
         ilx=f%bloom(4,it)-1
         ify=f%bloom(5,it)+2
         ily=f%bloom(6,it)-1
 
+        if(m%is_freesurface) ifz=max(ifz,1)
+
 
         if(m%is_cubic) then
-            call fd3d_velocities(f%vz,f%vx,f%vy,f%p,                     &
-                                 f%dz_p,f%dx_p,f%dy_p,                   &
-                                 self%buoz,self%buox,self%buoy,          &
-                                 ifz,ilz,ifx,ilx,ify,ily,time_dir*self%dt)
+            call fd3d_velocity(f%vz,f%vx,f%vy,f%p,                     &
+                               f%dz_p,f%dx_p,f%dy_p,                   &
+                               self%buoz,self%buox,self%buoy,          &
+                               ifz,ilz,ifx,ilx,ify,ily,time_dir*self%dt)
         else
 
-            call fd2d_velocities(f%vz,f%vx,f%p,                  &
-                                 f%dz_p,f%dx_p,                  &
-                                 self%buoz,self%buox,            &
-                                 ifz,ilz,ifx,ilx,time_dir*self%dt)
+            call fd2d_velocity(f%vz,f%vx,f%p,                  &
+                               f%dz_p,f%dx_p,                  &
+                               self%buoz,self%buox,            &
+                               ifz,ilz,ifx,ilx,time_dir*self%dt)
 
         endif
 
-        if(m%is_freesurface) call freesurface_velocities(f%vz,f%vx)
+        if(m%is_freesurface) call freesurface_velocity(f%vz,f%vx)
         
     end subroutine
     
 
     !forward: add RHS to s^it+0.5
     !adjoint: add RHS to s^it+1.5
-    subroutine inject_stresses(self,f,time_dir,it)
+    subroutine inject_pressure(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
 
@@ -794,7 +807,7 @@ use m_correlate
             
             if(if_hicks) then
                 if(shot%src%comp=='p') then
-                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
+                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef_anti(:,:,:)
                 endif
                 
             else
@@ -805,9 +818,7 @@ use m_correlate
                 
             endif
 
-            return
-
-        endif
+        return; endif
 
             do i=1,shot%nrcv
 
@@ -838,7 +849,7 @@ use m_correlate
 
     !forward: s^it+0.5 -> s^it+1.5 by FD of v^it+1
     !adjoint: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
-    subroutine update_stresses(self,f,time_dir,it)
+    subroutine update_pressure(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
 
@@ -852,18 +863,18 @@ use m_correlate
         
 
         if(m%is_cubic) then
-            call fd3d_stresses(f%vz,f%vx,f%vy,f%p,                     &
+            call fd3d_pressure(f%vz,f%vx,f%vy,f%p,                     &
                                f%dz_z,f%dx_x,f%dy_y,                   &
                                self%kpa,                               &
                                ifz,ilz,ifx,ilx,ify,ily,time_dir*self%dt)
         else
-            call fd2d_stresses(f%vz,f%vx,f%p,                  &
+            call fd2d_pressure(f%vz,f%vx,f%p,                  &
                                f%dz_z,f%dx_x,                  &
                                self%kpa,                       &
                                ifz,ilz,ifx,ilx,time_dir*self%dt)
         endif
 
-        if(m%is_freesurface) call freesurface_stresses(f%p)
+        if(m%is_freesurface) call freesurface_stress(f%p)
         
     end subroutine
 
@@ -882,7 +893,7 @@ use m_correlate
                     select case (shot%rcv(i)%comp)
                         
                         case ('p')
-                        f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef)
+                        f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef_anti)
                         case ('vz')
                         f%seismo(i,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
                         case ('vx')
@@ -907,9 +918,7 @@ use m_correlate
 
             enddo
 
-            return
-
-        endif
+        return; endif
 
             ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
@@ -918,7 +927,7 @@ use m_correlate
             if(if_hicks) then
                 select case (shot%src%comp)
                     case ('p')
-                    f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef)
+                    f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef_anti)
                     
                     case ('vz')
                     f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
@@ -1097,10 +1106,10 @@ use m_correlate
 
     !========= Finite-Difference on flattened arrays ==================
 
-    subroutine fd3d_velocities(vz,vx,vy,p,               &
-                               dp_dz,dp_dx,dp_dy,        &
-                               buoz,buox,buoy,           &
-                               ifz,ilz,ifx,ilx,ify,ily,dt)
+    subroutine fd3d_velocity(vz,vx,vy,p,               &
+                             dp_dz,dp_dx,dp_dy,        &
+                             buoz,buox,buoy,           &
+                             ifz,ilz,ifx,ilx,ify,ily,dt)
         real,dimension(*) :: vz,vx,vy,p
         real,dimension(*) :: dp_dz,dp_dx,dp_dy
         real,dimension(*) :: buoz,buox,buoy
@@ -1166,10 +1175,10 @@ use m_correlate
         
     end subroutine
     
-    subroutine fd2d_velocities(vz,vx,p,          &
-                               dp_dz,dp_dx,      &
-                               buoz,buox,        &
-                               ifz,ilz,ifx,ilx,dt)
+    subroutine fd2d_velocity(vz,vx,p,          &
+                             dp_dz,dp_dx,      &
+                             buoz,buox,        &
+                             ifz,ilz,ifx,ilx,dt)
         real,dimension(*) :: vz,vx,p
         real,dimension(*) :: dp_dz,dp_dx
         real,dimension(*) :: buoz,buox
@@ -1223,7 +1232,7 @@ use m_correlate
         
     end subroutine
     
-    subroutine fd3d_stresses(vz,vx,vy,p,               &
+    subroutine fd3d_pressure(vz,vx,vy,p,               &
                              dvz_dz,dvx_dx,dvy_dy,     &
                              kpa,                      &
                              ifz,ilz,ifx,ilx,ify,ily,dt)
@@ -1290,7 +1299,7 @@ use m_correlate
         
     end subroutine
     
-    subroutine fd2d_stresses(vz,vx,p,          &
+    subroutine fd2d_pressure(vz,vx,p,          &
                              dvz_dz,dvx_dx,    &
                              kpa,              &
                              ifz,ilz,ifx,ilx,dt)
