@@ -6,8 +6,9 @@ use m_model
 use m_shot
 use m_computebox
 use m_field
-use m_correlate
 use m_cpml
+use m_freesurface
+use m_correlate
 
     private
 
@@ -22,8 +23,6 @@ use m_cpml
 
     !scaling source wavelet
     real :: wavelet_scaler
-
-    character(:),allocatable :: FS_method
 
     type,public :: t_propagator
         !info
@@ -170,7 +169,7 @@ use m_cpml
 
         if_hicks=shot%if_hicks
 
-        FS_method=setup%get_str('FS_METHOD',o_default='stress_image')
+        call freesurface_init()
 
         call alloc(self%buoz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(self%buox,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -658,21 +657,8 @@ use m_cpml
                            ifz,ilz,ifx,ilx)
         endif
 
-        !Levandar & Roberttson's stress image for free surface boundary condition
-        !free surface is located at [1,ix,1] level
-        if(m%is_freesurface) then
-            if (FS_method=='stress_vel_image') then
-                !symmetric mirroring: vz[0.5]=vz[1.5], ie. vz(1,ix,iy)=vz(2,ix,iy) -> p(1,ix,iy)=0.
-                f%az(1,:,:)=f%az(2,:,:)
-
-            elseif (FS_method=='stress_image') then
-                f%az(cb%ifz:1,:,:)=0.
-                f%ax(cb%ifz:0,:,:)=0.
-
-            endif
-
-        endif
-
+        if(m%is_freesurface) call freesurface_velocities(f%az,f%ax)
+        
         !laplacian
         if(m%is_cubic) then
         else
@@ -681,15 +667,8 @@ use m_cpml
                                 ifz,ilz,ifx,ilx)
         endif
 
-        if(m%is_freesurface) then
-            f%lap(1,:,:)=0. !explicit null pressure: p(1,ix,iy)=0
-
-            !antisymmetric mirroring including p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
-            f%lap( 1,:,:)=0.
-            f%lap(0:cb%ifz:-1, :,:)=-f%lap(2:2+0-cb%ifz, :,:)
-        endif
-
-
+        if(m%is_freesurface) call freesurface_stresses(f%lap)
+        
         !update pressure
         if(time_dir>0.) then !in forward time
             f%p_next(ifz:ilz,ifx:ilx,:) = 2*f%p(ifz:ilz,ifx:ilx,:) -f%p_prev(ifz:ilz,ifx:ilx,:) & 

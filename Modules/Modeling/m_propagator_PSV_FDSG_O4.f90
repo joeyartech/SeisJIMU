@@ -6,8 +6,9 @@ use m_model
 use m_shot
 use m_computebox
 use m_field
-use m_correlate
 use m_cpml
+use m_freesurface
+use m_correlate
 
 use, intrinsic :: ieee_arithmetic
 
@@ -24,8 +25,6 @@ use, intrinsic :: ieee_arithmetic
 
     !scaling source wavelet
     real :: wavelet_scaler
-
-    character(:),allocatable :: FS_method
 
     type,public :: t_propagator
         !info
@@ -177,11 +176,13 @@ use, intrinsic :: ieee_arithmetic
         
         wavelet_scaler=self%dt/m%cell_volume
 
+        call freesurface_init()
+
         if_hicks=shot%if_hicks
 
         if_record_adjseismo=either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
 
-        FS_method=setup%get_str('FS_METHOD',o_default='stress_image')
+        call freesurface_init()
 
         call alloc(self%buoz,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%buox,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
@@ -841,51 +842,7 @@ use, intrinsic :: ieee_arithmetic
         
         !apply free surface boundary condition if needed
         !free surface is located at [1,ix,1] level
-        if(m%is_freesurface) then
-            if (FS_method=='zero_stress') then
-                !Δsz=0 : -(λ+2μ)∂_z vz = λ ∂ₓvx
-                !         -(λ+2μ)[1,ix]*(vz[1.5,ix]-vz[0.5,ix])/dz = λ[1,ix]*(vx[1,ix-0.5]-vx[1,ix+0.5])/dx
-                !         -(λ+2μ)(1,ix)*(vz(2  ,ix)-vz(1  ,ix))/dz = λ(1,ix)*(vx(1,ix    )-vx(1,ix+1  ))/dx
-                !          (λ+2μ)(1,ix)*(vz(1  ,ix)-vz(2  ,ix))/dz = λ(1,ix)*(vx(1,ix    )-vx(1,ix+1  ))/dx
-                !Δss=0 : -∂_z vx = ∂ₓvz
-                !         -(vx[2,ix+0.5]-vx[0,ix+0.5])/2dz = ( (vz[0.5,ix]+vz[1.5,ix])/2 - (vz[0.5,ix+1]+vz[1.5,ix+1])/2 )/dx
-                !         -(vx(2,ix+1  )-vx(0,ix+1  ))/2dz = ( (vz(1  ,ix)+vz(2  ,ix))/2 - (vz(1  ,ix+1)+vz(2  ,ix+1))/2 )/dx
-                !          (vx(0,ix+1  )-vx(2,ix+1  ))/ dz = ( (vz(1  ,ix)+vz(2  ,ix))   -  vz(1  ,ix+1)-vz(2  ,ix+1)    )/dx
-                dz_dx = m%dz/m%dx
-
-                do ix=ifx,ilx
-                    f%vz(1,ix,1)= f%vz(2,ix,1) + self%lda(1,ix)*(f%vx(1,ix,1)-f%vx(1,ix+1,1))*dz_dx/self%ldap2mu(1,ix)
-                    !f%vx(0,ix,1)= f%vx(2,ix,1) + (f%vz(1,ix,1)+f%vz(2,ix,1)-f%vz(1,ix+1,1)-f%vz(2,ix+1,1))*dz_dx/self%ldap2mu(1,ix) !toy2del says this condition is not needed
-                enddo
-
-            elseif (FS_method=='stress_image') then !Levandar & Roberttson
-                !Roberttson's 3rd method
-                f%vz(cb%ifz:1,:,1)=0.
-                f%vx(cb%ifz:0,:,1)=0.
-
-            ! elseif (FS_method=='effective_medium') then !Mittet, Cao & Chen. but not yet working
-            !     !required for high-ord FD
-            !     f%vz(cb%ifz:1,:,1)=0.
-            !     f%vx(cb%ifz:0,:,1)=0.
-
-            !     do ix=ifx,ilx
-            !         dsz_dz_= (f%sz(2,ix,1)                )/m%dz !c1z*(f%sz(2,ix,1)-f%sz(1,ix  ,1)) +c2z*(f%sz(3,ix  ,1)-f%sz(0,ix,1))
-            !         dsx_dx_= (f%sx(1,ix,1)-f%sx(1,ix-1,1))/m%dx !c1x*(f%sx(1,ix,1)-f%sx(1,ix-1,1)) +c2x*(f%sx(1,ix+1,1)-f%sx(1,ix-2,1))
-
-            !         ! dss_dz_= c1z*(f%ss(2,ix,1)-f%ss(1,ix,1)) +c2z*(f%ss(3,ix,1)-f%ss(0,ix,1))
-            !         dss_dx_= (f%ss(2,ix+1,1)-f%ss(2,ix,1))/m%dx !c1x*(f%ss(2,ix+1,1)-f%ss(2,ix,1)) +c2x*(f%ss(2,ix+2,1)-f%ss(2,ix-1,1))
-                                    
-            !         !velocity
-            !         f%vz(2,ix,1)=f%vz(2,ix,1) + self%dt*   self%buoz(2,ix)*(dsz_dz_           +dss_dx_)
-
-            !         !f%vx(i)=f%vx(i) + self%dt*2.*self%buox(i)*(dss_dz_+dsx_dx_)
-            !         f%vx(1,ix,1)=f%vx(1,ix,1) + self%dt*2.*self%buox(1,ix)*(f%ss(2,ix,1)/m%dz +dsx_dx_)
-
-            !     enddo
-
-            endif
-
-        endif
+        if(m%is_freesurface) call freesurface_velocities(f%vz,f%vx)
 
     end subroutine
 
@@ -1009,81 +966,28 @@ use, intrinsic :: ieee_arithmetic
         real factor
 
         ifz=f%bloom(1,it)+2  !1
+        if(m%is_freesurface) ifz=max(ifz,2)
         ilz=f%bloom(2,it)-2
         ifx=f%bloom(3,it)+2  !1
         ilx=f%bloom(4,it)-2
         
-        if(m%is_freesurface) ifz=max(ifz,2)
 
         call fd2d_stresses(f%vz,f%vx,f%sz,f%sx,f%ss,    &
                            f%dz_z,f%dx_x,f%dx_z,f%dz_x,&
                            self%ldap2mu,self%lda,self%mu,  &
                            ifz,ilz,ifx,ilx,time_dir*self%dt)
         
-
-        !apply free surface boundary condition if needed
-        !free surface is located at [1,ix] level
         if(m%is_freesurface) then
-            if (FS_method=='zero_stress') then
-                !so explicit boundary condition: sz(1,ix)=0
-                !and antisymmetric mirroring: ss[0.5,ix-0.5]=-ss[1.5,ix-0.5] -> ss(1,ix)=-ss(2,ix)
-                f%sz(1,:,1)=0.
-                f%ss(1,:,1)=-f%ss(2,:,1)
+            call freesurface_stresses(f%sz,f%sx)
 
-            elseif (FS_method=='stress_image') then !Levandar & Roberttson
-
-                !image sz
-                f%sz( 1,:,1)=0.
-                f%sz(0:cb%ifz:-1, :,1)=-f%sz(2:2+0-cb%ifz, :,1)
-
-                !not image on sx, use the reduced stiffness tensor
-                ! f%sx(0:cb%ifz:-1,:,1)=0. !no needed
-                do ix=cb%ifx+1,cb%ilx-2
-                    dvx_dx_= c1x*(f%vx(1,ix+1,1)-f%vx(1,ix,1))  +c2x*(f%vx(1,ix+2,1)-f%vx(1,ix-1,1))
-                    
-                    factor=-self%lda(1,ix)**2/self%ldap2mu(1,ix) + self%ldap2mu(1,ix)
-                    f%sx(1,ix,1)  = f%sx(1,ix,1) + time_dir*self%dt * factor*dvx_dx_
-                enddo
+            !not image on sx, use the reduced stiffness tensor
+            ! f%sx(0:cb%ifz:-1,:,1)=0. !no needed    
+            do ix=cb%ifx+1,cb%ilx-2
+                dvx_dx_= c1x*(f%vx(1,ix+1,1)-f%vx(1,ix,1))  +c2x*(f%vx(1,ix+2,1)-f%vx(1,ix-1,1))
                 
-                !image ss
-                f%ss(1:cb%ifz:-1, :,1)=-f%ss(2:2+1-cb%ifz, :,1)
-
-            ! elseif (FS_method=='effective_medium') then !Mittet, Cao & Chen. but not yet working       
-
-            !     !required for high-ord FD
-            !     ! f%ss(cb%ifz:1,:,1)=0.
-            !     ! f%sz(cb%ifz:0,:,1)=0.
-            !     f%sz( 1,:,1)=0.
-            !     nnz=0-cb%ifz
-            !     f%sz(cb%ifz:0, :,1)=-f%sz(2+nnz:2:-1, :,1)
-            !     nnz=1-cb%ifz
-            !     f%ss(cb%ifz:1, :,1)=-f%ss(2+nnz:2:-1, :,1)
-            !     f%sx(cb%ifz:0,:,1)=0.
-
-            !     do ix=ifx,ilx
-                
-            !         dvx_dx_= (f%vx(1,ix+1,1)-f%vx(1,ix,1))/m%dx !c1x*(f%vx(1,ix+1,1)-f%vx(1,ix,1))  +c2x*(f%vx(1,ix+2,1)-f%vx(1,ix-1,1))
-            !         !dvx_dx_= c1x*(f%vx(1,ix+1,1)-f%vx(1,ix,1))  +c2x*(f%vx(1,ix+2,1)-f%vx(1,ix-1,1))
-                    
-            !         !normal stresses
-            !         f%sz(1,ix,1) = 0.
-
-            !         factor=-self%lda(1,ix)**2/self%ldap2mu(1,ix) + self%ldap2mu(1,ix)
-            !         factor=factor/2.
-            !         f%sx(1,ix,1) = f%sx(1,ix,1) + time_dir*self%dt * factor*dvx_dx_
-
-
-            !         dvz_dx_= (f%vz(2,ix,1)-f%vz(2,ix-1,1))/m%dx
-            !         !dvz_dx_= c1x*(f%vz(2,ix,1)-f%vz(2,ix-1,1))  +c2x*(f%vz(2,ix+1,1)-f%vz(2,ix-2,1))
-            !         dvx_dz_= (f%vx(2,ix,1)-f%vx(1,ix  ,1))/m%dz
-            !         !dvx_dz_= c1z*(f%vx(2,ix,1)-f%vx(1,ix  ,1))  +c2z*(f%vx(3,ix  ,1)-f%vx(0,ix  ,1))
-                    
-            !         !shear stress
-            !         f%ss(2,ix,1) = f%ss(2,ix,1) + time_dir*self%dt * self%mu(2,ix)*(dvz_dx_+dvx_dz_)
-                        
-            !     enddo
-
-            endif
+                factor= 4.*self%mu(1,ix)*(self%lda(1,ix)+self%mu(1,ix))/self%ldap2mu(1,ix)
+                f%sx(1,ix,1)  = f%sx(1,ix,1) + time_dir*self%dt * factor*dvx_dx_
+            enddo
 
         endif
 

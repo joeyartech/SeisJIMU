@@ -6,8 +6,9 @@ use m_model
 use m_shot
 use m_computebox
 use m_field
-use m_correlate
 use m_cpml
+use m_freesurface
+use m_correlate
 
 use, intrinsic :: ieee_arithmetic
 
@@ -22,12 +23,9 @@ use, intrinsic :: ieee_arithmetic
     !local const
     real :: dt2, inv_2dt, inv_2dz, inv_2dx
 
-
     !scaling source wavelet
     real :: wavelet_scaler
-
-    character(:),allocatable :: FS_method
-
+    
     type,public :: t_propagator
         !info
         character(i_str_xxlen) :: info = &
@@ -176,6 +174,8 @@ use, intrinsic :: ieee_arithmetic
         inv_2dx =1./2/m%dx
         
         wavelet_scaler=dt2/m%cell_volume
+
+        call freesurface_init()
 
         if_hicks=shot%if_hicks
 
@@ -784,25 +784,20 @@ use, intrinsic :: ieee_arithmetic
                            ifz,ilz,ifx,ilx)
         endif
 
-        !Levandar & Roberttson's stress image for free surface boundary condition
-        !free surface is located at [1,ix,1] level
         if(m%is_freesurface) then
-            !image sz
-            f%sz( 1,:,1)=0.
-            f%sz(0:cb%ifz:-1, :,1)=-f%sz(2:2+0-cb%ifz, :,1)
+            call freesurface_stresses(f%sz,f%ss)
 
             !not image on sx, use the reduced stiffness tensor
-            ! f%sx(0:cb%ifz:-1,:,1)=0. !no needed
+            ! f%sx(0:cb%ifz:-1,:,1)=0. !no needed  
             do ix=cb%ifx+1,cb%ilx-2
                 dux_dx_= c1x*(f%ux(1,ix+1,1)-f%ux(1,ix,1))  +c2x*(f%ux(1,ix+2,1)-f%ux(1,ix-1,1))
                 
                 factor= 4.*self%mu(1,ix)*(self%lda(1,ix)+self%mu(1,ix))/self%ldap2mu(1,ix)
                 f%sx(1,ix,1) = factor*dux_dx_
             enddo
-            
-            !image ss
-            f%ss(1:cb%ifz:-1, :,1)=-f%ss(2:2+1-cb%ifz, :,1)
 
+        endif
+            
         !laplacian
         if(m%is_cubic) then
         else
@@ -812,18 +807,7 @@ use, intrinsic :: ieee_arithmetic
                                 ifz,ilz,ifx,ilx)
         endif
 
-        if(m%is_freesurface) then
-            if (FS_method=='stress_vel_image') then
-                !symmetric mirroring: vz[0.5]=vz[1.5], ie. vz(1,ix,iy)=vz(2,ix,iy) -> p(1,ix,iy)=0.
-                f%lapz(1,:,:)=f%lapz(2,:,:)
-
-            elseif (FS_method=='stress_image') then
-                f%lapz(cb%ifz:1,:,:)=0.
-                f%lapx(cb%ifz:0,:,:)=0.
-
-            endif
-
-        endif
+        if(m%is_freesurface) call freesurface_velocities(f%lapz,f%lapx)
 
 
         !update displacement

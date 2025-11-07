@@ -6,10 +6,10 @@
 ############
 #WaveEq=AC
 #WaveEq=AC2nd
-WaveEq=VisAC2nd
+#WaveEq=VisAC2nd
 
 #WaveEq=PSV
-#WaveEq=PSV2nd
+WaveEq=PSV2nd
 
 Solver=FDSG
 Order=O4

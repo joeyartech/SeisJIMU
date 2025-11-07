@@ -6,8 +6,9 @@ use m_model
 use m_shot
 use m_computebox
 use m_field
-use m_correlate
 use m_cpml
+use m_freesurface
+use m_correlate
 
     private
 
@@ -22,8 +23,6 @@ use m_cpml
 
     !scaling source wavelet
     real :: wavelet_scaler
-
-    character(:),allocatable :: FS_method
 
     type,public :: t_propagator
         !info
@@ -167,7 +166,7 @@ use m_cpml
 
         if_hicks=shot%if_hicks
 
-        FS_method=setup%get_str('FS_METHOD',o_default='stress_image')
+        call freesurface_init()
 
         call alloc(self%buoz,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(self%buox,   [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -752,13 +751,13 @@ use m_cpml
         type(t_field) :: f
 
         ifz=f%bloom(1,it)+2
+        if(m%is_freesurface) ifz=max(ifz,1)
         ilz=f%bloom(2,it)-1
         ifx=f%bloom(3,it)+2
         ilx=f%bloom(4,it)-1
         ify=f%bloom(5,it)+2
         ily=f%bloom(6,it)-1
 
-        if(m%is_freesurface) ifz=max(ifz,1)
 
         if(m%is_cubic) then
             call fd3d_velocities(f%vz,f%vx,f%vy,f%p,                     &
@@ -774,22 +773,8 @@ use m_cpml
 
         endif
 
-
-        !Levandar & Roberttson's stress image for free surface boundary condition
-        !free surface is located at [1,ix,1] level
-        if(m%is_freesurface) then
-            if (FS_method=='stress_vel_image') then
-                !symmetric mirroring: vz[0.5]=vz[1.5], ie. vz(1,ix,iy)=vz(2,ix,iy) -> p(1,ix,iy)=0.
-                f%vz(1,:,:)=f%vz(2,:,:)
-
-            elseif (FS_method=='stress_image') then
-                f%vz(cb%ifz:1,:,1)=0.
-                f%vx(cb%ifz:0,:,1)=0.
-
-            endif
-
-        endif
-
+        if(m%is_freesurface) call freesurface_velocities(f%vz,f%vx)
+        
     end subroutine
     
 
@@ -858,13 +843,13 @@ use m_cpml
         type(t_field) :: f
 
         ifz=f%bloom(1,it)+1
+        if(m%is_freesurface) ifz=max(ifz,1)
         ilz=f%bloom(2,it)-2
         ifx=f%bloom(3,it)+1
         ilx=f%bloom(4,it)-2
         ify=f%bloom(5,it)+1
         ily=f%bloom(6,it)-2
         
-        if(m%is_freesurface) ifz=max(ifz,1)
 
         if(m%is_cubic) then
             call fd3d_stresses(f%vz,f%vx,f%vy,f%p,                     &
@@ -877,19 +862,9 @@ use m_cpml
                                self%kpa,                       &
                                ifz,ilz,ifx,ilx,time_dir*self%dt)
         endif
+
+        if(m%is_freesurface) call freesurface_stresses(f%p)
         
-
-        !Levandar & Roberttson's stress image for free surface boundary condition
-        !free surface is located at [1,ix,1] level
-        if(m%is_freesurface) then
-            f%p(1,:,:)=0. !explicit null pressure: p(1,ix,iy)=0
-
-            !antisymmetric mirroring including p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
-            f%p( 1,:,1)=0.
-            f%p(0:cb%ifz:-1, :,1)=-f%p(2:2+0-cb%ifz, :,1)
-
-        endif
-    
     end subroutine
 
     subroutine extract(self,f,it)
