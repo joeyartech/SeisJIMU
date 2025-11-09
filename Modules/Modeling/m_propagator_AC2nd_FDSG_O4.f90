@@ -37,7 +37,7 @@ use m_correlate
             'Required field components: p, p_prev, p_next'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
             'Energy terms: Σ_shot ∫ sfield%p² dt'//s_NL// &
-            'Basic gradients: gikpa, gbuo'
+            'Basic gradients: gbuo, gikpa'
 
         integer :: nbndlayer=max(1,hicks_r) !minimum absorbing layer thickness
         integer :: ngrad=2 !number of basic gradients
@@ -566,7 +566,7 @@ use m_correlate
             write(*,*) 'Elapsed time to evolve adj field         ',tt11/mpiworld%max_threads
             ! write(*,*) 'Elapsed time to set adj field          ',tt9/mpiworld%max_threads
             write(*,*) 'Elapsed time to extract fields           ',tt12/mpiworld%max_threads
-            write(*,*) 'Elapsed time to compute Poynting vectors ',tt3/mpiworld%max_threads
+            ! write(*,*) 'Elapsed time to compute Poynting vectors ',tt3/mpiworld%max_threads
             write(*,*) 'Elapsed time to correlate                ',tt10/mpiworld%max_threads
 
         endif
@@ -851,9 +851,7 @@ use m_correlate
 
             enddo
 
-            return
-
-        endif
+        return; endif
 
             ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1

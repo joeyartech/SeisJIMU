@@ -92,6 +92,13 @@ use singleton
         procedure :: update
         procedure :: evolve
         procedure :: extract
+        ! procedure :: gaussian_smooth
+
+        ! procedure :: dft2d
+        ! procedure :: idft2d
+        ! procedure :: fftshift2d
+        ! procedure :: ifftshift2d
+        ! procedure :: fft_filter
 
         final :: final
 
@@ -679,16 +686,33 @@ use singleton
             
             wl=time_dir*f%wavelet(1,it)*wavelet_scaler
 
-            !explosion
-            if(shot%src%comp=='p') then
-                if(if_hicks) then
-                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef_anti
-                else
-                    f%p(iz,ix,iy)                = f%p(iz,ix,iy)                + wl*self%kpa(iz,ix,iy)
-                endif
+            if(if_hicks) then
+                select case (shot%src%comp)
+                case ('p') !explosion
+                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
+                
+                case ('dpdz') !vertical force
+                    f%p(ifz+1:ilz+1,ifx:ilx,ify:ily) = f%p(ifz+1:ilz+1,ifx:ilx,ify:ily) + wl*self%kpa(ifz+1:ilz+1,ifx:ilx,ify:ily)*inv_2dz*shot%src%interp_coef
+                    f%p(ifz-1:ilz-1,ifx:ilx,ify:ily) = f%p(ifz-1:ilz-1,ifx:ilx,ify:ily) - wl*self%kpa(ifz-1:ilz-1,ifx:ilx,ify:ily)*inv_2dz*shot%src%interp_coef
+                
+                endselect
+
+            else
+                select case (shot%src%comp)
+                case ('p') !explosion
+                    f%p(iz,ix,iy)                  = f%p(iz,ix,iy)                + wl*self%kpa(iz,ix,iy)
+                
+                case ('dpdz') !vertical force
+                    f%p(iz+1,ix,iy)                = f%p(iz+1,ix,iy)            + wl*self%kpa(iz+1,ix,iy)*inv_2dz
+                    f%p(iz-1,ix,iy)                = f%p(iz-1,ix,iy)            - wl*self%kpa(iz-1,ix,iy)*inv_2dz
+                
+                endselect
+
             endif
 
-        return; endif
+            return
+
+        endif
 
         do i=1,shot%nrcv
 
@@ -702,214 +726,155 @@ use singleton
                 iy=shot%rcv(i)%iy-cb%ioy+1
             endif
 
-            !adjsource for pressure
             wl = f%wavelet(i,it)*wavelet_scaler    !no time_dir needed!
 
-            if(shot%src%comp=='p') then
-                if(if_hicks) then 
-                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef_anti
-                else
+            if(if_hicks) then 
+
+                select case (shot%rcv(i)%comp)
+                case ('p') !adjsource for pressure
+                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef
+
+                case ('dpdz') !adjsource for vertical force 
+                    f%p(ifz+1:ilz+1,ifx:ilx,ify:ily) = f%p(ifz+1:ilz+1,ifx:ilx,ify:ily) + wl*self%kpa(ifz+1:ilz+1,ifx:ilx,ify:ily)*inv_2dz*shot%rcv(i)%interp_coef
+                    f%p(ifz-1:ilz-1,ifx:ilx,ify:ily) = f%p(ifz-1:ilz-1,ifx:ilx,ify:ily) - wl*self%kpa(ifz-1:ilz-1,ifx:ilx,ify:ily)*inv_2dz*shot%rcv(i)%interp_coef
+
+                endselect
+
+            else
+                select case (shot%rcv(i)%comp)
+                case ('p') !adjsource for pressure
                     f%p(iz,ix,iy)                = f%p(iz,ix,iy)                +wl*self%kpa(iz,ix,iy)
-                endif
+            
+                case ('dpdz') !adjsource for vertical force 
+                    f%p(iz+1,ix,iy)              = f%p(iz+1,ix,iy)              + wl*self%kpa(iz+1,ix,iy)*inv_2dz
+                    f%p(iz-1,ix,iy)              = f%p(iz-1,ix,iy)              - wl*self%kpa(iz-1,ix,iy)*inv_2dz
+
+                endselect
+
             endif
 
         enddo
         
     end subroutine
 
-    subroutine inject_acceleration(self,f,time_dir,it)
+    subroutine differentiate(self,f,time_dir,it)
         class(t_propagator) :: self
         type(t_field) :: f
+                
+        ! !necessary after computing the secondary source
+        ! f%lap=0.
+
+        ifz=f%bloom(1,it)
+        if(m%is_freesurface) ifz=max(ifz,1)
+        ilz=f%bloom(2,it)
+        ifx=f%bloom(3,it)
+        ilx=f%bloom(4,it)
         
-        if(.not. f%is_adjoint) then
-
-            ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
-            ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
-            ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
-            
-            wl=time_dir*f%wavelet(1,it)/m%cell_volume !as no time derivative
-            
-            if(if_hicks) then
-                select case (shot%src%comp)
-                    case ('az')
-                    f%az(ifz:ilz,ifx:ilx,ify:ily) = f%az(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoz(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
-                    
-                    case ('ax')
-                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
-                    f%ax(ifz:ilz,ifx:ilx,ify:ily) = f%ax(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buox(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
-                    
-                    case ('ay')
-                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
-                    f%ay(ifz:ilz,ifx:ilx,ify:ily) = f%ay(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoy(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
-                    
-                end select
-                
-            else
-                select case (shot%src%comp)
-                    case ('az') !vertical force     on vz[iz-0.5,ix,iy]
-                    f%az(iz,ix,iy) = f%az(iz,ix,iy) + wl*self%buoz(iz,ix,iy)
-                    
-                    case ('ax') !horizontal x force on vx[iz,ix-0.5,iy]
-                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
-                    f%ax(iz,ix,iy) = f%ax(iz,ix,iy) + wl*self%buox(iz,ix,iy)
-                    
-                    case ('ay') !horizontal y force on vy[iz,ix,iy-0.5]
-                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
-                    f%ay(iz,ix,iy) = f%ay(iz,ix,iy) + wl*self%buoy(iz,ix,iy)
-                    
-                end select
-                
-            endif
-
-        return; endif
-
-
-            do i=1,shot%nrcv
-                ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
-                ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
-                ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
-                
-                 wl=f%wavelet(i,it)/m%cell_volume !as no time derivative
-                
-                if(if_hicks) then
-                    select case (shot%rcv(i)%comp)
-                        case ('az') !vertical z adjsource
-                        f%az(ifz:ilz,ifx:ilx,ify:ily) = f%az(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
-
-                        case ('ax') !horiontal x adjsource
-                        if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
-                        f%ax(ifz:ilz,ifx:ilx,ify:ily) = f%ax(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buox(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
-                        
-                        case ('ay') !horizontal y adjsource
-                        if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
-                        f%ay(ifz:ilz,ifx:ilx,ify:ily) = f%ay(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
-                        
-                    end select
-                    
-                else
-                    select case (shot%rcv(i)%comp)
-                        case ('az') !vertical z adjsource
-                        !vz[ix,iy,iz-0.5]
-                        f%az(iz,ix,iy) = f%az(iz,ix,iy) + wl*self%buoz(iz,ix,iy) !no time_dir needed!
-
-                        case ('ax') !horizontal x adjsource
-                        !vx[ix-0.5,iy,iz]
-                        if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
-                        f%ax(iz,ix,iy) = f%ax(iz,ix,iy) + wl*self%buox(iz,ix,iy) !no time_dir needed!
-                        
-                        case ('ay') !horizontal y adjsource
-                        !vy[ix,iy-0.5,iz]
-                        if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
-                        f%ay(iz,ix,iy) = f%ay(iz,ix,iy) + wl*self%buoy(iz,ix,iy) !no time_dir needed!
-                        
-                    end select
-                    
-                endif
-                
-            enddo
-        
-    end subroutine
-
-    subroutine update(self,fre,fim,time_dir,it)
-        class(t_propagator) :: self
-        type(t_field) :: fre, fim
-
-        complex,dimension(:,:,:),allocatable :: Uprev, U, Unext, Lap
-
-        ifz=fre%bloom(1,it)
-        ilz=fre%bloom(2,it)
-        ifx=fre%bloom(3,it)
-        ilx=fre%bloom(4,it)
-        
-        ! if(m%is_freesurface) ifz=max(ifz,1) !no need
-
         !flux
         if(m%is_cubic) then
         else
-            call fd2d_flux(fre%p,fre%dz_p,fre%dx_p,&
-                           fre%az,fre%ax,          &
-                           self%buoz,self%buox,    &
-                           ifz,ilz,ifx,ilx)
-            call fd2d_flux(fim%p,fim%dz_p,fim%dx_p,&
-                           fim%az,fim%ax,          &
-                           self%buoz,self%buox,    &
+            call fd2d_flux(f%p,f%dz_p,f%dx_p,  &
+                           f%az,f%ax,          &
+                           self%buoz,self%buox,&
                            ifz,ilz,ifx,ilx)
         endif
 
-        call self%inject_acceleration(fre,time_dir,it)
-        call self%inject_acceleration(fim,time_dir,it)
-
+        !Levandar & Roberttson's stress image for free surface boundary condition
+        !free surface is located at [1,ix,1] level
         if(m%is_freesurface) then
-            call freesurface_velocity(fre%az,fre%ax)
-            call freesurface_velocity(fim%az,fim%ax)
+            if (FS_method=='stress_vel_image') then
+                !symmetric mirroring: vz[0.5]=vz[1.5], ie. vz(1,ix,iy)=vz(2,ix,iy) -> p(1,ix,iy)=0.
+                f%az(1,:,:)=f%az(2,:,:)
+
+            elseif (FS_method=='stress_image') then
+                f%az(cb%ifz:1,:,:)=0.
+                f%ax(cb%ifz:0,:,:)=0.
+
+            endif
+
         endif
 
         !laplacian
         if(m%is_cubic) then
         else
-            call fd2d_laplacian(fre%az,fre%ax,fre%dz_z,fre%dx_x,&
-                                fre%lap,                        &
-                                ifz,ilz,ifx,ilx)
-            call fd2d_laplacian(fim%az,fim%ax,fim%dz_z,fim%dx_x,&
-                                fim%lap,                        &
+            call fd2d_laplacian(f%az,f%ax,f%dz_z,f%dx_x,&
+                                f%lap,                  &
                                 ifz,ilz,ifx,ilx)
         endif
 
         if(m%is_freesurface) then
-            call freesurface_stress(fre%lap)
-            call freesurface_stress(fim%lap)
+            f%lap(1,:,:)=0. !explicit null pressure: p(1,ix,iy)=0
+
+            !antisymmetric mirroring including p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
+            f%lap( 1,:,:)=0.
+            f%lap(0:cb%ifz:-1, :,:)=-f%lap(2:2+0-cb%ifz, :,:)
         endif
 
 
-	!update pressure
+        !update pressure
+        if(time_dir>0.) then !in forward time
+            f%p_next(ifz:ilz,ifx:ilx,:) = 2*f%p(ifz:ilz,ifx:ilx,:) -f%p_prev(ifz:ilz,ifx:ilx,:) & 
+                +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*f%lap(ifz:ilz,ifx:ilx,:)
+        else !in reverse time
+            f%p_prev(ifz:ilz,ifx:ilx,:) = 2*f%p(ifz:ilz,ifx:ilx,:) -f%p_next(ifz:ilz,ifx:ilx,:) &
+                +dt2*self%kpa(ifz:ilz,ifx:ilx,:)*f%lap(ifz:ilz,ifx:ilx,:)
+        endif
+
+    end subroutine
+
+    subroutine update(self,f_re,f_im,time_dir,it)
+        class(t_propagator) :: self
+        type(t_field) :: f_re, f_im
+
+        complex,dimension(:,:,:),allocatable :: Uprev, U, Unext, Lap
 
         ! !simple scheme for 1st-order time derivative
         ! !use forward FD in backward vs backward FD in forward modeling
         ! !which can NOT make the field disappear after backpropagation
-        ! if(.not. fre%is_adjoint) then !PDE
+        ! if(.not. f_re%is_adjoint) then !PDE
         !     if(time_dir>0. ) then !forward in time
-        !         Uprev = cmplx(fre%p_prev,fim%p_prev)
-        !         U     = cmplx(fre%p     ,fim%p     )
-        !         Lap   = cmplx(fre%lap   ,fim%lap   )
+        !         Uprev = cmplx(f_re%p_prev,f_im%p_prev)
+        !         U     = cmplx(f_re%p     ,f_im%p     )
+        !         Lap   = cmplx(f_re%lap   ,f_im%lap   )
         !
         !        !Uⁿ⁺¹  =2Uⁿ -Uⁿ⁻¹  +  i C₁/C₂    (Uⁿ-Uⁿ⁻¹) dt      -   C₀/C₂ Uⁿdt² +      1/C₂*dt²*Lap
         !         Unext =2*U -Uprev +c_i*self%C1n*(U-Uprev)*self%dt -self%C0n*U*dt2 +self%invC2*dt2*self%kpa*Lap
         !         Unext =2*U -Uprev +dt2*self%kpa*Lap
-        !         fre%p_next =  real(Unext)
-        !         fim%p_next = aimag(Unext)
+        !         f_re%p_next =  real(Unext)
+        !         f_im%p_next = aimag(Unext)
         !
         !     else !backward in time
-        !         Unext = cmplx(fre%p_next,fim%p_next)
-        !         U     = cmplx(fre%p     ,fim%p     )
-        !         Lap   = cmplx(fre%lap   ,fim%lap   )
+        !         Unext = cmplx(f_re%p_next,f_im%p_next)
+        !         U     = cmplx(f_re%p     ,f_im%p     )
+        !         Lap   = cmplx(f_re%lap   ,f_im%lap   )
         !
         !        !Uⁿ⁻¹  =2Uⁿ -Uⁿ⁺¹  +  i C₁/C₂    (Uⁿ⁺¹-Uⁿ) dt      -   C₀/C₂ Uⁿdt² +      1/C₂*dt²*Lap
         !         Uprev =2*U -Unext +c_i*self%C1n*(Unext-U)*self%dt -self%C0n*U*dt2 +self%invC2*dt2*self%kpa*Lap
-        !         fre%p_prev =  real(Uprev)
-        !         fim%p_prev = aimag(Uprev)
+        !         f_re%p_prev =  real(Uprev)
+        !         f_im%p_prev = aimag(Uprev)
         !
         !     endif
         !
         ! else !Adjoint, backward in time
-        !         Unext = cmplx(fre%p_next,fim%p_next)
-        !         U     = cmplx(fre%p     ,fim%p     )
-        !         Lap   = cmplx(fre%lap   ,fim%lap   )
+        !         Unext = cmplx(f_re%p_next,f_im%p_next)
+        !         U     = cmplx(f_re%p     ,f_im%p     )
+        !         Lap   = cmplx(f_re%lap   ,f_im%lap   )
         !
         !        !Uᵃⁿ⁻¹ =2Uᵃⁿ-Uᵃⁿ⁺¹ +  i    C₁/C₂ᴴ (Uᵃⁿ⁺¹-Uᵃⁿ)dt     -   C₀/C₂ᴴ Uᵃⁿdt² +     1/C₂ᴴ*dt²*Lap
         !         Uprev =2*U -Unext +c_i*self%C1nH*(Unext-U)*self%dt -self%C0nH*U*dt2 +self%invC2H*dt2*self%kpa*Lap
         !        ! Uprev =2*U -Unext +dt2*self%kpa*Lap
-        !         fre%p_prev =  real(Uprev)
-        !         fim%p_prev = aimag(Uprev)
+        !         f_re%p_prev =  real(Uprev)
+        !         f_im%p_prev = aimag(Uprev)
         ! endif
 
         !advanced scheme for 1st-order time derivative
         !use central FD in both backward & forward modeling
         !which can make the field disappear after backpropagation
-        if(.not. fre%is_adjoint) then !PDE
+        if(.not. f_re%is_adjoint) then !PDE
             if(time_dir>0. ) then !forward in time
-                Uprev = cmplx(fre%p_prev,fim%p_prev)
-                U     = cmplx(fre%p     ,fim%p     )
-                Lap   = cmplx(fre%lap   ,fim%lap   )
+                Uprev = cmplx(f_re%p_prev,f_im%p_prev)
+                U     = cmplx(f_re%p     ,f_im%p     )
+                Lap   = cmplx(f_re%lap   ,f_im%lap   )
 
                 !Uⁿ⁺¹  =2Uⁿ -Uⁿ⁻¹  +  i C₁/C₂    (Uⁿ⁺¹-Uⁿ⁻¹) 0.5dt      -   C₀/C₂ Uⁿdt² +      1/C₂*dt²*Lap
                 !(1-iC₁/C₂ 0.5dt)Uⁿ⁺¹  =2Uⁿ -Uⁿ⁻¹  +  i C₁/C₂    (-Uⁿ⁻¹) 0.5dt      -   C₀/C₂ Uⁿdt² +      1/C₂*dt²*Lap
@@ -921,20 +886,20 @@ use singleton
 ! call stablize_complex(Unext)
 ! endif
 ! endif
-                fre%p_next =  real(Unext)
-                fim%p_next = aimag(Unext)
+                f_re%p_next =  real(Unext)
+                f_im%p_next = aimag(Unext)
 
 ! if(it>400)then
 ! if(stablize_method=='fft real field') then
-! call stablize(fre%p_next)
-! call stablize(fim%p_next)
+! call stablize(f_re%p_next)
+! call stablize(f_im%p_next)
 ! endif
 ! endif
 
             else !backward in time
-                Unext = cmplx(fre%p_next,fim%p_next)
-                U     = cmplx(fre%p     ,fim%p     )
-                Lap   = cmplx(fre%lap   ,fim%lap   )
+                Unext = cmplx(f_re%p_next,f_im%p_next)
+                U     = cmplx(f_re%p     ,f_im%p     )
+                Lap   = cmplx(f_re%lap   ,f_im%lap   )
 
                !Uⁿ⁻¹  =2Uⁿ -Uⁿ⁺¹  +  i C₁/C₂    (Uⁿ⁺¹-Uⁿ⁻¹) 0.5dt      -   C₀/C₂ Uⁿdt² +      1/C₂*dt²*Lap
                !(1+i C₁/C₂ 0.5dt)Uⁿ⁻¹  =2Uⁿ -Uⁿ⁺¹  +  i C₁/C₂    (Uⁿ⁺¹) 0.5dt      -   C₀/C₂ Uⁿdt² +      1/C₂*dt²*Lap
@@ -945,15 +910,15 @@ use singleton
 ! call stablize_complex(Uprev)
 ! endif
 
-                fre%p_prev =  real(Uprev)
-                fim%p_prev = aimag(Uprev)
+                f_re%p_prev =  real(Uprev)
+                f_im%p_prev = aimag(Uprev)
 
             endif
 
         else !Adjoint, backward in time
-                Unext = cmplx(fre%p_next,fim%p_next)
-                U     = cmplx(fre%p     ,fim%p     )
-                Lap   = cmplx(fre%lap   ,fim%lap   )
+                Unext = cmplx(f_re%p_next,f_im%p_next)
+                U     = cmplx(f_re%p     ,f_im%p     )
+                Lap   = cmplx(f_re%lap   ,f_im%lap   )
 
                !Uᵃⁿ⁻¹ =2Uᵃⁿ-Uᵃⁿ⁺¹ +  i    C₁/C₂ᴴ (Uᵃⁿ⁺¹-Uᵃⁿ⁻¹) 0.5dt     -   C₀/C₂ᴴ Uᵃⁿdt² +     1/C₂ᴴ*dt²*Lap
                !(1+iC₁/C₂ᴴ 0.5dt)Uᵃⁿ⁻¹ =2Uᵃⁿ-Uᵃⁿ⁺¹ +  i    C₁/C₂ᴴ (Uᵃⁿ⁺¹) 0.5dt     -   C₀/C₂ᴴ Uᵃⁿdt² +     1/C₂ᴴ*dt²*Lap
@@ -964,16 +929,128 @@ use singleton
 ! call stablize_complex(Uprev)
 ! endif
 
-                fre%p_prev =  real(Uprev)
-                fim%p_prev = aimag(Uprev)
+                f_re%p_prev =  real(Uprev)
+                f_im%p_prev = aimag(Uprev)
 
         endif
+
+        ! !apply free surface boundary condition if needed
+        ! if(m%is_freesurface) call fd_freesurface_stresses(f_re%p_next)
+        ! if(m%is_freesurface) call fd_freesurface_stresses(f_im%p_next)
+
+        ! if(m%is_freesurface) call fd_freesurface_pressure(f_re%p)
+        ! if(m%is_freesurface) call fd_freesurface_pressure(f_im%p)
+        ! if(m%is_freesurface) call fd_freesurface_pressure(f_re%p_next)
+        ! if(m%is_freesurface) call fd_freesurface_pressure(f_im%p_next)
+        ! if(m%is_freesurface) then
+        !     f_re%p(1,:,:)=0.
+        !     f_re%p(0,:,:)=-f_re%p(2,:,:)
+        !     f_im%p(1,:,:)=0.
+        !     f_im%p(0,:,:)=-f_im%p(2,:,:)
+        ! endif
+
 
         deallocate(Uprev, U, Unext, Lap) !save some RAM
 
 
+        ! ! apply Dirichlet conditions at the bottom of the C-PML layers,
+        ! ! the right condition to keep C-PML stable at long time
+        ! f%p_next(cb%ifz,:,:)=0.
+        ! f%p_next(cb%ilz,:,:)=0.
+        ! f%p_next(:,cb%ifx,:)=0.
+        ! f%p_next(:,cb%ilx,:)=0.
+        ! f%p_next(:,:,cb%ify)=0.
+        ! f%p_next(:,:,cb%ily)=0.
+
     end subroutine
 
+    ! subroutine fd_freesurface_acceleration(az,ax)
+    !     real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: az,ax
+
+    !     !stress image for free surface boundary condition
+    !     !free surface is located at [1,ix,1] level
+    !     if (FS_method=='stress_image_2nd') then !Levandar & Roberttson's 2nd method
+    !         !symmetric mirroring: az[0.5]=az[1.5], ie. az(1,ix,iy)=az(2,ix,iy) -> p(1,ix,iy)=0.
+    !         az(1,:)=az(2,:)
+
+    !     elseif (FS_method=='stress_image') then !Levandar & Roberttson's method
+    !         az(cb%ifz:1,:)=0.
+    !         ax(cb%ifz:0,:)=0.
+
+    !     endif
+
+    ! end subroutine
+
+    ! subroutine fd_freesurface_pressure(p)
+    !     real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: p
+
+    !     !stress image for free surface boundary condition
+    !     !free surface is located at [1,ix,1] level
+    !     p(1,:)=0. !explicit null pressure: p(1,ix,iy)=0
+
+    !     !antisymmetric mirroring including p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
+    !     p( 1,:)=0.
+    !     p(0:cb%ifz:-1, :)=-p(2:2+0-cb%ifz, :)
+
+    ! end subroutine
+
+    ! subroutine fd_freesurface_stresses(p)
+    !     ! real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: p
+    !     real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: p
+
+    !     !free surface is located at [1,ix,iy] level
+    !     !so explicit boundary condition: p(1,ix,iy)=0
+    !     !and antisymmetric mirroring: p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
+    !         p(1,:,:)=0.
+    !         p(0,:,:)=-p(2,:,:)
+    !         ! p(cb%ifz,:,:)=0.
+    !         ! p(cb%ifz-1,:,:)=-p(cb%ifz+1,:,:)
+    !         ! !$omp parallel default (shared)&
+    !         ! !$omp private(ix,iy,i)
+    !         ! !$omp do schedule(dynamic)
+    !         ! do iy=ify,ily
+    !         ! do ix=ifx,ilx
+    !         !     i=(1-cb%ifz) + (ix-cb%ifx)*nz + (iy-cb%ify)*nz*nx +1 !iz=1,ix,iy 
+                
+    !         !     f%p(i)=0.
+                
+    !         !     f%p(i-1)=-f%p(i+1)
+    !         ! enddo
+    !         ! enddo
+    !         ! !$omp enddo
+    !         ! !$omp end parallel
+
+    ! end subroutine
+
+    ! subroutine fd_freesurface_acceleration(az,ax)
+    !     real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: az,ax
+
+    !     !stress image for free surface boundary condition
+    !     !free surface is located at [1,ix,1] level
+    !     if (FS_method=='stress_image_2nd') then !Levandar & Roberttson's 2nd method
+    !         !symmetric mirroring: az[0.5]=az[1.5], ie. az(1,ix,iy)=az(2,ix,iy) -> p(1,ix,iy)=0.
+    !         az(1,:)=az(2,:)
+
+    !     elseif (FS_method=='stress_image') then !Levandar & Roberttson's method
+    !         az(cb%ifz:1,:)=0.
+    !         ax(cb%ifz:0,:)=0.
+
+    !     endif
+
+    ! end subroutine
+
+    ! subroutine fd_freesurface_pressure(p)
+    !     real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: p
+
+    !     !stress image for free surface boundary condition
+    !     !free surface is located at [1,ix,1] level
+    !     p(1,:)=0. !explicit null pressure: p(1,ix,iy)=0
+
+    !     !antisymmetric mirroring including p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
+    !     p( 1,:)=0.
+    !     p(0:cb%ifz:-1, :)=-p(2:2+0-cb%ifz, :)
+
+    ! end subroutine
     
 
     subroutine stablize_complex(p) !by fft
@@ -1114,37 +1191,43 @@ use singleton
 
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
-                        case default
-                        case ('p')
-                        f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef_anti)
+                    case ('p')
+                        f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
 
-                        case ('az')
-                        f%seismo(i,it)=sum(f%az(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
-                        case ('ax')
-                        f%seismo(i,it)=sum(f%ax(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
-                        case ('ay')
-                        f%seismo(i,it)=sum(f%ay(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                    case ('dpdz')
+                        f%seismo(i,it)=( sum(f%p(ifz+1:ilz+1,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef) &
+                                        -sum(f%p(ifz-1:ilz-1,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef) )*inv_2dz 
+
+                        ! case ('vx')
+                        ! f%seismo(i,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                        ! case ('vy')
+                        ! f%seismo(i,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
                     end select
                     
                 else
                     select case (shot%rcv(i)%comp)
-                        case default
-                        case ('p') !p[iz,ix,iy]
+                    case ('p') !p[iz,ix,iy]
                         f%seismo(i,it)=f%p(iz,ix,iy)
 
-                        case ('az') !vz[iz-0.5,ix,iy]
-                        f%seismo(i,it)=f%az(iz,ix,iy)
-                        case ('ax') !vx[iz,ix-0.5,iy]
-                        f%seismo(i,it)=f%ax(iz,ix,iy)
-                        case ('ay') !vy[iz,ix,iy-0.5]
-                        f%seismo(i,it)=f%ay(iz,ix,iy)
+                    case ('dpdz')
+                        f%seismo(i,it)=( f%p(iz+1,ix,iy) &
+                                        -f%p(iz-1,ix,iy) )*inv_2dz 
+
+                        ! case ('vz') !vz[iz-0.5,ix,iy]
+                        ! f%seismo(i,it)=f%vz(iz,ix,iy)
+                        ! case ('vx') !vx[iz,ix-0.5,iy]
+                        ! f%seismo(i,it)=f%vx(iz,ix,iy)
+                        ! case ('vy') !vy[iz,ix,iy-0.5]
+                        ! f%seismo(i,it)=f%vy(iz,ix,iy)
                     end select
                     
                 endif
 
             enddo
 
-        return; endif
+            return
+
+        endif
 
             ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
@@ -1152,35 +1235,41 @@ use singleton
             
             if(if_hicks) then
                 select case (shot%src%comp)
-                    case default
-                    case ('p')
-                    f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef_anti)
+                case ('p')
+                    f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef)
                     
-                    case ('az')
-                    f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                case ('dpdz')
+                    f%seismo(1,it)=( sum(f%p(ifz+1:ilz+1,ifx:ilx,ify:ily)*shot%src%interp_coef) &
+                                    -sum(f%p(ifz-1:ilz-1,ifx:ilx,ify:ily)*shot%src%interp_coef) )*inv_2dz 
+
+                    ! case ('vz')
+                    ! f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
                     
-                    case ('ax')
-                    f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    ! case ('vx')
+                    ! f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
                     
-                    case ('ay')
-                    f%seismo(1,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    ! case ('vy')
+                    ! f%seismo(1,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
                     
                 end select
                 
             else
                 select case (shot%src%comp)
-                    case default
-                    case ('p') !p[iz,ix,iy]
+                case ('p') !p[iz,ix,iy]
                     f%seismo(1,it)=f%p(iz,ix,iy)
+
+                case ('dpdz')
+                    f%seismo(1,it)=( f%p(iz+1,ix,iy) &
+                                    -f%p(iz-1,ix,iy) )*inv_2dz 
                     
-                    case ('az') !vz[iz-0.5,ix,iy]
-                    f%seismo(1,it)=f%az(iz,ix,iy)
+                    ! case ('vz') !vz[iz-0.5,ix,iy]
+                    ! f%seismo(1,it)=f%vz(iz,ix,iy)
                     
-                    case ('ax') !vx[iz,ix-0.5,iy]
-                    f%seismo(1,it)=f%ax(iz,ix,iy)
+                    ! case ('vx') !vx[iz,ix-0.5,iy]
+                    ! f%seismo(1,it)=f%vx(iz,ix,iy)
                     
-                    case ('ay') !vy[iz,ix,iy-0.5]
-                    f%seismo(1,it)=f%ay(iz,ix,iy)
+                    ! case ('vy') !vy[iz,ix,iy-0.5]
+                    ! f%seismo(1,it)=f%vy(iz,ix,iy)
                     
                 end select
                 
@@ -1308,8 +1397,7 @@ use singleton
     end subroutine
 
     !========= Finite-Difference on flattened arrays ==================
-    
-    subroutine fd2d_flux(p,dp_dz,dp_dx,&
+   subroutine fd2d_flux(p,dp_dz,dp_dx,&
                          az,ax,&
                          buoz,buox,&
                          ifz,ilz,ifx,ilx)
@@ -1410,6 +1498,51 @@ use singleton
 
     end subroutine
 
+    ! !2nd order
+    ! subroutine fd2d_grho(rp,sp,corr,&
+    !                     ifz,ilz,ifx,ilx)
+    !     real,dimension(*) :: rp, sp
+    !     real,dimension(*) :: corr
+
+    !     real,dimension(:),allocatable :: pzz, pxx
+    !     call alloc(pzz,cb%n)
+    !     call alloc(pxx,cb%n)
+
+    !     nz=cb%nz
+    !     nx=cb%nx
+        
+        
+    !     !laplacian: ∇·b∇u ~= ∂zᶠ(bz*∂zᵇp) + ∂ₓᶠ(bx*∂ₓᵇp)
+    !     !$omp parallel default (shared)&
+    !     !$omp private(iz,ix,i,&
+    !     !$omp         iz_ixm1,izm1_ix,iz_ix,izp1_ix,iz_ixp1)
+    !     !$omp do schedule(dynamic)
+    !     do ix = ifx,ilx-1
+    !         !dir$ simd
+    !         do iz = ifz,ilz-1
+
+    !             i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
+    !             j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
+
+    !             iz_ixm1=i    -nz  !iz,ix-1
+    !             izm1_ix=i-1       !iz-1,ix
+    !             iz_ix  =i
+    !             izp1_ix=i+1       !iz+1,ix
+    !             iz_ixp1=i    +nz  !iz,ix+1
+
+                
+    !             corr(j) = corr(j) &
+    !                 + (rp(izp1_ix)-rp(izm1_ix))*(sp(izp1_ix)-sp(izm1_ix))*inv_2dz*inv_2dz &
+    !                 + (rp(iz_ixp1)-rp(iz_ixm1))*(sp(iz_ixp1)-sp(iz_ixm1))*inv_2dx*inv_2dx
+
+    !         enddo
+    !     enddo
+    !     !$omp end do
+    !     !$omp end parallel
+
+    ! end subroutine
+
+    !4th order
     subroutine fd2d_grho(rp,sp,corr,&
                         ifz,ilz,ifx,ilx)
         real,dimension(*) :: rp, sp
@@ -1463,7 +1596,141 @@ use singleton
 
     end subroutine
 
-    !========= Stablize wave propagation ==================
+
+    subroutine fft_gassian_filt(f, mask, it)
+        type(t_field) :: f
+        complex(fftkind), allocatable :: spectrum_ppre(:,:,:), spectrum_p(:,:,:), spectrum_pnext(:,:,:), spectrum_filted_ppre(:,:,:), spectrum_filted_p(:,:,:), spectrum_filted_pnext(:,:,:)
+        real, intent(in) :: mask(:,:,:)  
+        character(len=200) :: filename
+        ! if(time_dir>0.) then
+        ifz=f%bloom(1,it)
+        if(m%is_freesurface) ifz=max(ifz,1)
+        ilz=f%bloom(2,it)
+        ifx=f%bloom(3,it)
+        ilx=f%bloom(4,it)
+        ! else
+        !     ifz=1
+        !     ilz=size(f%p,1)
+        !     ifx=1
+        !     ilx=size(f%p,2)
+        ! end if
+
+        ! print *,'ifz,ilz=',ifz,ilz,'ifx,ilx=',ifx,ilx
+        
+
+        allocate(spectrum_ppre(ifz:ilz,ifx:ilx,1), spectrum_p(ifz:ilz,ifx:ilx,1), spectrum_pnext(ifz:ilz,ifx:ilx,1))
+        allocate(spectrum_filted_ppre(ifz:ilz,ifx:ilx,1), spectrum_filted_p(ifz:ilz,ifx:ilx,1), spectrum_filted_pnext(ifz:ilz,ifx:ilx,1))
+        ! print *,'spectrum_p shape:',size(spectrum_p,1),size(spectrum_p,2)
+        spectrum_ppre=fft(cmplx(f%p_prev(ifz:ilz,ifx:ilx,:),0.0,kind=fftkind),inv=.TRUE.)
+        spectrum_p=fft(cmplx(f%p(ifz:ilz,ifx:ilx,:),0.0,kind=fftkind),inv=.TRUE.)
+        spectrum_pnext=fft(cmplx(f%p_next(ifz:ilz,ifx:ilx,:),0.0,kind=fftkind),inv=.TRUE.)
+        ! write(filename,'("../../Demo/11_Marmousi/spectrum_p_",I0,".bin")') it
+        ! open(unit=12, file=trim(filename), form='unformatted', access='stream', status='replace')
+        ! write(12) spectrum_p
+        ! close(12)
+        ! stop
+        spectrum_filted_ppre=spectrum_ppre*cmplx(mask,mask, kind=fftkind)
+        spectrum_filted_p=spectrum_p*cmplx(mask,mask, kind=fftkind)
+        spectrum_filted_pnext=spectrum_pnext*cmplx(mask,mask, kind=fftkind)
+        ! write(filename,'("../../Demo/11_Marmousi/spectrum_p_filted_",I0,".bin")') it
+        ! open(unit=13, file=trim(filename), form='unformatted', access='stream', status='replace')
+        ! write(13) spectrum_filted_p
+        ! close(13)
+        ! print *,'ifz ilz ifx ilx', ifz,ilz,ifx,ilx, 'spectrum_p shape:',size(spectrum_p,1),size(spectrum_p,2),'mask shape',size(mask,1),size(mask,2)
+        ! print *,'spectrum shape',size(spectrum_p,1),size(spectrum_p,2),'spectrum_filted',size(spectrum_filted_p,1),size(spectrum_filted_p,2)
+        f%p_prev(ifz:ilz,ifx:ilx,:)=real(fft(spectrum_filted_ppre,inv=.False.))
+        f%p(ifz:ilz,ifx:ilx,:)=real(fft(spectrum_filted_p,inv=.False.))
+        f%p_next(ifz:ilz,ifx:ilx,:)=real(fft(spectrum_filted_pnext,inv=.False.))
+        
+        deallocate(spectrum_ppre, spectrum_p, spectrum_pnext)
+        deallocate(spectrum_filted_ppre, spectrum_filted_p, spectrum_filted_pnext)
+    end subroutine fft_gassian_filt
+
+
+    subroutine build_mask(mask, f, it, freq_cut, h_in, sigma_filter_in)
+        type(t_field)        :: f
+        real, intent(in),  optional      :: h_in, sigma_filter_in, freq_cut
+        real, allocatable, intent(out)   :: mask(:,:,:) 
+
+        real                :: h, sigma_filter, vp_min, k_cut
+        integer             :: nz, nx, i, j, nz2, nx2
+        integer             :: idx_x, idx_z
+        real, allocatable   :: kx(:), kz(:), kx_grid(:,:), kz_grid(:,:), K(:,:)
+        
+        ! fp     = shot%fpeak
+        vp_min = cb%velmin
+        ! if(time_dir>0) then
+        ifz=f%bloom(1,it)
+        if(m%is_freesurface) ifz=max(ifz,1)
+        ilz=f%bloom(2,it)
+        ifx=f%bloom(3,it)
+        ilx=f%bloom(4,it)
+        nz = ilz-ifz+1
+        nx = ilx-ifx+1
+        ! else
+        !     nz = size(f%p,1)
+        !     nx = size(f%p,2)
+        ! end if
+        
+        ! print *,'nz=',nz,'nx=',nx
+
+        if (present(h_in)) then
+            h = h_in
+        else
+            h = 21
+        end if
+
+        if (present(sigma_filter_in)) then
+            sigma_filter = sigma_filter_in
+        else
+            sigma_filter = 2
+        end if
+
+        allocate(kx(nx), kz(nz), kx_grid(nz,nx), kz_grid(nz,nx), K(nz,nx))
+        allocate(mask(nz,nx,1))
+        ! allocate(kx(ilx-ifx+1), kz(ilz-ifz+1), kx_grid(ilz-ifz+1,ilx-ifx+1), kz_grid(ilz-ifz+1,ilx-ifx+1), K(nilz-ifz+1,ilx-ifx+1))
+        ! allocate(mask(ilz-ifz+1,ilx-ifx+1,1))
+        ! print *,'For mask:ifz ilz ifx ilx', ifz,ilz,ifx,ilx, 'K shape:',size(K,1),size(K,2), 'nz nx=',nz,nx
+
+        do i = 1, nx/2
+            kx(i) = 2.0d0*r_pi*real(i-1)/(h*real(nx))    ! [0 ... nx/2-1]
+        end do
+        do i = nx/2+1, nx
+            kx(i) = 2.0d0*r_pi*real(i-nx-1)/(h*real(nx)) ! [-nx/2 ... -1]
+        end do
+
+        ! ---- kz 向量 ----
+        do i = 1, nz/2
+            kz(i) = 2.0d0*r_pi*real(i-1)/(h*real(nz))
+        end do
+        do i = nz/2+1, nz
+            kz(i) = 2.0d0*r_pi*real(i-nz-1)/(h*real(nz))
+        end do
+
+        do j = 1, nz
+        do i = 1, nx
+            kx_grid(j,i) = kx(i)
+            kz_grid(j,i) = kz(j)
+            K(j,i) = sqrt(kx_grid(j,i)**2 + kz_grid(j,i)**2)
+        end do
+        end do
+
+
+        ! 截止波数（单位 rad/m）
+        if(present(freq_cut)) then
+            k_cut = 2.0*r_pi*freq_cut / vp_min
+        else
+            k_cut = 2.0*r_pi*shot%fmax*1.4 / vp_min
+        endif
+
+        where (K <= k_cut)
+            mask(:,:,1) = 1.0
+        elsewhere
+            mask(:,:,1) = exp( - ((K - k_cut)/(sigma_filter*k_cut))**2 )
+        end where
+
+        deallocate(kx, kz, kx_grid, kz_grid, K)
+    end subroutine build_mask
 
     ! subroutine build_mask2(mask, f, it, freq_cut, h_in, sigma_filter_in)
     !     type(t_field)        :: f
@@ -1627,131 +1894,5 @@ use singleton
 
     !     deallocate(kx, kz, kx_grid, kz_grid, K)
     ! end subroutine build_mask
-
-
-    subroutine build_mask(mask, f, it, freq_cut, h_in, sigma_filter_in)
-        type(t_field) :: f
-        real,intent(in), optional    :: h_in, sigma_filter_in, freq_cut
-        real,allocatable,intent(out) :: mask(:,:,:) 
-
-        real    :: h, sigma_filter, vp_min, k_cut
-        integer :: nz, nx, i, j, nz2, nx2
-        integer :: idx_x, idx_z
-        real,dimension(:),allocatable :: kx,kz
-        real,dimension(:,:),allocatable :: kx_grid, kz_grid, K
-        
-        ! fp     = shot%fpeak
-        vp_min = cb%velmin
-
-        ifz=f%bloom(1,it)
-        ilz=f%bloom(2,it)
-        ifx=f%bloom(3,it)
-        ilx=f%bloom(4,it)
-
-        nz = ilz-ifz+1
-        nx = ilx-ifx+1
-
-        if (present(h_in)) then
-            h = h_in
-        else
-            h = 21
-        end if
-
-        if (present(sigma_filter_in)) then
-            sigma_filter = sigma_filter_in
-        else
-            sigma_filter = 2
-        end if
-
-        allocate(kx(nx), kz(nz), kx_grid(nz,nx), kz_grid(nz,nx), K(nz,nx))
-        allocate(mask(nz,nx,1))
-        ! allocate(kx(ilx-ifx+1), kz(ilz-ifz+1), kx_grid(ilz-ifz+1,ilx-ifx+1), kz_grid(ilz-ifz+1,ilx-ifx+1), K(nilz-ifz+1,ilx-ifx+1))
-        ! allocate(mask(ilz-ifz+1,ilx-ifx+1,1))
-        ! print *,'For mask:ifz ilz ifx ilx', ifz,ilz,ifx,ilx, 'K shape:',size(K,1),size(K,2), 'nz nx=',nz,nx
-
-        do i = 1, nx/2
-            kx(i) = 2.0d0*r_pi*real(i-1)/(h*real(nx))    ! [0 ... nx/2-1]
-        end do
-        do i = nx/2+1, nx
-            kx(i) = 2.0d0*r_pi*real(i-nx-1)/(h*real(nx)) ! [-nx/2 ... -1]
-        end do
-
-        ! ---- kz 向量 ----
-        do i = 1, nz/2
-            kz(i) = 2.0d0*r_pi*real(i-1)/(h*real(nz))
-        end do
-        do i = nz/2+1, nz
-            kz(i) = 2.0d0*r_pi*real(i-nz-1)/(h*real(nz))
-        end do
-
-        do j = 1, nz
-        do i = 1, nx
-            kx_grid(j,i) = kx(i)
-            kz_grid(j,i) = kz(j)
-            K(j,i) = sqrt(kx_grid(j,i)**2 + kz_grid(j,i)**2)
-        end do
-        end do
-
-
-        ! 截止波数（单位 rad/m）
-        if(present(freq_cut)) then
-            k_cut = 2.0*r_pi*freq_cut / vp_min
-        else
-            k_cut = 2.0*r_pi*shot%fmax*1.4 / vp_min
-        endif
-
-        where (K <= k_cut)
-            mask(:,:,1) = 1.0
-        elsewhere
-            mask(:,:,1) = exp( - ((K - k_cut)/(sigma_filter*k_cut))**2 )
-        endwhere
-
-        deallocate(kx, kz, kx_grid, kz_grid, K)
-
-    end subroutine
-
-
-    subroutine fft_gassian_filt(f, mask, it)
-        type(t_field) :: f
-        complex(fftkind),dimension(:,:,:),allocatable :: Pprev, Pcurr, Pnext, Pprev_filt, Pcurr_filt, Pnext_filt
-        real,dimension(:,:,:), intent(in) :: mask
-
-        character(len=200) :: filename
-
-        ifz=f%bloom(1,it)
-        ilz=f%bloom(2,it)
-        ifx=f%bloom(3,it)
-        ilx=f%bloom(4,it)
-        
-        allocate(Pprev(ifz:ilz,ifx:ilx,1),      Pcurr(ifz:ilz,ifx:ilx,1),      Pnext(ifz:ilz,ifx:ilx,1))
-        allocate(Pprev_filt(ifz:ilz,ifx:ilx,1), Pcurr_filt(ifz:ilz,ifx:ilx,1), Pnext_filt(ifz:ilz,ifx:ilx,1))
-        ! print *,'Pcurr shape:',size(Pcurr,1),size(Pcurr,2)
-
-        Pprev = fft(cmplx(f%p_prev(ifz:ilz,ifx:ilx,:),0.0,kind=fftkind),inv=.TRUE.)
-        Pcurr = fft(cmplx(f%p     (ifz:ilz,ifx:ilx,:),0.0,kind=fftkind),inv=.TRUE.)
-        Pnext = fft(cmplx(f%p_next(ifz:ilz,ifx:ilx,:),0.0,kind=fftkind),inv=.TRUE.)
-        ! write(filename,'("../../Demo/11_Marmousi/Pcurr_",I0,".bin")') it
-        ! open(unit=12, file=trim(filename), form='unformatted', access='stream', status='replace')
-        ! write(12) Pcurr
-        ! close(12)
-        ! stop
-
-        Pprev_filt=Pprev*cmplx(mask,mask, kind=fftkind)
-        Pcurr_filt=Pcurr*cmplx(mask,mask, kind=fftkind)
-        Pnext_filt=Pnext*cmplx(mask,mask, kind=fftkind)
-        ! write(filename,'("../../Demo/11_Marmousi/Pcurr_filted_",I0,".bin")') it
-        ! open(unit=13, file=trim(filename), form='unformatted', access='stream', status='replace')
-        ! write(13) Pcurr_filt
-        ! close(13)
-        ! print *,'ifz ilz ifx ilx', ifz,ilz,ifx,ilx, 'Pcurr shape:',size(Pcurr,1),size(Pcurr,2),'mask shape',size(mask,1),size(mask,2)
-        ! print *,'spectrum shape',size(Pcurr,1),size(Pcurr,2),'spectrum_filted',size(Pcurr_filt,1),size(Pcurr_filt,2)
-        f%p_prev(ifz:ilz,ifx:ilx,:)=real(fft(Pprev_filt,inv=.False.))
-        f%p     (ifz:ilz,ifx:ilx,:)=real(fft(Pcurr_filt,inv=.False.))
-        f%p_next(ifz:ilz,ifx:ilx,:)=real(fft(Pnext_filt,inv=.False.))
-        
-        deallocate(Pprev, Pcurr, Pnext)
-        deallocate(Pprev_filt, Pcurr_filt, Pnext_filt)
-
-    end subroutine
 
 end

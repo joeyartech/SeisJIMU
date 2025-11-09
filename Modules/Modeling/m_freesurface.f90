@@ -48,7 +48,7 @@ use m_computebox
 end
 
 
-!other FS ethods
+!other FS methods
 
 !zero_stress on velocities
     ! !Δsz=0 : -(λ+2μ)∂_z vz = λ ∂ₓvx

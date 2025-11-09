@@ -18,9 +18,9 @@ MOD=-J $(mod_dir)
 .SUFFIX : %.f %.f90 %.o
 
 %.o : %.f90
-	$(F90) $(FPP) $(FLAGF90) $(MOD) -c $^ -o $@
+	$(F90) $(FPP) $(ETC) $(FLAGF90) $(MOD) -c $^ -o $@
 	@printf "\n"	
 
 %.o : %.f
-	$(F77)        $(FLAGF77)        -c $^ -o $@
+	$(F77)        $(ETC) $(FLAGF77)        -c $^ -o $@
 	@printf "\n"
