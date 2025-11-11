@@ -17,9 +17,11 @@ FR                      '  0   0   0'
 DR                      '  0   25  0'
 NR                       670
 
-SCOMP                   dpdz
-RCOMP                   dpdz #'p vz'
+SCOMP                   az
+RCOMP                   az #'p vz'
 IF_MUST_USE_RCOMP       T
+
+IS_FREESURFACE          T
 
 WAVELET_TYPE	ricker
 
