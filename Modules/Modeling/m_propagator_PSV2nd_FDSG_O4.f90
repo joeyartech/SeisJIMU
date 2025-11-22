@@ -125,11 +125,6 @@ use, intrinsic :: ieee_arithmetic
             call alloc(m%rho,m%nz,m%nx,1,o_init=1000.)
             call warn('Constant rho model (1000 kg/m³) is allocated by propagator.')
         endif
-        
-        if(m%is_freesurface) then
-            call warn('Sorry, free surface has NOT yet considered in this propagator. Switch off free-surface condition.')
-            m%is_freesurface=.false.
-        endif
 
     end subroutine
 
@@ -286,15 +281,15 @@ use, intrinsic :: ieee_arithmetic
 
         f%is_adjoint=either(ois_adjoint,.false.,present(ois_adjoint))
 
-        ! call f%init_bloom
-        call warn("Disable field%bloom, otherwise back propagation of incident field is unstable (don't know why..)")
-        call alloc(f%bloom,6,self%nt)
-        f%bloom(1,:)=cb%ifz
-        f%bloom(2,:)=cb%ilz
-        f%bloom(3,:)=cb%ifx
-        f%bloom(4,:)=cb%ilx
-        f%bloom(5,:)=cb%ify
-        f%bloom(6,:)=cb%ily
+        call f%init_bloom
+        ! call warn("Disable field%bloom, otherwise back propagation of incident field is unstable (don't know why..)")
+        ! call alloc(f%bloom,6,self%nt)
+        ! f%bloom(1,:)=cb%ifz
+        ! f%bloom(2,:)=cb%ilz
+        ! f%bloom(3,:)=cb%ifx
+        ! f%bloom(4,:)=cb%ilx
+        ! f%bloom(5,:)=cb%ify
+        ! f%bloom(6,:)=cb%ily
 
 
         !f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
@@ -689,6 +684,12 @@ use, intrinsic :: ieee_arithmetic
                     if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl
                     f%ux(ifz:ilz,ifx:ilx,1) = f%ux(ifz:ilz,ifx:ilx,1) + wl*self%buox(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
                 
+                case ('mono','monopole','duzdz+duxdx') !size(SCOMP)=4..
+                    f%uz(ifz+1:ilz+1,ifx:ilx,1) = f%uz(ifz+1:ilz+1,ifx:ilx,1) + wl*self%buoz(ifz+1:ilz+1,ifx:ilx)*inv_2dz*shot%src%interp_coef(:,:,1)
+                    f%uz(ifz-1:ilz-1,ifx:ilx,1) = f%uz(ifz-1:ilz-1,ifx:ilx,1) - wl*self%buoz(ifz-1:ilz-1,ifx:ilx)*inv_2dz*shot%src%interp_coef(:,:,1)
+                    f%ux(ifz:ilz,ifx+1:ilx+1,1) = f%ux(ifz:ilz,ifx+1:ilx+1,1) + wl*self%buox(ifz:ilz,ifx+1:ilx+1)*inv_2dx*shot%src%interp_coef(:,:,1)
+                    f%ux(ifz:ilz,ifx-1:ilx-1,1) = f%ux(ifz:ilz,ifx-1:ilx-1,1) - wl*self%buox(ifz:ilz,ifx-1:ilx-1)*inv_2dx*shot%src%interp_coef(:,:,1)
+                
                 end select
                 
             else
@@ -700,6 +701,12 @@ use, intrinsic :: ieee_arithmetic
                     if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl
                     f%ux(iz,ix,1) = f%ux(iz,ix,1) + wl*self%buox(iz,ix)
                     
+                case ('mono','monopole','duzdz+duxdx')  !size(SCOMP)=4..
+                    f%uz(iz+1,ix,1) = f%uz(iz+1,ix,1) + wl*self%buoz(iz+1,ix)*inv_2dz
+                    f%uz(iz-1,ix,1) = f%uz(iz-1,ix,1) - wl*self%buoz(iz-1,ix)*inv_2dz
+                    f%ux(iz,ix+1,1) = f%ux(iz,ix+1,1) + wl*self%buox(iz,ix+1)*inv_2dx
+                    f%ux(iz,ix-1,1) = f%ux(iz,ix-1,1) - wl*self%buox(iz,ix-1)*inv_2dx
+
                 end select
                 
             endif
@@ -723,6 +730,12 @@ use, intrinsic :: ieee_arithmetic
                     case ('ux') !horizontal x adjsource
                         f%ux(ifz:ilz,ifx:ilx,1) = f%ux(ifz:ilz,ifx:ilx,1) + wl*self%buox(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1)
                         
+                    case ('monopole','duzdz+duxdx')
+                        f%uz(ifz+1:ilz+1,ifx:ilx,1) = f%uz(ifz+1:ilz+1,ifx:ilx,1) + wl*self%buoz(ifz+1:ilz+1,ifx:ilx)*inv_2dz*shot%rcv(i)%interp_coef(:,:,1)
+                        f%uz(ifz-1:ilz-1,ifx:ilx,1) = f%uz(ifz-1:ilz-1,ifx:ilx,1) - wl*self%buoz(ifz-1:ilz-1,ifx:ilx)*inv_2dz*shot%rcv(i)%interp_coef(:,:,1)
+                        f%ux(ifz:ilz,ifx+1:ilx+1,1) = f%ux(ifz:ilz,ifx+1:ilx+1,1) + wl*self%buox(ifz:ilz,ifx+1:ilx+1)*inv_2dx*shot%rcv(i)%interp_coef(:,:,1)
+                        f%ux(ifz:ilz,ifx-1:ilx-1,1) = f%ux(ifz:ilz,ifx-1:ilx-1,1) - wl*self%buox(ifz:ilz,ifx-1:ilx-1)*inv_2dx*shot%rcv(i)%interp_coef(:,:,1)
+                    
                     end select
                     
                 else
@@ -734,6 +747,12 @@ use, intrinsic :: ieee_arithmetic
                         if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl
                         f%ux(iz,ix,1) = f%ux(iz,ix,1) + wl*self%buox(iz,ix)
 
+                    case ('monopole','duzdz+duxdx')
+                        f%uz(iz+1,ix,1) = f%uz(iz+1,ix,1) + wl*self%buoz(iz+1,ix)*inv_2dz
+                        f%uz(iz-1,ix,1) = f%uz(iz-1,ix,1) - wl*self%buoz(iz-1,ix)*inv_2dz
+                        f%ux(iz,ix+1,1) = f%ux(iz,ix+1,1) + wl*self%buox(iz,ix+1)*inv_2dx
+                        f%ux(iz,ix-1,1) = f%ux(iz,ix-1,1) - wl*self%buox(iz,ix-1)*inv_2dx
+                    
                     end select
                     
                 endif
@@ -746,11 +765,13 @@ use, intrinsic :: ieee_arithmetic
         class(t_propagator) :: self
         type(t_field) :: f
 
+        real,dimension(:),allocatable :: Lda_duxdx
+
         ! !necessary after computing the secondary source
         ! f%lap=0.
 
         ifz=f%bloom(1,it)
-        if(m%is_freesurface) ifz=max(ifz,1)
+        !if(m%is_freesurface) ifz=max(ifz,1)
         ilz=f%bloom(2,it)
         ifx=f%bloom(3,it)
         ilx=f%bloom(4,it)
@@ -774,6 +795,22 @@ use, intrinsic :: ieee_arithmetic
 
         endif
 
+        ! if(m%is_freesurface) then !Levendar & Roberttson's stress image method
+        !     !on FS, reduced weq:
+        !     ! ρ∂ₜₜux = ∂ₓΛ∂ₓux
+        !     ! where Λ=4μ(λ+μ)/(λ+2μ)
+
+        !     call alloc(Lda_duxdx, [cb%ifx,cb%ilx])
+
+        !     do ix=cb%ifx+2,cb%ilx-2
+        !         dux_dx_ = c1x*(f%ux(1,ix+1,1)-f%ux(1,ix,1))  +c2x*(f%ux(1,ix+2,1)-f%ux(1,ix-1,1)) !∂ₓᶠ
+        !         Lda_duxdx(ix) = 4.*self%mu(1,ix)*(self%lda(1,ix)+self%mu(1,ix))/self%ldap2mu(1,ix) * dux_dx_
+        !     enddo
+        !     do ix=cb%ifx+2,cb%ilx-2                    
+        !         f%lapx(1,ix,1) = c1x*(Lda_duxdx(ix)-Lda_duxdx(ix-1)) +c2x*(Lda_duxdx(ix+1)-Lda_duxdx(ix-2)) !∂ₓᵇ
+        !     enddo
+
+        ! endif
 
         if(time_dir>0.) then !in forward time
             f%uz_next(ifz:ilz,ifx:ilx,1) = 2*f%uz(ifz:ilz,ifx:ilx,1) -f%uz_prev(ifz:ilz,ifx:ilx,1) +dt2*self%buoz(ifz:ilz,ifx:ilx)*f%lapz(ifz:ilz,ifx:ilx,1)
@@ -1131,6 +1168,67 @@ use, intrinsic :: ieee_arithmetic
         !$omp end do
         !$omp end parallel
 
+        if(m%is_freesurface) then
+            !Levandar & Roberttson's stress image method
+            ! call freesurf_stress( &
+            !     ldap2mu_duzdz_p_lda_duxdx(1:cb%n), &
+            !     lda_duzdz_p_ldap2mu_duxdx(1:cb%n), &
+            !     mu_duxdz_p_duz_dx(1:cb%n), &
+            !     ux(1:cb%n))
+
+            !I don't have to do like this just for the free surface..
+            
+            !image szz = ldap2mu_duzdz_p_lda_duxdx
+            do ix = ifx,ilx
+            iz = 1
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+                ldap2mu_duzdz_p_lda_duxdx(i)=0.
+
+            ! 0:cb%ifz:-1 <= 2:2-cb%ifz
+            do  iz_above = 0,cb%ifz,-1
+                iz_below = 2-iz_above
+
+                i_above=(iz_above-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+                i_below=(iz_below-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+
+                ldap2mu_duzdz_p_lda_duxdx(i_above)=-ldap2mu_duzdz_p_lda_duxdx(i_below)
+
+            enddo
+            enddo
+
+            !not image on sxx, use the reduced stiffness tensor
+            ! sxx = lda_duzdz_p_ldap2mu_duxdx
+            do ix = ifx+1,ilx-2
+            iz = 1
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+                iz_ixm2=i  -2*nz !iz,ix-2
+                iz_ixm1=i  -nz  !iz,ix-1
+                iz_ix  =i    !iz,ix
+                iz_ixp1=i  +nz  !iz,ix+1
+                iz_ixp2=i  +2*nz  !iz,ix+2
+
+                dux_dx_= c1x*(ux(iz_ixp1)-ux(iz_ix))  +c2x*(ux(iz_ixp2)-ux(iz_ixm1))
+                    
+                factor= 4.*mu(iz_ix)*(lda(iz_ix)+mu(iz_ix))/ldap2mu(iz_ix)
+                lda_duzdz_p_ldap2mu_duxdx(iz_ix)  = factor*dux_dx_
+
+            enddo    
+
+            !image szx = mu_duxdz_p_duz_dx
+            do ix = ifx,ilx
+            ! 1:cb%ifz:-1 <= 2:3-cb%ifz
+            do  iz_above = 1,cb%ifz,-1
+                iz_below = 3-iz_above
+
+                i_above=(iz_above-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+                i_below=(iz_below-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+
+                mu_duxdz_p_duz_dx(i_above)=-mu_duxdz_p_duz_dx(i_below)
+
+            enddo;enddo
+
+        endif
+
 
         !                          [ldap2mu_duzdz_p_lda_duxdx    ]
         !Laplacian= [∂zᵇ 0   0 ∂ₓᶠ]|    lda_duzdz_p_ldap2mu_duxdx|
@@ -1199,6 +1297,44 @@ use, intrinsic :: ieee_arithmetic
         enddo
         !$omp end do
         !$omp end parallel
+
+
+        if(m%is_freesurface) then
+            !Roberttson's 3rd method
+            do ix = cb%ifx,cb%ilx
+            do iz = cb%ifz,1
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+                lapz(i) = 0.  !uz(cb%ifz:1,:)=0.
+            enddo; enddo
+
+            do ix = cb%ifx,cb%ilx
+            do iz = cb%ifz,0
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+                lapx(i) = 0. !ux(cb%ifz:0,:)=0.
+            enddo; enddo
+        endif
+
+    end subroutine
+
+    subroutine freesurf_stress(szz,sxx,szx,ux)
+        real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx) :: szz,sxx,szx,ux
+
+        !image szz
+        szz( 1,:)=0.
+        szz(0:cb%ifz:-1, :)=-szz(2:2+0-cb%ifz, :)
+
+        !not image on sxx
+        ! sxx(0:cb%ifz:-1,:)=0. !no needed
+        do ix=cb%ifx+1,cb%ilx-2
+            dux_dx_= c1x*(ux(1,ix+1)-ux(1,ix))  +c2x*(ux(1,ix+2)-ux(1,ix-1))
+            
+            factor=-ppg%lda(1,ix)**2/ppg%ldap2mu(1,ix) + ppg%ldap2mu(1,ix)
+
+            sxx(1,ix)  = factor*dux_dx_
+        enddo
+        
+        !image szx
+        szx(1:cb%ifz:-1, :)=-szx(2:2+1-cb%ifz, :)
 
     end subroutine
 
