@@ -8,7 +8,7 @@ MODEL_ATTRIBUTES_WRITE   vp
 IS_FREESURFACE          F
 
 ACQUI_GEOMETRY          spread
-FS                      '  0   1200  0'
+FS                      '  21   1200  0'
 #DS			'  0   100   0'
 #NS			 144
 DS			'  0   400  0'

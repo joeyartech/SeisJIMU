@@ -843,10 +843,10 @@ use singleton
         call self%inject_acceleration(fre,time_dir,it)
         call self%inject_acceleration(fim,time_dir,it)
 
-        if(m%is_freesurface) then
-            call freesurface_velocity(fre%az,fre%ax)
-            call freesurface_velocity(fim%az,fim%ax)
-        endif
+        ! if(m%is_freesurface) then
+        !     call freesurface_velocity(fre%az,fre%ax)
+        !     call freesurface_velocity(fim%az,fim%ax)
+        ! endif
 
         !laplacian
         if(m%is_cubic) then
@@ -860,8 +860,10 @@ use singleton
         endif
 
         if(m%is_freesurface) then
-            call freesurface_stress(fre%lap)
-            call freesurface_stress(fim%lap)
+            ! call freesurface_stress(fre%lap)
+            ! call freesurface_stress(fim%lap)
+            call freesurface_stress(fre%p)
+            call freesurface_stress(fim%p)
         endif
 
 
@@ -911,6 +913,7 @@ use singleton
         !which can make the field disappear after backpropagation
         if(.not. fre%is_adjoint) then !PDE
             if(time_dir>0. ) then !forward in time
+
                 Uprev = cmplx(fre%p_prev,fim%p_prev)
                 U     = cmplx(fre%p     ,fim%p     )
                 Lap   = cmplx(fre%lap   ,fim%lap   )
@@ -936,6 +939,7 @@ use singleton
 ! endif
 
             else !backward in time
+
                 Unext = cmplx(fre%p_next,fim%p_next)
                 U     = cmplx(fre%p     ,fim%p     )
                 Lap   = cmplx(fre%lap   ,fim%lap   )
@@ -955,6 +959,7 @@ use singleton
             endif
 
         else !Adjoint, backward in time
+
                 Unext = cmplx(fre%p_next,fim%p_next)
                 U     = cmplx(fre%p     ,fim%p     )
                 Lap   = cmplx(fre%lap   ,fim%lap   )

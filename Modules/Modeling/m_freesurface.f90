@@ -28,7 +28,7 @@ use m_computebox
             vz(cb%ifz:1,:,:)=0.
             vx(cb%ifz:0,:,:)=0.
 
-        endselect
+        end select
 
 	end subroutine
 
@@ -39,6 +39,7 @@ use m_computebox
         !image szz
         sz( 1,:,1)=0.
         sz(0:cb%ifz:-1, :,1)=-sz(2:2+0-cb%ifz, :,1)
+        ! sz(0:-2:-1, :,1)=-sz(2:2+2, :,1)
 
         !image ss
         if(present(o_ss)) o_ss(1:cb%ifz:-1, :,1)= -o_ss(2:2+1-cb%ifz, :,1)
