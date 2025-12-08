@@ -314,15 +314,15 @@ use, intrinsic :: ieee_arithmetic
         call alloc(f%ss, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
         !derivative of displacement
-        call alloc(f%dz_z,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dx_x,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dz_x,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dx_z,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dz_$z,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dx_$x,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dz_$x,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dx_$z,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         !derivative of stress
-        call alloc(f%dz_zz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dx_xx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dz_zx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dx_zx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dz_$zz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dx_$xx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dz_$zx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dx_$zx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
         call alloc(f%lapz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%lapx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -865,7 +865,7 @@ use, intrinsic :: ieee_arithmetic
         if(m%is_cubic) then
         else
             call fd2d_flux(f%uz,f%ux,                    &
-                           f%dz_z,f%dx_x,f%dz_x,f%dx_z,  &
+                           f%dz_$z,f%dx_$x,f%dz_$x,f%dx_$z,  &
                            f%sz,f%sx,f%ss,               &
                            self%ldap2mu,self%lda,self%mu,&
                            ifz,ilz,ifx,ilx)
@@ -891,7 +891,7 @@ use, intrinsic :: ieee_arithmetic
         if(m%is_cubic) then
         else
             call fd2d_laplacian(f%sz,f%sx,f%ss,                 &
-                                f%dz_zz,f%dx_xx,f%dz_zx,f%dx_zx,&
+                                f%dz_$zz,f%dx_$xx,f%dz_$zx,f%dx_$zx,&
                                 f%lapz,f%lapx,                  &
                                 ifz,ilz,ifx,ilx)
         endif

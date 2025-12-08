@@ -12,8 +12,9 @@ obj = \
 ../../Modules/Modeling/m_shot.o \
 ../../Modules/Modeling/m_computebox.o \
 ../../Modules/Modeling/m_field.o \
-../../Modules/Modeling/m_correlate.o \
 ../../Modules/Modeling/m_cpml.o \
+../../Modules/Modeling/m_freesurface.o \
+../../Modules/Modeling/m_correlate.o \
 ../../Modules/Modeling/m_propagator_$(WaveEq)_$(Solver)_$(Order).o \
 ../../Modules/Modeling/m_Modeling.o
 
@@ -31,7 +32,7 @@ mod :
 	(cd ../../Modules/Modeling; make)
 
 exe : main.o
-	mpif90 $(FLAGF90) $(MOD) $(obj) $^ -o ../../exe/adjointtest_$(WaveEq)_$(Solver)_$(Order)
+	$(F90) $(FPP) $(ETC) $(FLAGF90) $(MOD) $(obj) $^ -o ../../exe/adjointtest_$(WaveEq)_$(Solver)_$(Order)
 	(cd ../../exe; ln -sf adjointtest_$(WaveEq)_$(Solver)_$(Order) AdjointTest )
 
 clean :

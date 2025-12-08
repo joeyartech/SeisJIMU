@@ -300,15 +300,15 @@ use, intrinsic :: ieee_arithmetic
         call alloc(f%ss,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
 
         !derivative of velocity
-        call alloc(f%dz_z, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
-        call alloc(f%dx_z, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
-        call alloc(f%dx_x, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
-        call alloc(f%dz_x, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(f%dz_$z, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(f%dx_$z, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(f%dx_$x, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(f%dz_$x, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
         !derivative of stress
-        call alloc(f%dz_zz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
-        call alloc(f%dx_xx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
-        call alloc(f%dz_zx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
-        call alloc(f%dx_zx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(f%dz_$zz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(f%dx_$xx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(f%dz_$zx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(f%dx_$zx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
                 
     end subroutine
 
@@ -827,7 +827,7 @@ use, intrinsic :: ieee_arithmetic
         if(m%is_freesurface) ifz=max(ifz,1)
 
         call fd2d_velocity(f%vz,f%vx,f%sz,f%sx,f%ss,       &
-                           f%dz_zz,f%dx_xx,f%dz_zx,f%dx_zx,&
+                           f%dz_$zz,f%dx_$xx,f%dz_$zx,f%dx_$zx,&
                            self%buoz,self%buox,            &
                            ifz,ilz,ifx,ilx,time_dir*self%dt)
 
@@ -961,7 +961,7 @@ use, intrinsic :: ieee_arithmetic
         if(m%is_freesurface) ifz=max(ifz,2)
 
         call fd2d_stress(f%vz,f%vx,f%sz,f%sx,f%ss,       &
-                         f%dz_z,f%dx_x,f%dx_z,f%dz_x,    &
+                         f%dz_$z,f%dx_$x,f%dx_$z,f%dz_$x,    &
                          self%ldap2mu,self%lda,self%mu,  &
                          ifz,ilz,ifx,ilx,time_dir*self%dt)
         

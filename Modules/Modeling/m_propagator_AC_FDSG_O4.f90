@@ -233,9 +233,9 @@ use m_correlate
         call alloc(f%p, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
         !derivative of velocity
-        call alloc(f%dz_z,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dx_x,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dy_y,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dz_$z,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dx_$x,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dy_$y,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         !derivative of pressure
         call alloc(f%dz_p,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%dx_p,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -864,12 +864,12 @@ use m_correlate
 
         if(m%is_cubic) then
             call fd3d_pressure(f%vz,f%vx,f%vy,f%p,                     &
-                               f%dz_z,f%dx_x,f%dy_y,                   &
+                               f%dz_$z,f%dx_$x,f%dy_$y,                   &
                                self%kpa,                               &
                                ifz,ilz,ifx,ilx,ify,ily,time_dir*self%dt)
         else
             call fd2d_pressure(f%vz,f%vx,f%p,                  &
-                               f%dz_z,f%dx_x,                  &
+                               f%dz_$z,f%dx_$x,                  &
                                self%kpa,                       &
                                ifz,ilz,ifx,ilx,time_dir*self%dt)
         endif

@@ -76,7 +76,6 @@ use m_correlate
         procedure :: evolve
         procedure :: extract
 
-
         final :: final
 
     end type
@@ -247,8 +246,8 @@ use m_correlate
         call alloc(f%dx_p, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         ! call alloc(f%dy_p, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         !derivative of acceleration
-        call alloc(f%dz_z, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dx_x, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dz_$z, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dx_$x, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         ! call alloc(f%dy_dy_p, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
         call alloc(f%lap, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -630,7 +629,7 @@ use m_correlate
             !adjsource for pressure
             wl = f%wavelet(i,it)*wavelet_scaler    !no time_dir needed!
 
-            if(shot%src%comp=='p') then
+            if(shot%rcv(i)%comp=='p') then
                 if(if_hicks) then 
                     f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef_anti
                 else
@@ -694,7 +693,7 @@ use m_correlate
                 ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
                 ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
                 
-                 wl=f%wavelet(i,it)/m%cell_volume !as no time derivative
+                wl=f%wavelet(i,it)/m%cell_volume !as no time derivative
                 
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
@@ -766,7 +765,7 @@ use m_correlate
         !laplacian
         if(m%is_cubic) then
         else
-            call fd2d_laplacian(f%az,f%ax,f%dz_z,f%dx_x,&
+            call fd2d_laplacian(f%az,f%ax,f%dz_$z,f%dx_$x,&
                                 f%lap,                  &
                                 ifz,ilz,ifx,ilx)
         endif
@@ -864,13 +863,13 @@ use m_correlate
                     f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef_anti)
                     
                     case ('az')
-                    f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    f%seismo(1,it)=sum(f%az(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
                     
                     case ('ax')
-                    f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    f%seismo(1,it)=sum(f%ax(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
                     
                     case ('ay')
-                    f%seismo(1,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    f%seismo(1,it)=sum(f%ay(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
                     
                 end select
                 

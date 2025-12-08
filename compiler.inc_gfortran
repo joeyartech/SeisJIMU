@@ -2,11 +2,12 @@
 GIT_COMMIT:=$(shell git rev-parse --short HEAD)
 GIT_BRANCH:=$(shell git rev-parse --abbrev-ref HEAD)
 
-F90=mpif90
-F77=mpif77
+F90=mpif90 -fdollar-ok
+F77=mpif77 -fdollar-ok
 
 FLAGF77= -Ofast -fopenmp                         -fbacktrace  #-flto
 FLAGF90= -Ofast -fopenmp -ffree-line-length-none -fbacktrace  -fno-unsafe-math-optimizations -frounding-math -fsignaling-nans
+
 #FLAGF77= -g -Wall -Wno-tabs -fopenmp -fcheck=all                         -fbacktrace
 #FLAGF90= -g -Wall -Wno-tabs -fopenmp -fcheck=all -ffree-line-length-none -fbacktrace -fno-strict-aliasing
 

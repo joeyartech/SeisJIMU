@@ -7,14 +7,13 @@ IS_FREESURFACE          T
 IF_HICKS        T
 
 ACQUI_GEOMETRY          spread
-FS                      '40 500 500'
-DR                      '0  20 0'
+FS                      '100 100 500'
+DR                      '0   20  0  '
 
-FR                      '40 500  0'
-NR                      100
-DR                      '0  20 0'
+FR                      '100 100  0'
+DR                      '0   20   0'
 #NR                      1
-NR                      100
+NR                      150
 
 SCOMP                   p
 RCOMP                   p
@@ -33,8 +32,7 @@ DT           0.002
 FPEAK        7
 #RDT			0.006
 
-#SNAPSHOT     'pz px ez ex'
-#SNAPSHOT     'vz vx p'
+#IF_SNAPSHOT       T
 #NSNAPSHOT    50
 
 IF_USE_CHECKPOINT   F

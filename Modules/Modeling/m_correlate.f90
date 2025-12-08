@@ -166,12 +166,12 @@ use m_computebox
             call sysio_write('snap_'//name//'%'//  c1//suf,  a1,m%n,o_mode=o_mode)
         endif
 
-        if(present(o_a2).and.allocated(o_a2)) then
+        if(present(o_a2)) then; if(allocated(o_a2)) then
             call sysio_write('snap_'//name//'%'//o_c2//suf,o_a2,m%n,o_mode=o_mode)
-        endif
-        if(present(o_a3).and.allocated(o_a3)) then
+        endif; endif
+        if(present(o_a3)) then; if(allocated(o_a3)) then
             call sysio_write('snap_'//name//'%'//o_c3//suf,o_a3,m%n,o_mode=o_mode)
-        endif
+        endif; endif
 
     end subroutine
 

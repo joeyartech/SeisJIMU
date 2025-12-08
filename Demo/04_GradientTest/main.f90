@@ -11,7 +11,7 @@ use m_linesearcher
     call mpiworld%init(name='MPIWorld')
 
     call hud('======================================'//s_NL// &
-             '       WELCOME TO SeisJIMU PFEI       '//s_NL// &
+             '   WELCOME TO SeisJIMU GradientTest   '//s_NL// &
              '======================================')
 
     call setup%init

@@ -31,10 +31,13 @@ use singleton
     real :: visac_b = -110.687
     real :: visac_d = 1111.5
     real :: visac_e = 1
-    integer :: ifsmooth = 1, smooth_interval=100
 
     ! logical :: is_Q_attenuation
-    character(:),allocatable :: stablize_method
+
+    !stablization method
+    character(:),allocatable :: stabilize_method
+    logical :: if_smooth=.false.
+    integer :: smooth_interval=100
 
     !local const
     real :: dt2, inv_2dt, inv_2dz, inv_2dx
@@ -45,7 +48,7 @@ use singleton
     type,public :: t_propagator
         !info
         character(i_str_xxlen) :: info = &
-            'Time-domain ISOtropic 2D/3D VIScoACoustic propagation'//s_NL// &
+            'Time-domain ISOtropic 2D/3D ViscoACoustic propagation'//s_NL// &
             '2nd-order Pressure formulation'//s_NL// &
             'Vireux-Levandar Staggered-Grid Finite-Difference (FDSG) method'//s_NL// &
             'Cartesian O(x⁴,t²) stencil'//s_NL// &
@@ -153,13 +156,17 @@ use singleton
             visac_b = 0.
             visac_d = 0.
             visac_e = 0.
-            ifsmooth = 0
         endif
 
-        call hud('visac coefs:'//num2str(visac_a)//', '//num2str(visac_b)//', '//num2str(visac_d)//', '//num2str(visac_e)//', if smooth =' //num2str(ifsmooth))
-                
-        ! stablize_method=setup%get_str('STABLIZE_METHOD',o_default='fft complex field')
-        ! stablize_method=setup%get_str('STABLIZE_METHOD',o_default='Non')
+        call hud('visac coefs:'//num2str(visac_a)//', '//num2str(visac_b)//', '//num2str(visac_d)//', '//num2str(visac_e))
+
+        stabilize_method=setup%get_str('STABILIZE_METHOD',o_default='fft complex field')
+        ! stabilize_method=setup%get_str('STABILIZE_METHOD',o_default='None')
+
+        if(stabilize_method=='smooth') then
+            if_smooth=.true.
+            smooth_interval=setup%get_int('STABILIZE_SMOOTH_INTERNVAL',o_default='100')
+        endif
 
     end subroutine
 
@@ -303,12 +310,12 @@ use singleton
         call alloc(f%dx_p, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         ! call alloc(f%dy_p, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         !derivative of acceleration
-        call alloc(f%dz_z, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dx_x, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dz_$z, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dx_$x, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         ! call alloc(f%dy_dy_p, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
 
         call alloc(f%lap, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-
+        
     end subroutine
 
     subroutine init_correlate(self,corr,name)
@@ -422,7 +429,6 @@ use singleton
             tt1=tt1+toc-tic
 
             !step 2: save p^it+1 in boundary layers
-            ! if(fld_E0%if_will_reconstruct) then
                 call cpu_time(tic)
                 call fld_reU%boundary_transport('save',it,o_p=fld_reU%p)
                 call fld_imU%boundary_transport('save',it,o_p=fld_imU%p)
@@ -448,7 +454,7 @@ use singleton
             ! endif
             
 
-            if(mod(it,smooth_interval)==0 .and. ifsmooth==1) then
+            if(if_smooth .and. mod(it,smooth_interval)==0) then
                 
                 call fft_gassian_filt(fld_reU, mask, it)
                 call fft_gassian_filt(fld_imU, mask, it)
@@ -550,7 +556,7 @@ use singleton
                 call cpu_time(toc)
                 tt4=tt4+toc-tic
 
-                if(mod(it,smooth_interval)==0 .and. ifsmooth==1) then
+                if(if_smooth .and. mod(it,smooth_interval)==0) then
                     
                     ! print *,'mask size=',size(mask,1),size(mask,2),'it=',it
                     ! if(it==4400) then
@@ -588,7 +594,7 @@ use singleton
             call cpu_time(toc)
             tt9=tt9+toc-tic
 
-            if(mod(it,smooth_interval)==0 .and. ifsmooth==1) then
+            if(if_smooth .and. mod(it,smooth_interval)==0) then
                 ! call build_mask(mask, fld_reA, it)
                 call fft_gassian_filt(fld_reA, mask, it)
                 call fft_gassian_filt(fld_imA, mask, it)
@@ -709,7 +715,7 @@ use singleton
             !adjsource for pressure
             wl = f%wavelet(i,it)*wavelet_scaler    !no time_dir needed!
 
-            if(shot%src%comp=='p') then
+            if(shot%rcv(i)%comp=='p') then
                 if(if_hicks) then 
                     f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef_anti
                 else
@@ -773,7 +779,7 @@ use singleton
                 ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
                 ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
                 
-                 wl=f%wavelet(i,it)/m%cell_volume !as no time derivative
+                wl=f%wavelet(i,it)/m%cell_volume !as no time derivative
                 
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
@@ -851,11 +857,11 @@ use singleton
         !laplacian
         if(m%is_cubic) then
         else
-            call fd2d_laplacian(fre%az,fre%ax,fre%dz_z,fre%dx_x,&
-                                fre%lap,                        &
+            call fd2d_laplacian(fre%az,fre%ax,fre%dz_$z,fre%dx_$x,&
+                                fre%lap,                          &
                                 ifz,ilz,ifx,ilx)
-            call fd2d_laplacian(fim%az,fim%ax,fim%dz_z,fim%dx_x,&
-                                fim%lap,                        &
+            call fd2d_laplacian(fim%az,fim%ax,fim%dz_$z,fim%dx_$x,&
+                                fim%lap,                          &
                                 ifz,ilz,ifx,ilx)
         endif
 
@@ -924,17 +930,17 @@ use singleton
                     /(1-c_i*self%C1n*0.5*self%dt)
                 
 ! if(it>400.)then
-! if(stablize_method=='fft complex field') then
-! call stablize_complex(Unext)
+! if(stabilize_method=='fft complex field') then
+! call stabilize_complex(Unext)
 ! endif
 ! endif
                 fre%p_next =  real(Unext)
                 fim%p_next = aimag(Unext)
 
 ! if(it>400)then
-! if(stablize_method=='fft real field') then
-! call stablize(fre%p_next)
-! call stablize(fim%p_next)
+! if(stabilize_method=='fft real field') then
+! call stabilize(fre%p_next)
+! call stabilize(fim%p_next)
 ! endif
 ! endif
 
@@ -949,8 +955,8 @@ use singleton
                 Uprev              = ( 2*U  -Unext +c_i*self%C1n*(Unext)*0.5*self%dt -self%C0n*U*dt2 +self%invC2*dt2*self%kpa*Lap ) &
                     /(1+c_i*self%C1n*0.5*self%dt)
 
-! if(stablize_method=='fft complex field') then
-! call stablize_complex(Uprev)
+! if(stabilize_method=='fft complex field') then
+! call stabilize_complex(Uprev)
 ! endif
 
                 fre%p_prev =  real(Uprev)
@@ -969,8 +975,8 @@ use singleton
                 Uprev              = ( 2*U  -Unext +c_i*self%C1nH*(Unext)*0.5*self%dt -self%C0nH*U*dt2 +self%invC2H*dt2*self%kpa*Lap ) &
                 /(1+c_i*self%C1nH*0.5*self%dt)
 
-! if(stablize_method=='fft complex field') then
-! call stablize_complex(Uprev)
+! if(stabilize_method=='fft complex field') then
+! call stabilize_complex(Uprev)
 ! endif
 
                 fre%p_prev =  real(Uprev)
@@ -985,7 +991,7 @@ use singleton
 
     
 
-    subroutine stablize_complex(p) !by fft
+    subroutine stabilize_complex(p) !by fft
 use singleton
         complex,dimension(cb%nz,cb%nx) :: p
 
@@ -1033,10 +1039,10 @@ use singleton
 
         deallocate(p_fft)
 
-    end subroutine stablize_complex
+    end subroutine stabilize_complex
 
 
-    subroutine stablize(p) !by fft
+    subroutine stabilize(p) !by fft
 use singleton
         real,dimension(cb%nz,cb%nx) :: p
 
@@ -1084,7 +1090,7 @@ use singleton
 
         deallocate(p_fft)
 
-    end subroutine stablize
+    end subroutine stabilize
 
     subroutine evolve(self,f,time_dir,it)
         class(t_propagator) :: self
@@ -1166,13 +1172,13 @@ use singleton
                     f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef_anti)
                     
                     case ('az')
-                    f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    f%seismo(1,it)=sum(f%az(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
                     
                     case ('ax')
-                    f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    f%seismo(1,it)=sum(f%ax(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
                     
                     case ('ay')
-                    f%seismo(1,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    f%seismo(1,it)=sum(f%ay(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
                     
                 end select
                 
@@ -1472,7 +1478,7 @@ use singleton
 
     end subroutine
 
-    !========= Stablize wave propagation ==================
+    !========= Stabilize wave propagation ==================
 
     ! subroutine build_mask2(mask, f, it, freq_cut, h_in, sigma_filter_in)
     !     type(t_field)        :: f
@@ -1481,7 +1487,7 @@ use singleton
 
     !     real                :: h, sigma_filter, vp_min, k_cut
     !     integer             :: nz, nx, i, j, nz2, nx2
-    !     integer             :: idx_x, idx_z
+    !     integer             :: idx_$x, idx_z
     !     real, allocatable   :: kx(:), kz(:), kx_grid(:,:), kz_grid(:,:), K(:,:)
         
     !     ! fp     = shot%fpeak
@@ -1567,7 +1573,7 @@ use singleton
     !     ! 局部
     !     real                :: h, sigma_filter, fp, vp_min, k_cut!, r_pi
     !     integer             :: nz, nx, i, j
-    !     integer             :: idx_x, idx_z
+    !     integer             :: idx_$x, idx_z
     !     real, allocatable   :: kx(:), kz(:), kx_grid(:,:), kz_grid(:,:), K(:,:)
 
     !     r_pi = acos(-1.0)
@@ -1645,7 +1651,7 @@ use singleton
 
         real    :: h, sigma_filter, vp_min, k_cut
         integer :: nz, nx, i, j, nz2, nx2
-        integer :: idx_x, idx_z
+        integer :: idx_$x, idx_z
         real,dimension(:),allocatable :: kx,kz
         real,dimension(:,:),allocatable :: kx_grid, kz_grid, K
         

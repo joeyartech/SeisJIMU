@@ -67,12 +67,12 @@ use, intrinsic :: ieee_arithmetic
 
         !derivatives for absorbing boundary wavefield
         !1st-order
-        real,dimension(:,:,:),allocatable :: dz_z, dz_x, dz_y, dz_p, dz_zz, dz_zx
-        real,dimension(:,:,:),allocatable :: dx_z, dx_x, dx_y, dx_p, dx_xx, dx_zx
-        real,dimension(:,:,:),allocatable :: dy_z, dy_x, dy_y, dy_p
+        real,dimension(:,:,:),allocatable :: dz_$z, dz_$x, dz_$y, dz_p, dz_$zz, dz_$zx
+        real,dimension(:,:,:),allocatable :: dx_$z, dx_$x, dx_$y, dx_p, dx_$xx, dx_$zx
+        real,dimension(:,:,:),allocatable :: dy_$z, dy_$x, dy_$y, dy_p
         !2nd-order
-        real,dimension(:,:,:),allocatable :: dz_dz_z, dz_dz_x, dz_dz_y, dz_dz_p
-        real,dimension(:,:,:),allocatable :: dx_dx_z, dx_dx_x, dx_dx_y, dx_dx_p
+        real,dimension(:,:,:),allocatable :: dz_dz_$z, dz_dz_$x, dz_dz_$y, dz_dz_p
+        real,dimension(:,:,:),allocatable :: dx_dx_$z, dx_dx_$x, dx_dx_$y, dx_dx_p
 
         !source wavelet
         real,dimension(:,:),allocatable :: wavelet
@@ -590,11 +590,11 @@ use, intrinsic :: ieee_arithmetic
         call dealloc(self%bnd%rear_z, self%bnd%rear_x, self%bnd%rear_y)
 
         !derivatives
-        call dealloc(self%dz_z, self%dz_x, self%dz_y, self%dz_p)
-        call dealloc(self%dx_z, self%dx_x, self%dx_y, self%dx_p)
-        call dealloc(self%dy_z, self%dy_x, self%dy_y, self%dy_p)
-        call dealloc(self%dz_zz, self%dz_zx)
-        call dealloc(self%dx_xx, self%dx_zx)
+        call dealloc(self%dz_$z, self%dz_$x, self%dz_$y, self%dz_p)
+        call dealloc(self%dx_$z, self%dx_$x, self%dx_$y, self%dx_p)
+        call dealloc(self%dy_$z, self%dy_$x, self%dy_$y, self%dy_p)
+        call dealloc(self%dz_$zz, self%dz_$zx)
+        call dealloc(self%dx_$xx, self%dx_$zx)
 
         !etc
         call dealloc(self%wavelet)

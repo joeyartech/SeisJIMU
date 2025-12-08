@@ -2,10 +2,6 @@ mod_dir=../mod/
 include ../compiler.inc
 include ../modules.inc
 
-ifeq ($(WaveEq) , VisAC2nd)
-	ETC := -Dcomplex_field
-endif
-
 
 APP = FWD
 app = $(shell echo $(APP) | tr A-Z a-z)

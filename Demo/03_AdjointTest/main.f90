@@ -7,7 +7,7 @@ use m_hilbert
     call mpiworld%init(name='MPIWorld')
 
     call hud('======================================'//s_NL// &
-             '       WELCOME TO SeisJIMU FWI        '//s_NL// &
+             '    WELCOME TO SeisJIMU AdjointTest   '//s_NL// &
              '======================================')
     
     call setup%init
@@ -21,6 +21,8 @@ use m_hilbert
 
     !print propagator info
     call ppg%print_info
+
+    if_propagator_record_adjseismo=.true.
 
     !model
     call m%init
@@ -51,7 +53,7 @@ use m_hilbert
 
     real,dimension(:,:),allocatable :: reS,imS, reR,imR, reLS,imLS, reLadjR, imLadjR
     type(t_field) :: reU, imU, reA, imA
-    type(t_correlate) :: a_star_u
+    type(t_correlate) :: A_star_U
 
     logical :: if_use_random
 
@@ -78,7 +80,7 @@ use m_hilbert
         call ppg%init_field(reU,name='reU')
         call ppg%init_field(imU,name='imU')
 
-        call ppg%init_correlate(a_star_u,'a_star_u')
+        call ppg%init_correlate(A_star_U,'A_star_U')
         
         if_use_random=setup%get_bool('IF_USE_RANDOM',o_default='T')
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -108,7 +110,11 @@ use m_hilbert
         call imU%ignite(o_wavelet=imS)
         
         !forward modeling
+#ifdef complex_field
         call ppg%forward(reU,imU)
+#else
+        call ppg%forward(reU)
+#endif
         
         call reU%acquire(o_seismo=reLS)
         call imU%acquire(o_seismo=imLS)
@@ -116,8 +122,7 @@ use m_hilbert
         !call shot%write('dsyn_')
         call suformat_write('reLS',reLS,ppg%nt,shot%nrcv,o_dt=ppg%dt)
         call suformat_write('imLS',imLS,ppg%nt,shot%nrcv,o_dt=ppg%dt)
-
-
+        
         call ppg%init_field(reA,name='reA',ois_adjoint=.true.)
         call ppg%init_field(imA,name='imA',ois_adjoint=.true.)
 
@@ -125,27 +130,29 @@ use m_hilbert
         if(if_use_random) then
             call random_number(reR)
         else
-            !reR(:,1)=shot%wavelet
             reR=reLS
-!             imR=-imLS
-            call hilbert_transform(reR,imR,ppg%nt,shot%nrcv)
+            imR=hilbert(reR)
         endif
+
         call suformat_write('reR',reR,ppg%nt,shot%nrcv,o_dt=ppg%dt)
         call suformat_write('imR',imR,ppg%nt,shot%nrcv,o_dt=ppg%dt)
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
         call reA%ignite(o_wavelet=reR)
         call imA%ignite(o_wavelet=imR)
-        
+
         !adjoint modeling
-        call ppg%adjoint(reA,imA,reU,imU,a_star_u)
+#ifdef complex_field
+        call ppg%adjoint(reA,imA,reU,imU,A_star_U)
+#else
+        call ppg%adjoint(reA,reU,A_star_U)
+#endif
 
         call reA%acquire(o_seismo=reLadjR)
         call imA%acquire(o_seismo=imLadjR)
-!         Ladj_p=-Ladj_p
+
         call suformat_write('reLadjR',reLadjR,ppg%nt,1,o_dt=ppg%dt)
         call suformat_write('imLadjR',imLadjR,ppg%nt,1,o_dt=ppg%dt)
-        
 !         call cb%project_back
         
     enddo

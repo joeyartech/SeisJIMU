@@ -11,6 +11,11 @@ WaveEq=VisAC2nd
 #WaveEq=PSV
 #WaveEq=PSV2nd
 
+ifeq ($(WaveEq) , VisAC2nd)
+	ETC := -Dcomplex_field
+endif
+
+
 Solver=FDSG
 Order=O4
 ShotDec=batching
