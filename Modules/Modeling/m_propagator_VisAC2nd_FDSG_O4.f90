@@ -6,6 +6,7 @@ use m_resampler
 use m_model
 use m_shot
 use m_computebox
+use m_freesurface
 use m_field
 use m_correlate
 use m_cpml
@@ -396,6 +397,7 @@ use singleton
         call alloc(fld_reU%seismo,shot%nrcv,self%nt)
         call alloc(fld_imU%seismo,shot%nrcv,self%nt)
 
+        call build_mask(mask, fld_reU, it)
         ! call hilbert_transform(fld_reU%wavelet,fld_imU%wavelet,1,self%nt,o_axis=2)
 
         tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.; tt7=0.
@@ -446,15 +448,10 @@ use singleton
             
 
             if(mod(it,smooth_interval)==0 .and. ifsmooth==1) then
-                call build_mask(mask, fld_reU, it)
-                ! print *,'mask shape', size(mask,1),size(mask,2),size(mask,3), 'fld_reU%p shape',size(fld_reU%p,1),size(fld_reU%p,2),size(fld_reU%p,3)
-                ! open(unit=10, file='../../Demo/11_Marmousi/mask.bin', form='unformatted', access='stream', status='replace')
-                ! write(10) mask
-                ! close(10)
-                ! stop
+
                 call fft_gassian_filt(fld_reU, mask, it)
                 call fft_gassian_filt(fld_imU, mask, it)
-                deallocate(mask)
+                ! deallocate(mask)
             endif
             
 
@@ -510,6 +507,8 @@ use singleton
         if(if_record_adjseismo)  call alloc(fld_reA%seismo,1,self%nt)
         if(if_record_adjseismo)  call alloc(fld_imA%seismo,1,self%nt)
         
+        call build_mask(mask, fld_reU, it)
+
         !timing
         tt1=0.; tt2=0.; tt3=0.
         tt4=0.; tt5=0.; tt6=0.
@@ -549,7 +548,7 @@ use singleton
                 tt4=tt4+toc-tic
 
                 if(mod(it,smooth_interval)==0 .and. ifsmooth==1) then
-                    call build_mask(mask, fld_reU, it)
+                    ! call build_mask(mask, fld_reU, it)
                     ! print *,'mask size=',size(mask,1),size(mask,2),'it=',it
                     ! if(it==4400) then
                     ! open(unit=10, file='../../Demo/11_Marmousi/mask.bin', form='unformatted', access='stream', status='replace')
@@ -560,7 +559,7 @@ use singleton
                     
                     call fft_gassian_filt(fld_reU, mask, it)
                     call fft_gassian_filt(fld_imU, mask, it)
-                    deallocate(mask)
+                    ! deallocate(mask)
                     ! print *,'fld_reU shape=',size(fld_reU%p,1),size(fld_reU%p,2)
                  endif
                  
@@ -588,10 +587,10 @@ use singleton
             tt9=tt9+toc-tic
 
             if(mod(it,smooth_interval)==0 .and. ifsmooth==1) then
-                call build_mask(mask, fld_reA, it)
+                ! call build_mask(mask, fld_reA, it)
                 call fft_gassian_filt(fld_reA, mask, it)
                 call fft_gassian_filt(fld_imA, mask, it)
-                deallocate(mask)
+                ! deallocate(mask)
             endif
 
             !image: rf%p^it star sf%p^it
@@ -769,16 +768,21 @@ use singleton
         ifx=f_re%bloom(3,it)
         ilx=f_re%bloom(4,it)
         
-        
-        ! if(m%is_freesurface) call fd_freesurface_stresses(f_re%p)
-        ! if(m%is_freesurface) call fd_freesurface_stresses(f_im%p)
-        
-
         if(m%is_cubic) then
             ! call fd3d_pressure(f%p,                                      &
             !                    f%dp_dz,f%dp_dx,f%dp_dy,                  &
             !                    self%buoz,self%buox,self%buoy,self%kpa,   &
             !                    ifz,f%bloom(2,it),f%bloom(3,it),f%bloom(4,it))
+        ! else
+        !     call fd2d_flux(fre%p,fre%dz_p,fre%dx_p,&
+        !                    fre%az,fre%ax,          &
+        !                    self%buoz,self%buox,    &
+        !                    ifz,ilz,ifx,ilx)
+        !     call fd2d_flux(fim%p,fim%dz_p,fim%dx_p,&
+        !                    fim%az,fim%ax,          &
+        !                    self%buoz,self%buox,    &
+        !                    ifz,ilz,ifx,ilx)
+        ! endif
         else
             call fd2d_laplacian(f_re%p,                                         &
                                 f_re%dp_dz,f_re%dp_dx,f_re%dpzz_dz,f_re%dpxx_dx,&
@@ -791,6 +795,18 @@ use singleton
                                 self%buoz,self%buox,                            &
                                 ifz,ilz,ifx,ilx)
         endif
+
+        ! if(m%is_freesurface) then
+        !     call freesurface_velocity(f_re%az,f_re%ax)
+        !     call freesurface_velocity(f_im%az,f_im%ax)
+        ! endif
+
+        ! if(m%is_freesurface) then
+            ! call freesurface_stress(fre%lap)
+            ! call freesurface_stress(fim%lap)
+            call freesurface_stress(f_re%p)
+            call freesurface_stress(f_im%p)
+        ! endif
 
         ! !simple scheme for 1st-order time derivative
         ! !use forward FD in backward vs backward FD in forward modeling
@@ -899,8 +915,7 @@ use singleton
         endif
 
         ! !apply free surface boundary condition if needed
-        if(m%is_freesurface) call fd_freesurface_stresses(f_re%p_next)
-        if(m%is_freesurface) call fd_freesurface_stresses(f_im%p_next)
+        
         ! if(m%is_freesurface) then
         !     f_re%p(1,:,:)=0.
         !     f_re%p(0,:,:)=-f_re%p(2,:,:)
@@ -922,6 +937,7 @@ use singleton
         ! f%p_next(:,:,cb%ily)=0.
 
     end subroutine
+
 
     subroutine fd_freesurface_stresses(p)
         ! real,dimension(cb%ifz:cb%ilz,cb%ifx:cb%ilx,cb%ify:cb%ily) :: p
@@ -1304,6 +1320,58 @@ use singleton
 
     !========= Finite-Difference on flattened arrays ==================
 
+    subroutine fd2d_flux(p,dp_dz,dp_dx,&
+                         az,ax,&
+                         buoz,buox,&
+                         ifz,ilz,ifx,ilx)
+        real,dimension(*) :: p,dp_dz,dp_dx
+        real,dimension(*) :: az,ax
+        real,dimension(*) :: buoz,buox
+
+        nz=cb%nz
+        nx=cb%nx
+        
+        !flux: b∇u ~= ( bz*∂zᵇp , bx*∂ₓᵇp )
+        !$omp parallel default (shared)&
+        !$omp private(iz,ix,i,&
+        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,&
+        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,&
+        !$omp         dp_dz_,dp_dx_)
+        !$omp do schedule(dynamic)
+        do ix = ifx+2,ilx-1
+            !dir$ simd
+            do iz = ifz+2,ilz-1
+
+                i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1
+
+                izm2_ix=i-2  !iz-2,ix
+                izm1_ix=i-1  !iz-1,ix
+                iz_ix  =i    !iz,ix
+                izp1_ix=i+1  !iz+1,ix
+                
+                iz_ixm2=i  -2*nz !iz,ix-2
+                iz_ixm1=i  -nz  !iz,ix-1
+                iz_ixp1=i  +nz  !iz,ix+1
+
+                dp_dz_ = c1z*(p(iz_ix) - p(izm1_ix)) +c2z*(p(izp1_ix)-p(izm2_ix))
+                dp_dx_ = c1x*(p(iz_ix) - p(iz_ixm1)) +c2x*(p(iz_ixp1)-p(iz_ixm2))
+
+                dp_dz(iz_ix) = cpml%b_z_half(iz)*dp_dz(iz_ix) + cpml%a_z_half(iz)*dp_dz_
+                dp_dx(iz_ix) = cpml%b_x_half(ix)*dp_dx(iz_ix) + cpml%a_x_half(ix)*dp_dx_
+
+                dp_dz_ = dp_dz_/cpml%kpa_z_half(iz) + dp_dz(iz_ix)
+                dp_dx_ = dp_dx_/cpml%kpa_x_half(ix) + dp_dx(iz_ix)
+
+                az(iz_ix) = buoz(iz_ix)*dp_dz_
+                ax(iz_ix) = buox(iz_ix)*dp_dx_
+
+            enddo
+        enddo
+        !$omp end do
+        !$omp end parallel
+
+    end subroutine
+
     subroutine fd2d_laplacian(p,dp_dz,dp_dx,&
                                 dpzz_dz,dpxx_dx,&
                                 lap,&
@@ -1581,93 +1649,40 @@ use singleton
     end subroutine
 
 
-    subroutine fft_gassian_filt(f, mask, it)
-        type(t_field) :: f
-        complex(fftkind), allocatable :: spectrum_ppre(:,:,:), spectrum_p(:,:,:), spectrum_pnext(:,:,:), spectrum_filted_ppre(:,:,:), spectrum_filted_p(:,:,:), spectrum_filted_pnext(:,:,:)
-        real, intent(in) :: mask(:,:,:)  
-        character(len=200) :: filename
-        ! if(time_dir>0.) then
-        ifz=f%bloom(1,it)
-        if(m%is_freesurface) ifz=max(ifz,1)
-        ilz=f%bloom(2,it)
-        ifx=f%bloom(3,it)
-        ilx=f%bloom(4,it)
-        ! else
-        !     ifz=1
-        !     ilz=size(f%p,1)
-        !     ifx=1
-        !     ilx=size(f%p,2)
-        ! end if
-
-        ! print *,'ifz,ilz=',ifz,ilz,'ifx,ilx=',ifx,ilx
-        
-
-        allocate(spectrum_ppre(ifz:ilz,ifx:ilx,1), spectrum_p(ifz:ilz,ifx:ilx,1), spectrum_pnext(ifz:ilz,ifx:ilx,1))
-        allocate(spectrum_filted_ppre(ifz:ilz,ifx:ilx,1), spectrum_filted_p(ifz:ilz,ifx:ilx,1), spectrum_filted_pnext(ifz:ilz,ifx:ilx,1))
-        ! print *,'spectrum_p shape:',size(spectrum_p,1),size(spectrum_p,2)
-        spectrum_ppre=fft(cmplx(f%p_prev(ifz:ilz,ifx:ilx,:),0.0,kind=fftkind),inv=.TRUE.)
-        spectrum_p=fft(cmplx(f%p(ifz:ilz,ifx:ilx,:),0.0,kind=fftkind),inv=.TRUE.)
-        spectrum_pnext=fft(cmplx(f%p_next(ifz:ilz,ifx:ilx,:),0.0,kind=fftkind),inv=.TRUE.)
-        ! write(filename,'("../../Demo/11_Marmousi/spectrum_p_",I0,".bin")') it
-        ! open(unit=12, file=trim(filename), form='unformatted', access='stream', status='replace')
-        ! write(12) spectrum_p
-        ! close(12)
-        ! stop
-        spectrum_filted_ppre=spectrum_ppre*cmplx(mask,mask, kind=fftkind)
-        spectrum_filted_p=spectrum_p*cmplx(mask,mask, kind=fftkind)
-        spectrum_filted_pnext=spectrum_pnext*cmplx(mask,mask, kind=fftkind)
-        ! write(filename,'("../../Demo/11_Marmousi/spectrum_p_filted_",I0,".bin")') it
-        ! open(unit=13, file=trim(filename), form='unformatted', access='stream', status='replace')
-        ! write(13) spectrum_filted_p
-        ! close(13)
-        ! print *,'ifz ilz ifx ilx', ifz,ilz,ifx,ilx, 'spectrum_p shape:',size(spectrum_p,1),size(spectrum_p,2),'mask shape',size(mask,1),size(mask,2)
-        ! print *,'spectrum shape',size(spectrum_p,1),size(spectrum_p,2),'spectrum_filted',size(spectrum_filted_p,1),size(spectrum_filted_p,2)
-        f%p_prev(ifz:ilz,ifx:ilx,:)=real(fft(spectrum_filted_ppre,inv=.False.))
-        f%p(ifz:ilz,ifx:ilx,:)=real(fft(spectrum_filted_p,inv=.False.))
-        f%p_next(ifz:ilz,ifx:ilx,:)=real(fft(spectrum_filted_pnext,inv=.False.))
-        
-        deallocate(spectrum_ppre, spectrum_p, spectrum_pnext)
-        deallocate(spectrum_filted_ppre, spectrum_filted_p, spectrum_filted_pnext)
-    end subroutine fft_gassian_filt
-
-
     subroutine build_mask(mask, f, it, freq_cut, h_in, sigma_filter_in)
-        type(t_field)        :: f
-        real, intent(in),  optional      :: h_in, sigma_filter_in, freq_cut
-        real, allocatable, intent(out)   :: mask(:,:,:) 
+        type(t_field) :: f
+        real,intent(in), optional    :: h_in, sigma_filter_in, freq_cut
+        real,allocatable,intent(out) :: mask(:,:,:) 
 
-        real                :: h, sigma_filter, vp_min, k_cut
-        integer             :: nz, nx, i, j, nz2, nx2
-        integer             :: idx_x, idx_z
-        real, allocatable   :: kx(:), kz(:), kx_grid(:,:), kz_grid(:,:), K(:,:)
+        real    :: h, sigma_filter, vp_min, k_cut
+        integer :: nz, nx, i, j, nz2, nx2
+        integer :: idx_x, idx_z
+        real,dimension(:),allocatable :: kx,kz
+        real,dimension(:,:),allocatable :: kx_grid, kz_grid, K
         
         ! fp     = shot%fpeak
         vp_min = cb%velmin
-        ! if(time_dir>0) then
+
         ifz=f%bloom(1,it)
-        if(m%is_freesurface) ifz=max(ifz,1)
         ilz=f%bloom(2,it)
         ifx=f%bloom(3,it)
         ilx=f%bloom(4,it)
-        nz = ilz-ifz+1
-        nx = ilx-ifx+1
-        ! else
-        !     nz = size(f%p,1)
-        !     nx = size(f%p,2)
-        ! end if
-        
-        ! print *,'nz=',nz,'nx=',nx
 
-        if (present(h_in)) then
-            h = h_in
-        else
-            h = 21
-        end if
+        ! nz = ilz-ifz+1
+        ! nx = ilx-ifx+1
+        nz = cb%nz
+        nx = cb%nx
+
+        ! if (present(h_in)) then
+        !     h = h_in
+        ! else
+        !     h = m%dz
+        ! end if
 
         if (present(sigma_filter_in)) then
             sigma_filter = sigma_filter_in
         else
-            sigma_filter = 2
+            sigma_filter = 1
         end if
 
         allocate(kx(nx), kz(nz), kx_grid(nz,nx), kz_grid(nz,nx), K(nz,nx))
@@ -1677,18 +1692,18 @@ use singleton
         ! print *,'For mask:ifz ilz ifx ilx', ifz,ilz,ifx,ilx, 'K shape:',size(K,1),size(K,2), 'nz nx=',nz,nx
 
         do i = 1, nx/2
-            kx(i) = 2.0d0*r_pi*real(i-1)/(h*real(nx))    ! [0 ... nx/2-1]
+            kx(i) = 2.0d0*r_pi*real(i-1)/(m%dx*real(nx))    ! [0 ... nx/2-1]
         end do
         do i = nx/2+1, nx
-            kx(i) = 2.0d0*r_pi*real(i-nx-1)/(h*real(nx)) ! [-nx/2 ... -1]
+            kx(i) = 2.0d0*r_pi*real(i-nx-1)/(m%dx*real(nx)) ! [-nx/2 ... -1]
         end do
 
         ! ---- kz 向量 ----
         do i = 1, nz/2
-            kz(i) = 2.0d0*r_pi*real(i-1)/(h*real(nz))
+            kz(i) = 2.0d0*r_pi*real(i-1)/(m%dz*real(nz))
         end do
         do i = nz/2+1, nz
-            kz(i) = 2.0d0*r_pi*real(i-nz-1)/(h*real(nz))
+            kz(i) = 2.0d0*r_pi*real(i-nz-1)/(m%dz*real(nz))
         end do
 
         do j = 1, nz
@@ -1704,17 +1719,99 @@ use singleton
         if(present(freq_cut)) then
             k_cut = 2.0*r_pi*freq_cut / vp_min
         else
-            k_cut = 2.0*r_pi*shot%fmax*1.4 / vp_min
+            k_cut = 2.0*r_pi*shot%fmax*1.2 / vp_min
         endif
 
         where (K <= k_cut)
             mask(:,:,1) = 1.0
         elsewhere
             mask(:,:,1) = exp( - ((K - k_cut)/(sigma_filter*k_cut))**2 )
-        end where
+        endwhere
 
         deallocate(kx, kz, kx_grid, kz_grid, K)
-    end subroutine build_mask
+
+    end subroutine
+
+
+    subroutine fft_gassian_filt(f, mask, it)
+        type(t_field) :: f
+        complex(fftkind),dimension(:,:,:),allocatable :: Pprev, Pcurr, Pnext, Pprev_filt, Pcurr_filt, Pnext_filt, K_az, K_ax, K_az_filt, K_ax_filt
+        real,dimension(:,:,:), intent(in) :: mask
+
+        character(len=200) :: filename
+
+        ifz=f%bloom(1,it)
+        ilz=f%bloom(2,it)
+        ifx=f%bloom(3,it)
+        ilx=f%bloom(4,it)
+        
+        ! allocate(Pprev(ifz:ilz,ifx:ilx,1),      Pcurr(ifz:ilz,ifx:ilx,1),      Pnext(ifz:ilz,ifx:ilx,1))
+        ! allocate(Pprev_filt(ifz:ilz,ifx:ilx,1), Pcurr_filt(ifz:ilz,ifx:ilx,1), Pnext_filt(ifz:ilz,ifx:ilx,1))
+
+        ! allocate(K_az(ifz:ilz,ifx:ilx,1),      K_ax(ifz:ilz,ifx:ilx,1))
+        ! allocate(K_az_filt(ifz:ilz,ifx:ilx,1), K_ax_filt(ifz:ilz,ifx:ilx,1))
+
+        allocate(Pprev(cb%nz,cb%nx,1),      Pcurr(cb%nz,cb%nx,1),      Pnext(cb%nz,cb%nx,1))
+        allocate(Pprev_filt(cb%nz,cb%nx,1), Pcurr_filt(cb%nz,cb%nx,1), Pnext_filt(cb%nz,cb%nx,1))
+
+        ! allocate(K_az(nz,nx,1),      K_ax(nz,nx,1))
+        ! allocate(K_az_filt(nz,nx,1), K_ax_filt(nz,nx,1))
+
+        ! print *,'Pcurr shape:',size(Pcurr,1),size(Pcurr,2)
+
+        ! Pprev = fft(cmplx(f%p_prev(ifz:ilz,ifx:ilx,:),0.0,kind=fftkind),inv=.TRUE.)
+        ! Pcurr = fft(cmplx(f%p     (ifz:ilz,ifx:ilx,:),0.0,kind=fftkind),inv=.TRUE.)
+        ! Pnext = fft(cmplx(f%p_next(ifz:ilz,ifx:ilx,:),0.0,kind=fftkind),inv=.TRUE.)
+
+        ! K_az = fft(cmplx(f%az(ifz:ilz,ifx:ilx,:),0.0,kind=fftkind),inv=.TRUE.)
+        ! K_ax = fft(cmplx(f%ax(ifz:ilz,ifx:ilx,:),0.0,kind=fftkind),inv=.TRUE.)
+
+        Pprev = fft(cmplx(f%p_prev,0.0,kind=fftkind),inv=.TRUE.)
+        Pcurr = fft(cmplx(f%p     ,0.0,kind=fftkind),inv=.TRUE.)
+        Pnext = fft(cmplx(f%p_next,0.0,kind=fftkind),inv=.TRUE.)
+
+        ! K_az = fft(cmplx(f%az,0.0,kind=fftkind),inv=.TRUE.)
+        ! K_ax = fft(cmplx(f%ax,0.0,kind=fftkind),inv=.TRUE.)
+
+        ! K_az_filt = K_az**cmplx(mask,mask, kind=fftkind)
+        ! K_ax_filt = K_ax**cmplx(mask,mask, kind=fftkind)
+        
+        ! write(filename,'("../../Demo/11_Marmousi/Pcurr_",I0,".bin")') it
+        ! open(unit=12, file=trim(filename), form='unformatted', access='stream', status='replace')
+        ! write(12) Pcurr
+        ! close(12)
+        ! stop
+
+        Pprev_filt=Pprev*cmplx(mask,mask, kind=fftkind)
+        Pcurr_filt=Pcurr*cmplx(mask,mask, kind=fftkind)
+        Pnext_filt=Pnext*cmplx(mask,mask, kind=fftkind)
+
+        ! write(filename,'("../../Demo/11_Marmousi/Pcurr_filted_",I0,".bin")') it
+        ! open(unit=13, file=trim(filename), form='unformatted', access='stream', status='replace')
+        ! write(13) Pcurr_filt
+        ! close(13)
+        ! print *,'ifz ilz ifx ilx', ifz,ilz,ifx,ilx, 'Pcurr shape:',size(Pcurr,1),size(Pcurr,2),'mask shape',size(mask,1),size(mask,2)
+        ! print *,'spectrum shape',size(Pcurr,1),size(Pcurr,2),'spectrum_filted',size(Pcurr_filt,1),size(Pcurr_filt,2)
+        
+        ! f%p_prev(ifz:ilz,ifx:ilx,:)=real(fft(Pprev_filt,inv=.False.))
+        ! f%p     (ifz:ilz,ifx:ilx,:)=real(fft(Pcurr_filt,inv=.False.))
+        ! f%p_next(ifz:ilz,ifx:ilx,:)=real(fft(Pnext_filt,inv=.False.))
+
+        ! f%az(ifz:ilz,ifx:ilx,:)=real(fft(K_az_filt,inv=.False.))
+        ! f%ax(ifz:ilz,ifx:ilx,:)=real(fft(K_ax_filt,inv=.False.))
+
+        f%p_prev=real(fft(Pprev_filt,inv=.False.))
+        f%p     =real(fft(Pcurr_filt,inv=.False.))
+        f%p_next=real(fft(Pnext_filt,inv=.False.))
+
+        ! f%az(ifz:ilz,ifx:ilx,:)=real(fft(K_az_filt,inv=.False.))
+        ! f%ax(ifz:ilz,ifx:ilx,:)=real(fft(K_ax_filt,inv=.False.))
+        
+        deallocate(Pprev, Pcurr, Pnext)
+        deallocate(Pprev_filt, Pcurr_filt, Pnext_filt)
+        ! deallocate(K_az, K_ax, K_az_filt, K_ax_filt)
+
+    end subroutine
 
     ! subroutine build_mask2(mask, f, it, freq_cut, h_in, sigma_filter_in)
     !     type(t_field)        :: f
