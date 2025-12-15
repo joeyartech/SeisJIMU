@@ -9,7 +9,7 @@ IS_FREESURFACE          F
 IS_Q_ATTENUATION        T
 
 ACQUI_GEOMETRY          spread
-FS                      '  0   1200  0'
+FS                      '  84   1200  0'
 #DS			'  0   100   0'
 #NS			 144
 DS			'  0   400  0'
@@ -18,8 +18,8 @@ FR                      '  0   0   0'
 DR                      '  0   25  0'
 NR                       670
 
-SCOMP                   dpdz
-RCOMP                   dpdz #'p vz'
+SCOMP                   p  #p
+RCOMP                   p  #p
 IF_MUST_USE_RCOMP       T
 
 WAVELET_TYPE	ricker

@@ -403,9 +403,9 @@ use m_model
             call hicks_get_coefficient('truncate', self%src%interp_coef)
 
         case('p','szz','sxx')
-            call hicks_get_coefficient('antisymm', self%src%interp_coef_anti) !inject szz component
-            call hicks_get_coefficient('symmetric',self%src%interp_coef_symm) !inject sxx component
-            call hicks_get_coefficient('truncate', self%src%interp_coef_trunc)!extract sxx component
+            ! call hicks_get_coefficient('antisymm', self%src%interp_coef_anti) !inject szz component
+            ! call hicks_get_coefficient('symmetric',self%src%interp_coef_symm) !inject sxx component
+            ! call hicks_get_coefficient('truncate', self%src%interp_coef_trunc)!extract sxx component
             call hicks_get_coefficient('full', self%src%interp_coef_full)
 
         case('dpdz','dpdx')

@@ -405,17 +405,21 @@ use singleton
         ift=1; ilt=self%nt
 
         do it=ift,ilt
-            if(mod(it,500)==0 .and. mpiworld%is_master) then
+            ! if(mod(it,500)==0 .and. mpiworld%is_master) then
+            if(mod(it,500)==0) then
                 write(*,*) 'it----',it
                 call fld_reU%check_value
                 call fld_imU%check_value
+                
             endif
             
             !do forward time stepping (step# conforms with backward & adjoint time stepping)
             !step 1: add pressure
             call cpu_time(tic)
+
             call self%inject_pressure(fld_reU,time_dir,it)
             call self%inject_pressure(fld_imU,time_dir,it)
+
             ! print *, 'time=',it,'wavelet for u:',size(fld_reU%wavelet,1),size(fld_reU%wavelet,2),'wavelet for v:',size(fld_imU%wavelet,1),size(fld_imU%wavelet,2)
             call cpu_time(toc)
             tt1=tt1+toc-tic
@@ -453,7 +457,6 @@ use singleton
                 call fft_gassian_filt(fld_imU, mask, it)
                 ! deallocate(mask)
             endif
-            
 
             !step 5: evolve pressure, it -> it+1
             call cpu_time(tic)
@@ -461,14 +464,14 @@ use singleton
             call self%evolve_pressure(fld_imU,time_dir,it)
             call cpu_time(toc)
             tt6=tt6+toc-tic
-
+            
             !step 6: sample p^it+1 at receivers
             call cpu_time(tic)
             call self%extract(fld_reU,it)
             call self%extract(fld_imU,it)
             call cpu_time(toc)
             tt7=tt7+toc-tic
-
+            
             !snapshot
             call fld_reU%write(it)
             call fld_imU%write(it)
@@ -684,19 +687,19 @@ use singleton
             if(if_hicks) then
                 select case (shot%src%comp)
                 case ('p') !explosion
-                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
-                
+                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef_full
+                    
                 case ('dpdz') !vertical force
                     f%p(ifz+1:ilz+1,ifx:ilx,ify:ily) = f%p(ifz+1:ilz+1,ifx:ilx,ify:ily) + wl*self%kpa(ifz+1:ilz+1,ifx:ilx,ify:ily)*inv_2dz*shot%src%interp_coef
                     f%p(ifz-1:ilz-1,ifx:ilx,ify:ily) = f%p(ifz-1:ilz-1,ifx:ilx,ify:ily) - wl*self%kpa(ifz-1:ilz-1,ifx:ilx,ify:ily)*inv_2dz*shot%src%interp_coef
                 
                 endselect
-
+            
             else
                 select case (shot%src%comp)
                 case ('p') !explosion
                     f%p(iz,ix,iy)                  = f%p(iz,ix,iy)                + wl*self%kpa(iz,ix,iy)
-                
+                    
                 case ('dpdz') !vertical force
                     f%p(iz+1,ix,iy)                = f%p(iz+1,ix,iy)            + wl*self%kpa(iz+1,ix,iy)*inv_2dz
                     f%p(iz-1,ix,iy)                = f%p(iz-1,ix,iy)            - wl*self%kpa(iz-1,ix,iy)*inv_2dz
@@ -727,7 +730,7 @@ use singleton
 
                 select case (shot%rcv(i)%comp)
                 case ('p') !adjsource for pressure
-                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef
+                    f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef_full
 
                 case ('dpdz') !adjsource for vertical force 
                     f%p(ifz+1:ilz+1,ifx:ilx,ify:ily) = f%p(ifz+1:ilz+1,ifx:ilx,ify:ily) + wl*self%kpa(ifz+1:ilz+1,ifx:ilx,ify:ily)*inv_2dz*shot%rcv(i)%interp_coef
@@ -783,6 +786,7 @@ use singleton
         !                    self%buoz,self%buox,    &
         !                    ifz,ilz,ifx,ilx)
         ! endif
+
         else
             call fd2d_laplacian(f_re%p,                                         &
                                 f_re%dp_dz,f_re%dp_dx,f_re%dpzz_dz,f_re%dpxx_dx,&
@@ -800,7 +804,7 @@ use singleton
         !     call freesurface_velocity(f_re%az,f_re%ax)
         !     call freesurface_velocity(f_im%az,f_im%ax)
         ! endif
-
+        
         ! if(m%is_freesurface) then
             ! call freesurface_stress(fre%lap)
             ! call freesurface_stress(fim%lap)
@@ -1114,7 +1118,7 @@ use singleton
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
                     case ('p')
-                        f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                        f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef_full)
 
                     case ('dpdz')
                         f%seismo(i,it)=( sum(f%p(ifz+1:ilz+1,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef) &
@@ -1158,7 +1162,7 @@ use singleton
             if(if_hicks) then
                 select case (shot%src%comp)
                 case ('p')
-                    f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef)
+                    f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef_full)
                     
                 case ('dpdz')
                     f%seismo(1,it)=( sum(f%p(ifz+1:ilz+1,ifx:ilx,ify:ily)*shot%src%interp_coef) &
