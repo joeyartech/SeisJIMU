@@ -6,15 +6,17 @@ MODEL_ATTRIBUTES_WRITE   vp
 #FILE_TOPO              'topo'
 
 IS_FREESURFACE          F
+FREE_SURFACE_PPG        F
 IS_Q_ATTENUATION        T
+IF_HICKS         F
 
 ACQUI_GEOMETRY          spread
-FS                      '  84   1200  0'
+FS                      '  21   1200  0'
 #DS			'  0   100   0'
 #NS			 144
 DS			'  0   400  0'
 NS			 36
-FR                      '  0   0   0'
+FR                      '  25   0   0'
 DR                      '  0   25  0'
 NR                       670
 

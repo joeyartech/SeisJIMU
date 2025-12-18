@@ -31,6 +31,7 @@ use singleton
     real :: visac_d = 1111.5
     real :: visac_e = 1
     integer :: ifsmooth = 1, smooth_interval=100
+    logical :: if_freesurface_ppg
 
     ! logical :: is_Q_attenuation
     character(:),allocatable :: stablize_method
@@ -270,6 +271,8 @@ use singleton
         C2 = 1 -2*visac_a/r_pi/cb%qp +c_i*visac_e/cb%qp; self%invC2H = 1/C2
         C1 =    2*visac_b/r_pi/cb%qp;                    self%C1nH= C1*self%invC2H
         C0 =    2*visac_d/r_pi/cb%qp;                    self%C0nH= C0*self%invC2H
+
+        if_freesurface_ppg=setup%get_bool('FREE_SURFACE_PPG',o_default='T')
 
         deallocate(C2,C1,C0) !save some RAM
 
@@ -808,9 +811,10 @@ use singleton
         ! if(m%is_freesurface) then
             ! call freesurface_stress(fre%lap)
             ! call freesurface_stress(fim%lap)
+        if(if_freesurface_ppg) then
             call freesurface_stress(f_re%p)
             call freesurface_stress(f_im%p)
-        ! endif
+        endif
 
         ! !simple scheme for 1st-order time derivative
         ! !use forward FD in backward vs backward FD in forward modeling
