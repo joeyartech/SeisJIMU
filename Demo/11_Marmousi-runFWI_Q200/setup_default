@@ -6,9 +6,10 @@ MODEL_ATTRIBUTES_WRITE   vp
 #FILE_TOPO              'topo'
 
 IS_FREESURFACE          F
-FREE_SURFACE_PPG        F
+FREE_SURFACE_PPG        T
 IS_Q_ATTENUATION        T
-IF_HICKS         F
+IF_HICKS                T
+IF_BLOOM                T
 
 ACQUI_GEOMETRY          spread
 FS                      '  21   1200  0'
@@ -16,7 +17,7 @@ FS                      '  21   1200  0'
 #NS			 144
 DS			'  0   400  0'
 NS			 36
-FR                      '  25   0   0'
+FR                      '  21   0   0'
 DR                      '  0   25  0'
 NR                       670
 
@@ -48,7 +49,7 @@ SMOOTHING     'none'
 
 JOB             gradient
 
-MAX_ITERATE     120
+MAX_ITERATE     40
 MAX_MODELING    150
 
 

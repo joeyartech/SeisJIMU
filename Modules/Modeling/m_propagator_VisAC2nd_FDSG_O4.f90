@@ -30,7 +30,7 @@ use singleton
     real :: visac_b = -110.687
     real :: visac_d = 1111.5
     real :: visac_e = 1
-    integer :: ifsmooth = 1, smooth_interval=100
+    integer :: ifsmooth = 1, smooth_interval=200
     logical :: if_freesurface_ppg
 
     ! logical :: is_Q_attenuation
@@ -808,10 +808,10 @@ use singleton
         !     call freesurface_velocity(f_im%az,f_im%ax)
         ! endif
         
-        ! if(m%is_freesurface) then
-            ! call freesurface_stress(fre%lap)
-            ! call freesurface_stress(fim%lap)
+            
         if(if_freesurface_ppg) then
+            ! call freesurface_stress(f_re%lap)
+            ! call freesurface_stress(f_im%lap)
             call freesurface_stress(f_re%p)
             call freesurface_stress(f_im%p)
         endif
