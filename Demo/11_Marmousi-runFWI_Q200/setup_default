@@ -21,8 +21,8 @@ FR                      '  21   0   0'
 DR                      '  0   25  0'
 NR                       670
 
-SCOMP                   p  #p
-RCOMP                   p  #p
+SCOMP                   dpdz  #p
+RCOMP                   dpdz  #p
 IF_MUST_USE_RCOMP       T
 
 WAVELET_TYPE	ricker
