@@ -81,12 +81,12 @@ use m_resampler
             if(.not.allocated(dnorm)) dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2')
             select case (dnorm)
             case ('L2')
-call hud('0.5|| W₂(f*W₁u - d)||² => adjsrc = W₁f★ W₂W₂(f*W₁u - d)')
+call hud('0.5|| W(f*u - d)||² => adjsrc = f★ W W(f*u - d)')
 
 if(s_update_wavelet/='') then
 call hud('----  Update Wavelet  ----')    
 call wei_wl%update(o_suffix='_4WAVELET')
-call shot%update_wavelet(wei_wl%weight) !call gradient_matchfilter_data    
+call shot%update_wavelet(wei_wl%weight) !call matchfilter_apply_to_data(shot%dsyn)
 call shot%write('updated_Ru_',shot%dsyn)
 call suformat_write('updated_wavelet_'//shot%sindex,shot%wavelet,shot%nt,1,shot%dt)
 endif
@@ -100,13 +100,13 @@ endif
 if(s_update_wavelet/='') then
 call hud('update adjoint source.')
 call shot%update_adjsource
-shot%dadj=shot%dadj*wei_wl%weight
+! shot%dadj=shot%dadj*wei_wl%weight !no need for this from practice viewpoints
 endif
                 call fld_a%ignite(o_wavelet=shot%dadj)
                 call shot%write('dadj_',shot%dadj)
 
             case('L2_scaled')
-call hud('0.5|| W(Su - d)||² => adjsrc = WW(Su - d)')
+call hud('0.5|| W(Su - d)||² => adjsrc = W W(Su - d)')
                 if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
                 do j=1,shot%nrcv
                     if(is_first_in) S(i)%scale(j) = either(0., maxval(abs(shot%dobs(:,j))) / maxval(abs(shot%dsyn(:,j))) , shot%rcv(j)%is_badtrace)
@@ -133,7 +133,7 @@ call hud('0.5|| W(Su - d)||² => adjsrc = WW(Su - d)')
                 call shot%write('dadj_',shot%dadj)
 
             case('L2_scaled_filtered')
-call hud('0.5|| W(f*Su - d)||² => adjsrc ~= f★WW(f*Su - d)')
+call hud('0.5|| W(f*Su - d)||² => adjsrc = S f★W W(f*Su - d)')
                 if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
                 do j=1,shot%nrcv
                     if(is_first_in) S(i)%scale(j) = either(0., maxval(abs(shot%dobs(:,j))) / maxval(abs(shot%dsyn(:,j))) , shot%rcv(j)%is_badtrace)
@@ -162,8 +162,12 @@ endif
 
 if(s_update_wavelet/='') then
 call hud('update adjoint source.')
-call shot%update_adjsource
 endif
+
+do j=1,shot%nrcv
+shot%dadj(:,j)=shot%dadj(:,j)*S(i)%scale(j)
+enddo
+
                 call fld_a%ignite(o_wavelet=shot%dadj)
                 call shot%write('dadj_',shot%dadj)
 
@@ -212,7 +216,8 @@ endif
         call ppg%init_correlate(a_star_u,'a_star_u')
         call ppg%adjoint(fld_a,fld_u,a_star_u)
 
-call sysio_write('gkpa_'//shot%sindex,a_star_u%gkpa,size(a_star_u%gkpa))
+if(allocated(a_star_u%gkpa)) call sysio_write('gkpa_'//shot%sindex,a_star_u%gkpa,size(a_star_u%gkpa))
+if(allocated(a_star_u%glda)) call sysio_write('glda_'//shot%sindex,a_star_u%glda,size(a_star_u%glda))
 
         call hud('----  Assemble  ----')
         call ppg%assemble(a_star_u)
