@@ -12,7 +12,6 @@ module m_either
 
     contains
 
-
     function either2_short(i1,i2,switch) result(res)
         integer(2),intent(in) :: i1
         integer,intent(in) :: i2
@@ -26,7 +25,8 @@ module m_either
     end function
 
     function either2_int(i1,i2,switch) result(res)
-        integer,intent(in) :: i1,i2
+        integer,optional   :: i1
+        integer,intent(in) :: i2
         logical,intent(in) :: switch
         integer :: res
         if(switch) then
@@ -37,7 +37,8 @@ module m_either
     end function
 
     function either2_ints(i1,i2,switch) result(res)
-        integer,dimension(:),intent(in) :: i1,i2
+        integer,dimension(:),optional   :: i1
+        integer,dimension(:),intent(in) :: i2
         logical,intent(in) :: switch
         integer,dimension(:),allocatable :: res
         if(switch) then
@@ -48,7 +49,8 @@ module m_either
     end function
 
     function either2_real(r1,r2,switch) result(res)
-        real,intent(in) :: r1,r2
+        real,optional   :: r1
+        real,intent(in) :: r2
         logical,intent(in) :: switch
         if(switch) then
             res=r1
@@ -58,7 +60,8 @@ module m_either
     end function
 
     function either2_reals(r1,r2,switch) result(res)
-        real,dimension(:),intent(in) :: r1,r2
+        real,dimension(:),optional   :: r1
+        real,dimension(:),intent(in) :: r2
         logical,intent(in) :: switch
         real,dimension(:),allocatable :: res
         if(switch) then
@@ -69,7 +72,8 @@ module m_either
     end function
     
     function either2_str(s1,s2,switch) result(res)
-        character(*),intent(in) :: s1,s2
+        character(*),optional   :: s1
+        character(*),intent(in) :: s2
         logical,intent(in) :: switch
         character(:),allocatable :: res
         if(switch) then
@@ -80,7 +84,8 @@ module m_either
     end function
 
     function either2_bool(b1,b2,switch) result(res)
-        logical,intent(in) :: b1,b2, switch
+        logical,optional   :: b1
+        logical,intent(in) :: b2, switch
         logical :: res
         if(switch) then
             res=b1

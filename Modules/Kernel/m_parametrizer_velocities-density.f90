@@ -117,6 +117,8 @@ use m_empirical
         character(4),optional :: o_dir
         real,dimension(:,:,:,:),allocatable,optional :: o_x,o_xprior,o_g
 
+        real,dimension(:,:,:),allocatable :: tmp_gvp, tmp_gvs, tmp_grho
+
         if(present(o_x)) then
             call alloc(o_x,self%n1,self%n2,self%n3,self%npars,oif_protect=.true.)
 
@@ -158,7 +160,6 @@ use m_empirical
             n_entry=0
 
             if(is_grho.and.is_gkpa) then
-                n_entry=n_entry+1
                 call hud('Parametrizer finds grho & gkpa')
                 !correlate_gradient(:,:,:,1) = grho
                 !correlate_gradient(:,:,:,2) = gkpa
@@ -168,15 +169,28 @@ use m_empirical
                 !So,
                 !gvp = gkpa*2*rho*vp
                 !grho= gkpa*vp² + grho0
-                if(i_vp >0) o_g(:,:,:,i_vp ) = correlate_gradient(:,:,:,2)*2*m%rho*m%vp
-                if(i_rho>0) o_g(:,:,:,i_rho) = correlate_gradient(:,:,:,2)*m%vp**2 + correlate_gradient(:,:,:,1)
 
-                call empirical_gradient('velocities-density',o_gvp=o_g(:,:,:,i_vp),o_grho=o_g(:,:,:,i_rho))
+                call alloc(tmp_gvp, m%nz,m%nx,m%ny)
+                call alloc(tmp_grho,m%nz,m%nx,m%ny)
+
+                tmp_gvp =correlate_gradient(:,:,:,2)*2*m%rho*m%vp
+                tmp_grho=correlate_gradient(:,:,:,2)*m%vp**2 + correlate_gradient(:,:,:,1)
+
+                if(.not.is_empirical) then
+                    if(i_vp >0) o_g(:,:,:,i_vp ) = tmp_gvp
+                    if(i_rho>0) o_g(:,:,:,i_rho) = tmp_grho
+
+                else
+                    call empirical_gradient('velocities-density',o_gvp=tmp_gvp,o_grho=tmp_grho)
+                    o_g(:,:,:,i_vp)=tmp_gvp
+
+                endif
+
+                n_entry=n_entry+1
 
             endif
 
             if(is_gbuo.and.is_gikpa) then 
-                n_entry=n_entry+1
                 call hud('Parametrizer finds gbuo & gikpa')    
                 !correlate_gradient(:,:,:,1) = gbuo
                 !correlate_gradient(:,:,:,2) = gikpa
@@ -186,16 +200,29 @@ use m_empirical
                 !So,
                 !gvp = gikpa* rho⁻¹*(-2)vp⁻³
                 !grho= -rho⁻²*( gbuo + gikpa*vp⁻² )
-                if(i_vp >0) o_g(:,:,:,i_vp ) = correlate_gradient(:,:,:,2)*(-2.)/m%rho/(m%vp**3)
-                if(i_rho>0) o_g(:,:,:,i_rho) = -m%rho**(-2)*( &
+
+                call alloc(tmp_gvp, m%nz,m%nx,m%ny)
+                call alloc(tmp_grho,m%nz,m%nx,m%ny)
+
+                tmp_gvp = correlate_gradient(:,:,:,2)*(-2.)/m%rho/(m%vp**3)
+                tmp_grho=-m%rho**(-2)*( &
                     correlate_gradient(:,:,:,1) + correlate_gradient(:,:,:,2)/(m%vp**2) )
 
-                call empirical_gradient('velocities-density',o_gvp=o_g(:,:,:,i_vp),o_grho=o_g(:,:,:,i_rho))
+                if(.not.is_empirical) then
+                    if(i_vp >0) o_g(:,:,:,i_vp ) = tmp_gvp
+                    if(i_rho>0) o_g(:,:,:,i_rho) = tmp_grho
+
+                else
+                    call empirical_gradient('velocities-density',o_gvp=tmp_gvp,o_grho=tmp_grho)
+                    o_g(:,:,:,i_vp)=tmp_gvp
+
+                endif
+
+                n_entry=n_entry+1
 
             endif
 
             if(is_grho.and.is_glda.and.is_gmu) then
-                n_entry=n_entry+1
                 call hud('Parametrizer finds grho glda & gmu')
                 !correlate_gradient(:,:,:,1) = grho
                 !correlate_gradient(:,:,:,2) = glda
@@ -208,13 +235,28 @@ use m_empirical
                 !gvp = glda*2rho*vp
                 !gvs = (glda*-2 + gmu)*2rho*vs
                 !grho= glda*vp² + (-2glda+gmu)*vs² + grho0
+                
+                call alloc(tmp_gvp, m%nz,m%nx,m%ny)
+                call alloc(tmp_gvs, m%nz,m%nx,m%ny)
+                call alloc(tmp_grho,m%nz,m%nx,m%ny)
 
-                if(i_vp >0) o_g(:,:,:,i_vp ) = correlate_gradient(:,:,:,2)*2*m%rho*m%vp
-                if(i_vs >0) o_g(:,:,:,i_vs ) =(correlate_gradient(:,:,:,2)*(-2) + correlate_gradient(:,:,:,3))*2*m%rho*m%vs
-                if(i_rho>0) o_g(:,:,:,i_rho) = correlate_gradient(:,:,:,2)*m%vp**2 + (-2*correlate_gradient(:,:,:,2)+correlate_gradient(:,:,:,3))*m%vs**2 + correlate_gradient(:,:,:,1)
+                tmp_gvp = correlate_gradient(:,:,:,2)*2*m%rho*m%vp
+                tmp_gvs =(correlate_gradient(:,:,:,2)*(-2) + correlate_gradient(:,:,:,3))*2*m%rho*m%vs
+                tmp_grho= correlate_gradient(:,:,:,2)*m%vp**2 + (-2*correlate_gradient(:,:,:,2)+correlate_gradient(:,:,:,3))*m%vs**2 + correlate_gradient(:,:,:,1)
 
-                call empirical_gradient('velocities-density',o_gvp=o_g(:,:,:,i_vp),o_gvs=o_g(:,:,:,i_vs),o_grho=o_g(:,:,:,i_rho))
+                if(.not.is_empirical) then
+                    if(i_vp >0) o_g(:,:,:,i_vp ) = tmp_gvp 
+                    if(i_vs >0) o_g(:,:,:,i_vs ) = tmp_gvs 
+                    if(i_rho>0) o_g(:,:,:,i_rho) = tmp_grho
 
+                else
+                    call empirical_gradient('velocities-density',o_gvp=tmp_gvp,o_gvs=tmp_gvs,o_grho=tmp_grho)
+                    o_g(:,:,:,i_vp ) = tmp_gvp
+
+                endif
+
+                n_entry=n_entry+1
+                
             endif
 
             if(n_entry/=1) then

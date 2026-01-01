@@ -150,6 +150,8 @@ use m_empirical
         real,dimension(:,:,:),allocatable :: tmp
         real,dimension(:,:,:),allocatable :: freeze_zone_in_t !gradient in pseudotime domain
 
+        real,dimension(:,:,:),allocatable :: tmp_gvp, tmp_gvs, tmp_gip
+
         if(present(o_x)) then
             call alloc(o_x,self%n1,self%n2,self%n3,self%npars,oif_protect=.true.)
 
@@ -216,7 +218,6 @@ use m_empirical
             n_entry=0
 
             if(is_grho.and.is_gkpa) then
-                n_entry=n_entry+1
                 call hud('Parametrizer finds grho & gkpa')
                 !correlate_gradient(:,:,:,1) = grho0
                 !correlate_gradient(:,:,:,2) = gkpa
@@ -226,26 +227,32 @@ use m_empirical
                 !So,
                 !gvp = (gkpa*vp - grho0/vp)*rho
                 !gip =  gkpa*vp + grho0/vp
-                if(i_vp >0) then
-                    call pseudotime_convert_gradient( &
+
+                call alloc(tmp_gvp,self%n1,self%n2,self%n3)
+                call alloc(tmp_gip,self%n1,self%n2,self%n3)
+
+                call pseudotime_convert_gradient( &
                         (correlate_gradient(:,:,:,2)*m%vp - correlate_gradient(:,:,:,1)/m%vp)*m%rho, &
-                        m%vp,tmp)
-                    o_g(:,:,:,i_vp)=tmp
-                endif
-
-                if(i_ip >0) then
-                    call pseudotime_convert_gradient( &
+                        m%vp,tmp_gvp)
+                call pseudotime_convert_gradient( &
                         correlate_gradient(:,:,:,2)*m%vp + correlate_gradient(:,:,:,1)/m%vp, &
-                        m%vp,tmp)
-                    o_g(:,:,:,i_ip)=tmp
+                        m%vp,tmp_gip)
+
+                if(.not.is_empirical) then
+                    if(i_vp >0) o_g(:,:,:,i_vp) = tmp_gvp
+                    if(i_ip >0) o_g(:,:,:,i_ip) = tmp_gip
+
+                else
+                    call empirical_gradient('velocities-impedance_pseudotime',o_gvp=tmp_gvp,o_gip=tmp_gip)
+                    o_g(:,:,:,i_vp) = tmp_gvp
+
                 endif
 
-                call empirical_gradient('velocities-impedance_pseudotime',o_gvp=o_g(:,:,:,i_vp),o_gip=o_g(:,:,:,i_ip))
+                n_entry=n_entry+1
 
             endif
 
             if(is_grho.and.is_glda.and.is_gmu) then
-                n_entry=n_entry+1
                 call hud('Parametrizer finds grho glda & gmu')
                 !correlate_gradient(:,:,:,1) = grho0
                 !correlate_gradient(:,:,:,2) = glda
@@ -258,28 +265,33 @@ use m_empirical
                 !gvp = (glda*vp^2 + (2glda-gmu)vs^2 - grho0)*rho/vp
                 !gvs = (-2glda + gmu)*2vs*rho
                 !gip = (glda*vp^2 + (-2glda+gmu)*vs^2 +grho0) /vp
-                if(i_vp >0) then
-                    call pseudotime_convert_gradient( &
+
+                call alloc(tmp_gvp,self%n1,self%n2,self%n3)
+                call alloc(tmp_gvs,self%n1,self%n2,self%n3)
+                call alloc(tmp_gip,self%n1,self%n2,self%n3)
+
+                call pseudotime_convert_gradient( &
                         (correlate_gradient(:,:,:,2)*m%vp**2 + (2*correlate_gradient(:,:,:,2)-correlate_gradient(:,:,:,3))*m%vs**2 - correlate_gradient(:,:,:,1))*m%rho/m%vp, &
-                        m%vp,tmp)
-                    o_g(:,:,:,i_vp)=tmp
-                endif
-
-                if(i_vs >0) then
-                    call pseudotime_convert_gradient( &
+                        m%vp,tmp_gvp)
+                call pseudotime_convert_gradient( &
                         (-2*correlate_gradient(:,:,:,2) + correlate_gradient(:,:,:,3))*2*m%rho*m%vs, &
-                        m%vp,tmp)
-                    o_g(:,:,:,i_vs)=tmp
-                endif
-                
-                if(i_ip >0) then
-                    call pseudotime_convert_gradient( &
+                        m%vp,tmp_gvs)
+                call pseudotime_convert_gradient( &
                         (correlate_gradient(:,:,:,2)*m%vp**2 + (-2*correlate_gradient(:,:,:,2)+correlate_gradient(:,:,:,3))*m%vs**2 + correlate_gradient(:,:,:,1))/m%vp, &
-                        m%vp,tmp)
-                    o_g(:,:,:,i_ip)=tmp
+                        m%vp,tmp_gip)
+
+                if(.not.is_empirical) then
+                    if(i_vp >0) o_g(:,:,:,i_vp)=tmp_gvp
+                    if(i_vs >0) o_g(:,:,:,i_vs)=tmp_gvs
+                    if(i_ip >0) o_g(:,:,:,i_ip)=tmp_gip
+
+                else
+                    call empirical_gradient('velocities-impedance_pseudotime',o_gvp=tmp_gvp,o_gvs=tmp_gvs,o_gip=tmp_gip)
+                    o_g(:,:,:,i_vp)=tmp_gvp
+                    
                 endif
 
-                call empirical_gradient('velocities-impedance_pseudotime',o_gvp=o_g(:,:,:,i_vp),o_gvs=o_g(:,:,:,i_vs),o_gip=o_g(:,:,:,i_ip))
+                n_entry=n_entry+1
 
             endif
 
