@@ -17,6 +17,7 @@ FLAGF90= -xMIC-AVX512 -O3 -Ofast -ipo -parallel -qopenmp -traceback -assume byte
 
 # TAG=debug
 # FLAGF90= -g -debug -check all -check noarg_temp_created -W1 -WB -qopenmp -traceback -assume byterecl
+
 FLAGF77= $(FLAGF90)
 
 FPP=-fpp -Difort -D"git_commit='$(GIT_COMMIT)'" -D"git_branch='$(GIT_BRANCH)'"

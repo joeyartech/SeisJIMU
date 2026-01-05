@@ -49,14 +49,24 @@ use m_string
         character(*) :: name
         integer,optional :: o_communicator,o_thread_level
         
+#ifdef gfortran
         self%communicator=either(o_communicator,MPI_COMM_WORLD,present(o_communicator))
+#endif
+#ifdef ifort
+        self%communicator=MPI_COMM_WORLD
+#endif
         
         call mpi_get_version(iversion,isubversion,ierr)
         if(self%is_master) then
             write(*,'(a,x,i1,a,i1)') 'MPI Version:', iversion,'.',isubversion
         endif
 
-        call mpi_init_thread(either(o_thread_level,MPI_THREAD_SINGLE,present(o_thread_level)),self%thread_level,self%ierr)
+#ifdef gfortran
+       call mpi_init_thread(either(o_thread_level,MPI_THREAD_SINGLE,present(o_thread_level)),self%thread_level,self%ierr)
+#endif
+#ifdef ifort
+        call mpi_init_thread(MPI_THREAD_SINGLE,self%thread_level,self%ierr)
+#endif
         self%max_threads=OMP_GET_MAX_THREADS()
 
         call mpi_comm_rank(self%communicator,self%iproc,self%ierr)

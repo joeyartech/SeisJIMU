@@ -84,6 +84,8 @@ use m_resampler
             if(.not.allocated(s_dnorm)) s_dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2')
             select case (s_dnorm)
             case ('L2')
+call hud('0.5|| W(f*u - d)||² => adjsrc = f★ W W(f*u - d)')
+
                 fobj%misfit = fobj%misfit &
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
                 call kernel_L2sq(shot%dadj)
@@ -104,18 +106,21 @@ use m_resampler
 
 
             case ('strain_L2averaged')
+call hud('0.5|| W(f*u - d)||² => adjsrc = f★W W(f*u - d)')
+
                 s_conversion=setup%get_str('DATA_CONVERSION_METHOD',o_default='fk')
-                
+                dtr=setup%get_real('DATA_CONVERSION_DTR',o_default=num2str(shot%rcv(2)%x-shot%rcv(1)%x)) !assuming const interval..
+
                 !first goto strain
                 if(index(ppg%info,'Momemtum-Strain')>0) then !m_propagator_DAS
                 
                 elseif(index(ppg%info,'Velocity-Stress')>0) then !m_propagator_PSV
                     if(s_conversion=='fk') then
-                        call convert_in_fk(shot%dsyn,'k/w') !call shot%write('k_w_dsyn',shot%dsyn)
+                        call convert_in_fk(shot%dsyn,'k/w',dtr) !call shot%write('k_w_dsyn',shot%dsyn)
 
                     else ! s_conversion=='tx'
                         call hud('integrate_t(differentiate_x(shot%dsyn))')
-                        call differentiate_x(shot%dsyn)
+                        call differentiate_x(shot%dsyn,dtr)
                         call integrate_t(shot%dsyn) !call shot%write('diffx_intt_dsyn',shot%dsyn)
 
                     endif
@@ -124,11 +129,11 @@ use m_resampler
                 
                 elseif(index(ppg%info,'Displacement formulation')>0) then !m_propagator_PSV2nd
                     if(s_conversion=='fk') then
-                        call convert_in_fk(shot%dsyn,'ik') !call shot%write('ik_dsyn',shot%dsyn)
+                        call convert_in_fk(shot%dsyn,'ik',dtr) !call shot%write('ik_dsyn',shot%dsyn)
 
                     else ! s_conversion=='tx'
                         call hud('differentiate_x(shot%dsyn)')
-                        call differentiate_x(shot%dsyn) !call shot%write('diffx_dsyn',shot%dsyn)
+                        call differentiate_x(shot%dsyn,dtr) !call shot%write('diffx_dsyn',shot%dsyn)
                     endif
 
                 endif
@@ -138,6 +143,7 @@ use m_resampler
                 length=setup%get_int('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)
                 if(length>0) call moving_average(shot%dsyn,length)
                 call shot%write('DAS_dsyn_',shot%dsyn)
+
                 fobj%misfit = fobj%misfit &
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
                 call kernel_L2sq(shot%dadj)
@@ -150,11 +156,11 @@ use m_resampler
                 
                 elseif(index(ppg%info,'Velocity-Stress')>0) then !m_propagator_PSV
                     if(s_conversion=='fk') then
-                        call convert_in_fk(shot%dadj,'k/w') !call shot%write('k_w_dadj',shot%dadj)
+                        call convert_in_fk(shot%dadj,'k/w',dtr) !call shot%write('k_w_dadj',shot%dadj)
 
                     else ! s_conversion=='tx'
                         ! call hud('rev_integrate_t(differentiate_x(shot%dadj))')
-                        call differentiate_x(shot%dadj)
+                        call differentiate_x(shot%dadj,dtr)
                         ! call rev_integrate_t(shot%dadj)
                         call integrate_t(shot%dadj) !why? 
                         !call shot%write('diffx_intt_dadj',shot%dadj)
@@ -166,18 +172,21 @@ use m_resampler
                 elseif(index(ppg%info,'Displacement formulation')>0) then !m_propagator_PSV2nd
                     if(s_conversion=='fk') then
                         shot%dadj=-shot%dadj
-                        call convert_in_fk(shot%dadj,'ik') !call shot%write('ik_ndadj',shot%dadj)
+                        call convert_in_fk(shot%dadj,'ik',dtr) !call shot%write('ik_ndadj',shot%dadj)
 
                     else ! s_conversion=='tx'
                         call hud('differentiate_x(-shot%dadj)')
                         !call differentiate_x(-shot%dadj) !this is wrong in fortran..
                         shot%dadj=-shot%dadj
-                        call differentiate_x(shot%dadj) !so let's use functions instead of subroutines..
+                        call differentiate_x(shot%dadj,dtr) !so let's use functions instead of subroutines..
                         !call shot%write('diffx_ndadj',shot%dadj)
 
                     endif
 
                 endif
+
+                !0 should be still 0 in the adjoint source
+                shot%dadj=shot%dadj*wei%weight / (wei%weight+r_epsilon)
 
                 call fld_a%ignite(o_wavelet=shot%dadj)
                 call shot%write('dadj_',shot%dadj)
@@ -289,8 +298,9 @@ use m_resampler
 
     end subroutine
 
-    subroutine differentiate_x(data) !by central diff
+    subroutine differentiate_x(data,dtr) !by central diff
         real,dimension(:,:) :: data !nt x nrcv
+        real :: dtr
 
         real,dimension(:,:), allocatable :: dout
         call alloc(dout,shot%nt,shot%nrcv)
@@ -303,7 +313,7 @@ use m_resampler
         dout(:,1)=dout(:,2)
         dout(:,shot%nrcv)=dout(:,shot%nrcv-1)
 
-        data=dout /(shot%rcv(3)%x-shot%rcv(1)%x)  !assuming const interval..
+        data=dout /2./dtr  !assuming const interval..
 
         deallocate(dout)
 
@@ -347,11 +357,12 @@ use m_resampler
 
     end subroutine
 
-    subroutine convert_in_fk(data,op)
+    subroutine convert_in_fk(data,op,dtr)
     use m_math
     use singleton
         real,dimension(:,:) :: data !nt x nrcv
         character(*) :: op
+        real :: dtr
 
         real :: w(shot%nt), k(shot%nrcv)
 
@@ -385,7 +396,7 @@ use m_resampler
             k(  (n+1)/2+1:n)= -k((n+1)/2:2:-1)
         endif
 
-        k=k*2*r_pi/(n-1)/(shot%rcv(2)%x-shot%rcv(1)%x)  !assuming const interval..
+        k=k*2*r_pi/(n-1)/dtr  !assuming const interval..
 
         call hud('convert_in_fk op: '//op)
 
