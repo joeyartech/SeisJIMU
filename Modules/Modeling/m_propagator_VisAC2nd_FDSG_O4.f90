@@ -68,7 +68,7 @@ use singleton
         real,dimension(:,:,:),allocatable :: buoz, buox, buoy, kpa!, qp
         complex,dimension(:,:,:),allocatable :: invC2,  C1n,  C0n
         complex,dimension(:,:,:),allocatable :: invC2H, C1nH, C0nH
-
+        complex,dimension(:,:,:),allocatable :: dC2dQ, dC1dQ, dC0dQ
         !time frames
         integer :: nt
         real :: dt
@@ -272,6 +272,8 @@ use singleton
         C1 =    2*visac_b/r_pi/cb%qp;                    self%C1nH= C1*self%invC2H
         C0 =    2*visac_d/r_pi/cb%qp;                    self%C0nH= C0*self%invC2H
 
+        dC2dQ = 2*visac_a/r_pi - c_i;  dC1dQ = 2*visac_b/r_pi;  dC0dQ = 2*visac_d/r_pi
+
         if_freesurface_ppg=setup%get_bool('FREE_SURFACE_PPG',o_default='T')
 
         deallocate(C2,C1,C0) !save some RAM
@@ -325,7 +327,7 @@ use singleton
         ! if(name(1:1)=='g') then !gradient components
             call alloc(corr%gbuo, m%nz,m%nx,m%ny)
             call alloc(corr%gikpa,m%nz,m%nx,m%ny)
-            ! call alloc(corr%giqp,m%nz,m%nx,m%ny)
+            call alloc(corr%gqp,m%nz,m%nx,m%ny)
         ! else !image components
         !     call alloc(corr%ipp,m%nz,m%nx,m%ny)
         !     call alloc(corr%ibksc,m%nz,m%nx,m%ny)
@@ -354,7 +356,7 @@ use singleton
         if(allocated(correlate_gradient)) then
             call correlate_assemble(corr%gbuo,  correlate_gradient(:,:,:,1))
             call correlate_assemble(corr%gikpa, correlate_gradient(:,:,:,2))
-            ! call correlate_assemble(corr%giqp, correlate_gradient(:,:,:,3))
+            ! call correlate_assemble(corr%gqp, correlate_gradient(:,:,:,3))
         endif        
         
     end subroutine
@@ -1218,6 +1220,7 @@ use singleton
     !Kₘ<a|Au> = Kₘ<a|ϰ∂ₜ²u - ∇·b∇u>
     !for ϰ: Kₘ<a|Au> = ∫ a ∂ₜ²u dt =-∫ ∂ₜa ∂ₜu dt, or = ∫ a κ∇·b∇u dt 
     !for b: Kₘ<a|Au> = -Kₘ<a|∇·b∇u> = ∫ ∇a·∇u dt
+    !for qp: Kₘ<a|Au> = ∫ a (dC2dq ∂ₜₜu +dC1dq ∂ₜu +dC0dq u) dt 
 
     subroutine cross_correlate_gradient(reA,imA, reU,imU, corr,it)
         type(t_field), intent(in) :: reA, imA, reU, imU
@@ -1236,6 +1239,9 @@ use singleton
 
 
         corr%gikpa = corr%gikpa + reA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny) !should use this one because we just use the real part in the misfit function, only the re-re term is needed here.
+        ! corr%gqp = corr%gqp + reA%p(1:m%nz,1:m%nx,1:m%ny)*1/ppg%kpa*(dC2dQ*(reU%p_next(1:m%nz,1:m%nx,1:m%ny) + reU%p_prev(1:m%nz,1:m%nx,1:m%ny)- 2*reU%p(1:m%nz,1:m%nx,1:m%ny))/dt2 - &
+        !                                                              dC1dQ*(reU%p_next(1:m%nz,1:m%nx,1:m%ny) - reU%p_prev(1:m%nz,1:m%nx,1:m%ny))/(2*ppg%dt) + &
+        !                                                              dC0dQ*reU%p(1:m%nz,1:m%nx,1:m%ny) )
         ! corr%gikpa = corr%gikpa + imA%p(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny) !same value as above
         ! corr%gikpa = corr%gikpa + reA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny) &
         !                         + imA%p(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny) !twice magnitude as above

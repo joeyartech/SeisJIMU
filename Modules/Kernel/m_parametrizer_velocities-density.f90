@@ -30,8 +30,8 @@ use m_empirical
 
     type(t_parametrizer),public :: param
 
-    logical :: is_grho,is_gbuo,is_gkpa,is_gikpa,is_glda,is_gmu
-    integer :: i_vp=0, i_vs=0, i_rho=0
+    logical :: is_grho,is_gbuo,is_gkpa,is_gikpa,is_glda,is_gmu, is_gqp
+    integer :: i_vp=0, i_vs=0, i_rho=0, i_qp=0
 
     contains
     
@@ -53,6 +53,7 @@ use m_empirical
         is_gikpa= index(ppg%info,'gikpa')>0
         is_glda = index(ppg%info,'glda')>0
         is_gmu  = index(ppg%info,'gmu')>0
+        is_gqp  = index(ppg%info,'gqp')>0
 
         !read in active parameters and their allowed ranges
         list=setup%get_strs('PARAMETER',o_default='vp:1500:3400')
@@ -83,6 +84,11 @@ use m_empirical
             case ('rho')
                 i_rho=i
                 self%pars(i)%name='rho'
+                self%npars=self%npars+1
+
+            case ('qp')
+                i_qp=i
+                self%pars(i)%name='qp'
                 self%npars=self%npars+1
                 
             end select
@@ -124,6 +130,7 @@ use m_empirical
                 if(i_vp >0) o_x(:,:,:,i_vp ) = (m%vp -self%pars(i_vp )%min)/self%pars(i_vp )%range
                 if(i_vs >0) o_x(:,:,:,i_vs ) = (m%vs -self%pars(i_vs )%min)/self%pars(i_vs )%range
                 if(i_rho>0) o_x(:,:,:,i_rho) = (m%rho-self%pars(i_rho)%min)/self%pars(i_rho)%range
+                if(i_qp>0)  o_x(:,:,:,i_qp)  = (m%qp - self%pars(i_qp)%min)/self%pars(i_qp)%range
 
                 call empirical_m2x('velocities-density')
 
@@ -131,6 +138,7 @@ use m_empirical
                 if(i_vp >0) m%vp = o_x(:,:,:,i_vp )*self%pars(i_vp )%range +self%pars(i_vp )%min
                 if(i_vs >0) m%vs = o_x(:,:,:,i_vs )*self%pars(i_vs )%range +self%pars(i_vs )%min
                 if(i_rho>0) m%rho= o_x(:,:,:,i_rho)*self%pars(i_rho)%range +self%pars(i_rho)%min
+                if(i_qp>0)  m%qp = o_x(:,:,:,i_qp) *self%pars(i_qp)%range  +self%pars(i_qp)%min
 
                 call empirical_x2m('velocities-density')
                 
@@ -147,6 +155,7 @@ use m_empirical
             if(i_vp >0) o_x(:,:,:,i_vp ) = (m%vp_prior -self%pars(i_vp )%min)/self%pars(i_vp )%range
             if(i_vs >0) o_x(:,:,:,i_vs ) = (m%vs_prior -self%pars(i_vs )%min)/self%pars(i_vs )%range
             if(i_rho>0) o_x(:,:,:,i_rho) = (m%rho_prior-self%pars(i_rho)%min)/self%pars(i_rho)%range
+            ! if(i_qp>0)  o_x(:,:,:,i_qp)  = (m%qp_prior-self%pars(i_qp)%min)/self%pars(i_qp)%range
                 
             call empirical_m2x('velocities-density')
 
@@ -169,14 +178,15 @@ use m_empirical
                 !grho= gkpa*vp² + grho0
                 if(i_vp >0) o_g(:,:,:,i_vp ) = correlate_gradient(:,:,:,2)*2*m%rho*m%vp
                 if(i_rho>0) o_g(:,:,:,i_rho) = correlate_gradient(:,:,:,2)*m%vp**2 + correlate_gradient(:,:,:,1)
+                ! if(i_qp>0)  o_g(:,:,:,i_qp)  = correlate_gradient(:,:,:,3)
 
                 call empirical_gradient('velocities-density',o_gvp=o_g(:,:,:,i_vp),o_grho=o_g(:,:,:,i_rho))
 
                 n_entry=n_entry+1
             endif
 
-            if(is_gbuo.and.is_gikpa) then 
-                call hud('Parametrizer finds gbuo & gikpa')    
+            if(is_gbuo.and.is_gikpa.and.is_gqp) then 
+                call hud('Parametrizer finds gbuo & gikpa & gqp')    
                 !correlate_gradient(:,:,:,1) = gbuo
                 !correlate_gradient(:,:,:,2) = gikpa
                 !
@@ -188,6 +198,7 @@ use m_empirical
                 if(i_vp >0) o_g(:,:,:,i_vp ) = correlate_gradient(:,:,:,2)*(-2.)/m%rho/(m%vp**3)
                 if(i_rho>0) o_g(:,:,:,i_rho) = -m%rho**(-2)*( &
                     correlate_gradient(:,:,:,1) + correlate_gradient(:,:,:,2)/(m%vp**2) )
+                ! if(i_qp>0)  o_g(:,:,:,i_qp)  = correlate_gradient(:,:,:,3)
 
                 call empirical_gradient('velocities-density',o_gvp=o_g(:,:,:,i_vp),o_grho=o_g(:,:,:,i_rho))
 
