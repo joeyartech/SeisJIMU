@@ -14,7 +14,7 @@ use m_empirical
         !info
         character(i_str_xxlen) :: info = &
             'Parameterization: velocities-density'//s_NL// &
-            'Allowed pars: vp, vs, rho'
+            'Allowed pars: vp, vs, rho, qp'
 
         type(t_parameter),dimension(:),allocatable :: pars
         integer :: npars
@@ -56,7 +56,7 @@ use m_empirical
         is_gqp  = index(ppg%info,'gqp')>0
 
         !read in active parameters and their allowed ranges
-        list=setup%get_strs('PARAMETER',o_default='vp:1500:3400')
+        list=setup%get_strs('PARAMETER',o_default='vp:1500:3400 qp:50:100')
         
         self%npars=size(list)
         allocate(self%pars(self%npars))
@@ -198,7 +198,7 @@ use m_empirical
                 if(i_vp >0) o_g(:,:,:,i_vp ) = correlate_gradient(:,:,:,2)*(-2.)/m%rho/(m%vp**3)
                 if(i_rho>0) o_g(:,:,:,i_rho) = -m%rho**(-2)*( &
                     correlate_gradient(:,:,:,1) + correlate_gradient(:,:,:,2)/(m%vp**2) )
-                ! if(i_qp>0)  o_g(:,:,:,i_qp)  = correlate_gradient(:,:,:,3)
+                if(i_qp>0)  o_g(:,:,:,i_qp)  = correlate_gradient(:,:,:,3)
 
                 call empirical_gradient('velocities-density',o_gvp=o_g(:,:,:,i_vp),o_grho=o_g(:,:,:,i_rho))
 

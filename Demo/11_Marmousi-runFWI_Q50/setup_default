@@ -42,7 +42,7 @@ WEIGHTING           'none'
 
 UPDATE_WAVELET	no
 
-PARAMETER           'vp:1065:4700'
+PARAMETER           'vp:1065:4700 qp:50:110'
 
 SMOOTHING     'none'
 #PRECO         'z^0'

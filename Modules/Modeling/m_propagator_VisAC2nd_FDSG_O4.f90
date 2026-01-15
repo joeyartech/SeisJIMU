@@ -58,7 +58,7 @@ use singleton
             'Basic gradients: gbuo(wait), gikpa, gqp'
 
         integer :: nbndlayer=max(1,hicks_r) !minimum absorbing layer thickness
-        integer :: ngrad=2 !number of basic gradients
+        integer :: ngrad=3 !number of basic gradients
         integer :: nimag=3 !number of basic images
         !integer :: nengy=1 !number of energy terms
 
@@ -327,7 +327,7 @@ use singleton
         ! if(name(1:1)=='g') then !gradient components
             call alloc(corr%gbuo, m%nz,m%nx,m%ny)
             call alloc(corr%gikpa,m%nz,m%nx,m%ny)
-            call alloc(corr%gqp,m%nz,m%nx,m%ny)
+            call alloc(corr%gqp,  m%nz,m%nx,m%ny)
         ! else !image components
         !     call alloc(corr%ipp,m%nz,m%nx,m%ny)
         !     call alloc(corr%ibksc,m%nz,m%nx,m%ny)
@@ -356,7 +356,7 @@ use singleton
         if(allocated(correlate_gradient)) then
             call correlate_assemble(corr%gbuo,  correlate_gradient(:,:,:,1))
             call correlate_assemble(corr%gikpa, correlate_gradient(:,:,:,2))
-            ! call correlate_assemble(corr%gqp, correlate_gradient(:,:,:,3))
+            call correlate_assemble(corr%gqp, correlate_gradient(:,:,:,3))
         endif        
         
     end subroutine
@@ -1239,9 +1239,9 @@ use singleton
 
 
         corr%gikpa = corr%gikpa + reA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny) !should use this one because we just use the real part in the misfit function, only the re-re term is needed here.
-        ! corr%gqp = corr%gqp + reA%p(1:m%nz,1:m%nx,1:m%ny)*1/ppg%kpa*(dC2dQ*(reU%p_next(1:m%nz,1:m%nx,1:m%ny) + reU%p_prev(1:m%nz,1:m%nx,1:m%ny)- 2*reU%p(1:m%nz,1:m%nx,1:m%ny))/dt2 - &
-        !                                                              dC1dQ*(reU%p_next(1:m%nz,1:m%nx,1:m%ny) - reU%p_prev(1:m%nz,1:m%nx,1:m%ny))/(2*ppg%dt) + &
-        !                                                              dC0dQ*reU%p(1:m%nz,1:m%nx,1:m%ny) )
+        corr%gqp = corr%gqp + reA%p(1:m%nz,1:m%nx,1:m%ny)/ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*(dC2dQ*(reU%p_next(1:m%nz,1:m%nx,1:m%ny) + reU%p_prev(1:m%nz,1:m%nx,1:m%ny)- 2*reU%p(1:m%nz,1:m%nx,1:m%ny))/dt2 - &
+                                                                                        dC1dQ*(reU%p_next(1:m%nz,1:m%nx,1:m%ny) - reU%p_prev(1:m%nz,1:m%nx,1:m%ny))/(2*ppg%dt) + &
+                                                                                        dC0dQ*reU%p(1:m%nz,1:m%nx,1:m%ny) )
         ! corr%gikpa = corr%gikpa + imA%p(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny) !same value as above
         ! corr%gikpa = corr%gikpa + reA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny) &
         !                         + imA%p(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny) !twice magnitude as above
