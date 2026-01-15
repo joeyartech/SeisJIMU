@@ -68,7 +68,11 @@ use singleton
         real,dimension(:,:,:),allocatable :: buoz, buox, buoy, kpa!, qp
         complex,dimension(:,:,:),allocatable :: invC2,  C1n,  C0n
         complex,dimension(:,:,:),allocatable :: invC2H, C1nH, C0nH
-        complex,dimension(:,:,:),allocatable :: dC2dQ, dC1dQ, dC0dQ
+        
+        !complex :: dC2dQ
+        real :: dC2dQ
+        real :: dC1dQ, dC0dQ
+
         !time frames
         integer :: nt
         real :: dt
@@ -272,7 +276,9 @@ use singleton
         C1 =    2*visac_b/r_pi/cb%qp;                    self%C1nH= C1*self%invC2H
         C0 =    2*visac_d/r_pi/cb%qp;                    self%C0nH= C0*self%invC2H
 
-        dC2dQ = 2*visac_a/r_pi - c_i;  dC1dQ = 2*visac_b/r_pi;  dC0dQ = 2*visac_d/r_pi
+        self%dC2dQ = 2*visac_a/r_pi - c_i
+        self%dC1dQ = 2*visac_b/r_pi
+        self%dC0dQ = 2*visac_d/r_pi
 
         if_freesurface_ppg=setup%get_bool('FREE_SURFACE_PPG',o_default='T')
 
@@ -402,7 +408,7 @@ use singleton
         call alloc(fld_reU%seismo,shot%nrcv,self%nt)
         call alloc(fld_imU%seismo,shot%nrcv,self%nt)
 
-        call build_mask(mask, fld_reU, it)
+        call build_mask(mask, fld_reU)
         ! call hilbert_transform(fld_reU%wavelet,fld_imU%wavelet,1,self%nt,o_axis=2)
 
         tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.; tt7=0.
@@ -515,7 +521,7 @@ use singleton
         if(if_record_adjseismo)  call alloc(fld_reA%seismo,1,self%nt)
         if(if_record_adjseismo)  call alloc(fld_imA%seismo,1,self%nt)
         
-        call build_mask(mask, fld_reU, it)
+        call build_mask(mask, fld_reU)
 
         !timing
         tt1=0.; tt2=0.; tt3=0.
@@ -1239,9 +1245,11 @@ use singleton
 
 
         corr%gikpa = corr%gikpa + reA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny) !should use this one because we just use the real part in the misfit function, only the re-re term is needed here.
-        corr%gqp = corr%gqp + reA%p(1:m%nz,1:m%nx,1:m%ny)/ppg%kpa(1:m%nz,1:m%nx,1:m%ny)*(dC2dQ*(reU%p_next(1:m%nz,1:m%nx,1:m%ny) + reU%p_prev(1:m%nz,1:m%nx,1:m%ny)- 2*reU%p(1:m%nz,1:m%nx,1:m%ny))/dt2 - &
-                                                                                        dC1dQ*(reU%p_next(1:m%nz,1:m%nx,1:m%ny) - reU%p_prev(1:m%nz,1:m%nx,1:m%ny))/(2*ppg%dt) + &
-                                                                                        dC0dQ*reU%p(1:m%nz,1:m%nx,1:m%ny) )
+        corr%gqp = corr%gqp + reA%p(1:m%nz,1:m%nx,1:m%ny)/ppg%kpa(1:m%nz,1:m%nx,1:m%ny)* &
+            (ppg%dC2dQ*(reU%p_next(1:m%nz,1:m%nx,1:m%ny) + reU%p_prev(1:m%nz,1:m%nx,1:m%ny)- 2*reU%p(1:m%nz,1:m%nx,1:m%ny))/dt2 &
+            -ppg%dC1dQ*(reU%p_next(1:m%nz,1:m%nx,1:m%ny) - reU%p_prev(1:m%nz,1:m%nx,1:m%ny))/(2*ppg%dt) &
+            +ppg%dC0dQ* reU%p(1:m%nz,1:m%nx,1:m%ny) &
+            )
         ! corr%gikpa = corr%gikpa + imA%p(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny) !same value as above
         ! corr%gikpa = corr%gikpa + reA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny) &
         !                         + imA%p(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny) !twice magnitude as above
@@ -1663,7 +1671,7 @@ use singleton
     end subroutine
 
 
-    subroutine build_mask(mask, f, it, freq_cut, h_in, sigma_filter_in)
+    subroutine build_mask(mask, f, freq_cut, h_in, sigma_filter_in)
         type(t_field) :: f
         real,intent(in), optional    :: h_in, sigma_filter_in, freq_cut
         real,allocatable,intent(out) :: mask(:,:,:) 
@@ -1676,11 +1684,6 @@ use singleton
         
         ! fp     = shot%fpeak
         vp_min = cb%velmin
-
-        ifz=f%bloom(1,it)
-        ilz=f%bloom(2,it)
-        ifx=f%bloom(3,it)
-        ilx=f%bloom(4,it)
 
         ! nz = ilz-ifz+1
         ! nx = ilx-ifx+1
