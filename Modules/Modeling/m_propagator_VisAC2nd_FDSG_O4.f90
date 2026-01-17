@@ -362,7 +362,7 @@ use singleton
         if(allocated(correlate_gradient)) then
             call correlate_assemble(corr%gbuo,  correlate_gradient(:,:,:,1))
             call correlate_assemble(corr%gikpa, correlate_gradient(:,:,:,2))
-            call correlate_assemble(corr%gqp, correlate_gradient(:,:,:,3))
+            call correlate_assemble(corr%gqp,   correlate_gradient(:,:,:,3))
         endif        
         
     end subroutine
