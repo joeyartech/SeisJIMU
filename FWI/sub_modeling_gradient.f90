@@ -18,7 +18,7 @@ use m_resampler
     type(t_correlate) :: a_star_u
     real,dimension(:,:),allocatable :: tmp
     real,dimension(3) :: grad_term_weights
-    character(:),allocatable :: dnorm
+    character(:),allocatable :: s_conversion
     
     type :: t_S
         real,dimension(:),allocatable :: scale
@@ -64,28 +64,19 @@ use m_resampler
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
 
         s_update_wavelet=setup%get_str('UPDATE_WAVELET')
-
-
-        ! s_update_wavelet=setup%get_str('UPDATE_WAVELET')
-        ! if(s_update_wavelet/='') then
-        !     call hud('----  Update Wavelet  ----')    
-        !     call wei_wl%update(o_suffix='_4WAVELET')
-        !     call shot%update_wavelet(wei_wl%weight) !call gradient_matchfilter_data    
-        !     call shot%write('updated_Ru_',shot%dsyn)
-        !     call suformat_write('updated_wavelet_'//shot%sindex,shot%wavelet,shot%nt,1,shot%dt)
-        ! endif
-         
+        if(s_update_wavelet/='') call wei_wl%update(o_suffix='_4WAVELET')
 
         call hud('----  Computing obj func & dadj  ----')
 
-            if(.not.allocated(dnorm)) dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2')
-            select case (dnorm)
-            case ('L2')
-call hud('0.5|| W(f*u - d)||² => adjsrc = f★ W W(f*u - d)')
+            call wei%update
+            call alloc(shot%dadj,shot%nt,shot%nrcv)
+
+            select case (setup%get_str('DATA_NORM','DNORM',o_default='L2'))
+
+            case ('L2'); call hud('0.5|| W(f*u - d)||² => adjsrc = f★ W W(f*u - d)')
 
 if(s_update_wavelet/='') then
-call hud('----  Update Wavelet  ----')    
-call wei_wl%update(o_suffix='_4WAVELET')
+call hud('update wavelet')
 call shot%update_wavelet(wei_wl%weight) !call matchfilter_apply_to_data(shot%dsyn)
 call shot%write('updated_Ru_',shot%dsyn)
 call suformat_write('updated_wavelet_'//shot%sindex,shot%wavelet,shot%nt,1,shot%dt)
@@ -96,17 +87,135 @@ endif
 
                 fobj%misfit = fobj%misfit &
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
-                call kernel_L2sq(shot%dadj)            
+                call kernel_L2sq(shot%dadj)
+          
 if(s_update_wavelet/='') then
-call hud('update adjoint source.')
+call hud('update adjoint source')
 call shot%update_adjsource
-! shot%dadj=shot%dadj*wei_wl%weight !no need for this from practice viewpoints
 endif
+
+            case ('L2averaged'); call hud('0.5|| W(f*u - d)||² => adjsrc = f★W W(f*u - d)')
+
+                length=setup%get_int('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)
+                if(length>0) call moving_average(shot%dsyn,length)
+                call shot%write('avg_dsyn_',shot%dsyn)
+
+if(s_update_wavelet/='') then
+call hud('update wavelet')
+call shot%update_wavelet(wei_wl%weight) !call matchfilter_apply_to_data(shot%dsyn)
+call shot%write('updated_Ru_',shot%dsyn)
+call suformat_write('updated_wavelet_'//shot%sindex,shot%wavelet,shot%nt,1,shot%dt)
+endif
+                fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
+                call kernel_L2sq(shot%dadj)
+
+if(s_update_wavelet/='') then
+call hud('update adjoint source')
+call shot%update_adjsource
+endif
+
+                if(length>0) call moving_average(shot%dadj,length)
                 call fld_a%ignite(o_wavelet=shot%dadj)
                 call shot%write('dadj_',shot%dadj)
 
-            case('L2_scaled')
-call hud('0.5|| W(Su - d)||² => adjsrc = W W(Su - d)')
+
+            case ('strain_L2averaged'); call hud('0.5|| W(f*u - d)||² => adjsrc = f★W W(f*u - d)')
+
+                s_conversion=setup%get_str('DATA_CONVERSION_METHOD',o_default='fk')
+                dtr=setup%get_real('DATA_CONVERSION_DTR',o_default=num2str(shot%rcv(2)%x-shot%rcv(1)%x)) !assuming const interval..
+
+                !first goto strain
+                if(index(ppg%info,'Momemtum-Strain')>0) then !m_propagator_DAS
+                
+                elseif(index(ppg%info,'Velocity-Stress')>0) then !m_propagator_PSV
+                    if(s_conversion=='fk') then
+                        call convert_in_fk(shot%dsyn,'k/w',dtr) !call shot%write('k_w_dsyn',shot%dsyn)
+
+                    else ! s_conversion=='tx'
+                        call hud('integrate_t(differentiate_x(shot%dsyn))')
+                        call differentiate_x(shot%dsyn,dtr)
+                        call integrate_t(shot%dsyn) !call shot%write('diffx_intt_dsyn',shot%dsyn)
+
+                    endif
+
+                elseif(index(ppg%info,'Displacement-Strain formulation')>0) then !m_propagator_PSV2ndUE
+                
+                elseif(index(ppg%info,'Displacement formulation')>0) then !m_propagator_PSV2nd
+                    if(s_conversion=='fk') then
+                        call convert_in_fk(shot%dsyn,'ik',dtr) !call shot%write('ik_dsyn',shot%dsyn)
+
+                    else ! s_conversion=='tx'
+                        call hud('differentiate_x(shot%dsyn)')
+                        call differentiate_x(shot%dsyn,dtr) !call shot%write('diffx_dsyn',shot%dsyn)
+                    endif
+
+                endif
+
+
+                !then add gauge length
+                length=setup%get_int('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)
+                if(length>0) call moving_average(shot%dsyn,length)
+                call shot%write('DAS_dsyn_',shot%dsyn)
+
+
+if(s_update_wavelet/='') then
+call hud('update wavelet')
+call shot%update_wavelet(wei_wl%weight) !call matchfilter_apply_to_data(shot%dsyn)
+call shot%write('updated_Ru_',shot%dsyn)
+call suformat_write('updated_wavelet_'//shot%sindex,shot%wavelet,shot%nt,1,shot%dt)
+endif
+
+                fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
+                call kernel_L2sq(shot%dadj)
+
+
+if(s_update_wavelet/='') then
+call hud('update adjoint source')
+call shot%update_adjsource
+endif
+
+                if(length>0) call moving_average(shot%dadj,length)
+
+
+                !finally convert back
+                if(index(ppg%info,'Momemtum-Strain')>0) then !m_propagator_DAS
+                
+                elseif(index(ppg%info,'Velocity-Stress')>0) then !m_propagator_PSV
+                    if(s_conversion=='fk') then
+                        call convert_in_fk(shot%dadj,'k/w',dtr) !call shot%write('k_w_dadj',shot%dadj)
+
+                    else ! s_conversion=='tx'
+                        ! call hud('rev_integrate_t(differentiate_x(shot%dadj))')
+                        call differentiate_x(shot%dadj,dtr)
+                        ! call rev_integrate_t(shot%dadj)
+                        call integrate_t(shot%dadj) !why? 
+                        !call shot%write('diffx_intt_dadj',shot%dadj)
+
+                    endif
+
+                elseif(index(ppg%info,'Displacement-Strain formulation')>0) then !m_propagator_PSV2ndUE
+                
+                elseif(index(ppg%info,'Displacement formulation')>0) then !m_propagator_PSV2nd
+                    if(s_conversion=='fk') then
+                        shot%dadj=-shot%dadj
+                        call convert_in_fk(shot%dadj,'ik',dtr) !call shot%write('ik_ndadj',shot%dadj)
+
+                    else ! s_conversion=='tx'
+                        call hud('differentiate_x(-shot%dadj)')
+                        !call differentiate_x(-shot%dadj) !this is wrong in fortran..
+                        shot%dadj=-shot%dadj
+                        call differentiate_x(shot%dadj,dtr) !so let's use functions instead of subroutines..
+                        !call shot%write('diffx_ndadj',shot%dadj)
+
+                    endif
+
+                endif
+
+
+
+            case('L2_scaled'); call hud('0.5|| W(Su - d)||² => adjsrc = W W(Su - d)')
                 if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
                 do j=1,shot%nrcv
                     if(is_first_in) S(i)%scale(j) = either(0., maxval(abs(shot%dobs(:,j))) / maxval(abs(shot%dsyn(:,j))) , shot%rcv(j)%is_badtrace)
@@ -122,18 +231,24 @@ call hud('0.5|| W(Su - d)||² => adjsrc = W W(Su - d)')
     !            if(shot%index==1)   print*, 'on '//shot%sindex,i,S(i)%scale
     !            if(shot%index==112) print*, 'on '//shot%sindex,i,S(i)%scale
 
-                call wei%update
-                call alloc(shot%dadj,shot%nt,shot%nrcv)
+if(s_update_wavelet/='') then
+call hud('update wavelet')
+call shot%update_wavelet(wei_wl%weight) !call matchfilter_apply_to_data(shot%dsyn)
+call shot%write('updated_Ru_',shot%dsyn)
+call suformat_write('updated_wavelet_'//shot%sindex,shot%wavelet,shot%nt,1,shot%dt)
+endif
 
                 fobj%misfit = fobj%misfit &
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
                 call kernel_L2sq(shot%dadj)
 
-                call fld_a%ignite(o_wavelet=shot%dadj)
-                call shot%write('dadj_',shot%dadj)
+if(s_update_wavelet/='') then
+call hud('update adjoint source')
+call shot%update_adjsource
+endif
 
-            case('L2_scaled_filtered')
-call hud('0.5|| W(f*Su - d)||² => adjsrc = S f★W W(f*Su - d)')
+
+            case('L2_scaled_filtered'); call hud('0.5|| W(f*Su - d)||² => adjsrc = S f★W W(f*Su - d)')
                 if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
                 do j=1,shot%nrcv
                     if(is_first_in) S(i)%scale(j) = either(0., maxval(abs(shot%dobs(:,j))) / maxval(abs(shot%dsyn(:,j))) , shot%rcv(j)%is_badtrace)
@@ -145,72 +260,43 @@ call hud('0.5|| W(f*Su - d)||² => adjsrc = S f★W W(f*Su - d)')
                     close(12)
                 endif
 
+
+
 if(s_update_wavelet/='') then
-call hud('----  Update Wavelet  ----')    
-call wei_wl%update(o_suffix='_4WAVELET')
-call shot%update_wavelet(wei_wl%weight) !call gradient_matchfilter_data    
+call hud('update wavelet')
+call shot%update_wavelet(wei_wl%weight) !call matchfilter_apply_to_data(shot%dsyn)
 call shot%write('updated_Ru_',shot%dsyn)
 call suformat_write('updated_wavelet_'//shot%sindex,shot%wavelet,shot%nt,1,shot%dt)
 endif
-
-                call wei%update
-                call alloc(shot%dadj,shot%nt,shot%nrcv)
 
                 fobj%misfit = fobj%misfit &
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
                 call kernel_L2sq(shot%dadj)
 
 if(s_update_wavelet/='') then
-call hud('update adjoint source.')
+call hud('update adjoint source')
+call shot%update_adjsource
 endif
 
 do j=1,shot%nrcv
 shot%dadj(:,j)=shot%dadj(:,j)*S(i)%scale(j)
 enddo
 
-                call fld_a%ignite(o_wavelet=shot%dadj)
-                call shot%write('dadj_',shot%dadj)
-
-            case ('L2averaged')
-                length=setup%get_int('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)
-                ! scaler=setup%get_real('MOVING_AVERAGE_SCALER','MA_SCALER',o_default='1.')
-                if(length>0) call moving_average(shot%dsyn,length)!,scaler)
-                call shot%write('avg_dsyn_',shot%dsyn)
-                fobj%misfit = fobj%misfit &
-                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
-                call kernel_L2sq(shot%dadj)
-                if(length>0) call moving_average(shot%dadj,length)!,scaler)
-                call fld_a%ignite(o_wavelet=shot%dadj)
-                call shot%write('dadj_',shot%dadj)
-
-
-            case ('strain_L2averaged')
-                !first goto strain
-                !call derivative_x(shot%dsyn)
-                !call integrate_t(shot%dsyn)
-                call convert_in_fk(shot%dsyn,'v2e')
-                !then add gauge length
-                length=setup%get_int('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)
-                ! scaler=setup%get_real('MOVING_AVERAGE_SCALER','MA_SCALER',o_default='1.')
-                if(length>0) call moving_average(shot%dsyn,length)!,scaler)
-                call shot%write('DAS_dsyn_',shot%dsyn)
-                fobj%misfit = fobj%misfit &
-                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
-                call kernel_L2sq(shot%dadj)
-                !goback to velocity adjoint src
-                if(length>0) call moving_average(shot%dadj,length)!,scaler)
-                !call rev_integrate_t(shot%dadj)
-                !call derivative_x(-shot%dadj)
-                call convert_in_fk(shot%dadj,'e2v')
-
-                call fld_a%ignite(o_wavelet=shot%dadj)
-                call shot%write('dadj_',shot%dadj)
 
             case default
                 call error('No DNORM specified!')
 
             end select
         
+
+
+        call hud('remute') !0 should be still 0 in the adjoint source, esp below first arrivals
+        shot%dadj=shot%dadj*wei%weight / (wei%weight+r_epsilon)
+
+        call fld_a%ignite(o_wavelet=shot%dadj)
+        call shot%write('dadj_',shot%dadj)
+
+
         call hud('----  Solving adjoint eqn & xcorrelate  ----')
 
         call ppg%init_correlate(a_star_u,'a_star_u')
@@ -315,21 +401,24 @@ if(allocated(a_star_u%glda)) call sysio_write('glda_'//shot%sindex,a_star_u%glda
 
     end subroutine
 
-    subroutine derivative_x(data) !gradient by cdiff
+    subroutine differentiate_x(data,dtr) !by central diff
         real,dimension(:,:) :: data !nt x nrcv
+        real :: dtr
 
         real,dimension(:,:), allocatable :: dout
         call alloc(dout,shot%nt,shot%nrcv)
 
         do ir=2,shot%nrcv-1
-            dout(:,ir) = (data(:,ir+1)-data(:,ir-1)) / (shot%rcv(ir+1)%x-shot%rcv(ir-1)%x)
+            dout(:,ir) = (data(:,ir+1)-data(:,ir-1))
         enddo
 
         !padding
         dout(:,1)=dout(:,2)
         dout(:,shot%nrcv)=dout(:,shot%nrcv-1)
 
-        data=dout
+        data=dout /2./dtr  !assuming const interval..
+
+        deallocate(dout)
 
     end subroutine
 
@@ -340,13 +429,15 @@ if(allocated(a_star_u%glda)) call sysio_write('glda_'//shot%sindex,a_star_u%glda
         call alloc(dout,shot%nt,shot%nrcv)
 
         do ir=1,shot%nrcv
-                dout(1,ir)=data(1,ir)*shot%dt
+                dout(1,ir)=data(1,ir)
             do it=2,shot%nt
-                dout(it,ir) = dout(it-1,ir) + data(it,ir)*shot%dt
+                dout(it,ir) = dout(it-1,ir) + data(it,ir)
             enddo
         enddo
 
-        data=dout
+        data=dout *shot%dt
+
+        deallocate(dout)
 
     end subroutine
 
@@ -357,27 +448,32 @@ if(allocated(a_star_u%glda)) call sysio_write('glda_'//shot%sindex,a_star_u%glda
         call alloc(dout,shot%nt,shot%nrcv)
 
         do ir=1,shot%nrcv
-                dout(shot%nt,ir)=data(shot%nt,ir)*shot%dt
+                dout(shot%nt,ir)=data(shot%nt,ir)
             do it=shot%nt-1,1,-1
-                dout(it,ir) = dout(it+1,ir) + data(it,ir)*shot%dt
+                dout(it,ir) = dout(it+1,ir) + data(it,ir)
             enddo
         enddo
 
-        data=dout
+        data=dout *shot%dt
+
+        deallocate(dout)
 
     end subroutine
 
-    subroutine convert_in_fk(data,dir)
+    subroutine convert_in_fk(data,op,dtr)
+    use m_math
     use singleton
         real,dimension(:,:) :: data !nt x nrcv
-        character(*) :: dir
+        character(*) :: op
+        real :: dtr
 
         real :: w(shot%nt), k(shot%nrcv)
 
-        real,dimension(:,:),allocatable :: filter
+        complex,dimension(:,:),allocatable :: filter
         complex(fftkind),dimension(:,:),allocatable :: data_fft
 
-        call alloc(filter,shot%nt,shot%nrcv)
+        allocate(filter(shot%nt,shot%nrcv))
+
         if(allocated(data_fft)) deallocate(data_fft)
         allocate(data_fft(shot%nt,shot%nrcv))
 
@@ -390,6 +486,8 @@ if(allocated(a_star_u%glda)) call sysio_write('glda_'//shot%sindex,a_star_u%glda
             w(  (n+1)/2+1:n)= -w((n+1)/2:2:-1)
         endif
 
+        w=w*2*r_pi/(n-1)/shot%dt
+
         n=shot%nrcv
         if(mod(n,2)==0) then !if n is even, 1 is DC; 2:n/2 are +f; n/2+1:n are -f
             k(1:n/2    )= [(i,i=1,n/2)]-1
@@ -399,28 +497,50 @@ if(allocated(a_star_u%glda)) call sysio_write('glda_'//shot%sindex,a_star_u%glda
             k(  (n+1)/2+1:n)= -k((n+1)/2:2:-1)
         endif
 
-        if(dir=='v2e') then
-            call hud('v2e')
-            eps=maxval(w*w)*1e-5
-            scalar=1.*shot%dt/(shot%rcv(2)%x-shot%rcv(1)%x)
+        k=k*2*r_pi/(n-1)/dtr  !assuming const interval..
+
+        call hud('convert_in_fk op: '//op)
+
+        select case (op)
+        case ('k/w') 
+            ! eps=maxval(w)*1e-5
+            eps=w(2) !smallest w
 
             do ik=1,shot%nrcv; do iw=1,shot%nt
-                filter(iw,ik) = k(ik)*w(iw) / (w(iw)*w(iw)+eps) *scalar
+                filter(iw,ik) = k(ik)*w(iw) / (w(iw)*w(iw)+eps)
             enddo; enddo
 
-        else !e2v
-            call hud('e2v')
-            eps=maxval(k*k)*1e-5
-            scalar=1./shot%dt*(shot%rcv(2)%x-shot%rcv(1)%x)
+        case ('ik')
+            ! eps=maxval(w)*1e-5
+            eps=w(2) !smallest w
+
+            do ik=1,shot%nrcv
+                filter(:,ik) = c_i*k(ik)
+            enddo
+
+        case ('w/k')
+            ! eps=maxval(k)*1e-5
+            eps=k(2) !smallest k
+
             do ik=1,shot%nrcv; do iw=1,shot%nt
-                filter(iw,ik) = w(iw)*k(ik) / (k(ik)*k(ik)+eps) *scalar
+                filter(iw,ik) = w(iw)*k(ik) / (k(ik)*k(ik)+eps)
             enddo; enddo
+
+        case ('1/ik')
+            ! eps=maxval(k)*1e-5
+            eps=k(2) !smallest k
+
+            do ik=1,shot%nrcv
+                filter(:,ik) = 1/(c_i*k(ik)+eps)
+            enddo
             
-        endif
+        endselect
 
         data_fft = fft2d(dcmplx(data))
         
         data=real(fft2d(filter*data_fft,inv=.true.),kind=4)
+
+        deallocate(filter)
 
     end subroutine
 
