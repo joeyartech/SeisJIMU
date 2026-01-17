@@ -30,7 +30,7 @@ use m_empirical
 
     type(t_parametrizer),public :: param
 
-    logical :: is_grho,is_gbuo,is_gkpa,is_gikpa,is_glda,is_gmu, is_gqp
+    logical :: is_grho,is_gbuo,is_gkpa,is_gikpa,is_glda,is_gmu, is_giqp
     integer :: i_vp=0, i_vs=0, i_rho=0, i_qp=0
 
     contains
@@ -53,7 +53,7 @@ use m_empirical
         is_gikpa= index(ppg%info,'gikpa')>0
         is_glda = index(ppg%info,'glda')>0
         is_gmu  = index(ppg%info,'gmu')>0
-        is_gqp  = index(ppg%info,'gqp')>0
+        is_giqp  = index(ppg%info,'giqp')>0
 
         !read in active parameters and their allowed ranges
         list=setup%get_strs('PARAMETER',o_default='vp:1500:3400 qp:50:100')
@@ -185,8 +185,8 @@ use m_empirical
                 n_entry=n_entry+1
             endif
 
-            if(is_gbuo.and.is_gikpa.and.is_gqp) then 
-                call hud('Parametrizer finds gbuo & gikpa & gqp')    
+            if(is_gbuo.and.is_gikpa.and.is_giqp) then 
+                call hud('Parametrizer finds gbuo & gikpa & giqp')    
                 !correlate_gradient(:,:,:,1) = gbuo
                 !correlate_gradient(:,:,:,2) = gikpa
                 !
@@ -198,7 +198,7 @@ use m_empirical
                 if(i_vp >0) o_g(:,:,:,i_vp ) = correlate_gradient(:,:,:,2)*(-2.)/m%rho/(m%vp**3)
                 if(i_rho>0) o_g(:,:,:,i_rho) = -m%rho**(-2)*( &
                     correlate_gradient(:,:,:,1) + correlate_gradient(:,:,:,2)/(m%vp**2) )
-                if(i_qp>0)  o_g(:,:,:,i_qp)  = correlate_gradient(:,:,:,3)
+                if(i_qp>0)  o_g(:,:,:,i_qp)  = correlate_gradient(:,:,:,3)*(-1.)/(m%qp**2)
 
                 call empirical_gradient('velocities-density',o_gvp=o_g(:,:,:,i_vp),o_grho=o_g(:,:,:,i_rho))
 

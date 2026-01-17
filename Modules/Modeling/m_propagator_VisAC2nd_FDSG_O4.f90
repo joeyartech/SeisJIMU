@@ -55,7 +55,7 @@ use singleton
             'Required field components: p, p_prev, p_next'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
             'Energy terms: Σ_shot ∫ sfield%p² dt'//s_NL// &
-            'Basic gradients: gbuo(wait), gikpa, gqp'
+            'Basic gradients: gbuo(wait), gikpa, giqp'
 
         integer :: nbndlayer=max(1,hicks_r) !minimum absorbing layer thickness
         integer :: ngrad=3 !number of basic gradients
@@ -69,9 +69,9 @@ use singleton
         complex,dimension(:,:,:),allocatable :: invC2,  C1n,  C0n
         complex,dimension(:,:,:),allocatable :: invC2H, C1nH, C0nH
         
-        !complex :: dC2dQ
-        real :: dC2dQ
-        real :: dC1dQ, dC0dQ
+        complex :: dC2dQ
+        ! real :: dC2dQ
+        complex :: dC1dQ, dC0dQ
 
         !time frames
         integer :: nt
@@ -276,7 +276,7 @@ use singleton
         C1 =    2*visac_b/r_pi/cb%qp;                    self%C1nH= C1*self%invC2H
         C0 =    2*visac_d/r_pi/cb%qp;                    self%C0nH= C0*self%invC2H
 
-        self%dC2dQ = 2*visac_a/r_pi - c_i
+        self%dC2dQ = 2*visac_a/r_pi - c_i*visac_e
         self%dC1dQ = 2*visac_b/r_pi
         self%dC0dQ = 2*visac_d/r_pi
 
@@ -333,7 +333,7 @@ use singleton
         ! if(name(1:1)=='g') then !gradient components
             call alloc(corr%gbuo, m%nz,m%nx,m%ny)
             call alloc(corr%gikpa,m%nz,m%nx,m%ny)
-            call alloc(corr%gqp,  m%nz,m%nx,m%ny)
+            call alloc(corr%giqp,  m%nz,m%nx,m%ny)
         ! else !image components
         !     call alloc(corr%ipp,m%nz,m%nx,m%ny)
         !     call alloc(corr%ibksc,m%nz,m%nx,m%ny)
@@ -363,6 +363,7 @@ use singleton
             call correlate_assemble(corr%gbuo,  correlate_gradient(:,:,:,1))
             call correlate_assemble(corr%gikpa, correlate_gradient(:,:,:,2))
             call correlate_assemble(corr%gqp,   correlate_gradient(:,:,:,3))
+
         endif        
         
     end subroutine
@@ -1226,11 +1227,13 @@ use singleton
     !Kₘ<a|Au> = Kₘ<a|ϰ∂ₜ²u - ∇·b∇u>
     !for ϰ: Kₘ<a|Au> = ∫ a ∂ₜ²u dt =-∫ ∂ₜa ∂ₜu dt, or = ∫ a κ∇·b∇u dt 
     !for b: Kₘ<a|Au> = -Kₘ<a|∇·b∇u> = ∫ ∇a·∇u dt
-    !for qp: Kₘ<a|Au> = ∫ a (dC2dq ∂ₜₜu +dC1dq ∂ₜu +dC0dq u) dt 
+    !for qp: Kₘ<a|Au> = ∫ a 1/κ(dC2dq ∂ₜₜu +dC1dq ∂ₜu +dC0dq u) dt 
 
     subroutine cross_correlate_gradient(reA,imA, reU,imU, corr,it)
         type(t_field), intent(in) :: reA, imA, reU, imU
         type(t_correlate) :: corr
+
+        complex,dimension(:,:,:),allocatable :: Uprev, U, Unext
 
         ! real,dimension(:,:,:),allocatable,save :: re_gikpa_rere, re_gikpa_imim, im_gikpa
         ! complex,dimension(:,:,:),allocatable :: Ulap, Aconj
@@ -1243,13 +1246,19 @@ use singleton
         ! ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
         ! ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
 
+        Uprev = cmplx(reU%p_prev,reU%p_prev)
+        U     = cmplx(reU%p     ,reU%p     )
+        Unext = cmplx(reU%p_next,reU%p_next)
+
 
         corr%gikpa = corr%gikpa + reA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny) !should use this one because we just use the real part in the misfit function, only the re-re term is needed here.
-        corr%gqp = corr%gqp + reA%p(1:m%nz,1:m%nx,1:m%ny)/ppg%kpa(1:m%nz,1:m%nx,1:m%ny)* &
-            (ppg%dC2dQ*(reU%p_next(1:m%nz,1:m%nx,1:m%ny) + reU%p_prev(1:m%nz,1:m%nx,1:m%ny)- 2*reU%p(1:m%nz,1:m%nx,1:m%ny))/dt2 &
-            -ppg%dC1dQ*(reU%p_next(1:m%nz,1:m%nx,1:m%ny) - reU%p_prev(1:m%nz,1:m%nx,1:m%ny))/(2*ppg%dt) &
-            +ppg%dC0dQ* reU%p(1:m%nz,1:m%nx,1:m%ny) &
-            )
+        corr%giqp = corr%giqp + reA%p(1:m%nz,1:m%nx,1:m%ny)/ppg%kpa(1:m%nz,1:m%nx,1:m%ny)* &
+            real(ppg%dC2dQ*(Unext(1:m%nz,1:m%nx,1:m%ny) + Uprev(1:m%nz,1:m%nx,1:m%ny)- 2*U(1:m%nz,1:m%nx,1:m%ny))/dt2 &
+                -ppg%dC1dQ*(Unext(1:m%nz,1:m%nx,1:m%ny) - Uprev(1:m%nz,1:m%nx,1:m%ny))/(2*ppg%dt) &
+                +ppg%dC0dQ* U(1:m%nz,1:m%nx,1:m%ny) &
+                )
+        
+        deallocate(Uprev, U, Unext)
         ! corr%gikpa = corr%gikpa + imA%p(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny) !same value as above
         ! corr%gikpa = corr%gikpa + reA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny) &
         !                         + imA%p(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny) !twice magnitude as above
