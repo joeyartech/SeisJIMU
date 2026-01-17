@@ -215,7 +215,7 @@ endif
 
 
 
-            case('L2_scaled'); call hud('0.5|| W(Su - d)||² => adjsrc = W W(Su - d)')
+            case('L2_scaled'); call hud('0.5|| W(Su - d)||² => adjsrc = S W W(Su - d)')
                 if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
                 do j=1,shot%nrcv
                     if(is_first_in) S(i)%scale(j) = either(0., maxval(abs(shot%dobs(:,j))) / maxval(abs(shot%dsyn(:,j))) , shot%rcv(j)%is_badtrace)
@@ -247,6 +247,11 @@ call hud('update adjoint source')
 call shot%update_adjsource
 endif
 
+if(setup%get_bool('L2SCALED_SCALE_ADJSRC',o_default='T')) then
+do j=1,shot%nrcv
+shot%dadj(:,j)=shot%dadj(:,j)*S(i)%scale(j)
+enddo
+endif
 
             case('L2_scaled_filtered'); call hud('0.5|| W(f*Su - d)||² => adjsrc = S f★W W(f*Su - d)')
                 if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
@@ -278,9 +283,11 @@ call hud('update adjoint source')
 call shot%update_adjsource
 endif
 
+if(setup%get_bool('L2SCALED_SCALE_ADJSRC',o_default='T')) then
 do j=1,shot%nrcv
 shot%dadj(:,j)=shot%dadj(:,j)*S(i)%scale(j)
 enddo
+endif
 
 
             case default
