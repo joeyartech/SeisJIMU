@@ -362,7 +362,7 @@ use singleton
         if(allocated(correlate_gradient)) then
             call correlate_assemble(corr%gbuo,  correlate_gradient(:,:,:,1))
             call correlate_assemble(corr%gikpa, correlate_gradient(:,:,:,2))
-            call correlate_assemble(corr%gqp,   correlate_gradient(:,:,:,3))
+            call correlate_assemble(corr%giqp,  correlate_gradient(:,:,:,3))
 
         endif        
         
@@ -1233,7 +1233,7 @@ use singleton
         type(t_field), intent(in) :: reA, imA, reU, imU
         type(t_correlate) :: corr
 
-        complex,dimension(:,:,:),allocatable :: Uprev, U, Unext
+        complex,dimension(:,:,:),allocatable :: Uprev, U, Unext, A
 
         ! real,dimension(:,:,:),allocatable,save :: re_gikpa_rere, re_gikpa_imim, im_gikpa
         ! complex,dimension(:,:,:),allocatable :: Ulap, Aconj
@@ -1249,6 +1249,7 @@ use singleton
         Uprev = cmplx(reU%p_prev,reU%p_prev)
         U     = cmplx(reU%p     ,reU%p     )
         Unext = cmplx(reU%p_next,reU%p_next)
+        A     = cmplx(reA%p     ,imA%p     )
 
 
         corr%gikpa = corr%gikpa + reA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny) !should use this one because we just use the real part in the misfit function, only the re-re term is needed here.
@@ -1257,8 +1258,13 @@ use singleton
                 -ppg%dC1dQ*(Unext(1:m%nz,1:m%nx,1:m%ny) - Uprev(1:m%nz,1:m%nx,1:m%ny))/(2*ppg%dt) &
                 +ppg%dC0dQ* U(1:m%nz,1:m%nx,1:m%ny) &
                 )
+        ! corr%giqp = corr%giqp + 1/2*real(A(1:m%nz,1:m%nx,1:m%ny)/ppg%kpa(1:m%nz,1:m%nx,1:m%ny)* &
+        !         (ppg%dC2dQ*(Unext(1:m%nz,1:m%nx,1:m%ny) + Uprev(1:m%nz,1:m%nx,1:m%ny)- 2*U(1:m%nz,1:m%nx,1:m%ny))/dt2 &
+        !         -ppg%dC1dQ*(Unext(1:m%nz,1:m%nx,1:m%ny) - Uprev(1:m%nz,1:m%nx,1:m%ny))/(2*ppg%dt) &
+        !         +ppg%dC0dQ* U(1:m%nz,1:m%nx,1:m%ny) &
+        !         ))
         
-        deallocate(Uprev, U, Unext)
+        deallocate(Uprev, U, Unext, A)
         ! corr%gikpa = corr%gikpa + imA%p(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny) !same value as above
         ! corr%gikpa = corr%gikpa + reA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny) &
         !                         + imA%p(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny) !twice magnitude as above
@@ -1319,10 +1325,16 @@ use singleton
             if(shot%src%comp=='dpdz') then !dipole source   
                 corr%gikpa(iz-1,ix,1) = corr%gikpa(iz,ix,1)
                 corr%gikpa(iz+1,ix,1) = corr%gikpa(iz,ix,1)
+
+                corr%giqp(iz-1,ix,1) = corr%giqp(iz,ix,1)
+                corr%giqp(iz+1,ix,1) = corr%giqp(iz,ix,1)
             
             elseif(shot%src%comp=='dpdx') then !dipole source
                 corr%gikpa(iz,ix-1,1) = corr%gikpa(iz,ix,1)
                 corr%gikpa(iz,ix+1,1) = corr%gikpa(iz,ix,1)
+
+                corr%giqp(iz,ix-1,1) = corr%giqp(iz,ix,1)
+                corr%giqp(iz,ix+1,1) = corr%giqp(iz,ix,1)
             
             else !point source
                 !safeguards
@@ -1330,14 +1342,17 @@ use singleton
                 ifx=either(ix-2,ix,ix>=3); ilx=either(ix+2,ix,ix<=m%nx-2)
                 
                 corr%gikpa(iz,ix,1)=0 !first remove otherwise will appear in the sum below
+                corr%giqp (iz,ix,1)=0 !first remove otherwise will appear in the sum below
                 ncells=size(corr%gikpa(ifz:ilz,ifx:ilx,1))-1
                 corr%gikpa(iz,ix,1) = sum(corr%gikpa(ifz:ilz,ifx:ilx,1))/ncells
+                corr%giqp (iz,ix,1) = sum(corr%giqp (ifz:ilz,ifx:ilx,1))/ncells
             
             endif
 
             !removing singular top boundary..
             ! corr%grho(1,:,:) = corr%grho(2,:,:)
             corr%gikpa(1,:,:) = corr%gikpa(2,:,:)
+            corr%giqp (1,:,:) = corr%giqp (2,:,:)
 
         endif
 
