@@ -1246,17 +1246,16 @@ use singleton
         ! ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
         ! ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
 
-        Uprev = cmplx(reU%p_prev,reU%p_prev)
-        U     = cmplx(reU%p     ,reU%p     )
-        Unext = cmplx(reU%p_next,reU%p_next)
-        A     = cmplx(reA%p     ,imA%p     )
-
+        Uprev = cmplx(reU%p_prev(1:m%nz,1:m%nx,1:m%ny),reU%p_prev(1:m%nz,1:m%nx,1:m%ny))
+        U     = cmplx(reU%p(1:m%nz,1:m%nx,1:m%ny)     ,reU%p(1:m%nz,1:m%nx,1:m%ny)     )
+        Unext = cmplx(reU%p_next(1:m%nz,1:m%nx,1:m%ny),reU%p_next(1:m%nz,1:m%nx,1:m%ny))
+        A     = cmplx(reA%p(1:m%nz,1:m%nx,1:m%ny)     ,imA%p(1:m%nz,1:m%nx,1:m%ny)     )
 
         corr%gikpa = corr%gikpa + reA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny) !should use this one because we just use the real part in the misfit function, only the re-re term is needed here.
         corr%giqp = corr%giqp + reA%p(1:m%nz,1:m%nx,1:m%ny)/ppg%kpa(1:m%nz,1:m%nx,1:m%ny)* &
-            real(ppg%dC2dQ*(Unext(1:m%nz,1:m%nx,1:m%ny) + Uprev(1:m%nz,1:m%nx,1:m%ny)- 2*U(1:m%nz,1:m%nx,1:m%ny))/dt2 &
-                -ppg%dC1dQ*(Unext(1:m%nz,1:m%nx,1:m%ny) - Uprev(1:m%nz,1:m%nx,1:m%ny))/(2*ppg%dt) &
-                +ppg%dC0dQ* U(1:m%nz,1:m%nx,1:m%ny) &
+            real(ppg%dC2dQ*(Unext + Uprev- 2*U)/dt2 &
+                -ppg%dC1dQ*(Unext - Uprev)/(2*ppg%dt) &
+                +ppg%dC0dQ* U &
                 )
         ! corr%giqp = corr%giqp + 1/2*real(A(1:m%nz,1:m%nx,1:m%ny)/ppg%kpa(1:m%nz,1:m%nx,1:m%ny)* &
         !         (ppg%dC2dQ*(Unext(1:m%nz,1:m%nx,1:m%ny) + Uprev(1:m%nz,1:m%nx,1:m%ny)- 2*U(1:m%nz,1:m%nx,1:m%ny))/dt2 &

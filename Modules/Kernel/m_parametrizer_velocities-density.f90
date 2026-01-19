@@ -189,16 +189,19 @@ use m_empirical
                 call hud('Parametrizer finds gbuo & gikpa & giqp')    
                 !correlate_gradient(:,:,:,1) = gbuo
                 !correlate_gradient(:,:,:,2) = gikpa
+                !correlate_gradient(:,:,:,3) = giqp
                 !
                 !ikpa= kpa⁻¹ = rho⁻¹ vp⁻²
                 !buo = rho⁻¹
+                !giqp= qp⁻¹
                 !So,
                 !gvp = gikpa* rho⁻¹*(-2)vp⁻³
                 !grho= -rho⁻²*( gbuo + gikpa*vp⁻² )
+                !gqp = giqp*(-1) qp⁻²
                 if(i_vp >0) o_g(:,:,:,i_vp ) = correlate_gradient(:,:,:,2)*(-2.)/m%rho/(m%vp**3)
                 if(i_rho>0) o_g(:,:,:,i_rho) = -m%rho**(-2)*( &
                     correlate_gradient(:,:,:,1) + correlate_gradient(:,:,:,2)/(m%vp**2) )
-                if(i_qp>0)  o_g(:,:,:,i_qp)  = correlate_gradient(:,:,:,3)*(-1.)/(m%qp**2)
+                if(i_qp>0)  o_g(:,:,:,i_qp)  = correlate_gradient(:,:,:,3)*(-1.)/(m%qp**2)*20
 
                 call empirical_gradient('velocities-density',o_gvp=o_g(:,:,:,i_vp),o_grho=o_g(:,:,:,i_rho))
 
