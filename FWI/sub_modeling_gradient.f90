@@ -19,6 +19,7 @@ use m_resampler
     real,dimension(:,:),allocatable :: tmp
     real,dimension(3) :: grad_term_weights
     character(:),allocatable :: s_conversion
+    real :: dtr
     
     type :: t_S
         real,dimension(:),allocatable :: scale
@@ -42,6 +43,7 @@ use m_resampler
         call shot%read_from_data
         call shot%set_var_time
         call shot%set_var_space(index(ppg%info,'FDSG')>0)
+dtr=setup%get_real('CHANNEL_SPACING',o_alias='DTR',o_default=num2str(shot%rcv(2)%x-shot%rcv(1)%x)) !assume constant DAS channel spacing
 
         call hud('Modeling Shot# '//shot%sindex)
         
@@ -94,9 +96,9 @@ call hud('update adjoint source')
 call shot%update_adjsource
 endif
 
-            case ('L2averaged'); call hud('0.5|| W(f*u - d)||² => adjsrc = f★W W(f*u - d)')
+            case ('L2averaged'); call hud('0.5|| W(f*MA*u - d)||² => adjsrc = MA★f★W W(f*u - d)')
 
-                length=setup%get_int('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)
+                length=nint( setup%get_real('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)/dtr )
                 if(length>0) call moving_average(shot%dsyn,length)
                 call shot%write('avg_dsyn_',shot%dsyn)
 
@@ -120,10 +122,9 @@ endif
                 call shot%write('dadj_',shot%dadj)
 
 
-            case ('strain_L2averaged'); call hud('0.5|| W(f*u - d)||² => adjsrc = f★W W(f*u - d)')
+            case ('strain_L2averaged'); call hud('0.5|| W(f*MA*conv*u - d)||² => adjsrc = conv★MA★f★W W(f*u - d)')
 
                 s_conversion=setup%get_str('DATA_CONVERSION_METHOD',o_default='fk')
-                dtr=setup%get_real('DATA_CONVERSION_DTR',o_default=num2str(shot%rcv(2)%x-shot%rcv(1)%x)) !assuming const interval..
 
                 !first goto strain
                 if(index(ppg%info,'Momemtum-Strain')>0) then !m_propagator_DAS
@@ -154,7 +155,7 @@ endif
 
 
                 !then add gauge length
-                length=setup%get_int('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)
+                length=nint( setup%get_real('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)/dtr )
                 if(length>0) call moving_average(shot%dsyn,length)
                 call shot%write('DAS_dsyn_',shot%dsyn)
 
@@ -289,6 +290,50 @@ shot%dadj(:,j)=shot%dadj(:,j)*S(i)%scale(j)
 enddo
 endif
 
+
+            case('L2averaged_scaled_filtered'); call hud('0.5|| W(f*S MA*u - d)||² => adjsrc = MA★S f★W W(f*S MA*u - d)')
+                length=nint( setup%get_real('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)/dtr )
+                if(length>0) call moving_average(shot%dsyn,length)
+                call shot%write('avg_dsyn_',shot%dsyn)
+
+                if(is_first_in) call alloc(S(i)%scale,shot%nrcv) !then can NOT randomly sample shots..
+                do j=1,shot%nrcv
+                    if(is_first_in) S(i)%scale(j) = either(0., maxval(abs(shot%dobs(:,j))) / maxval(abs(shot%dsyn(:,j))) , shot%rcv(j)%is_badtrace)
+                    shot%dsyn(:,j)=shot%dsyn(:,j)*S(i)%scale(j)
+                enddo
+                if(is_first_in) then
+                    open(12,file=dir_out//'dobs_dsyn_max_ratio',access='direct',recl=4*shot%nrcv)
+                    write(12,rec=shot%index) S(i)%scale
+                    close(12)
+                endif
+
+
+if(s_update_wavelet/='') then
+call hud('update wavelet')
+call shot%update_wavelet(wei_wl%weight) !call matchfilter_apply_to_data(shot%dsyn)
+call shot%write('updated_Ru_',shot%dsyn)
+call suformat_write('updated_wavelet_'//shot%sindex,shot%wavelet,shot%nt,1,shot%dt)
+endif
+
+                fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
+                call kernel_L2sq(shot%dadj)
+
+if(s_update_wavelet/='') then
+call hud('update adjoint source')
+call shot%update_adjsource
+endif
+
+if(setup%get_bool('L2SCALED_SCALE_ADJSRC',o_default='T')) then
+do j=1,shot%nrcv
+shot%dadj(:,j)=shot%dadj(:,j)*S(i)%scale(j)
+enddo
+endif
+
+                if(length>0) call moving_average(shot%dadj,length)
+                call fld_a%ignite(o_wavelet=shot%dadj)
+                call shot%write('dadj_',shot%dadj)
+                
 
             case default
                 call error('No DNORM specified!')
