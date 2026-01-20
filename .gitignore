@@ -27,6 +27,7 @@ test
 ###############
 # Other files #
 ###############
+.DS_Store
 *.aux
 *.log
 *.nav
