@@ -290,6 +290,30 @@ shot%dadj(:,j)=shot%dadj(:,j)*S(i)%scale(j)
 enddo
 endif
 
+            case('L2averaged_filtered'); call hud('0.5|| W(f*MA*u - d)||² => adjsrc = MA★f★W W(f*MA*u - d)')
+                length=nint( setup%get_real('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)/dtr )
+                if(length>0) call moving_average(shot%dsyn,length)
+                call shot%write('avg_dsyn_',shot%dsyn)
+
+if(s_update_wavelet/='') then
+call hud('update wavelet')
+call shot%update_wavelet(wei_wl%weight) !call matchfilter_apply_to_data(shot%dsyn)
+call shot%write('updated_Ru_',shot%dsyn)
+call suformat_write('updated_wavelet_'//shot%sindex,shot%wavelet,shot%nt,1,shot%dt)
+endif
+
+                fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
+                call kernel_L2sq(shot%dadj)
+
+if(s_update_wavelet/='') then
+call hud('update adjoint source')
+call shot%update_adjsource
+endif
+
+                if(length>0) call moving_average(shot%dadj,length)
+                call fld_a%ignite(o_wavelet=shot%dadj)
+                call shot%write('dadj_',shot%dadj)
 
             case('L2averaged_scaled_filtered'); call hud('0.5|| W(f*S MA*u - d)||² => adjsrc = MA★S f★W W(f*S MA*u - d)')
                 length=nint( setup%get_real('MOVING_AVERAGE_LENGTH','MA_LEN',o_mandatory=1)/dtr )

@@ -43,7 +43,7 @@ use, intrinsic :: ieee_arithmetic
             'Basic gradients: grho(wait) gkpa'
 
         integer :: nbndlayer=max(2,hicks_r) !minimum absorbing layer thickness
-        integer :: ngrad=3 !number of basic gradients
+        integer :: ngrad=2 !number of basic gradients
 
         logical :: if_compute_engy=.false.
 
@@ -194,11 +194,14 @@ use, intrinsic :: ieee_arithmetic
         call alloc(self%buoz,           [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%buox,           [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%kpa,            [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(self%ikpa,           [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         
         self%kpa(:,:)=cb%rho(:,:,1)*cb%vp(:,:,1)**2
 
         self%kpa(cb%ifz,:)=self%kpa(cb%ifz+1,:)
         self%kpa(:,cb%ifx)=self%kpa(:,cb%ifx+1)
+
+        self%ikpa=1./self%kpa
 
         self%buoz(cb%ifz,:)=1./cb%rho(cb%ifz,:,1)
         self%buox(:,cb%ifx)=1./cb%rho(:,cb%ifx,1)
@@ -801,7 +804,6 @@ use, intrinsic :: ieee_arithmetic
                     select case (shot%rcv(i)%comp)
                     case ('ez')
                         f%thta(ifz:ilz,ifx:ilx,1) = f%thta(ifz:ilz,ifx:ilx,1) + wl*self%ikpa(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_symm(:,:,1)
-                            
 
                     case ('ex')
                         f%thta(ifz:ilz,ifx:ilx,1) = f%thta(ifz:ilz,ifx:ilx,1) + wl*self%ikpa(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_symm(:,:,1)
