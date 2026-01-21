@@ -75,6 +75,37 @@ dtr=setup%get_real('CHANNEL_SPACING',o_alias='DTR',o_default=num2str(shot%rcv(2)
 
             select case (setup%get_str('DATA_NORM','DNORM',o_default='L2'))
 
+            case ('KROT'); call hud('0.5||W(u-d)||_W1 => adjsrc = W Wφ')
+
+                !first compute L2 adjsource
+                call wei%update
+                call alloc(shot%dadj,shot%nt,shot%nrcv)
+
+                misfit_L2 = fobj%misfit_L2 &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
+                call kernel_L2sq(shot%dadj)
+                call shot%write('L2dadj_',shot%dadj)
+
+                !check mass conservation condition
+                if(sum(shot%dadj) > 1e-2*maxval(shot%dadj) ) warn(shot%sindex//': Mass conservation may not be satisfied for KROT.',mpiworld%iproc)
+
+                !then compute KROT adjsource
+                shot%dadj=shot%dadj*ot%scale_residual
+
+                call ot_sdmm(shot%dadj)
+
+                fcost_comm(1)=inv%fcost
+                CALL write_residu(inv,pbdir%nt,acqui%nrec,inv%residual_KR,'residu_KR_')
+                CALL write_fcost(inv,1,[fcost_comm(1)],'fcost_KR_')
+  
+                !SUM ON ALL PROCESSORS
+                tmp_comm=0.
+                CALL MPI_ALLREDUCE (  fcost_comm(1),  tmp_comm,   1,   MPI_REAL,  MPI_SUM,  MPI_COMM_WORLD,  infompi )
+
+                inv%fcost=tmp_comm(1)
+
+
+
             case ('L2'); call hud('0.5|| W(f*u - d)||² => adjsrc = f★ W W(f*u - d)')
 
 if(s_update_wavelet/='') then
