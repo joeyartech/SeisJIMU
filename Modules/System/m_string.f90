@@ -288,11 +288,17 @@ module m_string
         character(*) :: str
         logical :: bool
 
+        if(len(str)==0) then
+            bool=.false.
+            return
+        endif
+
         if(str(1:1)=='T'.or.str(1:1)=='t') then
             bool=.true.
         else
             bool=.false.
         endif
+
     end function
 
     !remove continuously repeated char from str_in

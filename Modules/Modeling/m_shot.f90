@@ -181,7 +181,7 @@ use m_model
             select case (sudata%hdrs(i)%trid)
             case (2,3)
                 self%rcv(i)%is_badtrace=.true.!dead or dummy trace
-                self%rcv(i)%comp=scomp(1)%s
+                self%rcv(i)%comp=rcomp(1)%s
 
             case (11); self%rcv(i)%comp='p'  !pressure
             case (12); self%rcv(i)%comp='vz' !vertical velocity
