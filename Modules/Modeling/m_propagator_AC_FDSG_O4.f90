@@ -246,14 +246,16 @@ use m_cpml
         
         corr%name=name
 
-        if(name(1:1)=='g') then !gradient components
+        !if(name(1:1)=='g') then !gradient components
             call alloc(corr%grho,m%nz,m%nx,m%ny)
+print*,mpiworld%sproc,'before'
             call alloc(corr%gkpa,m%nz,m%nx,m%ny)
+print*,mpiworld%sproc,'after'
         !else !image components
         !    call alloc(corr%ipp,m%nz,m%nx,m%ny)
         !    call alloc(corr%ibksc,m%nz,m%nx,m%ny)
         !    call alloc(corr%ifwsc,m%nz,m%nx,m%ny)
-        endif
+        !endif
 
     end subroutine
 
