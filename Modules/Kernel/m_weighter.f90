@@ -2,6 +2,8 @@ module m_weighter
 use m_System
 use m_Modeling
 
+use, intrinsic :: ieee_arithmetic
+
     private
 
     type,public :: t_weighter
@@ -141,6 +143,11 @@ use m_Modeling
             endif
 
 
+        where( ieee_is_nan(weight) .or. .not.ieee_is_finite(weight) )
+            weight=0. !safeguard
+        endwhere
+
+
 	    select case(op)
                 case ('multiply')
                 self%weight = self%weight * weight
@@ -193,25 +200,25 @@ use m_Modeling
 
         if(present(o_p)) then
             do i=1,shot%nrcv
-                if(shot%rcv(i)%comp=='p') weight(:,i)=weight(:,i)*o_p
+                if(shot%rcv(i)%comp=='p') weight(:,i)=o_p
             enddo
         endif
 
         if(present(o_vz)) then
             do i=1,shot%nrcv
-                if(shot%rcv(i)%comp=='vz') weight(:,i)=weight(:,i)*o_vz
+                if(shot%rcv(i)%comp=='vz') weight(:,i)=o_vz
             enddo
         endif
 
         if(present(o_vx)) then
             do i=1,shot%nrcv
-                if(shot%rcv(i)%comp=='vx') weight(:,i)=weight(:,i)*o_vx
+                if(shot%rcv(i)%comp=='vx') weight(:,i)=o_vx
             enddo
         endif
 
         if(present(o_vy)) then
             do i=1,shot%nrcv
-                if(shot%rcv(i)%comp=='vy') weight(:,i)=weight(:,i)*o_vy
+                if(shot%rcv(i)%comp=='vy') weight(:,i)=o_vy
             enddo
         endif
 
@@ -222,14 +229,16 @@ use m_Modeling
         real,optional :: o_power, o_factor
 
         if(present(o_power)) then
+            call hud('o_power = '//real2str(o_power))
             do i=1,shot%nrcv    
-                weight(:,i)=weight(:,i)*shot%rcv(i)%aoffset**o_power
+                weight(:,i)=shot%rcv(i)%aoffset**o_power
             enddo
         endif
 
         if(present(o_factor)) then
+            call hud('o_factor = '//real2str(o_factor))
             do i=1,shot%nrcv    
-                weight(:,i)=weight(:,i)*shot%rcv(i)%aoffset*o_factor
+                weight(:,i)=shot%rcv(i)%aoffset*o_factor
             enddo
         endif
 
@@ -240,8 +249,9 @@ use m_Modeling
         real,optional :: o_power, o_factor
 
         if(present(o_power)) then
+            call hud('o_power = '//real2str(o_power))
             do i=1,shot%nt
-                weight(i,:)=weight(i,:)*((i+0.5-1)*shot%dt)**o_power
+                weight(i,:)=((i+0.5-1)*shot%dt)**o_power
             enddo
         endif
 
