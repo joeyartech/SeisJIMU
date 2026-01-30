@@ -1359,15 +1359,27 @@ use, intrinsic :: ieee_arithmetic
         !         (-ppg%mu(1,1:cb%mx))                                /ppg%ldapmu(1,1:cb%mx)/ppg%ldap2mu(1,1:cb%mx)
         !     corr%gmu(1,:,1)  = corr%gmu(1,:,1) /mhalf_inv_ldapmu(1,:)*ppg%mu(1,1:cb%mx) *& !canceling
         !         (-4*ppg%ldapmu(1,1:cb%mx)**2-4*ppg%mu(1,1:cb%mx)**2)/ppg%mu(1,1:cb%mx)/ppg%ldapmu(1,1:cb%mx)/ppg%ldap2mu(1,1:cb%mx)
-
-        ! else
-            !preparing for projection back
-            corr%grho(1,:,:) = corr%grho(2,:,:)
-            corr%glda(1,:,:) = corr%glda(2,:,:)
-            corr%gmu (1,:,:) = corr%gmu (2,:,:)
-
-        ! endif
-
+        !endif
+        
+        !remove singular point at the src position,
+        !because we didn't consider src when deriving the gradient formula    
+        iz=shot%src%iz-cb%ioz+1
+        ix=shot%src%ix-cb%iox+1
+        !for point source
+        !safeguards
+        ifz=either(iz-2,iz,iz>=3); ilz=either(iz+2,iz,iz<=m%nz-2)
+        ifx=either(ix-2,ix,ix>=3); ilx=either(ix+2,ix,ix<=m%nx-2)
+        
+        corr%gikpa(iz,ix,1)=0 !first remove otherwise will appear in the sum below
+        ncells=size(corr%gikpa(ifz:ilz,ifx:ilx,1))-1
+        corr%gikpa(iz,ix,1) = sum(corr%gikpa(ifz:ilz,ifx:ilx,1))/ncells
+            
+            
+        !remove singular top boundary..
+        corr%grho(1,:,:) = corr%grho(2,:,:)
+        corr%glda(1,:,:) = corr%glda(2,:,:)
+        corr%gmu (1,:,:) = corr%gmu (2,:,:)
+        
         where( ieee_is_nan(corr%gmu(:,:,1)) .or. .not.ieee_is_finite(corr%gmu(:,:,1)) )
             corr%gmu(:,:,1)=0.
         endwhere

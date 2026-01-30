@@ -44,7 +44,7 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:,:),allocatable ::     sxx!,sxy
         !real,dimension(:,:,:),allocatable ::         syy
         ! real,dimension(:,:,:),allocatable :: shh !szz, sxx or syy
-        ! real,dimension(:,:,:),allocatable :: p !negated pressure
+        real,dimension(:,:,:),allocatable :: p !negated pressure
         
         real,dimension(:,:,:),allocatable :: pz,px !momenta
         real,dimension(:,:,:),allocatable :: ez,ex,es,thta !strains
@@ -61,13 +61,14 @@ use, intrinsic :: ieee_arithmetic
         type(t_boundary) :: bnd
 
         !cpml components for absorbing boundary wavefield
-        real,dimension(:,:,:),allocatable :: dvz_dz,dvz_dx,dvx_dx,dvx_dz
+        real,dimension(:,:,:),allocatable :: dvz_dz,dvz_dx,dvx_dx,dvx_dz,dvy_dy
         real,dimension(:,:,:),allocatable :: dszz_dz,dsxx_dx,dszx_dz,dszx_dx
 
         real,dimension(:,:,:),allocatable :: dpz_dz,dpx_dx,dpz_dx,dpx_dz
         real,dimension(:,:,:),allocatable :: dez_dz,dex_dx,dex_dz,dez_dx,des_dz,des_dx
         real,dimension(:,:,:),allocatable :: dthta_dz,dthta_dx
 
+        real,dimension(:,:,:),allocatable :: dp_dz,dp_dx,dp_dy
         
         !real,dimension(:,:,:),allocatable :: lapz,lapx,laps
 
