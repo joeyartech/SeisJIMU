@@ -4,8 +4,9 @@
 ############
 # Modeling #
 ############
+WaveEq=SH
 #WaveEq=PSV
-WaveEq=DAS
+#WaveEq=DAS
 #WaveEq=DASAC
 Solver=FDSG
 Order=O4

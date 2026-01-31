@@ -22,7 +22,7 @@ use m_computebox
 
         !gradient components
         real,dimension(:,:,:),allocatable :: gkpa, gikpa
-        real,dimension(:,:,:),allocatable :: glda, gmu
+        real,dimension(:,:,:),allocatable :: glda, gmu, gimu
         real,dimension(:,:,:),allocatable :: grho, gbuo
 
         !image components
@@ -99,6 +99,7 @@ use m_computebox
         if(allocated(self%gikpa))      call scale_copy(self%gikpa,scaler)
         if(allocated(self%glda))       call scale_copy(self%glda,scaler)
         if(allocated(self%gmu))        call scale_copy(self%gmu,scaler)
+        if(allocated(self%gimu))       call scale_copy(self%gmu,scaler)
         if(allocated(self%grho))       call scale_copy(self%grho,scaler)
         if(allocated(self%gbuo))       call scale_copy(self%gbuo,scaler)
         
