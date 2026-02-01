@@ -122,7 +122,7 @@ use m_preconditioner
                     
                     if(shot%rcv(ir)%comp=='p') then !pressure data, use 1/ref_vp to balance amplitudes versus velocities data
                         self%dnorms(i) = self%dnorms(i) + L1(self%dnorm_normalizers(i), shot%nt, &
-                            wei%weight(:,ir)*m%ref_inv_vp, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
+                            wei%weight(:,ir)*m%ref_inv_vel, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
                             
                         if(is_4adjsrc) call kernel_L1(shot%dadj(:,ir),oif_stack=.true.)
                         
@@ -145,7 +145,7 @@ use m_preconditioner
                     
                     if(shot%rcv(ir)%comp=='p') then !pressure data
                         self%dnorms(i) = self%dnorms(i) + L2sq(0.5*self%dnorm_normalizers(i), shot%nt, &
-                            wei%weight(:,ir)*m%ref_inv_vp, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
+                            wei%weight(:,ir)*m%ref_inv_vel, shot%dsyn(:,ir)-shot%dobs(:,ir), shot%dt)
                             
                         if(is_4adjsrc) call kernel_L2sq(shot%dadj(:,ir),oif_stack=.true.)
                         

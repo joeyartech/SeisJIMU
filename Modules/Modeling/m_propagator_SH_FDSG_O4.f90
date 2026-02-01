@@ -17,8 +17,8 @@ use m_cpml
     real :: c1x, c1y, c1z
     real :: c2x, c2y, c2z
 
-    !local const
-    real :: dt2, inv_2dt, inv_2dz, inv_2dx
+    ! !local const
+    ! real :: dt2, inv_2dt, inv_2dz, inv_2dx
 
 
     !scaling source wavelet
@@ -34,7 +34,7 @@ use m_cpml
             'CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal'//s_NL// &
             '   -> dt ≤ 0.606(for 2D) or 0.494(3D) *Vmax/dx'//s_NL// &
             'Required model attributes: vs, rho'//s_NL// &
-            'Required field components: vy, p'//s_NL// &
+            'Required field components: szy, sxy, vy'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
             'Imaging conditions: ipp'//s_NL// &
             'Energy terms: Σ_shot ∫ sfield%p² dt'//s_NL// &
@@ -48,7 +48,7 @@ use m_cpml
         logical :: if_compute_engy=.false.
 
         !local models shared between fields
-        real,dimension(:,:,:),allocatable :: mu, muz, mux, buo
+        real,dimension(:,:),allocatable :: muz, mux, buo
 
         !time frames
         integer :: nt
@@ -68,10 +68,10 @@ use m_cpml
         procedure :: forward
         procedure :: adjoint
         
-        procedure :: inject_velocities
         procedure :: inject_stresses
-        procedure :: update_velocities
+        procedure :: inject_velocities
         procedure :: update_stresses
+        procedure :: update_velocities
         procedure :: extract
 
 
@@ -106,10 +106,9 @@ use m_cpml
     subroutine check_model(self)
         class(t_propagator) :: self
         
-        if(index(self%info,'vp')>0  .and. .not. allocated(m%vp)) then
-            !call error('vp model is NOT given.')
-            call alloc(m%vp,m%nz,m%nx,m%ny,o_init=1500.)
-            call warn('Constant vp model (1500 m/s) is allocated by propagator.')
+        if(index(self%info,'vs')>0  .and. .not. allocated(m%vs)) then
+            call alloc(m%vs,m%nz,m%nx,1,o_init=866.)
+            call warn('Constant vs model (866 m/s) is allocated by propagator.')
         endif
 
         if(index(self%info,'rho')>0 .and. .not. allocated(m%rho)) then
@@ -154,31 +153,36 @@ use m_cpml
     subroutine init(self)
         class(t_propagator) :: self
 
+        real,dimension(:,:),allocatable :: temp_mu
+
         c1x=coef(1)/m%dx; c1y=coef(1)/m%dy; c1z=coef(1)/m%dz
         c2x=coef(2)/m%dx; c2y=coef(2)/m%dy; c2z=coef(2)/m%dz
 
-        inv_2dz =1./2/m%dz
-        inv_2dx =1./2/m%dx
+        ! inv_2dz =1./2/m%dz
+        ! inv_2dx =1./2/m%dx
         
         wavelet_scaler=self%dt/m%cell_volume
 
         if_hicks=shot%if_hicks
 
-        call alloc(self%buo,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(self%muz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(self%mux,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(self%buo,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(self%muz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(self%mux,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         
-        self%mu = cb%rho*cb%vs**2
+        call alloc(temp_mu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        temp_mu = cb%rho(:,:,1)*cb%vs(:,:,1)**2
 
         do iz=cb%ifz+1,cb%ilz
-            self%muz(iz,:)=(self%mu(iz,:)+self%mu(iz-1,:))/2.
+            self%muz(iz,:)=(temp_mu(iz,:)+temp_mu(iz-1,:))/2.
         enddo
         
         do ix=cb%ifx+1,cb%ilx
-            self%mux(:,ix)=(self%mu(:,ix)+self%mu(:,ix-1))/2.
+            self%mux(:,ix)=(temp_mu(:,ix)+temp_mu(:,ix-1))/2.
         enddo
 
-        self%buo=1./cb%rho
+        deallocate(temp_mu)
+
+        self%buo=1./cb%rho(:,:,1)
 
         !initialize m_field
         call field_init(.true.,self%nt,self%dt)
@@ -213,18 +217,16 @@ use m_cpml
 
         !f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
         !if(f%if_will_reconstruct) call f%init_boundary
-        call f%init_boundary_velocities
+        call f%init_boundary_stresses
 
-        call alloc(f%szy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%szx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%vy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%szy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(f%szx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(f%vy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
 
-        call alloc(f%dvz_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dvx_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dvy_dy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dp_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dp_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
-        call alloc(f%dp_dy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        call alloc(f%dszy_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(f%dsxy_dx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(f%dvy_dz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(f%dvy_dx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
                 
     end subroutine
 
@@ -316,9 +318,9 @@ use m_cpml
     !
     !Convention for half-integer index:
     !(array index)  =>    (real index)     
-    ! vy(iz,ix,iy)  =>  vy[iz,  ix,  iy  ]^n+½ := vy(iz*dz,ix*dx,iy*dy,(n+½)*dt)
-    !szy(iz,ix,iy)  => szy[iz-½,ix,  iy  ]^n   :=szy((iz-½)*dz,ix*dx,iy*dy,n*dt)
-    !sxy(iz,ix,iy)  => sxy[iz,  ix-½,iy  ]^n   
+    ! vy(iz,ix)  =>  vy[iz,  ix, ]^n+½ := vy(iz*dz,ix*dx,(n+½)*dt)
+    !szy(iz,ix)  => szy[iz-½,ix, ]^n   :=szy((iz-½)*dz,ix*dx,n*dt)
+    !sxy(iz,ix)  => sxy[iz,  ix-½]^n   
     !
     ! Forward:
     ! FD eqn:
@@ -587,9 +589,9 @@ use m_cpml
             
 !            !grho: sfield%v_dt^it \dot rfield%v^it
 !            !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
-           if(if_compute_grad.and.mod(it,irdt)==0) then
+           if(mod(it,irdt)==0) then
                call cpu_time(tic)
-               call cross_correlate_gimu(fld_a,fld_u,it,cb%grad(:,:,1,1))
+               call cross_correlate_gimu(fld_a,fld_u,a_star_u,it)
                call cpu_time(toc)
                tt6=tt6+toc-tic
            endif
@@ -646,15 +648,14 @@ use m_cpml
 
                 ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
                 ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
-                ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
                 
                 wl=time_dir*f%wavelet(1,it)*wavelet_scaler
             
                 if(if_hicks) then
-                    f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buo(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
+                    f%vy(ifz:ilz,ifx:ilx,1) = f%vy(ifz:ilz,ifx:ilx,1) + wl*self%buo(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
                     
                 else
-                    f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + wl*self%buo(iz,ix,iy)                    
+                    f%vy(iz,ix,1) = f%vy(iz,ix,1) + wl*self%buo(iz,ix)
                 
                 endif
             
@@ -666,19 +667,18 @@ use m_cpml
 
             do i=1,shot%nrcv
 
-                if(shot%rcv%comp=='vy') then  !horizontal y adjsource !vy[ix,iy-0.5,iz]
+                if(shot%rcv(i)%comp=='vy') then  !horizontal y adjsource !vy[ix,iy-0.5,iz]
                     
                     ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
                     ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
-                    ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
                     
                     wl=f%wavelet(i,it)*wavelet_scaler
                     
                     if(if_hicks) then
-                        f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buo(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
+                        f%vy(ifz:ilz,ifx:ilx,1) = f%vy(ifz:ilz,ifx:ilx,1) + wl*self%buo(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
                         
                     else
-                        f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + wl*self%buo(iz,ix,iy) !no time_dir needed!
+                        f%vy(iz,ix,1) = f%vy(iz,ix,1) + wl*self%buo(iz,ix) !no time_dir needed!
                     
                     endif
                
@@ -728,27 +728,26 @@ use m_cpml
 
             ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
-            ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
             
             wl=time_dir*f%wavelet(1,it)*wavelet_scaler
             
             if(if_hicks) then
                 if(shot%src%comp=='szy') then
-                    f%szy(ifz:ilz,ifx:ilx,ify:ily) = f%szy(ifz:ilz,ifx:ilx,ify:ily) + wl*self%muz(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
+                    f%szy(ifz:ilz,ifx:ilx,1) = f%szy(ifz:ilz,ifx:ilx,1) + wl*self%muz(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
 
                 else if(shot%src%comp=='sxy') then
                     if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest.
-                    f%sxy(ifz:ilz,ifx:ilx,ify:ily) = f%sxy(ifz:ilz,ifx:ilx,ify:ily) + wl*self%mux(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef
+                    f%sxy(ifz:ilz,ifx:ilx,1) = f%sxy(ifz:ilz,ifx:ilx,1) + wl*self%mux(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
                 
                 endif
                 
             else
                 if(shot%src%comp=='szy') then
-                    f%szy(iz,ix,iy) = f%szy(iz,ix,iy) + wl*self%muz(iz,ix,iy)*shot%src%interp_coef
+                    f%szy(iz,ix,1) = f%szy(iz,ix,1) + wl*self%muz(iz,ix)
                 
                 else if(shot%src%comp=='sxy') then
                     if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest.
-                    f%sxy(iz,ix,iy) = f%sxy(iz,ix,iy) + wl*self%mux(iz,ix,iy)*shot%src%interp_coef
+                    f%sxy(iz,ix,1) = f%sxy(iz,ix,1) + wl*self%mux(iz,ix)
                 
                 endif
                 
@@ -762,7 +761,6 @@ use m_cpml
 
                 ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
                 ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
-                ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
                 
                 !adjsource for pressure
                 wl=f%wavelet(i,it)*wavelet_scaler
@@ -770,19 +768,19 @@ use m_cpml
                 if(if_hicks) then 
 
                     if(shot%rcv(i)%comp=='szy') then
-                        f%szy(ifz:ilz,ifx:ilx,ify:ily) = f%szy(ifz:ilz,ifx:ilx,ify:ily) +wl*self%muz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
+                        f%szy(ifz:ilz,ifx:ilx,1) = f%szy(ifz:ilz,ifx:ilx,1) +wl*self%muz(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
                     elseif(shot%rcv(i)%comp=='sxy') then
-                        f%sxy(ifz:ilz,ifx:ilx,ify:ily) = f%sxy(ifz:ilz,ifx:ilx,ify:ily) +wl*self%mux(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
+                        f%sxy(ifz:ilz,ifx:ilx,1) = f%sxy(ifz:ilz,ifx:ilx,1) +wl*self%mux(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
                     endif
 
                 else
 
                     if(shot%rcv(i)%comp=='szy') then
-                        !szy[iz,ix,iy]
-                        f%szy(iz,ix,iy) = f%szy(iz,ix,iy) +wl*self%muz(iz,ix,iy) !no time_dir needed!
+                        !szy[iz,ix,1]
+                        f%szy(iz,ix,1) = f%szy(iz,ix,1) +wl*self%muz(iz,ix) !no time_dir needed!
                     elseif(shot%rcv(i)%comp=='sxy') then
-                        !sxy[iz,ix,iy]
-                        f%sxy(iz,ix,iy) = f%sxy(iz,ix,iy) +wl*self%mux(iz,ix,iy) !no time_dir needed!
+                        !sxy[iz,ix,1]
+                        f%sxy(iz,ix,1) = f%sxy(iz,ix,1) +wl*self%mux(iz,ix) !no time_dir needed!
                     endif
 
                 endif
@@ -801,14 +799,12 @@ use m_cpml
         ilz=f%bloom(2,it)-2
         ifx=f%bloom(3,it)+1
         ilx=f%bloom(4,it)-2
-        ify=f%bloom(5,it)+1
-        ily=f%bloom(6,it)-2
         
         if(m%is_freesurface) ifz=max(ifz,1)
 
         call fd2d_velocities(f%szy,f%sxy,f%vy,              &
-                            f%dszy_dz,f%dsxy_dx,            &
-                            self%kpa,                       &
+                            f%dvy_dz,f%dvy_dx,              &
+                            self%buo,                       &
                             ifz,ilz,ifx,ilx,time_dir*self%dt)
         
         !apply free surface boundary condition if needed
@@ -826,27 +822,26 @@ use m_cpml
             do i=1,shot%nrcv
                 ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
                 ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
-                ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
 
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
                         
                         case ('vy')
-                        f%seismo(i,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef)
+                        f%seismo(i,it)=sum(f%vy(ifz:ilz,ifx:ilx,1) *shot%rcv(i)%interp_coef(:,:,1))
                         case ('szy')
-                        f%seismo(i,it)=sum(f%szy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                        f%seismo(i,it)=sum(f%szy(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1))
                         case ('sxy')
-                        f%seismo(i,it)=sum(f%sxy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
+                        f%seismo(i,it)=sum(f%sxy(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1))
                     end select
                     
                 else
                     select case (shot%rcv(i)%comp)
-                        case ('vy') !p[iz,ix,iy]
-                        f%seismo(i,it)=f%vy(iz,ix,iy)
-                        case ('szy') !vz[iz-0.5,ix,iy]
-                        f%seismo(i,it)=f%szy(iz,ix,iy)
-                        case ('sxy') !vx[iz,ix-0.5,iy]
-                        f%seismo(i,it)=f%sxy(iz,ix,iy)
+                        case ('vy') !p[iz,ix,1]
+                        f%seismo(i,it)=f%vy(iz,ix,1)
+                        case ('szy') !vz[iz-0.5,ix,1]
+                        f%seismo(i,it)=f%szy(iz,ix,1)
+                        case ('sxy') !vx[iz,ix-0.5,1]
+                        f%seismo(i,it)=f%sxy(iz,ix,1)
                     end select
                     
                 endif
@@ -859,31 +854,30 @@ use m_cpml
 
             ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
-            ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
             
             if(if_hicks) then
                 select case (shot%src%comp)
                     case ('vy')
-                    f%seismo(1,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef)
+                    f%seismo(1,it)=sum(f%vy(ifz:ilz,ifx:ilx,1) *shot%src%interp_coef(:,:,1))
                     
                     case ('szy')
-                    f%seismo(1,it)=sum(f%szy(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    f%seismo(1,it)=sum(f%szy(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1))
                     
                     case ('sxy')
-                    f%seismo(1,it)=sum(f%sxy(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+                    f%seismo(1,it)=sum(f%sxy(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1))
                     
                 end select
                 
             else
                 select case (shot%src%comp)
-                    case ('vy') !p[iz,ix,iy]
-                    f%seismo(1,it)=f%vy(iz,ix,iy)
+                    case ('vy') !p[iz,ix,1]
+                    f%seismo(1,it)=f%vy(iz,ix,1)
                     
-                    case ('szy') !vz[iz-0.5,ix,iy]
-                    f%seismo(1,it)=f%szy(iz,ix,iy)
+                    case ('szy') !vz[iz-0.5,ix,1]
+                    f%seismo(1,it)=f%szy(iz,ix,1)
                     
-                    case ('sxy') !vx[iz,ix-0.5,iy]
-                    f%seismo(1,it)=f%sxy(iz,ix,iy)
+                    case ('sxy') !vx[iz,ix-0.5,1]
+                    f%seismo(1,it)=f%sxy(iz,ix,1)
                     
                 end select
                 
@@ -893,7 +887,7 @@ use m_cpml
     
     subroutine final(self)
         type(t_propagator) :: self
-        call dealloc(self%mu, self%muz, self%mux, self%buo)
+        call dealloc(self%muz, self%mux, self%buo)
     end subroutine
 
     !========= gradient, imaging or other correlations ===================
@@ -983,8 +977,8 @@ use m_cpml
         
         if(allocated(correlate_gradient)) then
             !scale gradients by model parameters
-            corr%grho = corr%grho / cb%rho(1:cb%mz,1:cb%mx,1:cb%my)
-            corr%gimu = corr%gimu * ppg%mu(1:cb%mz,1:cb%mx,1:cb%my))
+            corr%grho(:,:,1) = corr%grho(:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1)
+            corr%gimu(:,:,1) = corr%gimu(:,:,1) * cb%rho(1:cb%mz,1:cb%mx,1)*cb%vp(1:cb%mz,1:cb%mx,1)**2 !mu
             
             !remove singular point at the src position,
             !because we didn't consider src when deriving the gradient formula    
@@ -1113,14 +1107,14 @@ use m_cpml
                 dvy_dx_= c1x*(vy(iz_ixp1)-vy(iz_ix)) +c2x*(vy(iz_ixp2)-vy(iz_ixm1))
                 
                 !cpml
-                dvz_dz(iz_ix)=cpml%b_z(iz)*dvz_dz(iz_ix)+cpml%a_z(iz)*dvy_dz_
-                dvx_dx(iz_ix)=cpml%b_x(ix)*dvx_dx(iz_ix)+cpml%a_x(ix)*dvy_dx_
+                dvy_dz(iz_ix)=cpml%b_z(iz)*dvy_dz(iz_ix)+cpml%a_z(iz)*dvy_dz_
+                dvy_dx(iz_ix)=cpml%b_x(ix)*dvy_dx(iz_ix)+cpml%a_x(ix)*dvy_dx_
 
-                dvy_dz_=dvy_dz_*cpml%kpa_z(iz) + dvz_dz(iz_ix)
-                dvy_dx_=dvy_dx_*cpml%kpa_x(ix) + dvx_dx(iz_ix)
+                dvy_dz_=dvy_dz_*cpml%kpa_z(iz) + dvy_dz(iz_ix)
+                dvy_dx_=dvy_dx_*cpml%kpa_x(ix) + dvy_dx(iz_ix)
                 
                 !pressure
-                vy(iz_ix) = vy(iz_ix) + dt * buo(iz_ix)*(dvy_dz_+dvy_dx_)
+                vy(iz_ix) = vy(iz_ix) + dt*buo(iz_ix)*(dvy_dz_+dvy_dx_)
                 
             enddo
             
@@ -1168,7 +1162,7 @@ use m_cpml
                 dvy_dz = c1z*(sf_vy(izp1_ix)-sf_vy(iz_ix)) +c2z*(sf_vy(izp2_ix)-sf_vy(izm1_ix))
                 dvy_dx = c1x*(sf_vy(iz_ixp1)-sf_vy(iz_ix)) +c2x*(sf_vy(iz_ixp2)-sf_vy(iz_ixm1))
 
-                grad(j)=grad(j) + rf_szy(i)*dvy_dz + rf_szy(i)*dvy_dx
+                grad(j)=grad(j) + rf_szy(i)*dvy_dz + rf_sxy(i)*dvy_dx
                 
             end do
             
@@ -1223,8 +1217,8 @@ use m_cpml
                 !complete equation with unnecessary terms e.g. sf_p(iz_ix) for better understanding
                 !with flag -Ox, the compiler should automatically detect such possible simplification
                 
-                dz_dszy = (c1z*(sf_zy(iz_ix)-sf_zy(izm1_ix)) +c2z*(sf_zy(izp1_ix)-sf_zy(izm2_ix)))
-                dx_dsxy = (c1x*(sf_xy(iz_ix)-sf_xy(iz_ixm1)) +c2x*(sf_xy(iz_ixp1)-sf_xy(iz_ixm2)))
+                dz_dszy = (c1z*(sf_szy(iz_ix)-sf_szy(izm1_ix)) +c2z*(sf_szy(izp1_ix)-sf_szy(izm2_ix)))
+                dx_dsxy = (c1x*(sf_sxy(iz_ix)-sf_sxy(iz_ixm1)) +c2x*(sf_sxy(iz_ixp1)-sf_sxy(iz_ixm2)))
 
                 grad(j)=grad(j) + rf_vy(i)*(dz_dszy + dx_dsxy) !0.25*( rvz*dsvz + rvx*dsvx )
                 

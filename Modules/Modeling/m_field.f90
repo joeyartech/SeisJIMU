@@ -40,8 +40,8 @@ use, intrinsic :: ieee_arithmetic
         
         !wavefield components in computation domain
         real,dimension(:,:,:),allocatable :: vz,vx,vy !velocities
-        real,dimension(:,:,:),allocatable :: szz,szx!,szy !stress tensor
-        real,dimension(:,:,:),allocatable ::     sxx!,sxy
+        real,dimension(:,:,:),allocatable :: szz,szx,szy !stress tensor
+        real,dimension(:,:,:),allocatable ::     sxx,sxy
         !real,dimension(:,:,:),allocatable ::         syy
         ! real,dimension(:,:,:),allocatable :: shh !szz, sxx or syy
         real,dimension(:,:,:),allocatable :: p !negated pressure
@@ -69,6 +69,9 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:,:),allocatable :: dthta_dz,dthta_dx
 
         real,dimension(:,:,:),allocatable :: dp_dz,dp_dx,dp_dy
+
+        real,dimension(:,:,:),allocatable :: dvy_dz,dvy_dx
+        real,dimension(:,:,:),allocatable :: dszy_dz,dsxy_dx
         
         !real,dimension(:,:,:),allocatable :: lapz,lapx,laps
 
@@ -94,6 +97,7 @@ use, intrinsic :: ieee_arithmetic
         procedure :: init_boundary_velocities
         procedure :: init_boundary_momenta
         ! procedure :: init_boundary_strains
+        procedure :: init_boundary_stresses
         procedure :: reinit
         procedure :: check_value
         procedure :: ignite
@@ -103,6 +107,7 @@ use, intrinsic :: ieee_arithmetic
         procedure :: boundary_transport_velocities
         procedure :: boundary_transport_momenta
         ! procedure :: boundary_transport_strains
+        procedure :: boundary_transport_stresses
         final :: final
         
         ! procedure :: is_registered
@@ -319,6 +324,34 @@ use, intrinsic :: ieee_arithmetic
     !     ! endif
 
     ! end subroutine
+
+    subroutine init_boundary_stresses(self)
+        class(t_field) :: self
+        !save 3 grid points, for 4th order FD only
+        !different indexing
+        n=3*cb%mx*cb%my
+        call alloc(self%bnd%vz_top,n,nt)
+        call alloc(self%bnd%vz_bot,n,nt)
+        ! if(if_shear) then
+        !     call alloc(self%bnd%vx_top,n,nt)
+        !     call alloc(self%bnd%vx_bot,n,nt)
+        ! endif
+        
+        n=cb%mz*3*cb%my
+        call alloc(self%bnd%vx_left, n,nt)
+        call alloc(self%bnd%vx_right,n,nt)
+        ! if(if_shear) then
+        !     call alloc(self%bnd%pz_left, n,nt)
+        !     call alloc(self%bnd%pz_right,n,nt)
+        ! endif
+
+        ! if(m%is_cubic) then
+        !     n=cb%mz*cb%mx*3
+        !     call alloc(self%bnd%py_front,n,nt)
+        !     call alloc(self%bnd%py_rear, n,nt)
+        ! endif
+
+    end subroutine
 
     subroutine reinit(self)
         class(t_field) :: self
@@ -657,6 +690,43 @@ use, intrinsic :: ieee_arithmetic
     !     ! endif
         
     ! end subroutine
+
+    subroutine boundary_transport_stresses(self,action,it)
+        class(t_field) :: self
+        character(4) :: action
+        integer :: it
+        
+        nz=cb%mz
+        nx=cb%mx
+        ny=cb%my
+        
+        !top
+        ! if(.not. m%is_freesurface) &
+        call copy(action,self%szy,self%bnd%vz_top(:,it),  [1,3],    [1,nx],[1,1])
+        !bottom
+        call copy(action,self%szy,self%bnd%vz_bot(:,it),  [nz-1,nz+1],[1,nx],[1,1])
+        !left
+        call copy(action,self%sxy,self%bnd%vx_left(:,it), [1,nz],[1,3],    [1,1])
+        !right
+        call copy(action,self%sxy,self%bnd%vx_right(:,it),[1,nz],[nx-1,nx+1],[1,1])
+        
+        ! !shear part
+        ! if(if_shear) then
+        !     if(m%is_cubic) then
+        !     else
+        !         !top
+        !         ! if(.not. m%is_freesurface) &
+        !         call copy(action,self%vx,self%bnd%vx_top(:,it),  [1,3],    [1,nx],[1,1])
+        !         !bottom
+        !         call copy(action,self%vx,self%bnd%vx_bot(:,it),  [nz-2,nz  ],[1,nx],[1,1])
+        !         !left
+        !         call copy(action,self%vz,self%bnd%vz_left(:,it), [1,nz],[1,3],    [1,1])
+        !         !right
+        !         call copy(action,self%vz,self%bnd%vz_right(:,it),[1,nz],[nx-2,nx  ],[1,1])
+        !     endif
+        ! endif
+        
+    end subroutine
     
     subroutine copy(action,v,bv,iiz,iix,iiy)
         character(4) :: action
@@ -704,8 +774,9 @@ use, intrinsic :: ieee_arithmetic
         
         !deallocate(self%name)
 
-        call dealloc(self%vz,self%vx)
-        call dealloc(self%szz,self%sxx,self%szx)
+        call dealloc(self%vz,self%vx,self%vy)
+        call dealloc(self%szz,self%szx,self%szy)
+        call dealloc(         self%sxx,self%sxy)
 
         call dealloc(self%bnd%vz_top,  self%bnd%vz_bot, self%bnd%vz_left, self%bnd%vz_right)
         call dealloc(self%bnd%vx_top,  self%bnd%vx_bot, self%bnd%vx_left, self%bnd%vx_right)

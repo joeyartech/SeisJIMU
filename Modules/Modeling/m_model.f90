@@ -24,7 +24,7 @@ use m_smoother_laplacian_sparse
         real,dimension(:,:,:),allocatable :: vp_prior,vs_prior,rho_prior
 
         !reference values
-        real :: ref_inv_vp, ref_rho
+        real :: ref_inv_vel, ref_rho
 
         integer,dimension(:,:),allocatable :: ibathy
         logical,dimension(:,:,:),allocatable :: is_freeze_zone
@@ -275,24 +275,28 @@ use m_smoother_laplacian_sparse
 
             if(setup%check('MODEL_REFERENCE','MREF')) then
                 tmp=setup%get_reals('MODEL_REFERENCE','MREF',o_mandatory=2)
-                self%ref_inv_vp=1./tmp(1)
+                self%ref_inv_vel=1./tmp(1)
                 self%ref_rho   =tmp(2)
 
             else
-                self%ref_inv_vp=1./self%vp (iz,ix,iy)
+                if(allocated(self%vp)) then
+                    self%ref_inv_vel=1./self%vp(iz,ix,iy)
+                else
+                    self%ref_inv_vel=1./self%vs(iz,ix,iy)
+                endif
                 self%ref_rho   =   self%rho(iz,ix,iy)
 
             endif
 
-            write(*,*) 'Reference vp value =',1./self%ref_inv_vp
+            write(*,*) 'Reference vp value =',1./self%ref_inv_vel
             write(*,*) 'Reference rho value =',self%ref_rho
         
         endif
         
-        call mpi_bcast(self%ref_inv_vp,1,mpi_real,0,mpiworld%communicator,mpiworld%ierr)
+        call mpi_bcast(self%ref_inv_vel,1,mpi_real,0,mpiworld%communicator,mpiworld%ierr)
         call mpi_bcast(self%ref_rho   ,1,mpi_real,0,mpiworld%communicator,mpiworld%ierr)
 
-        !ref_inv_vp & _rho should also be checkpointed
+        !ref_inv_vel & _rho should also be checkpointed
     end subroutine
 
     subroutine apply_freeze_zone(self)

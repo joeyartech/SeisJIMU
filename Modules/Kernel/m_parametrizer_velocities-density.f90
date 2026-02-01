@@ -259,6 +259,38 @@ use m_empirical
                 
             endif
 
+            if(is_grho.and.is_gmu) then
+                call hud('Parametrizer finds grho & gmu')
+                !correlate_gradient(:,:,:,1) = grho
+                !correlate_gradient(:,:,:,2) = gmu 
+                !
+                !mu  = rho*vs²
+                !rho0= rho
+                !So,
+                !gvs = gmu*2rho*vs
+                !grho= gmu*vs² + grho0
+                
+                call alloc(tmp_gvs, m%nz,m%nx,m%ny)
+                call alloc(tmp_grho,m%nz,m%nx,m%ny)
+
+                tmp_gvs = correlate_gradient(:,:,:,2)*2*m%rho*m%vs
+                tmp_grho= correlate_gradient(:,:,:,2)*m%vs**2 + correlate_gradient(:,:,:,1)
+
+                if(.not.is_empirical) then
+                    if(i_vs >0) o_g(:,:,:,i_vs ) = tmp_gvs 
+                    if(i_rho>0) o_g(:,:,:,i_rho) = tmp_grho
+
+                else
+                    call error("Sorry, empirical relation for SH propagator hasn't implemented..")
+                    ! call empirical_gradient('velocities-density',o_gvs=tmp_gvs,o_grho=tmp_grho)
+                    ! o_g(:,:,:,i_vp ) = tmp_gvp
+
+                endif
+
+                n_entry=n_entry+1
+                
+            endif
+
             if(n_entry/=1) then
                 call error('Parametrizer has n_entry='//num2str(n_entry))
             endif
