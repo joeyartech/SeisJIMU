@@ -39,7 +39,7 @@ use m_shot
 
         ! real :: cell_volume, cell_diagonal, cell_inv_diagonal
 
-        real velmin, velmax
+        real :: velmin=huge(1.), velmax=0.
 
         real,dimension(:,:,:),allocatable :: vp,vs,rho
         real,dimension(:,:,:),allocatable :: eps,del,eta
@@ -183,22 +183,26 @@ use m_shot
         call m2cb(m%qp ,self%qp )
         call m2cb(m%qs ,self%qs )
 
-        self%velmin=minval(self%vp)
-        if(allocated(self%vs)) then
-            self%velmin=min( self%velmin, minval(self%vs,self%vs>0.) )
+        if(allocated(self%vp)) then
+            self%velmin=minval(self%vp)
+            self%velmax=maxval(self%vp)
         endif
 
-        self%velmax=maxval(self%vp)
         if(allocated(self%eps)) then
             self%velmax=max( self%velmax, maxval(self%vp*sqrt(1.+2*self%eps)) )  !I don't think negative epsilon value can play a role here..
         endif
 
+        if(allocated(self%vs)) then
+            self%velmin=min( self%velmin, minval(self%vs,self%vs>0.) )
+            self%velmax=max( self%velmax, maxval(self%vs,self%vs>0.) )
+        endif
+
         call hud('Computebox value ranges:')
         if(mpiworld%is_master) then
-                                    write(*,*)'vp' ,minval(self%vp),maxval(self%vp)
+            if(allocated(self%vp )) write(*,*)'vp' ,minval(self%vp),maxval(self%vp)
             if(allocated(self%vs )) write(*,*)'vs' ,minval(self%vs),maxval(self%vs)
                                     write(*,*)'rho',minval(self%rho),maxval(self%rho)
-                                    write(*,*)'ip' ,minval(self%vp*self%rho),maxval(self%vp*self%rho)
+            if(allocated(self%vp )) write(*,*)'ip' ,minval(self%vp*self%rho),maxval(self%vp*self%rho)
             if(allocated(self%eps)) write(*,*)'eps',minval(self%eps),maxval(self%eps)
             if(allocated(self%del)) write(*,*)'del',minval(self%del),maxval(self%del)
 

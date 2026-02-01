@@ -401,13 +401,21 @@ use, intrinsic :: ieee_arithmetic
                         call sysio_write('snap_'//self%name//'%vz'//suf,self%vz,cb%n,o_mode='append')
                     case ('vx')
                         call sysio_write('snap_'//self%name//'%vx'//suf,self%vx,cb%n,o_mode='append')
+                    case ('vy')
+                        call sysio_write('snap_'//self%name//'%vy'//suf,self%vy,cb%n,o_mode='append')
+                    
                     case ('szz')
                         call sysio_write('snap_'//self%name//'%szz'//suf,self%szz, cb%n,o_mode='append')
                     case ('sxx')
                         call sysio_write('snap_'//self%name//'%sxx'//suf,self%sxx, cb%n,o_mode='append')
                     case ('szx')
                         call sysio_write('snap_'//self%name//'%szx'//suf,self%szx, cb%n,o_mode='append')
-
+                    
+                    case ('szy')
+                        call sysio_write('snap_'//self%name//'%szy'//suf,self%szy, cb%n,o_mode='append')
+                    case ('sxy')
+                        call sysio_write('snap_'//self%name//'%sxy'//suf,self%sxy, cb%n,o_mode='append')
+                    
                     case ('pz')
                         call sysio_write('snap_'//self%name//'%pz'//suf,self%pz,cb%n,o_mode='append')
                     case ('px')

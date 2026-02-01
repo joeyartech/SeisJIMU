@@ -1,28 +1,24 @@
-MODEL_SIZE              '401   401   1'
-MODEL_SPACING           '4     4    1'
+MODEL_SIZE              '241   241   1'
+MODEL_SPACING           '5     5     1'
 MODEL_ORIGIN            '0     0     0'
 FILE_MODEL              'model'
-MODEL_ATTRIBUTES        'vp vs rho'
+MODEL_ATTRIBUTES        'vs rho'
 
 ACQUI_GEOMETRY          spread
-FS                      '40   200 0'
-FR                      ' 0  1400 0'
-DR                      ' 2    2  0'
-NR                       2
+FS                      ' 0   100 0'
+FR                      '30  1100 0'
+DR                      ' 0     0 0'
+NR                       1
 
-SCOMP                    p
-RCOMP                   'vz vx p'
+SCOMP                    vy
+RCOMP                   'vy szy sxy'
 
-#ntr=6: vz@(0m,1400m),(2m,1402m); vx@(0m,1400m),(2m,1402m); p@(0m,1400m),(2m,1402m)
-#we compar itr=2,1
-
-NT           1470
-DT           0.00068
+NT           2500
+DT           0.0004
 WAVELET_TYPE ricker
 FPEAK        15
-T0           0.16
 
-SNAPSHOT     'vz vx szz sxx szx'
+SNAPSHOT      'vy szy sxy'
 
 IF_USE_CHECKPOINT   F
 

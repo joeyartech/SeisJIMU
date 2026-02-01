@@ -220,7 +220,7 @@ use m_cpml
         call f%init_boundary_stresses
 
         call alloc(f%szy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
-        call alloc(f%szx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
+        call alloc(f%sxy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
         call alloc(f%vy, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
 
         call alloc(f%dszy_dz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
@@ -324,13 +324,13 @@ use m_cpml
     !
     ! Forward:
     ! FD eqn:
-    !      [vy^n+1]   [∂zᶠ   ∂ₓᶠ    0 ][ p^n+½]      [∂zᶠ vz^n+1 + ∂ₓᶠ vx^n+1]
-    ! M ∂ₜᶠ |sxy^n  | = | 0     0    ∂ₓᵇ||vx^n+1| +f = |∂ₓᵇ p^n+½              | +f
-    !      [szy^n  ]   [ 0     0    ∂zᵇ][vz^n+1]      [∂zᵇ p^n+½              ]
+    !      [szy^n ]   [ 0    0   ∂zᵇ][szy^n+1]      [∂zᵇ vy^n+½               ]
+    ! M ∂ₜᶠ|sxy^n  | = | 0    0   ∂ₓᵇ||sxy^n+1| +f = |∂ₓᵇ vy^n+½               | +f
+    !      [vy^n+1]   [∂zᶠ  ∂ₓᶠ   0 ][vy^n+½ ]      [∂zᶠ szy^n+1 + ∂ₓᶠ sxy^n+1]
     ! where
-    ! ∂ₜᶠ*dt := v^n+1 - v^n                               ~O(t²)
-    ! ∂zᵇ*dz := c₁(p(iz  )-p(iz-1)) +c₂(p(iz+1)-p(iz-2))  ~O(x⁴)
-    ! ∂zᶠ*dz := c₁(v(iz+1)-v(iz  )) +c₂(v(iz+2)-v(iz-1))  ~O(x⁴)
+    ! ∂ₜᶠ*dt := v^n+1 - v^n                                ~O(t²)
+    ! ∂zᵇ*dz := c₁(v(iz  )-v(iz-1)) +c₂(v(iz+1)-v(iz-2))  ~O(x⁴)
+    ! ∂zᶠ*dz := c₁(s(iz+1)-s(iz  )) +c₂(s(iz+2)-s(iz-1))  ~O(x⁴)
     
 !!    ! Time marching:
 !!    ! [vz^n+1 ]   [vz^n  ]      [∂zᵇ p^n+½              ]
@@ -405,7 +405,7 @@ use m_cpml
         do it=ift,ilt
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
-                call fld_u%check_value(fld_u%vz)
+                call fld_u%check_value(fld_u%vy)
             endif
 
             !do forward time stepping (step# conforms with backward & adjoint time stepping)
@@ -713,7 +713,7 @@ use m_cpml
         f%sxy(1,:,1)=0.
         f%sxy(0:cb%ifz:-1, :,1)=-f%sxy(2:2+0-cb%ifz, :,1)
 
-        !image szx
+        !image szy
         f%szy(1:cb%ifz:-1, :,1)=-f%szy(2:2+1-cb%ifz, :,1)
         
     end subroutine
@@ -1012,17 +1012,17 @@ use m_cpml
     !========= Finite-Difference on flattened arrays ==================
 
     subroutine fd2d_stresses(szy,sxy,vy,       &
-                             dszy_dz,dsxy_dx,  &
+                             dvy_dz,dvy_dx,    &
                              muz,mux,          &
                              ifz,ilz,ifx,ilx,dt)
         real,dimension(*) :: szy,sxy,vy
-        real,dimension(*) :: dszy_dz,dsxy_dx
+        real,dimension(*) :: dvy_dz,dvy_dx
         real,dimension(*) :: muz,mux
         
         nz=cb%nz
         nx=cb%nx
         
-        dszy_dz_=0.; dsxy_dx_=0.
+        dvy_dz_=0.; dvy_dx_=0.
 
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
@@ -1046,19 +1046,19 @@ use m_cpml
                 iz_ixm1=i    -nz  !iz,ix-1
                 iz_ixp1=i    +nz  !iz,ix+1
 
-                dszy_dz_= c1z*(szy(iz_ix)-szy(izm1_ix)) +c2z*(szy(izp1_ix)-szy(izm2_ix))
-                dsxy_dx_= c1x*(sxy(iz_ix)-sxy(iz_ixm1)) +c2x*(sxy(iz_ixp1)-sxy(iz_ixm2))
+                dvy_dz_= c1z*(vy(iz_ix)-vy(izm1_ix)) +c2z*(vy(izp1_ix)-vy(izm2_ix))
+                dvy_dx_= c1x*(vy(iz_ix)-vy(iz_ixm1)) +c2x*(vy(iz_ixp1)-vy(iz_ixm2))
 
                 !cpml
-                dszy_dz(iz_ix)= cpml%b_z_half(iz)*dszy_dz(iz_ix) + cpml%a_z_half(iz)*dszy_dz_
-                dsxy_dx(iz_ix)= cpml%b_x_half(ix)*dsxy_dx(iz_ix) + cpml%a_x_half(ix)*dsxy_dx_
+                dvy_dz(iz_ix)= cpml%b_z_half(iz)*dvy_dz(iz_ix) + cpml%a_z_half(iz)*dvy_dz_
+                dvy_dx(iz_ix)= cpml%b_x_half(ix)*dvy_dx(iz_ix) + cpml%a_x_half(ix)*dvy_dx_
 
-                dszy_dz_=dszy_dz_*cpml%kpa_z_half(iz) + dszy_dz(iz_ix)
-                dsxy_dx_=dsxy_dx_*cpml%kpa_x_half(ix) + dsxy_dx(iz_ix)
+                dvy_dz_=dvy_dz_*cpml%kpa_z_half(iz) + dvy_dz(iz_ix)
+                dvy_dx_=dvy_dx_*cpml%kpa_x_half(ix) + dvy_dx(iz_ix)
 
                 !velocity
-                szy(iz_ix)=szy(iz_ix) + dt*muz(iz_ix)*dszy_dz_
-                sxy(iz_ix)=sxy(iz_ix) + dt*mux(iz_ix)*dsxy_dx_
+                szy(iz_ix)=szy(iz_ix) + dt*muz(iz_ix)*dvy_dz_
+                sxy(iz_ix)=sxy(iz_ix) + dt*mux(iz_ix)*dvy_dx_
 
             enddo
             
@@ -1069,17 +1069,17 @@ use m_cpml
     end subroutine
     
     subroutine fd2d_velocities(szy,sxy,vy,       &
-                               dvy_dz,dvy_dx,    &
+                               dszy_dz,dsxy_dx,  &
                                buo,              &
                                ifz,ilz,ifx,ilx,dt)
         real,dimension(*) :: szy,sxy,vy
-        real,dimension(*) :: dvy_dz,dvy_dx
+        real,dimension(*) :: dszy_dz,dsxy_dx
         real,dimension(*) :: buo
         
         nz=cb%nz
         nx=cb%nx
         
-        dvy_dz_=0.;dvy_dx_=0.
+        dszy_dz_=0.; dsxy_dx_=0.
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
@@ -1103,18 +1103,18 @@ use m_cpml
                 iz_ixp1=i  +nz  !iz,ix+1
                 iz_ixp2=i  +2*nz !iz,ix+2
                 
-                dvy_dz_= c1z*(vy(izp1_ix)-vy(iz_ix)) +c2z*(vy(izp2_ix)-vy(izm1_ix))
-                dvy_dx_= c1x*(vy(iz_ixp1)-vy(iz_ix)) +c2x*(vy(iz_ixp2)-vy(iz_ixm1))
+                dszy_dz_= c1z*(szy(izp1_ix)-szy(iz_ix)) +c2z*(szy(izp2_ix)-szy(izm1_ix))
+                dsxy_dx_= c1x*(sxy(iz_ixp1)-sxy(iz_ix)) +c2x*(sxy(iz_ixp2)-sxy(iz_ixm1))
                 
                 !cpml
-                dvy_dz(iz_ix)=cpml%b_z(iz)*dvy_dz(iz_ix)+cpml%a_z(iz)*dvy_dz_
-                dvy_dx(iz_ix)=cpml%b_x(ix)*dvy_dx(iz_ix)+cpml%a_x(ix)*dvy_dx_
+                dszy_dz(iz_ix)=cpml%b_z(iz)*dszy_dz(iz_ix)+cpml%a_z(iz)*dszy_dz_
+                dsxy_dx(iz_ix)=cpml%b_x(ix)*dsxy_dx(iz_ix)+cpml%a_x(ix)*dsxy_dx_
 
-                dvy_dz_=dvy_dz_*cpml%kpa_z(iz) + dvy_dz(iz_ix)
-                dvy_dx_=dvy_dx_*cpml%kpa_x(ix) + dvy_dx(iz_ix)
+                dszy_dz_=dszy_dz_*cpml%kpa_z(iz) + dszy_dz(iz_ix)
+                dsxy_dx_=dsxy_dx_*cpml%kpa_x(ix) + dsxy_dx(iz_ix)
                 
-                !pressure
-                vy(iz_ix) = vy(iz_ix) + dt*buo(iz_ix)*(dvy_dz_+dvy_dx_)
+                !velocities
+                vy(iz_ix) = vy(iz_ix) + dt*buo(iz_ix)*(dszy_dz_+dsxy_dx_)
                 
             enddo
             

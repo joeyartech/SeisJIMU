@@ -389,6 +389,11 @@ use m_model
         case('szx','es') !shear stress/strain
             call hicks_put_position(self%src%z+halfz, self%src%x+halfx, self%src%y)
 
+        case('szy')
+            call hicks_put_position(self%src%z+halfz, self%src%x, self%src%y+halfy)
+        case('sxy')
+            call hicks_put_position(self%src%z, self%src%x+halfx, self%src%y+halfy)
+
         case default
             call warn('src%comp: '//self%src%comp//' has not yet implemented!')
             call hicks_put_position(self%src%z,       self%src%x,       self%src%y)
@@ -424,6 +429,9 @@ use m_model
         case('szx','es')
             call hicks_get_coefficient('antisymm', self%src%interp_coef)
 
+        case('szy','sxy')
+            call hicks_get_coefficient('antisymm', self%src%interp_coef)
+
         case default
             call hicks_get_coefficient('full', self%src%interp_coef)
         end select
@@ -450,6 +458,11 @@ use m_model
             
             case('szx','es')
                 call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x+halfx, self%rcv(i)%y)
+
+            case('szy')
+                call hicks_put_position(self%rcv(i)%z+halfz, self%rcv(i)%x,       self%rcv(i)%y+halfy)
+            case('sxy')
+                call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x+halfx, self%rcv(i)%y+halfy)
 
             case default
                 call warn('rcv%comp: '//self%rcv(i)%comp//' has not yet implemented!')
@@ -485,7 +498,10 @@ use m_model
 
             case('szx','es')
                 call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)
-            
+
+            case('szy','sxy')
+                call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef)
+
             case default
                 call hicks_get_coefficient('full', self%rcv(i)%interp_coef)
             end select

@@ -288,7 +288,7 @@ use m_smoother_laplacian_sparse
 
             endif
 
-            write(*,*) 'Reference vp value =',1./self%ref_inv_vel
+            write(*,*) 'Reference velocity value =',1./self%ref_inv_vel
             write(*,*) 'Reference rho value =',self%ref_rho
         
         endif
