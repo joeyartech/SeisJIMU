@@ -93,7 +93,7 @@ use, intrinsic :: ieee_arithmetic
     integer :: irdt
     real :: rdt
 
-    logical :: if_record_adjseismo=.false.
+    logical,public :: propagator_if_record_adjseismo=.false.
 
     contains
     

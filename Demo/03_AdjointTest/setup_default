@@ -1,20 +1,20 @@
 MODEL_SIZE              '201 201 1'
 MODEL_SPACING           '10 10 1'
 FILE_MODEL              'simple'
-MODEL_ATTRIBUTES        vp  #'vp rho'
+MODEL_ATTRIBUTES         vs  #'vp rho'
 
 IS_FREESURFACE          T
 IF_HICKS        T
 
 ACQUI_GEOMETRY          spread
 #FS                      '0 500 500'
-FS                      '2 500 500'
-#FS                      '10 500 500'
+#FS                       '2 500 500'
+FS                      '10 500 500'
 #FS                      '40 500 500'
 #FS                      '500 500 500'
 
 #FR                      '0 10  0'
-FR                      '2 10  0'
+#FR                       '2 10  0'
 #FR                      '10 10  0'
 #FR                      '40 10  0'
 #FR                      '40 500  0'
@@ -24,8 +24,8 @@ DR                      '0  20 0'
 #NR                      1
 NR                      100
 
-SCOMP                   ez
-RCOMP                   pz #'px ez ex es'
+SCOMP                   vy
+RCOMP                   vy
 
 WAVELET_TYPE            ricker
 #T0                      0.5                                                                 
@@ -36,13 +36,12 @@ IF_BLOOM        F
 
 IF_USE_RANDOM   F
 
-NT           2000
+NT           600 #2000
 DT           0.002
 FPEAK        7
 #RDT			0.006
 
-#SNAPSHOT     'pz px ez ex'
-#SNAPSHOT     'vz vx p'
+SNAPSHOT      'szy sxy vy'
 #NSNAPSHOT    50
 
 IF_USE_CHECKPOINT   F

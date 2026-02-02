@@ -85,7 +85,7 @@ use m_cpml
     integer :: irdt
     real :: rdt
 
-    logical :: if_record_adjseismo=.false.
+    logical,public :: propagator_if_record_adjseismo=.false.
 
     contains
     
@@ -121,6 +121,7 @@ use m_cpml
     subroutine check_discretization(self)
         class(t_propagator) :: self
 
+print*,m%dmin,cb%velmin,cb%velmax,shot%fmax,shot%dt
         !grid dispersion condition
         if (5.*m%dmin > cb%velmin/shot%fmax) then  !O(x4) rule: 5 points per wavelength
             call warn(shot%sindex//' can have grid dispersion!'//s_NL// &
@@ -200,11 +201,10 @@ use m_cpml
 
     end subroutine
 
-    subroutine init_field(self,f,name,ois_adjoint,oif_will_reconstruct)
+    subroutine init_field(self,f,name,ois_adjoint)
         class(t_propagator) :: self
         type(t_field) :: f
         character(*) :: name
-        logical,optional :: oif_will_reconstruct
         logical,optional :: ois_adjoint
 
         !field
@@ -215,8 +215,6 @@ use m_cpml
 
         call f%init_bloom
 
-        !f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
-        !if(f%if_will_reconstruct) call f%init_boundary
         call f%init_boundary_stresses
 
         call alloc(f%szy,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
@@ -403,7 +401,7 @@ use m_cpml
         ift=1; ilt=self%nt
 
         do it=ift,ilt
-            if(mod(it,500)==0 .and. mpiworld%is_master) then
+            if(mod(it,100)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
                 call fld_u%check_value(fld_u%vy)
             endif
@@ -480,7 +478,7 @@ use m_cpml
         call fld_u%reinit
         
         !for adjoint test
-        if(if_record_adjseismo)  call alloc(fld_a%seismo,1,self%nt)
+        if(propagator_if_record_adjseismo)  call alloc(fld_a%seismo,1,self%nt)
 
         !timing
         tt1=0.; tt2=0.; tt3=0.
@@ -495,8 +493,8 @@ use m_cpml
         do it=ilt,ift,int(time_dir)
             if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
-                call fld_a%check_value(fld_a%vz)
-                call fld_u%check_value(fld_u%vz)
+                call fld_a%check_value(fld_a%vy)
+                call fld_u%check_value(fld_u%vy)
             endif            
 
             !do backward time stepping to reconstruct the source (incident) wavefield
@@ -580,7 +578,7 @@ use m_cpml
             tt10=tt10+toc-tic
             
             !adjoint step 1: sample v^it or s^it+0.5 at source position
-            if(if_record_adjseismo) then
+            if(propagator_if_record_adjseismo) then
                 call cpu_time(tic)
                 call self%extract(fld_a,it)
                 call cpu_time(toc)

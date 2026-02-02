@@ -95,13 +95,13 @@ use m_computebox
     subroutine scale(self,scaler)
         class(t_correlate) :: self
 
-        if(allocated(self%gkpa))       call scale_copy(self%gkpa,scaler)
+        if(allocated(self%gkpa))       call scale_copy(self%gkpa, scaler)
         if(allocated(self%gikpa))      call scale_copy(self%gikpa,scaler)
-        if(allocated(self%glda))       call scale_copy(self%glda,scaler)
-        if(allocated(self%gmu))        call scale_copy(self%gmu,scaler)
-        if(allocated(self%gimu))       call scale_copy(self%gmu,scaler)
-        if(allocated(self%grho))       call scale_copy(self%grho,scaler)
-        if(allocated(self%gbuo))       call scale_copy(self%gbuo,scaler)
+        if(allocated(self%glda))       call scale_copy(self%glda, scaler)
+        if(allocated(self%gmu))        call scale_copy(self%gmu,  scaler)
+        if(allocated(self%gimu))       call scale_copy(self%gimu, scaler)
+        if(allocated(self%grho))       call scale_copy(self%grho, scaler)
+        if(allocated(self%gbuo))       call scale_copy(self%gbuo, scaler)
         
     end subroutine
 

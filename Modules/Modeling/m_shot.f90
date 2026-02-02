@@ -410,6 +410,8 @@ use m_model
             call hicks_get_coefficient('truncate', self%src%interp_coef)
         case('vx','px')
             call hicks_get_coefficient('truncate', self%src%interp_coef)
+        case('vy','py')
+            call hicks_get_coefficient('truncate', self%src%interp_coef)
 
         case('p','szz','sxx')
             call hicks_get_coefficient('antisymm', self%src%interp_coef_anti) !inject szz component
@@ -479,6 +481,8 @@ use m_model
                 !vz=0 above free surface, by Levander-Robertsson's stress image implemtation
                 call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
             case('vx','px')
+                call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
+            case('vy','py')
                 call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
 
             case('p','szz','sxx')

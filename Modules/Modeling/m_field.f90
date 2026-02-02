@@ -484,6 +484,7 @@ use, intrinsic :: ieee_arithmetic
         nr=either(shot%nrcv,1,self%is_adjoint)
         call alloc(self%wavelet,nr,nt)
 
+        !w/ o_wavelet
         if(present(o_wavelet)) then
             if(size(o_wavelet,2)/=nr) then
                 call hud('size(o_wavelet,2) vs required size = '//num2str(size(o_wavelet,2))//' vs '//num2str(nr))
@@ -503,6 +504,8 @@ use, intrinsic :: ieee_arithmetic
                 self%wavelet=transpose(o_wavelet)
             
             endif
+
+            return
             
         endif
 

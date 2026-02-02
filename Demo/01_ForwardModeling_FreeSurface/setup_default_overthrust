@@ -1,8 +1,8 @@
 MODEL_SIZE              '259  1111 1'
 MODEL_SPACING           '6    6    1'
 FILE_MODEL              'true'
-MODEL_ATTRIBUTES        'vp vs rho'
-MODEL_ATTRIBUTES_WRITE  'vp vs'
+MODEL_ATTRIBUTES        'vs rho'
+MODEL_ATTRIBUTES_WRITE  'vs'
 FILE_TOPO                none
 
 IS_FREESURFACE          T
@@ -15,8 +15,8 @@ FR                      '  0     0  0'
 DR                      '  0     3  0'
 NR                      2220
 
-SCOMP                    pz
-RCOMP                   'pz px ex'
+SCOMP                    vy
+RCOMP                    vy
 
 NT           5554
 DT           0.0018
@@ -33,7 +33,7 @@ WEIGHTING           'none'
 
 FPEAK           6.54
 
-PARAMETER           'vp:850:1990 vs:490.75:1148.93'
+PARAMETER           'vs:490.75:1148.93'
 
 IF_PARA_SCAL         T
 

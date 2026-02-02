@@ -52,6 +52,8 @@ use m_Modeling
 
     logical :: if_use_random
 
+    propagator_if_record_adjseismo=.true.
+
 !     call alloc(m%gradient,m%nz,m%nx,m%ny,ppg%ngrad)
             
     call hud('===== START LOOP OVER SHOTS =====')
@@ -69,7 +71,7 @@ use m_Modeling
         call cb%project
 
         call ppg%check_discretization
-        call ppg%init(oif_record_adjseismo=.true.)
+        call ppg%init
         call ppg%init_abslayer
         
         call ppg%init_field(sfield,name='sfield')
