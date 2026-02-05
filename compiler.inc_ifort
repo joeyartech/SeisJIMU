@@ -1,0 +1,116 @@
+#===============================================================================
+# Intel Fortran Classic (ifort) Compiler Configuration
+#===============================================================================
+#
+# TARGET: AMD EPYC 7713 (Zen 3, AVX2) or any x86-64 CPU
+#
+# USAGE:
+# ------
+# 1. For AMD EPYC / generic x86-64:
+#    BUILD_TYPE = release         (portable, works everywhere)
+#    BUILD_TYPE = release_avx2    (optimized for AVX2 CPUs like EPYC)
+#
+# 2. For Intel CPUs only:
+#    BUILD_TYPE = release_intel   (uses -xHost, Intel-specific)
+#
+#===============================================================================
+
+# Git information
+GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+
+# Compilers
+F90 = mpiifort
+F77 = mpiifort
+
+# Module directory
+MOD = -module $(mod_dir)
+
+# Preprocessor flags
+FPP = -fpp -Difort -D"git_commit='$(GIT_COMMIT)'" -D"git_branch='$(GIT_BRANCH)'"
+
+#===============================================================================
+# BUILD TYPE SELECTION (uncomment ONE)
+#===============================================================================
+
+#BUILD_TYPE = release
+BUILD_TYPE = release_avx2
+#BUILD_TYPE = release_intel
+#BUILD_TYPE = debug
+#BUILD_TYPE = profile
+
+#===============================================================================
+# COMMON FLAGS (applied to all build types)
+#===============================================================================
+COMMON_FLAGS = -qopenmp -traceback -assume byterecl
+
+#===============================================================================
+# RELEASE FLAGS - PORTABLE (works on ANY x86-64 CPU including AMD)
+#===============================================================================
+ifeq ($(BUILD_TYPE),release)
+    TAG = release
+    # -march=x86-64 ensures portability across all x86-64 CPUs
+    FLAGF90 = -O3 $(COMMON_FLAGS) -fp-model=precise
+    FLAGF77 = $(FLAGF90)
+endif
+
+#===============================================================================
+# RELEASE_AVX2 FLAGS - RECOMMENDED FOR AMD EPYC (Zen 2/3/4) and Intel Haswell+
+#===============================================================================
+# Uses AVX2 instructions available on AMD EPYC 7713 and most modern CPUs
+# -march=core-avx2 is compatible with both Intel and AMD AVX2 processors
+#===============================================================================
+ifeq ($(BUILD_TYPE),release_avx2)
+    TAG = release_avx2
+    # -march=core-avx2 generates AVX2 code that works on AMD EPYC
+    # -axCORE-AVX2 would be Intel-only; -march works on both
+    FLAGF90 = -O3 -march=core-avx2 $(COMMON_FLAGS) -fp-model=precise -ipo
+    FLAGF77 = $(FLAGF90)
+endif
+
+#===============================================================================
+# RELEASE_INTEL FLAGS - INTEL CPUs ONLY (uses -xHost for native optimization)
+#===============================================================================
+ifeq ($(BUILD_TYPE),release_intel)
+    TAG = release_intel
+    # WARNING: -xHost detects CPU at compile time, not portable to AMD
+    FLAGF90 = -O3 -xHost $(COMMON_FLAGS) -fp-model=precise -ipo
+    FLAGF77 = $(FLAGF90)
+endif
+
+#===============================================================================
+# DEBUG FLAGS
+#===============================================================================
+ifeq ($(BUILD_TYPE),debug)
+    TAG = debug
+    DEBUG_WARN = -W1 -WB -warn all
+    DEBUG_CHECK = -check all -check bounds -check uninit -check noarg_temp_created
+    DEBUG_FPE = -fpe3
+    DEBUG_INIT = -ftrapuv -init=snan,arrays
+
+    FLAGF90 = -O0 -g -debug all $(COMMON_FLAGS) \
+              $(DEBUG_WARN) $(DEBUG_CHECK) $(DEBUG_FPE) $(DEBUG_INIT)
+    FLAGF77 = $(FLAGF90)
+endif
+
+#===============================================================================
+# PROFILE FLAGS
+#===============================================================================
+ifeq ($(BUILD_TYPE),profile)
+    TAG = profile
+    FLAGF90 = -O2 -g -pg $(COMMON_FLAGS) -fp-model=precise
+    FLAGF77 = $(FLAGF90)
+endif
+
+#===============================================================================
+# Build rules
+#===============================================================================
+.SUFFIXES: .f .f90 .o
+
+%.o: %.f90
+	$(F90) $(FPP) $(FLAGF90) $(MOD) -c $< -o $@
+	@printf "\n"
+
+%.o: %.f
+	$(F77) $(FLAGF77) -c $< -o $@
+	@printf "\n"

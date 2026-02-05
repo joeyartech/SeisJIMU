@@ -1,0 +1,151 @@
+#===============================================================================
+# GFortran Compiler Configuration
+#===============================================================================
+#
+# USAGE WORKFLOW:
+# ---------------
+# 1. LOCAL DEVELOPMENT & TESTING (this machine):
+#    - Use BUILD_TYPE = debug    (currently active - for debugging/testing)
+#    - Use BUILD_TYPE = release  (for final testing before HPC deployment)
+#    - These modes are PORTABLE and work on ANY x86-64 CPU
+#
+# 2. HPC DEPLOYMENT (after moving code to cluster):
+#    - Switch to BUILD_TYPE = release_native for maximum performance
+#    - This optimizes for the specific HPC CPU architecture
+#    - IMPORTANT: Only use on HPC - binaries won't be portable!
+#
+#===============================================================================
+
+# Git information
+GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+
+# Compilers
+F90 = /usr/bin/mpif90.mpich
+F77 = /usr/bin/mpif77.mpich
+
+# Module directory
+ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+MOD = -J $(ROOT)/mod
+
+# Preprocessor flags
+FPP = -cpp -Dgfortran -D"git_commit='$(GIT_COMMIT)'" -D"git_branch='$(GIT_BRANCH)'"
+
+#===============================================================================
+# BUILD TYPE SELECTION (uncomment ONE of the following)
+#===============================================================================
+
+BUILD_TYPE = release
+#BUILD_TYPE = release_native
+#BUILD_TYPE = debug
+#BUILD_TYPE = profile
+
+#===============================================================================
+# COMMON FLAGS (applied to all build types)
+#===============================================================================
+COMMON_F77 = -fopenmp -fbacktrace
+COMMON_F90 = -fopenmp -fbacktrace -ffree-line-length-none
+
+#===============================================================================
+# RELEASE FLAGS - PORTABLE (works on ANY x86-64 CPU)
+#===============================================================================
+# Use this mode for:
+#   - Local testing before HPC deployment
+#   - Running on multiple different machines
+#   - Ensuring code works everywhere
+# Performance: ~90-95% of maximum possible performance
+#===============================================================================
+ifeq ($(BUILD_TYPE),release)
+    TAG = release
+    OPT_FLAGS = -O3 -mtune=generic -funroll-loops -fno-unsafe-math-optimizations \
+                -frounding-math -fsignaling-nans
+    FLAGF77 = $(OPT_FLAGS) $(COMMON_F77)
+    FLAGF90 = $(OPT_FLAGS) $(COMMON_F90)
+endif
+
+#===============================================================================
+# RELEASE_NATIVE FLAGS - HPC OPTIMIZED (NOT portable, use ONLY on HPC!)
+#===============================================================================
+# Use this mode ONLY after deploying to HPC cluster!
+# Optimizes for the specific CPU architecture where you compile
+# Performance: 100% maximum performance on that specific CPU
+# WARNING: Binary will NOT work on different CPUs!
+#===============================================================================
+ifeq ($(BUILD_TYPE),release_native)
+    TAG = release_native
+    OPT_FLAGS = -O3 -march=native -mtune=native -funroll-loops -fno-unsafe-math-optimizations \
+                -frounding-math -fsignaling-nans
+    FLAGF77 = $(OPT_FLAGS) $(COMMON_F77)
+    FLAGF90 = $(OPT_FLAGS) $(COMMON_F90)
+endif
+
+#===============================================================================
+# DEBUG FLAGS - Maximum diagnostic information
+#===============================================================================
+ifeq ($(BUILD_TYPE),debug)
+    TAG = debug
+    
+    # Optimization level for debugging (no optimization)
+    DEBUG_OPT = -O0 -g3
+    
+    # Warning flags - catch as many issues as possible at compile time
+    DEBUG_WARN = -Wall -Wextra -Wpedantic -Wconversion -Wuninitialized \
+                 -Warray-bounds -Wcharacter-truncation -Wline-truncation \
+                 -Wsurprising -Waliasing -Wimplicit-interface -Wimplicit-procedure \
+                 -Wunderflow -Wintrinsics-std -Wdo-subscript -Wreal-q-constant \
+                 -Wunused -Wunused-parameter -Wintrinsic-shadow -Wtabs \
+                 -Winteger-division -Wzerotrip -Wampersand
+    
+    # Runtime checks - catch errors at runtime
+    DEBUG_CHECK = -fcheck=all
+    
+    # Floating point exception trapping
+    # Note: underflow and denormal are excluded as they commonly occur in numerical
+    # signal processing (filters, wavelets) and would trigger false positives
+    DEBUG_FPE = -ffpe-trap=invalid,zero,overflow
+    
+    # Variable initialization - detect uninitialized variables
+    DEBUG_INIT = -finit-real=snan -finit-integer=-999999999 \
+                 -finit-logical=false -finit-character=42 -finit-derived
+    
+    # Stack and memory protection
+    DEBUG_MEM = -fstack-check -fstack-protector-all -fno-omit-frame-pointer
+    
+    # Math safety
+    DEBUG_MATH = -fno-unsafe-math-optimizations -frounding-math -fsignaling-nans
+    
+    # Additional debug features
+    DEBUG_EXTRA = -fdump-core -fcoarray=single
+    
+    # Combine all debug flags
+    DEBUG_FLAGS = $(DEBUG_OPT) $(DEBUG_WARN) $(DEBUG_CHECK) $(DEBUG_FPE) \
+                  $(DEBUG_INIT) $(DEBUG_MEM) $(DEBUG_MATH) $(DEBUG_EXTRA)
+    
+    FLAGF77 = $(DEBUG_FLAGS) $(COMMON_F77)
+    FLAGF90 = $(DEBUG_FLAGS) $(COMMON_F90)
+endif
+
+#===============================================================================
+# PROFILE FLAGS - For performance analysis
+#===============================================================================
+ifeq ($(BUILD_TYPE),profile)
+    TAG = profile
+    PROF_FLAGS = -O2 -pg -g -fno-omit-frame-pointer -mtune=generic \
+                 -fno-inline-functions -fno-unsafe-math-optimizations
+    FLAGF77 = $(PROF_FLAGS) $(COMMON_F77)
+    FLAGF90 = $(PROF_FLAGS) $(COMMON_F90)
+endif
+
+#===============================================================================
+# SUFFIX RULES
+#===============================================================================
+.SUFFIXES: .f .f90 .o
+
+%.o: %.f90
+	$(F90) $(FPP) $(FLAGF90) $(MOD) -c $< -o $@
+	@printf "\n"
+
+%.o: %.f
+	$(F77) $(FLAGF77) -c $< -o $@
+	@printf "\n"
+
