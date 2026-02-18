@@ -1,7 +1,7 @@
 MODEL_SIZE              '201 201 1'
 MODEL_SPACING           '10 10 1'
-FILE_MODEL              true
-MODEL_ATTRIBUTES        vp #'vp rho'
+FILE_MODEL               true
+MODEL_ATTRIBUTES         vs #'vp rho'
 FILE_TOPO               'topo'
 
 IS_FREESURFACE          F
@@ -12,27 +12,30 @@ FR                      '40 10  0'
 DR                      '0  20 0'
 NR                      100
 
-SCOMP                   vz
-RCOMP                   vz #'p vz'
+SCOMP                   vy
+RCOMP                   vy #'p vz'
 
 WAVELET_TYPE            ricker
 #T0                      0.5
 #FILE_WAVELET            'fricker_dt6000.su'
 
-IF_HICKS        F
-IF_BLOOM        F
+IF_HICKS        T
+#IF_BLOOM       F
 
-IF_USE_RANDOM   F
-
-NT           2000
+NT           1500
 DT           0.002
 FPEAK        7
 
-## for PFEI ##
+#SNAPSHOT      'szy sxy vy'
+#NSNAPSHOT    50
+
+
+### for inversion ###
 FILE_DATA_PREFIX    'results_obs/Ru_Shot'
+
 WEIGHTING           'none'
 
-PARAMETER           'vp:1000:1800'
+PARAMETER           'vs:1000:1800'
 
 SMOOTHING     'none'
 #PRECO         'z^0'
@@ -43,8 +46,5 @@ SMOOTHING     'none'
 #LS_SCALING  'none'
 
 
-#SNAPSHOT     vz
-#NSNAPSHOT    50
 
 IF_USE_CHECKPOINT   F
-RCOMP       px

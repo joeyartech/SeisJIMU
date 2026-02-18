@@ -30,7 +30,7 @@ use m_empirical
 
     type(t_parametrizer),public :: param
 
-    logical :: is_grho,is_gbuo,is_gkpa,is_gikpa,is_glda,is_gmu
+    logical :: is_grho,is_gbuo,is_gkpa,is_gikpa,is_glda,is_gmu,is_gimu
     integer :: i_vp=0, i_vs=0, i_rho=0
 
     contains
@@ -53,6 +53,7 @@ use m_empirical
         is_gikpa= index(ppg%info,'gikpa')>0
         is_glda = index(ppg%info,'glda')>0
         is_gmu  = index(ppg%info,'gmu')>0
+        is_gimu = index(ppg%info,'gimu')>0
 
         !read in active parameters and their allowed ranges
         list=setup%get_strs('PARAMETER',o_default='vp:1500:3400')
@@ -259,22 +260,22 @@ use m_empirical
                 
             endif
 
-            if(is_grho.and.is_gmu) then
-                call hud('Parametrizer finds grho & gmu')
+            if(is_grho.and.is_gimu) then
+                call hud('Parametrizer finds grho & gimu')
                 !correlate_gradient(:,:,:,1) = grho
-                !correlate_gradient(:,:,:,2) = gmu 
+                !correlate_gradient(:,:,:,2) = gimu 
                 !
-                !mu  = rho*vs²
+                !imu = 1/(rho*vs²)
                 !rho0= rho
                 !So,
-                !gvs = gmu*2rho*vs
-                !grho= gmu*vs² + grho0
+                !gvs = gimu*1/rho*(-2)vs^-3 = gimu*(-2/rho/vs^3)
+                !grho= gimu*(-1)rho^(-2)*vs^(-2) + grho0 = -gimu/(vs*rho)^2 +grho0
                 
                 call alloc(tmp_gvs, m%nz,m%nx,m%ny)
                 call alloc(tmp_grho,m%nz,m%nx,m%ny)
 
-                tmp_gvs = correlate_gradient(:,:,:,2)*2*m%rho*m%vs
-                tmp_grho= correlate_gradient(:,:,:,2)*m%vs**2 + correlate_gradient(:,:,:,1)
+                tmp_gvs = correlate_gradient(:,:,:,2)*(-2)/(m%rho*m%vs**3)
+                tmp_grho=-correlate_gradient(:,:,:,2)/(m%vs*m%rho)**2 + correlate_gradient(:,:,:,1)
 
                 if(.not.is_empirical) then
                     if(i_vs >0) o_g(:,:,:,i_vs ) = tmp_gvs 

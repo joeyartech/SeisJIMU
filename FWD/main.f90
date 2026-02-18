@@ -67,18 +67,7 @@ use m_Modeling
 
         call ppg%check_discretization
         call ppg%init
-        ! call ppg%init_field(field,name='field')
         call ppg%init_abslayer
-
-        ! call field%ignite
-
-        ! !forward modeling
-        ! call ppg%forward(field)
-
-        ! call field%acquire
-
-        ! !write synthetic data
-        ! call shot%write('dsyn_',shot%dsyn)
 
 
         call hud('----  Solving Au=s  ----')

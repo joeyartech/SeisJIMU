@@ -38,7 +38,7 @@ use m_cpml
             'Required boundary layer thickness: 2'//s_NL// &
             'Imaging conditions: ipp'//s_NL// &
             'Energy terms: Σ_shot ∫ sfield%p² dt'//s_NL// &
-            'Basic gradients: grho gmu'
+            'Basic gradients: grho gimu'
 
         integer :: nbndlayer=max(2,hicks_r) !minimum absorbing layer thickness
         integer :: ngrad=2 !number of basic gradients
@@ -121,7 +121,6 @@ use m_cpml
     subroutine check_discretization(self)
         class(t_propagator) :: self
 
-print*,m%dmin,cb%velmin,cb%velmax,shot%fmax,shot%dt
         !grid dispersion condition
         if (5.*m%dmin > cb%velmin/shot%fmax) then  !O(x4) rule: 5 points per wavelength
             call warn(shot%sindex//' can have grid dispersion!'//s_NL// &
@@ -323,7 +322,7 @@ print*,m%dmin,cb%velmin,cb%velmax,shot%fmax,shot%dt
     ! Forward:
     ! FD eqn:
     !      [szy^n ]   [ 0    0   ∂zᵇ][szy^n+1]      [∂zᵇ vy^n+½               ]
-    ! M ∂ₜᶠ|sxy^n  | = | 0    0   ∂ₓᵇ||sxy^n+1| +f = |∂ₓᵇ vy^n+½               | +f
+    ! M ∂ₜᶠ|sxy^n | = | 0    0   ∂ₓᵇ||sxy^n+1| +f = |∂ₓᵇ vy^n+½               | +f
     !      [vy^n+1]   [∂zᶠ  ∂ₓᶠ   0 ][vy^n+½ ]      [∂zᶠ szy^n+1 + ∂ₓᶠ sxy^n+1]
     ! where
     ! ∂ₜᶠ*dt := v^n+1 - v^n                                ~O(t²)
@@ -648,6 +647,8 @@ print*,m%dmin,cb%velmin,cb%velmax,shot%fmax,shot%dt
                 ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
                 
                 wl=time_dir*f%wavelet(1,it)*wavelet_scaler
+                if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest.
+                
             
                 if(if_hicks) then
                     f%vy(ifz:ilz,ifx:ilx,1) = f%vy(ifz:ilz,ifx:ilx,1) + wl*self%buo(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
@@ -671,6 +672,7 @@ print*,m%dmin,cb%velmin,cb%velmax,shot%fmax,shot%dt
                     ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
                     
                     wl=f%wavelet(i,it)*wavelet_scaler
+                    if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest.
                     
                     if(if_hicks) then
                         f%vy(ifz:ilz,ifx:ilx,1) = f%vy(ifz:ilz,ifx:ilx,1) + wl*self%buo(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
@@ -702,18 +704,21 @@ print*,m%dmin,cb%velmin,cb%velmax,shot%fmax,shot%dt
         if(m%is_freesurface) ifz=max(ifz,1)
 
         call fd2d_stresses(f%szy,f%sxy,f%vy,               &
-                           f%dszy_dz,f%dsxy_dx,            &
+                           f%dvy_dz,f%dvy_dx,              &
                            self%muz,self%mux,              &
                            ifz,ilz,ifx,ilx,time_dir*self%dt)
 
-        !apply free surface boundary condition if needed
-        !Levandar & Roberttson's stress image method
-        f%sxy(1,:,1)=0.
-        f%sxy(0:cb%ifz:-1, :,1)=-f%sxy(2:2+0-cb%ifz, :,1)
+        if(m%is_freesurface) then
+            !apply free surface boundary condition if needed
+            !Levandar & Roberttson's stress image method
+            f%sxy(1,:,1)=0.
+            f%sxy(0:cb%ifz:-1, :,1)=-f%sxy(2:2+0-cb%ifz, :,1)
 
-        !image szy
-        f%szy(1:cb%ifz:-1, :,1)=-f%szy(2:2+1-cb%ifz, :,1)
-        
+            !image szy
+            f%szy(1:cb%ifz:-1, :,1)=-f%szy(2:2+1-cb%ifz, :,1)
+            
+        endif
+
     end subroutine
 
     !forward: add RHS to s^it+0.5
@@ -734,7 +739,6 @@ print*,m%dmin,cb%velmin,cb%velmax,shot%fmax,shot%dt
                     f%szy(ifz:ilz,ifx:ilx,1) = f%szy(ifz:ilz,ifx:ilx,1) + wl*self%muz(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
 
                 else if(shot%src%comp=='sxy') then
-                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest.
                     f%sxy(ifz:ilz,ifx:ilx,1) = f%sxy(ifz:ilz,ifx:ilx,1) + wl*self%mux(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
                 
                 endif
@@ -744,7 +748,6 @@ print*,m%dmin,cb%velmin,cb%velmax,shot%fmax,shot%dt
                     f%szy(iz,ix,1) = f%szy(iz,ix,1) + wl*self%muz(iz,ix)
                 
                 else if(shot%src%comp=='sxy') then
-                    if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest.
                     f%sxy(iz,ix,1) = f%sxy(iz,ix,1) + wl*self%mux(iz,ix)
                 
                 endif
@@ -801,13 +804,16 @@ print*,m%dmin,cb%velmin,cb%velmax,shot%fmax,shot%dt
         if(m%is_freesurface) ifz=max(ifz,1)
 
         call fd2d_velocities(f%szy,f%sxy,f%vy,              &
-                            f%dvy_dz,f%dvy_dx,              &
+                            f%dszy_dz,f%dsxy_dx,            &
                             self%buo,                       &
                             ifz,ilz,ifx,ilx,time_dir*self%dt)
         
-        !apply free surface boundary condition if needed
-        !Levandar & Roberttson's stress image method
-        f%vy(cb%ifz:0,:,1)=0.
+        if(m%is_freesurface) then
+            !apply free surface boundary condition if needed
+            !Levandar & Roberttson's stress image method
+            f%vy(cb%ifz:0,:,1)=0.
+
+        endif
 
     end subroutine
 
@@ -888,6 +894,7 @@ print*,m%dmin,cb%velmin,cb%velmax,shot%fmax,shot%dt
         call dealloc(self%muz, self%mux, self%buo)
     end subroutine
 
+
     !========= gradient, imaging or other correlations ===================
     !For gradient:
     !Kₘ<a|Au> = Kₘ<a|M∂ₜu-Du> = ∫ aᵀ KₘM ∂ₜu dt
@@ -899,12 +906,13 @@ print*,m%dmin,cb%velmin,cb%velmax,shot%fmax,shot%dt
     !
     !Therefore, ∫ aᵀ KₘM ∂ₜu dt ≐ ∫ aᵀ KₘM M⁻¹Du dt =: a★Du
     !where
-    !                            [ 0   0   ∂ₓᵇ] [vz]
-    !a★Du = [vzᵃ vxᵃ pᵃ] Kₘln(M) | 0   0   ∂zᵇ| |vx|
-    !                            [∂ₓᶠ  ∂zᶠ  0 ] [p ]
+    !                               [     ∂zᵇvy     ]
+    !a★Du = [szyᵃ sxyᵃ vyᵃ] Kₘln(M) |     ∂ₓᵇvy     |
+    !                               [∂zᶠszy + ∂ₓᶠsxy]
+    !and M=[diag(μ⁻¹) ρ]
     !In particular, we compute
-    !  grho = vᵃ ∂ₜv = vᵃ b∇p
-    !  gkpa = pᵃ (-κ⁻²) ∂ₜp = = pᵃ (-κ⁻¹) ∇·v
+    !  grho ≐ vyᵃ b (∂zᶠszy+∂ₓᶠsxy)
+    !  gimu ≐ szyᵃ μ ∂zᵇvy + sxyᵃ μ ∂ₓᵇvy
     !
     !For imaging:
     !I = ∫ a u dt =: a★u
@@ -976,7 +984,7 @@ print*,m%dmin,cb%velmin,cb%velmax,shot%fmax,shot%dt
         if(allocated(correlate_gradient)) then
             !scale gradients by model parameters
             corr%grho(:,:,1) = corr%grho(:,:,1) / cb%rho(1:cb%mz,1:cb%mx,1)
-            corr%gimu(:,:,1) = corr%gimu(:,:,1) * cb%rho(1:cb%mz,1:cb%mx,1)*cb%vp(1:cb%mz,1:cb%mx,1)**2 !mu
+            corr%gimu(:,:,1) = corr%gimu(:,:,1) * cb%rho(1:cb%mz,1:cb%mx,1)*cb%vs(1:cb%mz,1:cb%mx,1)**2 !mu
             
             !remove singular point at the src position,
             !because we didn't consider src when deriving the gradient formula    
@@ -1026,7 +1034,7 @@ print*,m%dmin,cb%velmin,cb%velmax,shot%fmax,shot%dt
         !$omp private(iz,ix,i,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,&
         !$omp         iz_ixm2,iz_ixm1,iz_ixp1,&
-        !$omp         dszy_dz_,dsxy_dx_)
+        !$omp         dvy_dz_,dvy_dx_)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
 
@@ -1083,7 +1091,7 @@ print*,m%dmin,cb%velmin,cb%velmax,shot%fmax,shot%dt
         !$omp private(iz,ix,i,&
         !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
         !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
-        !$omp         dvz_dz_,dvx_dx_)
+        !$omp         dszy_dz_,dsxy_dx_)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
         
@@ -1136,8 +1144,8 @@ print*,m%dmin,cb%velmin,cb%velmax,shot%fmax,shot%dt
         
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
-        !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-        !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
+        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,&
+        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,&
         !$omp         dvy_dz,dvy_dx)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
@@ -1148,17 +1156,17 @@ print*,m%dmin,cb%velmin,cb%velmax,shot%fmax,shot%dt
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
                 j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
+                izm2_ix=i-2  !iz-2,ix
                 izm1_ix=i-1  !iz-1,ix
                 iz_ix  =i    !iz,ix
                 izp1_ix=i+1  !iz+1,ix
-                izp2_ix=i+2  !iz+2,ix
                 
+                iz_ixm2=i  -2*nz  !iz,ix-2
                 iz_ixm1=i    -nz  !iz,ix-1
                 iz_ixp1=i    +nz  !iz,ix+1
-                iz_ixp2=i  +2*nz  !iz,ix+2
                 
-                dvy_dz = c1z*(sf_vy(izp1_ix)-sf_vy(iz_ix)) +c2z*(sf_vy(izp2_ix)-sf_vy(izm1_ix))
-                dvy_dx = c1x*(sf_vy(iz_ixp1)-sf_vy(iz_ix)) +c2x*(sf_vy(iz_ixp2)-sf_vy(iz_ixm1))
+                dvy_dz = c1z*(sf_vy(iz_ix)-sf_vy(izm1_ix)) +c2z*(sf_vy(izp1_ix)-sf_vy(izm2_ix))
+                dvy_dx = c1x*(sf_vy(iz_ix)-sf_vy(iz_ixm1)) +c2x*(sf_vy(iz_ixp1)-sf_vy(iz_ixm2))
 
                 grad(j)=grad(j) + rf_szy(i)*dvy_dz + rf_sxy(i)*dvy_dx
                 
@@ -1182,8 +1190,8 @@ print*,m%dmin,cb%velmin,cb%velmax,shot%fmax,shot%dt
 
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
-        !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
+        !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
+        !$omp         iz_ixm1,iz_ixp1,iz_ixp2,&
         !$omp         dz_dszy, dx_dsxy)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
@@ -1194,16 +1202,14 @@ print*,m%dmin,cb%velmin,cb%velmax,shot%fmax,shot%dt
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
                 j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
-                izm2_ix=i-2  !iz-2,ix
                 izm1_ix=i-1  !iz-1,ix
                 iz_ix  =i    !iz,ix
                 izp1_ix=i+1  !iz+1,ix
                 izp2_ix=i+2  !iz+2,ix
                 
-                iz_ixm2=i  -2*nz  !iz,ix-2
-                iz_ixm1=i    -nz  !iz,ix-1
-                iz_ixp1=i    +nz  !iz,ix+1
-                iz_ixp2=i  +2*nz  !iz,ix+2
+                iz_ixm1=i  -nz  !iz,ix-1
+                iz_ixp1=i  +nz  !iz,ix+1
+                iz_ixp2=i  +2*nz !iz,ix+2
                 
                 ! rvz = rf_vz(iz_ix) +rf_vz(izp1_ix)
                 ! rvx = rf_vx(iz_ix) +rf_vx(iz_ixp1)
@@ -1215,8 +1221,8 @@ print*,m%dmin,cb%velmin,cb%velmax,shot%fmax,shot%dt
                 !complete equation with unnecessary terms e.g. sf_p(iz_ix) for better understanding
                 !with flag -Ox, the compiler should automatically detect such possible simplification
                 
-                dz_dszy = (c1z*(sf_szy(iz_ix)-sf_szy(izm1_ix)) +c2z*(sf_szy(izp1_ix)-sf_szy(izm2_ix)))
-                dx_dsxy = (c1x*(sf_sxy(iz_ix)-sf_sxy(iz_ixm1)) +c2x*(sf_sxy(iz_ixp1)-sf_sxy(iz_ixm2)))
+                dz_dszy = (c1z*(sf_szy(izp1_ix)-sf_szy(iz_ix)) +c2z*(sf_szy(izp2_ix)-sf_szy(izm1_ix)))
+                dx_dsxy = (c1x*(sf_sxy(iz_ixp1)-sf_sxy(iz_ix)) +c2x*(sf_sxy(iz_ixp2)-sf_sxy(iz_ixm1)))
 
                 grad(j)=grad(j) + rf_vy(i)*(dz_dszy + dx_dsxy) !0.25*( rvz*dsvz + rvx*dsvx )
                 
