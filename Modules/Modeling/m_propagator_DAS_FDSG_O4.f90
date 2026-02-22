@@ -302,9 +302,8 @@ use, intrinsic :: ieee_arithmetic
 
         call f%init_bloom
 
-        !f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
-        !if(f%if_will_reconstruct) call f%init_boundary
-        call f%init_boundary_momenta
+        f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
+        if(f%if_will_reconstruct) call f%init_boundary_momenta
 
         call alloc(f%pz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
         call alloc(f%px, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
@@ -561,12 +560,12 @@ use, intrinsic :: ieee_arithmetic
             call fld_u%write(it)
 
             !step 6: save pz^it+1 in boundary layers
-            ! if(fld_u%if_will_reconstruct) then
+            if(fld_u%if_will_reconstruct) then
                 call cpu_time(tic)
                 call fld_u%boundary_transport_momenta('save',it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
-            ! endif
+            endif
 
         enddo
 

@@ -85,14 +85,25 @@ use m_mpienv
         character(*) :: shot_index
         character(*), optional :: o_dir
         character(512) :: filename
+        integer :: ios
 
         if(present(o_dir)) then
             filename = trim(o_dir)//'log_shot_'//trim(adjustl(shot_index))//'.out'
         else
             filename = 'log_shot_'//trim(adjustl(shot_index))//'.out'
         endif
+
+        !--- DEBUG: shotlog diagnostics (uncomment to enable) ---
+        !write(*,*) 'DEBUG shotlog_open: rank=', mpiworld%iproc, ' file=', trim(filename)
+        !flush(6)
+
         shotlog_unit = 99
-        open(shotlog_unit, file=trim(filename), status='replace', action='write')
+        open(shotlog_unit, file=trim(filename), status='replace', action='write', iostat=ios)
+
+        if(ios /= 0) then
+            write(*,*) 'ERROR: shotlog_open failed for ', trim(filename), ' iostat=', ios
+            shotlog_unit = 0  ! Fall back to stdout
+        endif
 
     end subroutine
 

@@ -240,9 +240,8 @@ use m_cpml
 
         call f%init_bloom
 
-        !f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
-        !if(f%if_will_reconstruct) call f%init_boundary
-        call f%init_boundary
+        f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
+        if(f%if_will_reconstruct) call f%init_boundary
 
         call alloc(f%vz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%vx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -448,12 +447,12 @@ use m_cpml
             call fld_u%write(it)
 
             !step 6: save v^it+1 in boundary layers
-            ! if(fld_u%if_will_reconstruct) then
+            if(fld_u%if_will_reconstruct) then
                 call cpu_time(tic)
                 call fld_u%boundary_transport('save',it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
-            ! endif
+            endif
 
         enddo
 

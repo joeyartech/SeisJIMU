@@ -297,9 +297,8 @@ use, intrinsic :: ieee_arithmetic
 
         call f%init_bloom
 
-        !f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
-        !if(f%if_will_reconstruct) call f%init_boundary
-        call f%init_boundary_velocities
+        f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
+        if(f%if_will_reconstruct) call f%init_boundary_velocities
 
         call alloc(f%vz, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
         call alloc(f%vx, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[1,1])
@@ -547,12 +546,12 @@ use, intrinsic :: ieee_arithmetic
             call fld_u%write(it)
 
             !step 6: save v^it+1 in boundary layers
-            ! if(fld_u%if_will_reconstruct) then
+            if(fld_u%if_will_reconstruct) then
                 call cpu_time(tic)
                 call fld_u%boundary_transport_velocities('save',it)
                 call cpu_time(toc)
                 tt6=tt6+toc-tic
-            ! endif
+            endif
 
         enddo
 
@@ -743,46 +742,49 @@ use, intrinsic :: ieee_arithmetic
         
         if(.not. f%is_adjoint) then
 
+            !$acc serial
             ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
-            
+
             wl=time_dir*f%wavelet(1,it)*wavelet_scaler
-            
+
             if(if_hicks) then
                 select case (shot%src%comp)
                 case ('vz')
                     f%vz(ifz:ilz,ifx:ilx,1) = f%vz(ifz:ilz,ifx:ilx,1) + wl*self%buoz(ifz:ilz,ifx:ilx) *shot%src%interp_coef(:,:,1)
-                
+
                 case ('vx')
                     if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                     f%vx(ifz:ilz,ifx:ilx,1) = f%vx(ifz:ilz,ifx:ilx,1) + wl*self%buox(ifz:ilz,ifx:ilx) *shot%src%interp_coef(:,:,1)
-                    
+
                 end select
-                
+
             else
                 select case (shot%src%comp)
                 case ('vz') !vertical force     on vz[iz-0.5,ix]
                     f%vz(iz,ix,1) = f%vz(iz,ix,1) + wl*self%buoz(iz,ix)
-                    
+
                 case ('vx') !horizontal x force on vx[iz,ix-0.5]
                     if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                     f%vx(iz,ix,1) = f%vx(iz,ix,1) + wl*self%buox(iz,ix)
-                    
+
                 end select
-                
+
             endif
+            !$acc end serial
 
             return
 
         endif
 
 
+            !$acc serial
             do i=1,shot%nrcv
                 ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
                 ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
-                
+
                 wl=f%wavelet(i,it)*wavelet_scaler
-                
+
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
                     case ('vz') !vertical z adjsource
@@ -791,9 +793,9 @@ use, intrinsic :: ieee_arithmetic
                     case ('vx') !horizontal x adjsource
                         if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                         f%vx(ifz:ilz,ifx:ilx,1) = f%vx(ifz:ilz,ifx:ilx,1) + wl*self%buox(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
-                        
+
                     end select
-                    
+
                 else
                     select case (shot%rcv(i)%comp)
                     case ('vz') !vertical z adjsource
@@ -804,13 +806,14 @@ use, intrinsic :: ieee_arithmetic
                         !vx[ix-0.5,1,iz]
                         if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                         f%vx(iz,ix,1) = f%vx(iz,ix,1) + wl*self%buox(iz,ix) !no time_dir needed!
-                        
+
                     end select
-                    
+
                 endif
-                
+
             enddo
-        
+            !$acc end serial
+
     end subroutine
     
     !forward: v^it -> v^it+1 by FD  of s^it+0.5
@@ -846,15 +849,20 @@ use, intrinsic :: ieee_arithmetic
                 !          (vx(0,ix+1  )-vx(2,ix+1  ))/ dz = ( (vz(1  ,ix)+vz(2  ,ix))   -  vz(1  ,ix+1)-vz(2  ,ix+1)    )/dx
                 dz_dx = m%dz/m%dx
 
+                !$acc parallel loop gang vector
+                !$omp parallel do
                 do ix=ifx,ilx
                     f%vz(1,ix,1)= f%vz(2,ix,1) + self%lda(1,ix)*(f%vx(1,ix,1)-f%vx(1,ix+1,1))*dz_dx/self%ldap2mu(1,ix)
                     !f%vx(0,ix,1)= f%vx(2,ix,1) + (f%vz(1,ix,1)+f%vz(2,ix,1)-f%vz(1,ix+1,1)-f%vz(2,ix+1,1))*dz_dx/self%ldap2mu(1,ix) !toy2del says this condition is not needed
                 enddo
+                !$omp end parallel do
 
             elseif (FS_method=='stress_image') then !Levandar & Roberttson
                 !Roberttson's 3rd method
+                !$acc serial
                 f%vz(cb%ifz:1,:,1)=0.
                 f%vx(cb%ifz:0,:,1)=0.
+                !$acc end serial
 
             ! elseif (FS_method=='effective_medium') then !Mittet, Cao & Chen. but not yet working
             !     !required for high-ord FD
@@ -890,11 +898,12 @@ use, intrinsic :: ieee_arithmetic
 
         if(.not. f%is_adjoint) then
 
+            !$acc serial
             ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
-            
+
             wl=time_dir*f%wavelet(1,it)*wavelet_scaler
-            
+
             if(if_hicks) then
                 select case (shot%src%comp)
                 case ('p')
@@ -911,9 +920,9 @@ use, intrinsic :: ieee_arithmetic
 
                 case ('szx')
                     f%szx(ifz:ilz,ifx:ilx,1) = f%szx(ifz:ilz,ifx:ilx,1) + wl*self%mu(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
-                
+
                 end select
-                
+
             else
                 select case (shot%src%comp)
                 case ('p')
@@ -930,24 +939,26 @@ use, intrinsic :: ieee_arithmetic
 
                 case ('szx')
                     f%szx(iz,ix,1) = f%szx(iz,ix,1) + wl*self%mu(iz,ix)
-                
+
                 end select
-            
+
             endif
+            !$acc end serial
 
             return
 
         endif
 
+            !$acc serial
             do i=1,shot%nrcv
 
                 ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
                 ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
-                
+
                 !adjsource for pressure
                 wl=f%wavelet(i,it)*wavelet_scaler
-                
-                if(if_hicks) then 
+
+                if(if_hicks) then
 
                     select case (shot%rcv(i)%comp)
                     case ('p')
@@ -968,7 +979,7 @@ use, intrinsic :: ieee_arithmetic
 
                     end select
 
-                else           
+                else
                     select case (shot%rcv(i)%comp)
                     case ('p')
                         !s[iz,ix,1]
@@ -990,7 +1001,8 @@ use, intrinsic :: ieee_arithmetic
                 endif
 
             enddo
-        
+            !$acc end serial
+
     end subroutine
 
     !forward: s^it+0.5 -> s^it+1.5 by FD of v^it+1
@@ -1020,26 +1032,38 @@ use, intrinsic :: ieee_arithmetic
             if (FS_method=='zero_stress') then
                 !so explicit boundary condition: szz(1,ix)=0
                 !and antisymmetric mirroring: szx[0.5,ix-0.5]=-szx[1.5,ix-0.5] -> szx(1,ix)=-szx(2,ix)
-                f%szz(1,:,1)=0.
-                f%szx(1,:,1)=-f%szx(2,:,1)
+                !$acc parallel loop gang vector
+                !$omp parallel do
+                do ix=cb%ifx,cb%ilx
+                    f%szz(1,ix,1)=0.
+                    f%szx(1,ix,1)=-f%szx(2,ix,1)
+                enddo
+                !$omp end parallel do
 
             elseif (FS_method=='stress_image') then !Levandar & Roberttson
 
                 !image szz
+                !$acc serial
                 f%szz( 1,:,1)=0.
                 f%szz(0:cb%ifz:-1, :,1)=-f%szz(2:2+0-cb%ifz, :,1)
+                !$acc end serial
 
                 !not image on sxx
                 ! f%sxx(0:cb%ifz:-1,:,1)=0. !no needed
+                !$acc parallel loop gang vector
+                !$omp parallel do
                 do ix=cb%ifx+1,cb%ilx-2
                     dvx_dx_= c1x*(f%vx(1,ix+1,1)-f%vx(1,ix,1))  +c2x*(f%vx(1,ix+2,1)-f%vx(1,ix-1,1))
-                    
+
                     factor=-self%lda(1,ix)**2/self%ldap2mu(1,ix) + self%ldap2mu(1,ix)
                     f%sxx(1,ix,1)  = f%sxx(1,ix,1) + time_dir*self%dt * factor*dvx_dx_
                 enddo
-                
+                !$omp end parallel do
+
                 !image szx
+                !$acc serial
                 f%szx(1:cb%ifz:-1, :,1)=-f%szx(2:2+1-cb%ifz, :,1)
+                !$acc end serial
 
             ! elseif (FS_method=='effective_medium') then !Mittet, Cao & Chen. but not yet working       
 
@@ -1088,30 +1112,56 @@ use, intrinsic :: ieee_arithmetic
         
         if(.not.f%is_adjoint) then
 
+            !$acc serial
+            !$omp parallel do default(shared) private(i,ifz,ilz,ifx,ilx,iz,ix,jz,jx,tmp)
             do i=1,shot%nrcv
                 ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
                 ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
-                
+
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
                     case ('vz')
-                        f%seismo(i,it)=sum(f%vz(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1))
+                        tmp=0.
+                        do jx=ifx,ilx; do jz=ifz,ilz
+                            tmp = tmp + f%vz(jz,jx,1) * shot%rcv(i)%interp_coef(jz-iz,jx-ix,1)
+                        enddo; enddo
+                        f%seismo(i,it) = tmp
                     case ('vx')
-                        f%seismo(i,it)=sum(f%vx(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1))
+                        tmp=0.
+                        do jx=ifx,ilx; do jz=ifz,ilz
+                            tmp = tmp + f%vx(jz,jx,1) * shot%rcv(i)%interp_coef(jz-iz,jx-ix,1)
+                        enddo; enddo
+                        f%seismo(i,it) = tmp
 
                     case ('p')
-                        f%seismo(i,it)=sum(sn_p*(f%szz(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef_anti (:,:,1)&
-                                                +f%sxx(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef_trunc(:,:,1)))
+                        tmp=0.
+                        do jx=ifx,ilx; do jz=ifz,ilz
+                            tmp = tmp + sn_p*( f%szz(jz,jx,1) * shot%rcv(i)%interp_coef_anti (jz-iz,jx-ix,1) &
+                                              +f%sxx(jz,jx,1) * shot%rcv(i)%interp_coef_trunc(jz-iz,jx-ix,1) )
+                        enddo; enddo
+                        f%seismo(i,it) = tmp
                     case ('szz')
-                        f%seismo(i,it)=sum(f%szz(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef_anti (:,:,1))
+                        tmp=0.
+                        do jx=ifx,ilx; do jz=ifz,ilz
+                            tmp = tmp + f%szz(jz,jx,1) * shot%rcv(i)%interp_coef_anti(jz-iz,jx-ix,1)
+                        enddo; enddo
+                        f%seismo(i,it) = tmp
                     case ('sxx')
-                        f%seismo(i,it)=sum(f%sxx(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef_trunc(:,:,1))
+                        tmp=0.
+                        do jx=ifx,ilx; do jz=ifz,ilz
+                            tmp = tmp + f%sxx(jz,jx,1) * shot%rcv(i)%interp_coef_trunc(jz-iz,jx-ix,1)
+                        enddo; enddo
+                        f%seismo(i,it) = tmp
 
                     case ('szx')
-                        f%seismo(i,it)=sum(f%szx(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1) )
+                        tmp=0.
+                        do jx=ifx,ilx; do jz=ifz,ilz
+                            tmp = tmp + f%szx(jz,jx,1) * shot%rcv(i)%interp_coef(jz-iz,jx-ix,1)
+                        enddo; enddo
+                        f%seismo(i,it) = tmp
 
                     end select
-                    
+
                 else
                     select case (shot%rcv(i)%comp)
                     case ('vz') !vz[iz-0.5,ix]
@@ -1130,43 +1180,70 @@ use, intrinsic :: ieee_arithmetic
                         f%seismo(i,it)=f%szx(iz,ix,1)
 
                     end select
-                    
+
                 endif
 
             enddo
+            !$omp end parallel do
+            !$acc end serial
 
             return
 
         endif
 
+            !$acc serial
             ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
-            
+
             if(if_hicks) then
                 select case (shot%src%comp)
                 case ('vz')
-                    f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1))
+                    tmp=0.
+                    do jx=ifx,ilx; do jz=ifz,ilz
+                        tmp = tmp + f%vz(jz,jx,1) * shot%src%interp_coef(jz-iz,jx-ix,1)
+                    enddo; enddo
+                    f%seismo(1,it) = tmp
                 case ('vx')
-                    f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1))
+                    tmp=0.
+                    do jx=ifx,ilx; do jz=ifz,ilz
+                        tmp = tmp + f%vx(jz,jx,1) * shot%src%interp_coef(jz-iz,jx-ix,1)
+                    enddo; enddo
+                    f%seismo(1,it) = tmp
 
                 case ('p')
-                    f%seismo(1,it)=sum(sn_p*(f%szz(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef_anti (:,:,1)&
-                                            +f%sxx(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef_trunc(:,:,1)))
+                    tmp=0.
+                    do jx=ifx,ilx; do jz=ifz,ilz
+                        tmp = tmp + sn_p*( f%szz(jz,jx,1) * shot%src%interp_coef_anti (jz-iz,jx-ix,1) &
+                                          +f%sxx(jz,jx,1) * shot%src%interp_coef_trunc(jz-iz,jx-ix,1) )
+                    enddo; enddo
+                    f%seismo(1,it) = tmp
                 case ('szz')
-                    f%seismo(1,it)=sum(f%szz(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef_anti (:,:,1))
+                    tmp=0.
+                    do jx=ifx,ilx; do jz=ifz,ilz
+                        tmp = tmp + f%szz(jz,jx,1) * shot%src%interp_coef_anti(jz-iz,jx-ix,1)
+                    enddo; enddo
+                    f%seismo(1,it) = tmp
                 case ('sxx')
-                    f%seismo(1,it)=sum(f%sxx(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef_trunc(:,:,1))
+                    tmp=0.
+                    do jx=ifx,ilx; do jz=ifz,ilz
+                        tmp = tmp + f%sxx(jz,jx,1) * shot%src%interp_coef_trunc(jz-iz,jx-ix,1)
+                    enddo; enddo
+                    f%seismo(1,it) = tmp
 
                 case ('szx')
-                    f%seismo(1,it)=sum(f%szx(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1) )
-                    
+                    tmp=0.
+                    do jx=ifx,ilx; do jz=ifz,ilz
+                        tmp = tmp + f%szx(jz,jx,1) * shot%src%interp_coef(jz-iz,jx-ix,1)
+                    enddo; enddo
+                    f%seismo(1,it) = tmp
+
                 end select
-                
+
             else
-                select case (shot%src%comp)                    
+                select case (shot%src%comp)
                 case ('vz') !vz[iz-0.5,ix,1]
                     f%seismo(1,it)=f%vz(iz,ix,1)
-                    
+
                 case ('vx') !vx[iz,ix-0.5,1]
                     f%seismo(1,it)=f%vx(iz,ix,1)
 
@@ -1179,11 +1256,12 @@ use, intrinsic :: ieee_arithmetic
 
                 case ('szx')
                     f%seismo(1,it)=f%szx(iz,ix,1)
-                                        
+
                 end select
-                
+
             endif
-        
+            !$acc end serial
+
     end subroutine
     
     subroutine final(self)
@@ -1427,6 +1505,10 @@ use, intrinsic :: ieee_arithmetic
         
         dszz_dz_=0.; dsxx_dx_=0.; dszx_dz_=0.; dszx_dx_=0.
 
+        !$acc parallel loop collapse(2) gang vector &
+        !$acc private(i,izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix, &
+        !$acc         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2, &
+        !$acc         dszz_dz_,dsxx_dx_,dszx_dz_,dszx_dx_)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,&
@@ -1526,7 +1608,11 @@ use, intrinsic :: ieee_arithmetic
         dvx_dx_=0.
         dvz_dx_=0.
         dvx_dz_=0.
-        
+
+        !$acc parallel loop collapse(2) gang vector &
+        !$acc private(i,izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix, &
+        !$acc         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2, &
+        !$acc         dvz_dz_,dvx_dx_,dvz_dx_,dvx_dz_)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
@@ -1603,7 +1689,15 @@ use, intrinsic :: ieee_arithmetic
         sf_dvz_dz=0.
         sf_4_dvzdx_p_dvxdz=0.
         rf_4_szx=0.
-        
+
+        !$acc parallel loop collapse(2) gang vector &
+        !$acc private(i,j, &
+        !$acc         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix, &
+        !$acc         iz_ixm2,izp1_ixm2,iz_ixm1,izp1_ixm1, &
+        !$acc         izm2_ixp1,izm1_ixp1,iz_ixp1,izp1_ixp1,izp2_ixp1, &
+        !$acc         iz_ixp2,izp1_ixp2, &
+        !$acc         sf_dvx_dx,sf_dvz_dz, &
+        !$acc         sf_4_dvzdx_p_dvxdz,rf_4_szx)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
@@ -1689,7 +1783,11 @@ use, intrinsic :: ieee_arithmetic
         nz=cb%nz
         
         sf_dvx_dx=0.
-        
+
+        !$acc parallel loop gang vector &
+        !$acc private(iz,i,j, &
+        !$acc         iz_ix,iz_ixm1,iz_ixp1,iz_ixp2, &
+        !$acc         sf_dvx_dx)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
         !$omp         iz_ix,iz_ixm1,iz_ixp1,iz_ixp2,&
@@ -1735,7 +1833,15 @@ use, intrinsic :: ieee_arithmetic
         sf_2_dsxxdx_p_dszxdz=0.
         rf_2vz=0.
         rf_2vx=0.
-        
+
+        !$acc parallel loop collapse(2) gang vector &
+        !$acc private(i,j, &
+        !$acc         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix, &
+        !$acc         iz_ixm2,iz_ixm1,izp1_ixm1, &
+        !$acc         izm1_ixp1,iz_ixp1,izp1_ixp1,izp2_ixp1, &
+        !$acc         iz_ixp2,izp1_ixp2, &
+        !$acc         sf_2_dszzdz_p_dszxdx,sf_2_dsxxdx_p_dszxdz, &
+        !$acc         rf_2vz,rf_2vx)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
@@ -1814,7 +1920,9 @@ use, intrinsic :: ieee_arithmetic
         
         rp=0.
         sp=0.
-        
+
+        !$acc parallel loop collapse(2) gang vector &
+        !$acc private(i,j,rp,sp)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
         !$omp         rp,sp)
@@ -1849,7 +1957,9 @@ use, intrinsic :: ieee_arithmetic
         nz=cb%nz
         
         sp=0.
-        
+
+        !$acc parallel loop collapse(2) gang vector &
+        !$acc private(i,j,sp)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
         !$omp         sp)

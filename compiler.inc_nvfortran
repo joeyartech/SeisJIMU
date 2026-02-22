@@ -1,0 +1,110 @@
+#===============================================================================
+# NVIDIA HPC SDK (nvfortran) Compiler Configuration - OpenACC GPU Support
+#===============================================================================
+#
+# TARGET: NVIDIA GPUs via OpenACC
+#
+# PREREQUISITES:
+# --------------
+# 1. NVIDIA HPC SDK installed (https://developer.nvidia.com/hpc-sdk)
+# 2. MPI built with nvfortran (e.g., OpenMPI compiled with nvfortran backend)
+#    - Or use NVIDIA's bundled MPI: mpifort from HPC SDK
+# 3. NVIDIA GPU with compute capability >= 7.0 (V100, A100, H100, etc.)
+#
+# USAGE:
+# ------
+# 1. In the top-level Makefile, set: Compiler=nvfortran
+# 2. Select BUILD_TYPE below:
+#    BUILD_TYPE = release_gpu         (managed memory - simpler, recommended to start)
+#    BUILD_TYPE = release_gpu_explicit (explicit memory - best performance, advanced)
+#    BUILD_TYPE = debug_gpu           (GPU debugging)
+#
+# GPU ARCHITECTURE TARGETS:
+# -------------------------
+# cc70  = V100  (Volta)
+# cc80  = A100  (Ampere)
+# cc90  = H100  (Hopper)
+# Add/remove targets as needed for your hardware.
+#
+#===============================================================================
+
+# Git information
+GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+
+# Compilers - use NVIDIA HPC SDK MPI wrappers
+F90 = mpifort
+F77 = mpifort
+
+# Module directory
+MOD = -module $(mod_dir)
+
+# Preprocessor flags
+# Note: _OPENACC is automatically defined by nvfortran when -acc is used
+FPP = -Mpreprocess -Dnvfortran -D"git_commit='$(GIT_COMMIT)'" -D"git_branch='$(GIT_BRANCH)'"
+
+#===============================================================================
+# BUILD TYPE SELECTION (uncomment ONE)
+#===============================================================================
+
+BUILD_TYPE = release_gpu
+#BUILD_TYPE = release_gpu_explicit
+#BUILD_TYPE = debug_gpu
+
+#===============================================================================
+# COMMON FLAGS (applied to all build types)
+#===============================================================================
+# -acc           : Enable OpenACC
+# -Minfo=accel   : Report GPU acceleration info at compile time
+# -gpu=ccXX      : Target GPU compute capabilities
+GPU_ARCH = -gpu=cc70,cc75,cc80,cc90
+COMMON_FLAGS = -acc $(GPU_ARCH) -Minfo=accel -traceback
+
+#===============================================================================
+# RELEASE_GPU FLAGS - MANAGED MEMORY (simplest, recommended first step)
+#===============================================================================
+# Managed memory lets the CUDA runtime handle CPU-GPU data transfers
+# automatically. Slightly less performant than explicit management but
+# much simpler and guaranteed correct. Good for initial porting & validation.
+#===============================================================================
+ifeq ($(BUILD_TYPE),release_gpu)
+    TAG = release_gpu
+    FLAGF90 = -O3 -fast $(COMMON_FLAGS) -gpu=mem:managed -Mfprelaxed
+    FLAGF77 = $(FLAGF90)
+endif
+
+#===============================================================================
+# RELEASE_GPU_EXPLICIT FLAGS - EXPLICIT DATA MANAGEMENT (best performance)
+#===============================================================================
+# Uses !$acc data regions for explicit CPU-GPU memory management.
+# Requires that the code has proper !$acc data / !$acc update directives.
+# Best performance but requires more careful programming.
+#===============================================================================
+ifeq ($(BUILD_TYPE),release_gpu_explicit)
+    TAG = release_gpu_explicit
+    FLAGF90 = -O3 -fast $(COMMON_FLAGS) -Mfprelaxed
+    FLAGF77 = $(FLAGF90)
+endif
+
+#===============================================================================
+# DEBUG_GPU FLAGS - GPU debugging
+#===============================================================================
+ifeq ($(BUILD_TYPE),debug_gpu)
+    TAG = debug_gpu
+    FLAGF90 = -O0 -g -acc $(GPU_ARCH) -gpu=mem:managed -Minfo=all \
+              -Mbounds -Mchkptr -traceback
+    FLAGF77 = $(FLAGF90)
+endif
+
+#===============================================================================
+# Build rules
+#===============================================================================
+.SUFFIXES: .f .f90 .o
+
+%.o: %.f90
+	$(F90) $(FPP) $(FLAGF90) $(MOD) -c $< -o $@
+	@printf "\n"
+
+%.o: %.f
+	$(F77) $(FLAGF77) -c $< -o $@
+	@printf "\n"

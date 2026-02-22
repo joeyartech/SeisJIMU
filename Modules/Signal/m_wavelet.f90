@@ -21,8 +21,8 @@ use m_butterworth
 
         ! Validate input parameters to avoid floating-point exceptions
         if (nt <= 0) call hud('ERROR: wavelet_sinexp received invalid nt='//num2str(nt))
-        if (dt <= 0. .or. isnan(dt)) call hud('ERROR: wavelet_sinexp received invalid dt='//num2str(dt))
-        if (fpeak <= 0. .or. isnan(fpeak)) call hud('ERROR: wavelet_sinexp received invalid fpeak='//num2str(fpeak))
+        if (dt <= 0. .or. (dt/=dt)) call hud('ERROR: wavelet_sinexp received invalid dt='//num2str(dt))
+        if (fpeak <= 0. .or. (fpeak/=fpeak)) call hud('ERROR: wavelet_sinexp received invalid fpeak='//num2str(fpeak))
 
         a=-3.3333333*fpeak
 
@@ -64,8 +64,8 @@ use m_butterworth
 
         ! Validate input parameters to avoid floating-point exceptions
         if (nt <= 0) call hud('ERROR: wavelet_ricker received invalid nt='//num2str(nt))
-        if (dt <= 0. .or. isnan(dt)) call hud('ERROR: wavelet_ricker received invalid dt='//num2str(dt))
-        if (fpeak <= 0. .or. isnan(fpeak)) call hud('ERROR: wavelet_ricker received invalid fpeak='//num2str(fpeak))
+        if (dt <= 0. .or. (dt/=dt)) call hud('ERROR: wavelet_ricker received invalid dt='//num2str(dt))
+        if (fpeak <= 0. .or. (fpeak/=fpeak)) call hud('ERROR: wavelet_ricker received invalid fpeak='//num2str(fpeak))
 
         t0=setup%get_real('RICKER_DELAYTIME','T0',o_default=num2str(1./fpeak))
 

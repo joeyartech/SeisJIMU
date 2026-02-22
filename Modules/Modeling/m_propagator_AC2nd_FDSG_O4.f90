@@ -233,9 +233,8 @@ use m_cpml
 
         call f%init_bloom
 
-        !f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
-        !if(f%if_will_reconstruct) call f%init_boundary
-        call f%init_boundary_pressure
+        f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
+        if(f%if_will_reconstruct) call f%init_boundary_pressure
 
         call alloc(f%p     , [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%p_prev, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -401,12 +400,12 @@ use m_cpml
             tt1=tt1+toc-tic
 
             !step 2: save p^it+1 in boundary layers
-            ! if(fld_E0%if_will_reconstruct) then
+            if(fld_u%if_will_reconstruct) then
                 call cpu_time(tic)
                 call fld_u%boundary_transport_pressure('save',it)
                 call cpu_time(toc)
                 tt2=tt2+toc-tic
-            ! endif
+            endif
 
             ! !step 3: set hardBC
             ! call cpu_time(tic)

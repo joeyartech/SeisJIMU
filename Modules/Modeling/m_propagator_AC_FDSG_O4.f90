@@ -216,9 +216,8 @@ use m_cpml
 
         call f%init_bloom
 
-        !f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
-        !if(f%if_will_reconstruct) call f%init_boundary
-        call f%init_boundary_velocities
+        f%if_will_reconstruct=either(oif_will_reconstruct,.not.f%is_adjoint,present(oif_will_reconstruct))
+        if(f%if_will_reconstruct) call f%init_boundary_velocities
 
         call alloc(f%vz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         call alloc(f%vx,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
@@ -401,9 +400,21 @@ use m_cpml
 
         real,parameter :: time_dir=1. !time direction
 
+        !--- GPU execution model (OpenACC) ---
+        !With -gpu=managed (release_gpu): CUDA Unified Memory handles all CPU-GPU
+        !data transfers automatically. The !$acc parallel loop directives on the
+        !FD kernels (fd2d/3d_velocities, fd2d/3d_stresses) execute on GPU, while
+        !inject/extract/boundary operations execute on CPU. The managed memory
+        !runtime synchronizes data transparently between the two.
+        !
+        !GPU arrays: fld_u%vz,vx,vy,p (wavefields), fld_u%dp_dz,dp_dx,dp_dy,
+        !  dvz_dz,dvx_dx,dvy_dy (CPML aux), self%buoz,buox,buoy,kpa (models),
+        !  cpml%b_z,a_z,kpa_z,... (CPML coefficients)
+        !CPU arrays: fld_u%seismo (sparse extraction), fld_u%bnd%* (boundary save)
+
         !seismo
         call alloc(fld_u%seismo,shot%nrcv,self%nt)
-            
+
         tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.; tt7=0.
 
         ift=1; ilt=self%nt
@@ -449,12 +460,12 @@ use m_cpml
             call fld_u%write(it)
 
             !step 6: save v^it+1 in boundary layers
-            ! if(fld_u%if_will_reconstruct) then
+            if(fld_u%if_will_reconstruct) then
                 call cpu_time(tic)
                 call fld_u%boundary_transport_velocities('save',it)
                 call cpu_time(toc)
                 tt7=tt7+toc-tic
-            ! endif
+            endif
 
         enddo
 
@@ -476,9 +487,15 @@ use m_cpml
         type(t_field) :: fld_a,fld_u
         type(t_correlate) :: a_star_u
         logical,optional :: oif_record_adjseismo
-        
+
         real,parameter :: time_dir=-1. !time direction
         logical :: if_record_adjseismo
+
+        !--- GPU execution model (OpenACC) ---
+        !Same as forward(): managed memory handles CPU-GPU sync automatically.
+        !Both fld_u (reconstructed source field) and fld_a (adjoint field) have
+        !their FD kernels running on GPU. Cross-correlation (gradient) kernels
+        !(grad2d/3d_grho, grad2d/3d_gkpa) also run on GPU.
 
         !for adjoint test
         if_record_adjseismo =either(oif_record_adjseismo,.false.,present(oif_record_adjseismo))
@@ -660,54 +677,57 @@ use m_cpml
         
         if(.not. f%is_adjoint) then
 
+            !$acc serial
             ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
             ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
-            
+
             wl=time_dir*f%wavelet(1,it)*wavelet_scaler
-            
+
             if(if_hicks) then
                 select case (shot%src%comp)
                 case ('vz')
                     f%vz(ifz:ilz,ifx:ilx,ify:ily) = f%vz(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoz(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
-                    
+
                 case ('vx')
                     if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                     f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buox(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
-                    
+
                 case ('vy')
                     f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoy(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef
-                    
+
                 end select
-                
+
             else
                 select case (shot%src%comp)
                 case ('vz') !vertical force     on vz[iz-0.5,ix,iy]
                     f%vz(iz,ix,iy) = f%vz(iz,ix,iy) + wl*self%buoz(iz,ix,iy)
-                    
+
                 case ('vx') !horizontal x force on vx[iz,ix-0.5,iy]
                     if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                     f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + wl*self%buox(iz,ix,iy)
-                    
+
                 case ('vy') !horizontal y force on vy[iz,ix,iy-0.5]
                     f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + wl*self%buoy(iz,ix,iy)
-                    
+
                 end select
-                
+
             endif
+            !$acc end serial
 
             return
 
         endif
 
 
+            !$acc serial
             do i=1,shot%nrcv
                 ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
                 ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
                 ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
-                
+
                 wl=f%wavelet(i,it)*wavelet_scaler
-                
+
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
                     case ('vz') !vertical z adjsource
@@ -716,12 +736,12 @@ use m_cpml
                     case ('vx') !horizontal x adjsource
                         if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                         f%vx(ifz:ilz,ifx:ilx,ify:ily) = f%vx(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buox(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
-                        
+
                     case ('vy') !horizontal y adjsource
                         f%vy(ifz:ilz,ifx:ilx,ify:ily) = f%vy(ifz:ilz,ifx:ilx,ify:ily) + wl*self%buoy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef !no time_dir needed!
-                        
+
                     end select
-                    
+
                 else
                     select case (shot%rcv(i)%comp)
                     case ('vz') !vertical z adjsource
@@ -732,17 +752,18 @@ use m_cpml
                         if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest. Why weaker when vx as src?
                         !vx[ix-0.5,iy,iz]
                         f%vx(iz,ix,iy) = f%vx(iz,ix,iy) + wl*self%buox(iz,ix,iy) !no time_dir needed!
-                        
+
                     case ('vy') !horizontal y adjsource
                         !vy[ix,iy-0.5,iz]
                         f%vy(iz,ix,iy) = f%vy(iz,ix,iy) + wl*self%buoy(iz,ix,iy) !no time_dir needed!
-                        
+
                     end select
-                    
+
                 endif
-                
+
             enddo
-        
+            !$acc end serial
+
     end subroutine
     
     !forward: v^it -> v^it+1 by FD of s^it+0.5
@@ -787,29 +808,32 @@ use m_cpml
 
         if(.not. f%is_adjoint) then
 
+            !$acc serial
             ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
             ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
-            
+
             wl=time_dir*f%wavelet(1,it)*wavelet_scaler
-            
+
             if(if_hicks) then
                 if(shot%src%comp=='p') then
                     f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) + wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef_anti(:,:,:)
                 endif
-                
+
             else
                 if(shot%src%comp=='p') then
                     !explosion on s[iz,ix,iy]
                     f%p(iz,ix,iy) = f%p(iz,ix,iy) + wl*self%kpa(iz,ix,iy)
                 endif
-                
+
             endif
+            !$acc end serial
 
             return
 
         endif
 
+            !$acc serial
             do i=1,shot%nrcv
 
                 if(shot%rcv(i)%comp=='p') then
@@ -817,15 +841,15 @@ use m_cpml
                     ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
                     ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
                     ify=shot%rcv(i)%ify-cb%ioy+1; iy=shot%rcv(i)%iy-cb%ioy+1; ily=shot%rcv(i)%ily-cb%ioy+1
-                    
+
                     !adjsource for pressure
                     wl=f%wavelet(i,it)*wavelet_scaler
-                    
-                    if(if_hicks) then 
+
+                    if(if_hicks) then
 
                         f%p(ifz:ilz,ifx:ilx,ify:ily) = f%p(ifz:ilz,ifx:ilx,ify:ily) +wl*self%kpa(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef_anti(:,:,:) !no time_dir needed!
 
-                    else           
+                    else
                         !p[iz,ix,iy]
                         f%p(iz,ix,iy) = f%p(iz,ix,iy) +wl*self%kpa(iz,ix,iy) !no time_dir needed!
 
@@ -834,7 +858,8 @@ use m_cpml
                 endif
 
             enddo
-        
+            !$acc end serial
+
     end subroutine
 
     !forward: s^it+0.5 -> s^it+1.5 by FD of v^it+1
@@ -875,6 +900,8 @@ use m_cpml
         
         if(.not.f%is_adjoint) then
 
+            !$acc serial
+            !$omp parallel do default(shared) private(i,ifz,ilz,ifx,ilx,ify,ily,iz,ix,iy)
             do i=1,shot%nrcv
                 ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
                 ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
@@ -882,17 +909,16 @@ use m_cpml
 
                 if(if_hicks) then
                     select case (shot%rcv(i)%comp)
-                        
                         case ('p')
-                        f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%rcv(i)%interp_coef_anti(:,:,:))
+                        f%seismo(i,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef_anti)
                         case ('vz')
-                        f%seismo(i,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef(:,:,:))
+                        f%seismo(i,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
                         case ('vx')
-                        f%seismo(i,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef(:,:,:))
+                        f%seismo(i,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
                         case ('vy')
-                        f%seismo(i,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef(:,:,:))
+                        f%seismo(i,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%rcv(i)%interp_coef)
                     end select
-                    
+
                 else
                     select case (shot%rcv(i)%comp)
                         case ('p') !p[iz,ix,iy]
@@ -904,53 +930,57 @@ use m_cpml
                         case ('vy') !vy[iz,ix,iy-0.5]
                         f%seismo(i,it)=f%vy(iz,ix,iy)
                     end select
-                    
+
                 endif
 
             enddo
+            !$omp end parallel do
+            !$acc end serial
 
             return
 
         endif
 
+            !$acc serial
             ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
             ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
             ify=shot%src%ify-cb%ioy+1; iy=shot%src%iy-cb%ioy+1; ily=shot%src%ily-cb%ioy+1
-            
+
             if(if_hicks) then
                 select case (shot%src%comp)
                     case ('p')
-                    f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily) *shot%src%interp_coef_anti(:,:,:))
-                    
+                    f%seismo(1,it)=sum(f%p(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef_anti)
+
                     case ('vz')
-                    f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef(:,:,:))
-                    
+                    f%seismo(1,it)=sum(f%vz(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+
                     case ('vx')
-                    f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef(:,:,:))
-                    
+                    f%seismo(1,it)=sum(f%vx(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+
                     case ('vy')
-                    f%seismo(1,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef(:,:,:))
-                    
+                    f%seismo(1,it)=sum(f%vy(ifz:ilz,ifx:ilx,ify:ily)*shot%src%interp_coef)
+
                 end select
-                
+
             else
                 select case (shot%src%comp)
                     case ('p') !p[iz,ix,iy]
                     f%seismo(1,it)=f%p(iz,ix,iy)
-                    
+
                     case ('vz') !vz[iz-0.5,ix,iy]
                     f%seismo(1,it)=f%vz(iz,ix,iy)
-                    
+
                     case ('vx') !vx[iz,ix-0.5,iy]
                     f%seismo(1,it)=f%vx(iz,ix,iy)
-                    
+
                     case ('vy') !vy[iz,ix,iy-0.5]
                     f%seismo(1,it)=f%vy(iz,ix,iy)
-                    
+
                 end select
-                
+
             endif
-        
+            !$acc end serial
+
     end subroutine
     
     subroutine final(self)
@@ -1196,7 +1226,12 @@ use m_cpml
         ny=cb%ny
         
         dp_dz_=0.;dp_dx_=0.;dp_dy_=0.
-        
+
+        !$acc parallel loop collapse(3) gang vector &
+        !$acc private(i,izm2_ix_iy,izm1_ix_iy,iz_ix_iy,izp1_ix_iy, &
+        !$acc         iz_ixm2_iy,iz_ixm1_iy,iz_ixp1_iy, &
+        !$acc         iz_ix_iym2,iz_ix_iym1,iz_ix_iyp1, &
+        !$acc         dp_dz_,dp_dx_,dp_dy_)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,iy,i,&
         !$omp         izm2_ix_iy,izm1_ix_iy,iz_ix_iy,izp1_ix_iy,&
@@ -1206,29 +1241,29 @@ use m_cpml
         !$omp do schedule(dynamic) collapse(2)
         do iy=ify,ily
         do ix=ifx,ilx
-        
+
             !dir$ simd
             do iz=ifz,ilz
-                
+
                 i=(iz-cb%ifz)+(ix-cb%ifx)*nz+(iy-cb%ify)*nz*nx+1
-                
+
                 izm2_ix_iy=i-2  !iz-2,ix,iy
                 izm1_ix_iy=i-1  !iz-1,ix,iy
                 iz_ix_iy  =i    !iz,ix,iy
                 izp1_ix_iy=i+1  !iz+1,ix,iy
-                
+
                 iz_ixm2_iy=i  -2*nz  !iz,ix-2,iy
                 iz_ixm1_iy=i    -nz  !iz,ix-1,iy
                 iz_ixp1_iy=i    +nz  !iz,ix+1,iy
-                
+
                 iz_ix_iym2=i  -2*nz*nx  !iz,ix,iy-2
                 iz_ix_iym1=i    -nz*nx  !iz,ix,iy-1
                 iz_ix_iyp1=i    +nz*nx  !iz,ix,iy+1
-                
+
                 dp_dz_= c1z*(p(iz_ix_iy)-p(izm1_ix_iy)) +c2z*(p(izp1_ix_iy)-p(izm2_ix_iy))
                 dp_dx_= c1x*(p(iz_ix_iy)-p(iz_ixm1_iy)) +c2x*(p(iz_ixp1_iy)-p(iz_ixm2_iy))
                 dp_dy_= c1y*(p(iz_ix_iy)-p(iz_ix_iym1)) +c2y*(p(iz_ix_iyp1)-p(iz_ix_iym2))
-                
+
                 !cpml
                 dp_dz(iz_ix_iy)= cpml%b_z_half(iz)*dp_dz(iz_ix_iy) + cpml%a_z_half(iz)*dp_dz_
                 dp_dx(iz_ix_iy)= cpml%b_x_half(ix)*dp_dx(iz_ix_iy) + cpml%a_x_half(ix)*dp_dx_
@@ -1237,14 +1272,14 @@ use m_cpml
                 dp_dz_ = dp_dz_*cpml%kpa_z_half(iz) + dp_dz(iz_ix_iy)
                 dp_dx_ = dp_dx_*cpml%kpa_x_half(ix) + dp_dx(iz_ix_iy)
                 dp_dy_ = dp_dy_*cpml%kpa_y_half(iy) + dp_dy(iz_ix_iy)
-                
+
                 !velocity
                 vz(iz_ix_iy)=vz(iz_ix_iy) + dt*buoz(iz_ix_iy)*dp_dz_
                 vx(iz_ix_iy)=vx(iz_ix_iy) + dt*buox(iz_ix_iy)*dp_dx_
                 vy(iz_ix_iy)=vy(iz_ix_iy) + dt*buoy(iz_ix_iy)*dp_dy_
-                
+
             enddo
-            
+
         enddo
         enddo
         !$omp end do
@@ -1265,6 +1300,10 @@ use m_cpml
         
         dp_dz_=0.; dp_dx_=0.
 
+        !$acc parallel loop collapse(2) gang vector &
+        !$acc private(i,izm2_ix,izm1_ix,iz_ix,izp1_ix, &
+        !$acc         iz_ixm2,iz_ixm1,iz_ixp1, &
+        !$acc         dp_dz_,dp_dx_)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,&
@@ -1277,12 +1316,12 @@ use m_cpml
             do iz=ifz,ilz
 
                 i=(iz-cb%ifz)+(ix-cb%ifx)*nz+1
-                
+
                 izm2_ix=i-2  !iz-2,ix
                 izm1_ix=i-1  !iz-1,ix
                 iz_ix  =i    !iz,ix
                 izp1_ix=i+1  !iz+1,ix
-                
+
                 iz_ixm2=i  -2*nz  !iz,ix-2
                 iz_ixm1=i    -nz  !iz,ix-1
                 iz_ixp1=i    +nz  !iz,ix+1
@@ -1302,7 +1341,7 @@ use m_cpml
                 vx(iz_ix)=vx(iz_ix) + dt*buox(iz_ix)*dp_dx_
 
             enddo
-            
+
         enddo
         !$omp end do
         !$omp end parallel
@@ -1322,7 +1361,12 @@ use m_cpml
         ny=cb%ny
         
         dvz_dz_=0.;dvx_dx_=0.;dvy_dy_=0.
-        
+
+        !$acc parallel loop collapse(3) gang vector &
+        !$acc private(i,izm1_ix_iy,iz_ix_iy,izp1_ix_iy,izp2_ix_iy, &
+        !$acc         iz_ixm1_iy,iz_ixp1_iy,iz_ixp2_iy, &
+        !$acc         iz_ix_iym1,iz_ix_iyp1,iz_ix_iyp2, &
+        !$acc         dvz_dz_,dvx_dx_,dvy_dy_)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,iy,i,&
         !$omp         izm1_ix_iy,iz_ix_iy,izp1_ix_iy,izp2_ix_iy,&
@@ -1332,29 +1376,29 @@ use m_cpml
         !$omp do schedule(dynamic) collapse(2)
         do iy=ify,ily
         do ix=ifx,ilx
-        
+
             !dir$ simd
             do iz=ifz,ilz
-            
+
                 i=(iz-cb%ifz)+(ix-cb%ifx)*nz+(iy-cb%ify)*nz*nx+1
-                
+
                 izm1_ix_iy=i-1  !iz-1,ix,iy
                 iz_ix_iy  =i    !iz,ix,iy
                 izp1_ix_iy=i+1  !iz+1,ix,iy
                 izp2_ix_iy=i+2  !iz+2,ix,iy
-                
+
                 iz_ixm1_iy=i       -nz  !iz,ix-1,iy
                 iz_ixp1_iy=i       +nz  !iz,ix+1,iy
                 iz_ixp2_iy=i     +2*nz  !iz,ix+2,iy
-                
+
                 iz_ix_iym1=i    -nz*nx  !iz,ix,iy-1
                 iz_ix_iyp1=i    +nz*nx  !iz,ix,iy+1
                 iz_ix_iyp2=i  +2*nz*nx  !iz,ix,iy+2
-                
+
                 dvx_dx_= c1x*(vx(iz_ixp1_iy)-vx(iz_ix_iy))  +c2x*(vx(iz_ixp2_iy)-vx(iz_ixm1_iy))
                 dvy_dy_= c1y*(vy(iz_ix_iyp1)-vy(iz_ix_iy))  +c2y*(vy(iz_ix_iyp2)-vy(iz_ix_iym1))
                 dvz_dz_= c1z*(vz(izp1_ix_iy)-vz(iz_ix_iy))  +c2z*(vz(izp2_ix_iy)-vz(izm1_ix_iy))
-                
+
                 !cpml
                 dvz_dz(iz_ix_iy)=cpml%b_z(iz)*dvz_dz(iz_ix_iy)+cpml%a_z(iz)*dvz_dz_
                 dvx_dx(iz_ix_iy)=cpml%b_x(ix)*dvx_dx(iz_ix_iy)+cpml%a_x(ix)*dvx_dx_
@@ -1363,15 +1407,15 @@ use m_cpml
                 dvz_dz_=dvz_dz_*cpml%kpa_z(iz) + dvz_dz(iz_ix_iy)
                 dvx_dx_=dvx_dx_*cpml%kpa_x(ix) + dvx_dx(iz_ix_iy)
                 dvy_dy_=dvy_dy_*cpml%kpa_y(iy) + dvy_dy(iz_ix_iy)
-                
+
                 !pressure
                 p(iz_ix_iy) = p(iz_ix_iy) + dt * kpa(iz_ix_iy)*(dvz_dz_+dvx_dx_+dvy_dy_)
-                
+
             enddo
-            
+
         enddo
         enddo
-        !$omp enddo 
+        !$omp enddo
         !$omp end parallel
         
     end subroutine
@@ -1388,7 +1432,11 @@ use m_cpml
         nx=cb%nx
         
         dvz_dz_=0.;dvx_dx_=0.
-        
+
+        !$acc parallel loop collapse(2) gang vector &
+        !$acc private(i,izm1_ix,iz_ix,izp1_ix,izp2_ix, &
+        !$acc         iz_ixm1,iz_ixp1,iz_ixp2, &
+        !$acc         dvz_dz_,dvx_dx_)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
         !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
@@ -1396,38 +1444,38 @@ use m_cpml
         !$omp         dvz_dz_,dvx_dx_)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
-        
+
             !dir$ simd
             do iz=ifz,ilz
-            
+
                 i=(iz-cb%ifz)+(ix-cb%ifx)*nz+1
-                
+
                 izm1_ix=i-1  !iz-1,ix
                 iz_ix  =i    !iz,ix
                 izp1_ix=i+1  !iz+1,ix
                 izp2_ix=i+2  !iz+2,ix
-                
+
                 iz_ixm1=i  -nz  !iz,ix-1
                 iz_ixp1=i  +nz  !iz,ix+1
                 iz_ixp2=i  +2*nz !iz,ix+2
-                
+
                 dvz_dz_= c1z*(vz(izp1_ix)-vz(iz_ix))  +c2z*(vz(izp2_ix)-vz(izm1_ix))
                 dvx_dx_= c1x*(vx(iz_ixp1)-vx(iz_ix))  +c2x*(vx(iz_ixp2)-vx(iz_ixm1))
-                
+
                 !cpml
                 dvz_dz(iz_ix)=cpml%b_z(iz)*dvz_dz(iz_ix)+cpml%a_z(iz)*dvz_dz_
                 dvx_dx(iz_ix)=cpml%b_x(ix)*dvx_dx(iz_ix)+cpml%a_x(ix)*dvx_dx_
 
                 dvz_dz_=dvz_dz_*cpml%kpa_z(iz) + dvz_dz(iz_ix)
                 dvx_dx_=dvx_dx_*cpml%kpa_x(ix) + dvx_dx(iz_ix)
-                
+
                 !pressure
                 p(iz_ix) = p(iz_ix) + dt * kpa(iz_ix)*(dvz_dz_+dvx_dx_)
-                
+
             enddo
-            
+
         enddo
-        !$omp enddo 
+        !$omp enddo
         !$omp end parallel
         
     end subroutine
@@ -1438,19 +1486,14 @@ use m_cpml
 
         !free surface is located at [1,ix,iy] level
         !so symmetric mirroring: vz[0.5]=vz[1.5], ie. vz(1,ix,iy)=vz(2,ix,iy) -> dp(1,ix,iy)=0.
-            vz(1,:,:)=vz(2,:,:)
-            ! !$omp parallel default (shared)&
-            ! !$omp private(ix,iy,i)
-            ! !$omp do schedule(dynamic)
-            ! do iy=ify,ily
-            ! do ix=ifx,ilx
-            !     i=(1-cb%ifz) + (ix-cb%ifx)*nz + (iy-cb%ify)*nz*nx +1 !iz=1,ix,iy
-                
-            !     f%vz(i)=f%vz(i+1)
-            ! enddo
-            ! enddo
-            ! !$omp enddo
-            ! !$omp end parallel
+            !$acc parallel loop collapse(2) gang vector
+            !$omp parallel do collapse(2)
+            do iy=cb%ify,cb%ily
+            do ix=cb%ifx,cb%ilx
+                vz(1,ix,iy)=vz(2,ix,iy)
+            enddo
+            enddo
+            !$omp end parallel do
 
     end subroutine
 
@@ -1460,22 +1503,15 @@ use m_cpml
         !free surface is located at [1,ix,iy] level
         !so explicit boundary condition: p(1,ix,iy)=0
         !and antisymmetric mirroring: p(0,ix,iy)=-p(2,ix,iy) -> vz(2,ix,iy)=vz(1,ix,iy)
-            p(1,:,:)=0.
-            p(0,:,:)=-p(2,:,:)
-            ! !$omp parallel default (shared)&
-            ! !$omp private(ix,iy,i)
-            ! !$omp do schedule(dynamic)
-            ! do iy=ify,ily
-            ! do ix=ifx,ilx
-            !     i=(1-cb%ifz) + (ix-cb%ifx)*nz + (iy-cb%ify)*nz*nx +1 !iz=1,ix,iy 
-                
-            !     f%p(i)=0.
-                
-            !     f%p(i-1)=-f%p(i+1)
-            ! enddo
-            ! enddo
-            ! !$omp enddo
-            ! !$omp end parallel
+            !$acc parallel loop collapse(2) gang vector
+            !$omp parallel do collapse(2)
+            do iy=cb%ify,cb%ily
+            do ix=cb%ifx,cb%ilx
+                p(1,ix,iy)=0.
+                p(0,ix,iy)=-p(2,ix,iy)
+            enddo
+            enddo
+            !$omp end parallel do
 
     end subroutine
 
@@ -1495,7 +1531,12 @@ use m_cpml
         
          rp=0.
         dsp=0.
-        
+
+        !$acc parallel loop collapse(3) gang vector &
+        !$acc private(i,j,izm1_ix_iy,iz_ix_iy,izp1_ix_iy,izp2_ix_iy, &
+        !$acc         iz_ixm1_iy,iz_ixp1_iy,iz_ixp2_iy, &
+        !$acc         iz_ix_iym1,iz_ix_iyp1,iz_ix_iyp2, &
+        !$acc         dvz_dz,dvx_dx,dvy_dy,rp,dsp)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,iy,i,j,&
         !$omp         izm1_ix_iy,iz_ix_iy,izp1_ix_iy,izp2_ix_iy,&
@@ -1506,37 +1547,37 @@ use m_cpml
         !$omp do schedule(dynamic) collapse(2)
         do iy=ify,ily
         do ix=ifx,ilx
-        
+
             !dir$ simd
             do iz=ifz,ilz
-                
+
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
                 j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !grad has no boundary layers
-                
+
                 izm1_ix_iy=i-1  !iz-1,ix,iy
                 iz_ix_iy  =i    !iz,ix,iy
                 izp1_ix_iy=i+1  !iz+1,ix,iy
                 izp2_ix_iy=i+2  !iz+2,ix,iy
-                
+
                 iz_ixm1_iy=i    -nz  !iz,ix-1,iy
                 iz_ixp1_iy=i    +nz  !iz,ix+1,iy
                 iz_ixp2_iy=i  +2*nz  !iz,ix+2,iy
-                
+
                 iz_ix_iym1=i    -nz*nx  !iz,ix,iy-1
                 iz_ix_iyp1=i    +nz*nx  !iz,ix,iy+1
                 iz_ix_iyp2=i  +2*nz*nx  !iz,ix,iy+2
-                
+
                 dvz_dz = c1z*(sf_vz(izp1_ix_iy)-sf_vz(iz_ix_iy)) +c2z*(sf_vz(izp2_ix_iy)-sf_vz(izm1_ix_iy))
                 dvx_dx = c1x*(sf_vx(iz_ixp1_iy)-sf_vx(iz_ix_iy)) +c2x*(sf_vx(iz_ixp2_iy)-sf_vx(iz_ixm1_iy))
                 dvy_dy = c1y*(sf_vy(iz_ix_iyp1)-sf_vy(iz_ix_iy)) +c2y*(sf_vy(iz_ix_iyp2)-sf_vy(iz_ix_iym1))
-                
+
                  rp = rf_p(i)
                 dsp = dvz_dz +dvx_dx +dvy_dy
-                
+
                 grad(j)=grad(j) + rp*dsp
-                
+
             end do
-            
+
         end do
         end do
         !$omp end do
@@ -1588,15 +1629,19 @@ use m_cpml
                         ifz,ilz,ifx,ilx)
         real,dimension(*) :: rf_p,sf_vz,sf_vx
         real,dimension(*) :: grad
-        
+
         nz=cb%nz
-        
+
         dvz_dz=0.
         dvx_dx=0.
-        
+
          rp=0.
         dsp=0.
-        
+
+        !$acc parallel loop collapse(2) gang vector &
+        !$acc private(i,j,izm1_ix,iz_ix,izp1_ix,izp2_ix, &
+        !$acc         iz_ixm1,iz_ixp1,iz_ixp2, &
+        !$acc         dvz_dz,dvx_dx,rp,dsp)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
         !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
@@ -1605,32 +1650,32 @@ use m_cpml
         !$omp         rp,dsp)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
-        
+
             !dir$ simd
             do iz=ifz,ilz
-                
+
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
                 j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
-                
+
                 izm1_ix=i-1  !iz-1,ix
                 iz_ix  =i    !iz,ix
                 izp1_ix=i+1  !iz+1,ix
                 izp2_ix=i+2  !iz+2,ix
-                
+
                 iz_ixm1=i    -nz  !iz,ix-1
                 iz_ixp1=i    +nz  !iz,ix+1
                 iz_ixp2=i  +2*nz  !iz,ix+2
-                
+
                 dvz_dz = c1z*(sf_vz(izp1_ix)-sf_vz(iz_ix)) +c2z*(sf_vz(izp2_ix)-sf_vz(izm1_ix))
                 dvx_dx = c1x*(sf_vx(iz_ixp1)-sf_vx(iz_ix)) +c2x*(sf_vx(iz_ixp2)-sf_vx(iz_ixm1))
-                
+
                  rp = rf_p(i)
                 dsp = dvz_dz +dvx_dx
-                
+
                 grad(j)=grad(j) + rp*dsp
-                
+
             end do
-            
+
         end do
         !$omp end do
         !$omp end parallel
@@ -1648,7 +1693,12 @@ use m_cpml
         
         dsvz=0.; dsvx=0.; dsvy=0.
          rvz=0.;  rvx=0.;  rvy=0.
-        
+
+        !$acc parallel loop collapse(3) gang vector &
+        !$acc private(i,j,izm2_ix_iy,izm1_ix_iy,iz_ix_iy,izp1_ix_iy,izp2_ix_iy, &
+        !$acc         iz_ixm2_iy,iz_ixm1_iy,iz_ixp1_iy,iz_ixp2_iy, &
+        !$acc         iz_ix_iym2,iz_ix_iym1,iz_ix_iyp1,iz_ix_iyp2, &
+        !$acc         rvz,rvx,rvy,dsvz,dsvx,dsvy)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,iy,i,j,&
         !$omp         izm2_ix_iy,izm1_ix_iy,iz_ix_iy,izp1_ix_iy,izp2_ix_iy,&
@@ -1659,10 +1709,10 @@ use m_cpml
         !$omp do schedule(dynamic) collapse(2)
         do iy=ify,ily
         do ix=ifx,ilx
-        
+
             !dir$ simd
             do iz=ifz,ilz
-            
+
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+(iy-cb%ify)*cb%nz*cb%nx+1 !field has boundary layers
                 j=(iz-1)     +(ix-1)     *cb%mz+(iy-1)     *cb%mz*cb%mx+1 !grad has no boundary layers
 
@@ -1671,17 +1721,17 @@ use m_cpml
                 iz_ix_iy  =i    !iz,ix,iy
                 izp1_ix_iy=i+1  !iz+1,ix,iy
                 izp2_ix_iy=i+2  !iz+2,ix,iy
-                
+
                 iz_ixm2_iy=i  -2*nz  !iz,ix-2,iy
                 iz_ixm1_iy=i    -nz  !iz,ix-1,iy
                 iz_ixp1_iy=i    +nz  !iz,ix+1,iy
                 iz_ixp2_iy=i  +2*nz  !iz,ix+2,iy
-                
+
                 iz_ix_iym2=i  -2*nz*nx  !iz,ix,iy-2
                 iz_ix_iym1=i    -nz*nx  !iz,ix,iy-1
                 iz_ix_iyp1=i    +nz*nx  !iz,ix,iy+1
-                iz_ix_iyp2=i  +2*nz*nx  !iz,ix,iy+2               
-                
+                iz_ix_iyp2=i  +2*nz*nx  !iz,ix,iy+2
+
                 rvz = rf_vz(izp1_ix_iy) +rf_vz(iz_ix_iy)
                 rvx = rf_vx(iz_ixp1_iy) +rf_vx(iz_ix_iy)
                 rvy = rf_vy(iz_ix_iyp1) +rf_vy(iz_ix_iy)
@@ -1692,14 +1742,14 @@ use m_cpml
                       +(c1x*(sf_p(iz_ixp1_iy)-sf_p(iz_ix_iy  )) +c2x*(sf_p(iz_ixp2_iy)-sf_p(iz_ixm1_iy)))
                 dsvy = (c1y*(sf_p(iz_ix_iy  )-sf_p(iz_ix_iym1)) +c2y*(sf_p(iz_ix_iyp1)-sf_p(iz_ix_iym2))) &
                       +(c1y*(sf_p(iz_ix_iyp1)-sf_p(iz_ix_iy  )) +c2y*(sf_p(iz_ix_iyp2)-sf_p(iz_ix_iym1)))
-                
+
                 !complete equation with unnecessary terms e.g. sf_p(iz_ix) for better understanding
                 !with flag -O, the compiler should automatically detect such possibilities of simplification
-                
+
                 grad(j)=grad(j) + 0.25*( rvz*dsvz + rvx*dsvx + rvy*dsvy )
-                
+
             enddo
-            
+
         enddo
         enddo
         !$omp end do
@@ -1719,6 +1769,10 @@ use m_cpml
         dsvz=0.; dsvx=0.
          rvz=0.; rvx=0.
 
+        !$acc parallel loop collapse(2) gang vector &
+        !$acc private(i,j,izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix, &
+        !$acc         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2, &
+        !$acc         rvz,rvx,dsvz,dsvx)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
@@ -1727,38 +1781,38 @@ use m_cpml
         !$omp         dsvz,dsvx)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
-        
+
             !dir$ simd
             do iz=ifz,ilz
-            
+
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
                 j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
-                
+
                 izm2_ix=i-2  !iz-2,ix
                 izm1_ix=i-1  !iz-1,ix
                 iz_ix  =i    !iz,ix
                 izp1_ix=i+1  !iz+1,ix
                 izp2_ix=i+2  !iz+2,ix
-                
+
                 iz_ixm2=i  -2*nz  !iz,ix-2
                 iz_ixm1=i    -nz  !iz,ix-1
                 iz_ixp1=i    +nz  !iz,ix+1
                 iz_ixp2=i  +2*nz  !iz,ix+2
-                
+
                 rvz = rf_vz(iz_ix) +rf_vz(izp1_ix)
                 rvx = rf_vx(iz_ix) +rf_vx(iz_ixp1)
-                
+
                 dsvz = (c1z*(sf_p(iz_ix  )-sf_p(izm1_ix)) +c2z*(sf_p(izp1_ix)-sf_p(izm2_ix))) &
                       +(c1z*(sf_p(izp1_ix)-sf_p(iz_ix  )) +c2z*(sf_p(izp2_ix)-sf_p(izm1_ix)))
                 dsvx = (c1x*(sf_p(iz_ix  )-sf_p(iz_ixm1)) +c2x*(sf_p(iz_ixp1)-sf_p(iz_ixm2))) &
                       +(c1x*(sf_p(iz_ixp1)-sf_p(iz_ix  )) +c2x*(sf_p(iz_ixp2)-sf_p(iz_ixm1)))
                 !complete equation with unnecessary terms e.g. sf_p(iz_ix) for better understanding
                 !with flag -Ox, the compiler should automatically detect such possible simplification
-                
+
                 grad(j)=grad(j) + 0.25*( rvz*dsvz + rvx*dsvx )
-                
+
             enddo
-            
+
         enddo
         !$omp end do
         !$omp end parallel
@@ -1844,18 +1898,20 @@ use m_cpml
         real,dimension(*) :: rf_p,sf_p
         real,dimension(*) :: rf_poynz,rf_poynx,sf_poynz,sf_poynx
         real,dimension(*) :: ipp, ibksc, ifwsc
-        
+
         nz=cb%nz
-        
+
         rp=0.
         sp=0.
-        
+
+        !$acc parallel loop collapse(2) gang vector &
+        !$acc private(i,j,rp,sp)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
         !$omp         rp,sp)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
-        
+
             !dir$ simd
             do iz=ifz,ilz
                 
@@ -1883,19 +1939,20 @@ use m_cpml
                             ifz,ilz,ifx,ilx,ify,ily)
         real,dimension(*) :: sf_p
         real,dimension(*) :: engy
-        
+
         nz=cb%nz
         nx=cb%nx
-        
+
         sp=0.
-        
+
+        !$acc parallel loop collapse(3) gang vector private(i,j,sp)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,iy,i,j,&
         !$omp         sp)
         !$omp do schedule(dynamic) collapse(2)
         do iy=ify,ily
         do ix=ifx,ilx
-        
+
             !dir$ simd
             do iz=ifz,ilz
                 
@@ -1920,17 +1977,18 @@ use m_cpml
                             ifz,ilz,ifx,ilx)
         real,dimension(*) :: sf_p
         real,dimension(*) :: engy
-        
+
         nz=cb%nz
-        
+
         sp=0.
-        
+
+        !$acc parallel loop collapse(2) gang vector private(i,j,sp)
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
         !$omp         sp)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
-        
+
             !dir$ simd
             do iz=ifz,ilz
                 

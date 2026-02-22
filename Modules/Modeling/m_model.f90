@@ -117,23 +117,24 @@ use m_smoother_laplacian_sparse
 
         open(12,file=self%file,access='direct',recl=4*self%n,action='read',status='old')
 
-        call hud('DEBUG: File opened, nz='//num2str(self%nz)//' nx='//num2str(self%nx)//' ny='//num2str(self%ny)//' n='//num2str(self%n))
-        call hud('DEBUG: recl=4*n='//num2str(4*self%n)//' num_attributes='//num2str(size(self%attributes_read)))
+        !--- DEBUG: model I/O diagnostics (uncomment to enable) ---
+        !call hud('DEBUG: File opened, nz='//num2str(self%nz)//' nx='//num2str(self%nx)//' ny='//num2str(self%ny)//' n='//num2str(self%n))
+        !call hud('DEBUG: recl=4*n='//num2str(4*self%n)//' num_attributes='//num2str(size(self%attributes_read)))
 
         do i=1,size(self%attributes_read)
-            call hud('DEBUG: Loop iteration i='//num2str(i)//' attribute='//self%attributes_read(i)%s)
+            !call hud('DEBUG: Loop iteration i='//num2str(i)//' attribute='//self%attributes_read(i)%s)
             select case(self%attributes_read(i)%s)
             case ('vp')
-                call hud('DEBUG: About to allocate and read vp')
+                !call hud('DEBUG: About to allocate and read vp')
                 call alloc(self%vp,self%nz,self%nx,self%ny)
-                call hud('DEBUG: vp allocated, about to read record '//num2str(i))
+                !call hud('DEBUG: vp allocated, about to read record '//num2str(i))
                 read(12,rec=i) self%vp
                 call hud('vp model is read.')
 
             case ('vs')
-                call hud('DEBUG: About to allocate and read vs')
+                !call hud('DEBUG: About to allocate and read vs')
                 call alloc(self%vs,self%nz,self%nx,self%ny)
-                call hud('DEBUG: vs allocated, about to read record '//num2str(i))
+                !call hud('DEBUG: vs allocated, about to read record '//num2str(i))
                 read(12,rec=i) self%vs
                 call hud('vs model is read.')
 
@@ -204,7 +205,7 @@ use m_smoother_laplacian_sparse
         if(file=='') file=setup%get_file('FILE_TOPOGRAPHY','FILE_TOPO')
         if(file/='') then
             call alloc(tmp,self%nx,self%ny,1)
-            call sysio_read(file,tmp,self%n)
+            call sysio_read(file,tmp,self%nx*self%ny)
             call hud('bathy minmax value: '//num2str(minval(tmp))//' , '//num2str(maxval(tmp)))
             call hud('water or air layer is from #1 to #(floor(bathy/dz)+1) grid points in depth')
 

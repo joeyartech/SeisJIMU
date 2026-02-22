@@ -83,7 +83,7 @@ use m_Modeling
 
 
         call hud('----  Solving Au=s  ----')
-        call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
+        call ppg%init_field(fld_u,name='fld_u',oif_will_reconstruct=.false.);    call fld_u%ignite
         call ppg%forward(fld_u)
         call fld_u%acquire; call shot%write('Ru_',shot%dsyn)
 

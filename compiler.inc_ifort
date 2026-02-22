@@ -64,7 +64,7 @@ ifeq ($(BUILD_TYPE),release_avx2)
     TAG = release_avx2
     # -march=core-avx2 generates AVX2 code that works on AMD EPYC
     # -axCORE-AVX2 would be Intel-only; -march works on both
-    FLAGF90 = -O3 -march=core-avx2 $(COMMON_FLAGS) -fp-model=precise -ipo
+    FLAGF90 = -O3 -march=core-avx2 $(COMMON_FLAGS) -fp-model=precise -ipo -heap-arrays
     FLAGF77 = $(FLAGF90)
 endif
 
