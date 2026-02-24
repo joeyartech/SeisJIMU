@@ -27,7 +27,7 @@ IF_MUST_USE_RCOMP       T
 
 WAVELET_TYPE	ricker
 
-FPEAK        4
+FPEAK        8
 NT           1923
 DT           0.0026
 

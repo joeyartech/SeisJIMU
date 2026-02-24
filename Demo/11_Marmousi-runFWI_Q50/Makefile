@@ -17,6 +17,12 @@ dt=0.00175
 siginit=200
 
 .SUFFIXES: .bin .smth .$(h)m .init .mig
+
+code : 
+# 	(cd ../../FWD ; make cleanall ; make)
+# 	(cd ../../FWI ; make cleanall ; make)
+	gfortran smoothgauss2dfast_zhou.f90 -o smoothgauss2dfast_zhou
+
 .bin.smth:
 	echo $(sig)
 	@echo $^ $@ > par

@@ -30,7 +30,7 @@ use singleton
     real :: visac_b = -110.687
     real :: visac_d = 1111.5
     real :: visac_e = 1
-    integer :: ifsmooth = 1, smooth_interval=200
+    integer :: ifsmooth = 1, smooth_interval=10
     logical :: if_freesurface_ppg
 
     ! logical :: is_Q_attenuation
@@ -1227,7 +1227,7 @@ use singleton
     !Kₘ<a|Au> = Kₘ<a|ϰ∂ₜ²u - ∇·b∇u>
     !for ϰ: Kₘ<a|Au> = ∫ a ∂ₜ²u dt =-∫ ∂ₜa ∂ₜu dt, or = ∫ a κ∇·b∇u dt 
     !for b: Kₘ<a|Au> = -Kₘ<a|∇·b∇u> = ∫ ∇a·∇u dt
-    !for qp: Kₘ<a|Au> = ∫ a 1/κ(dC2dq ∂ₜₜu +dC1dq ∂ₜu +dC0dq u) dt 
+    !for qp: Kₘ<a|Au> = ∫ a 1/κ(dC2dQ ∂ₜₜu +dC1dQ ∂ₜu +dC0dQ u) dt 
 
     subroutine cross_correlate_gradient(reA,imA, reU,imU, corr,it)
         type(t_field), intent(in) :: reA, imA, reU, imU
