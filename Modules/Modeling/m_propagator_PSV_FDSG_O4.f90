@@ -682,22 +682,22 @@ use, intrinsic :: ieee_arithmetic
             call cpu_time(toc)
             tt10=tt10+toc-tic
             
-            !adjoint step 1: sample v^it or s^it+0.5 at source position
-            if(if_record_adjseismo) then
-                call cpu_time(tic)
-                call self%extract(fld_a,it)
-                call cpu_time(toc)
-                tt11=tt11+toc-tic
-            endif
+            ! !adjoint step 1: sample v^it or s^it+0.5 at source position
+            ! if(if_record_adjseismo) then
+            !     call cpu_time(tic)
+            !     call self%extract(fld_a,it)
+            !     call cpu_time(toc)
+            !     tt11=tt11+toc-tic
+            ! endif
             
-!            !grho: sfield%v_dt^it \dot rfield%v^it
-!            !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
-!            if(if_compute_grad.and.mod(it,irdt)==0) then
-!                call cpu_time(tic)
-!                call gradient_density(fld_a,fld_u,it,cb%grad(:,:,1,1))
-!                call cpu_time(toc)
-!                tt6=tt6+toc-tic
-!            endif
+           !grho: sfield%v_dt^it \dot rfield%v^it
+           !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
+            if(mod(it,irdt)==0) then
+                call cpu_time(tic)
+                call cross_correlate_grho(fld_a,fld_u,a_star_u,it)
+                call cpu_time(toc)
+                tt6=tt6+toc-tic
+            endif
             
             !snapshot
             call fld_a%write(it,o_suffix='_rev')
@@ -1298,23 +1298,29 @@ use, intrinsic :: ieee_arithmetic
     !gmu = _-4(λ+μ)²-4μ²_[ sxxᵃ * ∂ₓᶠvx ]
     !       μ(λ+μ)(λ+2μ)  
 
+    subroutine cross_correlate_grho(rf,sf,corr,it)
+        type(t_field), intent(in) :: rf, sf
+        type(t_correlate) :: corr
 
-    
-   ! subroutine gradient_density(rf,sf,it,grad)
-   !     type(t_field), intent(in) :: rf, sf
-   !     real,dimension(cb%mz,cb%mx,1) :: grad
-       
-   !     !nonzero only when sf touches rf
-   !     ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
-   !     ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
-   !     ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
-   !     ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
-       
-   !     call grad2d_density(rf%vz,rf%vx,sf%szz,sf%sxx,sf%szx,&
-   !                         grad,                            &
-   !                         ifz,ilz,ifx,ilx)
-       
-   ! end subroutine
+        !nonzero only when sf touches rf
+        ifz=max(sf%bloom(1,it),rf%bloom(1,it),2)
+        ilz=min(sf%bloom(2,it),rf%bloom(2,it),cb%mz)
+        ifx=max(sf%bloom(3,it),rf%bloom(3,it),1)
+        ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)
+        ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
+        ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
+        
+        ! if(m%is_cubic) then
+        !     call grad3d_grho(rf%vz,rf%vx,rf%vy,sf%p,&
+        !                      corr%grho,             &
+        !                      ifz,ilz,ifx,ilx,ify,ily)
+        ! else
+            call grad2d_grho(rf%vz,rf%vx,sf%szz,sf%sxx,sf%szx,&
+                             corr%grho,       &
+                             ifz,ilz,ifx,ilx)
+        ! endif
+        
+    end subroutine
 
     subroutine cross_correlate_glda_gmu(rf,sf,corr,it)
         type(t_field), intent(in) :: rf, sf
@@ -1729,29 +1735,23 @@ use, intrinsic :: ieee_arithmetic
     end subroutine
     
     
-    subroutine grad2d_density(rf_vz,rf_vx,         &
-                              sf_szz,sf_sxx,sf_szx,&
-                              grad,                &
-                              ifz,ilz,ifx,ilx)
-        real,dimension(*) :: rf_vz,rf_vx
-        real,dimension(*) :: sf_szz,sf_sxx,sf_szx
+    subroutine grad2d_grho(rf_vz,rf_vx,sf_szz,sf_sxx,sf_szx,&
+                           grad,            &
+                           ifz,ilz,ifx,ilx)
+        real,dimension(*) :: rf_vz,rf_vx,sf_szz,sf_sxx,sf_szx
         real,dimension(*) :: grad
         
         nz=cb%nz
         
-        sf_2_dszzdz_p_dszxdx=0.
-        sf_2_dsxxdx_p_dszxdz=0.
-        rf_2vz=0.
-        rf_2vx=0.
-        
+        dsvz=0.; dsvx=0.
+         rvz=0.; rvx=0.
+
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,j,&
         !$omp         izm2_ix,izm1_ix,iz_ix,izp1_ix,izp2_ix,&
-        !$omp         iz_ixm2,iz_ixm1,izp1_ixm1,&
-        !$omp         izm1_ixp1,iz_ixp1,izp1_ixp1,izp2_ixp1,&
-        !$omp         iz_ixp2,izp1_ixp2,&
-        !$omp         sf_2_dszzdz_p_dszxdx,sf_2_dsxxdx_p_dszxdz,&
-        !$omp         rf_2vz,rf_2vx)
+        !$omp         iz_ixm2,iz_ixm1,iz_ixp1,iz_ixp2,&
+        !$omp         rvz, rvx,&
+        !$omp         dsvz,dsvx)
         !$omp do schedule(dynamic)
         do ix=ifx,ilx
         
@@ -1759,7 +1759,7 @@ use, intrinsic :: ieee_arithmetic
             do iz=ifz,ilz
             
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
-                j=(iz-1)     +(ix-1)     *cb%mz+1 !corr has no boundary layers
+                j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
                 izm2_ix=i-2  !iz-2,ix
                 izm1_ix=i-1  !iz-1,ix
@@ -1767,40 +1767,22 @@ use, intrinsic :: ieee_arithmetic
                 izp1_ix=i+1  !iz+1,ix
                 izp2_ix=i+2  !iz+2,ix
                 
-                iz_ixm2  = i    -2*nz  !iz  ,ix-2
-                iz_ixm1  = i      -nz  !iz  ,ix-1
-                izp1_ixm1= i+1    -nz  !iz-1,ix-1
-
-                izm1_ixp1= i-1    +nz  !iz-1,ix+1
-                iz_ixp1  = i      +nz  !iz  ,ix+1
-                izp1_ixp1= i+1    +nz  !iz+1,ix+1
-                izp2_ixp1= i+2    +nz  !iz+2,ix+1
-
-                iz_ixp2  = i    +2*nz  !iz ,ix+2
-                izp1_ixp2= i+1  +2*nz  !iz+1,ix+2
-
-                sf_2_dszzdz_p_dszxdx = &   !(dszx_dx+dszz_dz)(iz,ix)   [iz-0.5,ix]
-                                           c1z*(sf_szz(iz_ix    )-sf_szz(izm1_ix)) +c2z*(sf_szz(izp1_ix  )-sf_szz(izm2_ix  )) &
-                                         + c1x*(sf_szx(iz_ixp1  )-sf_szx(iz_ix  )) +c2x*(sf_szx(iz_ixp2  )-sf_szx(iz_ixm1  )) &
-                                       & &
-                                       & & !(dszx_dx+dszz_dz)(iz+1,ix) [iz+0.5,ix]
-                                         + c1z*(sf_szz(izp1_ix  )-sf_szz(iz_ix  )) +c2z*(sf_szz(izp2_ix  )-sf_szz(izm1_ix  )) &
-                                         + c1x*(sf_szx(izp1_ixp1)-sf_szx(izp1_ix)) +c2x*(sf_szx(izp1_ixp2)-sf_szx(izp1_ixm1))
+                iz_ixm2=i  -2*nz  !iz,ix-2
+                iz_ixm1=i    -nz  !iz,ix-1
+                iz_ixp1=i    +nz  !iz,ix+1
+                iz_ixp2=i  +2*nz  !iz,ix+2
                 
-                sf_2_dsxxdx_p_dszxdz = &   !(dsxx_dx+dszx_dz)(iz,ix)   [iz,ix-0.5]
-                                           c1x*(sf_sxx(iz_ix    )-sf_sxx(iz_ixm1)) +c2x*(sf_sxx(iz_ixp1  )-sf_sxx(iz_ixm2  )) &
-                                         + c1z*(sf_szx(izp1_ix  )-sf_szx(iz_ix  )) +c2z*(sf_szx(izp2_ix  )-sf_szx(izm1_ix  )) &
-                                       & &
-                                       & & !(dsxx_dx+dszx_dz)(iz,ix+1) [iz,ix+0.5]
-                                         + c1x*(sf_sxx(iz_ixp1  )-sf_sxx(iz_ix  )) +c2x*(sf_sxx(iz_ixp2  )-sf_sxx(iz_ixm1  )) &
-                                         + c1z*(sf_szx(izp1_ixp1)-sf_szx(iz_ixp1)) +c2z*(sf_szx(izp2_ixp1)-sf_szx(izm1_ixp1))
-                                         
-                rf_2vz = rf_vz(iz_ix) + rf_vz(izp1_ix)
-                         ![iz-0.5,ix]      [iz+0.5,ix]
-                rf_2vx = rf_vx(iz_ix) + rf_vx(iz_ixp1)
-                         ![iz,ix-0.5]      [iz,ix+0.5]
+                rvz = rf_vz(iz_ix) +rf_vz(izp1_ix)
+                rvx = rf_vx(iz_ix) +rf_vx(iz_ixp1)
                 
-                grad(j)=grad(j) + 0.25*( rf_2vz*sf_2_dszzdz_p_dszxdx + rf_2vx*sf_2_dsxxdx_p_dszxdz )
+                dsvz = (c1z*(sf_szz(iz_ix  )-sf_szz(izm1_ix)) +c2z*(sf_szz(izp1_ix)-sf_szz(izm2_ix))) &
+                      +(c1x*(sf_szx(iz_ixp1)-sf_szx(iz_ix  )) +c2x*(sf_szx(iz_ixp2)-sf_szx(iz_ixm1)))
+                dsvx = (c1x*(sf_sxx(iz_ix  )-sf_sxx(iz_ixm1)) +c2x*(sf_sxx(iz_ixp1)-sf_sxx(iz_ixm2))) &
+                      +(c1z*(sf_szx(izp1_ix)-sf_szx(iz_ix  )) +c2z*(sf_szx(izp2_ix)-sf_szx(izm1_ix)))
+                !complete equation with unnecessary terms e.g. sf_p(iz_ix) for better understanding
+                !with flag -Ox, the compiler should automatically detect such possible simplification
+                
+                grad(j)=grad(j) + 0.5*( rvz*dsvz + rvx*dsvx )
                 
             enddo
             

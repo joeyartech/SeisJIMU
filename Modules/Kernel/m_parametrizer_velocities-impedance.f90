@@ -12,7 +12,7 @@ use m_empirical
     !gvp = (gkpa*vp - grho0/vp)*rho
     !gip =  gkpa*vp + grho0/vp
 
-    !P-SV:
+    !P-SV vp-vs-ip:
     !lda = rho(vp^2-2vs^2) = vp*ip - 2vs^2*ip/vp
     !mu  = rho*vs^2        = vs^2*ip/vp
     !rho0= rho             = ip/vp
