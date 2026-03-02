@@ -11,6 +11,7 @@ m_wavelet.f90 \
 m_matchfilter.f90 \
 m_Hilbert.f90 \
 m_Lpnorm.f90 \
+m_Envnorm.f90 \
 m_pseudotime.f90 \
 m_smoother_Laplacian_sparse.f90
 
@@ -21,5 +22,5 @@ all : $(src:.f90=.o)
 clean :
 	-rm $(src:.f90=.o)
 	@printf "\n"
-	-rm $(src:%.f90=$(mod_dir)%.mod)  $(mod_dir)m_lpnorm.mod $(mod_dir)m_smoother_laplacian_sparse.mod
+	-rm $(src:%.f90=$(mod_dir)%.mod)  $(mod_dir)m_hilbert.mod $(mod_dir)m_lpnorm.mod $(mod_dir)m_envnorm.mod $(mod_dir)m_smoother_laplacian_sparse.mod
 	@printf "\n"

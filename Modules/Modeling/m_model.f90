@@ -390,7 +390,7 @@ use m_smoother_laplacian_sparse
                 endif
 
             case ('vs')
-                if(allocated(self%vp)) then
+                if(allocated(self%vs)) then
                     write(13,rec=i) self%vs
                     ! call hud('vs model is written.')
                 endif

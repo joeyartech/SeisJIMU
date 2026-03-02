@@ -3,7 +3,9 @@ use mpi
 use m_System
 use m_Modeling
 use m_weighter
+use m_Hilbert
 use m_Lpnorm
+use m_Envnorm
 use m_fobjective
 use m_matchfilter
 use m_smoother_laplacian_sparse
@@ -16,7 +18,7 @@ use m_resampler
 
     type(t_field) :: fld_u,fld_a
     type(t_correlate) :: a_star_u
-    real,dimension(:,:),allocatable :: tmp
+    real,dimension(:,:),allocatable :: tmp, Eobs
     real,dimension(3) :: grad_term_weights
     character(:),allocatable :: s_conversion
     real :: dtr
@@ -235,6 +237,8 @@ endif
 if(s_update_wavelet/='') then
 call hud('update wavelet')
 call shot%update_wavelet(wei_wl%weight) !call matchfilter_apply_to_data(shot%dsyn)
+call hud('premute')
+shot%dsyn=shot%dsyn*wei%weight / (wei%weight+r_epsilon)
 call shot%write('updated_Ru_',shot%dsyn)
 call suformat_write('updated_wavelet_'//shot%sindex,shot%wavelet,shot%nt,1,shot%dt)
 endif
@@ -359,6 +363,31 @@ endif
                 call shot%write('dadj_',shot%dadj)
                 
 
+
+            case('Envsq'); call hud('0.5|| W(E[f*u] - E[d])||² => adjsrc = ...')
+if(s_update_wavelet/='') then
+call hud('update wavelet')
+call shot%update_wavelet(wei_wl%weight) !call matchfilter_apply_to_data(shot%dsyn)
+call hud('premute') !0 should be still 0 in the adjoint source, esp below first arrivals
+shot%dsyn=shot%dsyn*wei%weight / (wei%weight+r_epsilon)
+call shot%write('updated_Ru_',shot%dsyn)
+call suformat_write('updated_wavelet_'//shot%sindex,shot%wavelet,shot%nt,1,shot%dt)
+endif
+
+                call alloc(Eobs,shot%nt,shot%nrcv)
+                call hilbert_envelope(shot%dobs,Eobs,shot%nt,shot%nrcv)
+                call shot%write('Eobs_',Eobs)
+
+                fobj%misfit = fobj%misfit &
+                    + Envsq(0.5, shot%nt, shot%nrcv, wei%weight, shot%dsyn, Eobs, shot%dt)
+                call kernel_Envsq(shot%dadj,shot%nt,shot%nrcv)
+
+if(s_update_wavelet/='') then
+call hud('update adjoint source')
+call shot%update_adjsource
+endif
+
+
             case default
                 call error('No DNORM specified!')
 
@@ -380,6 +409,7 @@ endif
 
 if(allocated(a_star_u%gkpa)) call sysio_write('gkpa_'//shot%sindex,a_star_u%gkpa,size(a_star_u%gkpa))
 if(allocated(a_star_u%glda)) call sysio_write('glda_'//shot%sindex,a_star_u%glda,size(a_star_u%glda))
+if(allocated(a_star_u%gimu)) call sysio_write('gimu_'//shot%sindex,a_star_u%gimu,size(a_star_u%gimu))
 
         call hud('----  Assemble  ----')
         call ppg%assemble(a_star_u)

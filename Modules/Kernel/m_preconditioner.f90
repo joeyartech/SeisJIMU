@@ -44,6 +44,18 @@ use m_parametrizer
                 call hud('Will precondition the gradient by z*'//sublist(2)%s)
                 call by_depth(o_factor=str2real(sublist(2)%s))
             endif
+
+            if(index(list(i)%s,'vp^')>0) then
+                sublist=split(list(i)%s,o_sep='^')
+                call hud('Will precondition the gradient by vp^'//sublist(2)%s)
+                call by_vel(vel=m%vp,power=str2real(sublist(2)%s))
+            endif
+
+            if(index(list(i)%s,'vs^')>0) then
+                sublist=split(list(i)%s,o_sep='^')
+                call hud('Will precondition the gradient by vs^'//sublist(2)%s)
+                call by_vel(vel=m%vs,power=str2real(sublist(2)%s))
+            endif
             
             ! if(index(list(i)%s,'energy')>0) then
             !     sublist=split(list(i)%s,o_sep=':')
@@ -98,6 +110,14 @@ use m_parametrizer
             enddo; enddo
         endif
         
+    end subroutine
+
+    subroutine by_vel(vel,power)
+        real,dimension(m%nz,m%nx,m%ny) :: vel
+        real :: power
+
+        preco_in_m = vel**power
+
     end subroutine
 
     subroutine by_energy(iengy)
