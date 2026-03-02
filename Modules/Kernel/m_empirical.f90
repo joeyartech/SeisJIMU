@@ -7,7 +7,7 @@ use m_Modeling
     public :: empirical_init, empirical_x2m, empirical_m2x, empirical_gradient
 
     logical,public :: is_empirical=.false. !needed by m_parametrizer
-    logical :: is_gardner=.false., is_castagna=.false., is_vpqp=.false.
+    logical :: is_gardner=.false., is_castagna=.false., is_vpqp=.false., is_vpvs=.false.
 
     real :: a,b
 
@@ -73,6 +73,14 @@ use m_Modeling
                     is_vpqp=.true.
                     
                     call hud('Qp=sqrt(Vp) law is enabled')
+
+                elseif(list(i)%s(1:4)=='VpVs') then
+                    is_vpvs=.true.
+                    
+                    sublist=split(list(i)%s,o_sep=':')
+                    a=str2real(sublist(2)%s)
+                    
+                    call hud('Vp/Vs ='//num2str(a)//' is enforced')
 
                 endif
 
@@ -154,7 +162,12 @@ use m_Modeling
             if(is_castagna) then
                 o_gvp = o_gvp + o_gvs * a
                 o_gvs = 0.
-           endif
+            endif
+
+            !Vp/Vs=a
+            if(is_vpvs) then
+                o_gvp = o_gvp + o_gvs / a
+            endif
             
         endif
 
@@ -173,6 +186,11 @@ use m_Modeling
                 o_gvp = o_gvp + o_gvs * a
                 o_gvs = 0.
            endif
+
+            !Vp/Vs=a
+            if(is_vpvs) then
+                o_gvp = o_gvp + o_gvs / a
+            endif
             
         endif
 
