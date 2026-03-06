@@ -135,13 +135,11 @@ use m_Modeling
             !Gardner
             if(is_gardner) then
                 o_gvp  = o_gvp + o_grho * a*b*m%vp**(b-1)
-                o_grho = 0.
             endif
 
             !Castagna
             if(is_castagna) then
                 o_gvp = o_gvp + o_gvs * a
-                o_gvs = 0.
             endif
 
             if(is_vpqp) then
@@ -155,13 +153,11 @@ use m_Modeling
             !Gardner
             if(is_gardner) then
                 o_gvp  = o_gvp + o_gip * a*(b+1)*m%vp**b
-                o_gip = 0.
             endif
 
             !Castagna
             if(is_castagna) then
                 o_gvp = o_gvp + o_gvs * a
-                o_gvs = 0.
             endif
 
             !Vp/Vs=a
@@ -177,14 +173,12 @@ use m_Modeling
             if(is_gardner) then
                 call pseudotime_convert('z->t',m%vp,v_t)
                 o_gvp  = o_gvp + o_gip * a*(b+1)*v_t**b
-                o_gip = 0.
                 deallocate(v_t)
             endif
 
             !Castagna
             if(is_castagna) then
                 o_gvp = o_gvp + o_gvs * a
-                o_gvs = 0.
            endif
 
             !Vp/Vs=a

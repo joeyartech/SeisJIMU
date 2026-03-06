@@ -3,23 +3,6 @@ use m_System
 use m_Modeling
 use m_empirical
 
-    !PARAMETERIZATION     -- ALLOWED PARAMETERS
-    !velocities-density   -- vp vs rho
-
-    !acoustic:
-    !kpa = rho*vp^2 = vp*ip
-    !rho0= rho      = ip/vp
-    !gvp = gkpa*2rho*vp
-    !grho= gkpa*vp^2 + grho0
-
-    !P-SV:
-    !lda = rho(vp^2-2vs^2)
-    !mu  = rho*vs^2
-    !rho0= rho
-    !gvp = glda*2rho*vp
-    !gvs = (glda*-2 + gmu)*2rho*vs
-    !grho= glda*vp^2 + (-2glda+gmu)*vs^2 + grho0
-
     private
 
     type t_parameter
@@ -47,8 +30,11 @@ use m_empirical
 
     type(t_parametrizer),public :: param
 
-    logical :: is_AC=.false., is_EL=.false.
+    logical :: is_grho,is_gbuo,is_gkpa,is_gikpa,is_glda,is_gmu
     integer :: i_vp=0, i_vs=0, i_rho=0
+
+    real,dimension(:,:,:),allocatable :: tmp_gvp, tmp_gvs, tmp_grho
+
 
     contains
     
@@ -63,9 +49,13 @@ use m_empirical
         if(allocated(sublist)) deallocate(sublist)
         
         
-        !PDE info
-        is_AC = index(ppg%info,'AC')>0
-        is_EL = index(ppg%info,'EL')>0
+        !check basic gradients provided from propagator
+        is_grho = index(ppg%info,'grho')>0
+        is_gbuo = index(ppg%info,'gbuo')>0
+        is_gkpa = index(ppg%info,'gkpa')>0 
+        is_gikpa= index(ppg%info,'gikpa')>0
+        is_glda = index(ppg%info,'glda')>0
+        is_gmu  = index(ppg%info,'gmu')>0
 
         !read in active parameters and their allowed ranges
         list=setup%get_strs('PARAMETER',o_default='vp:1500:3400')
@@ -85,7 +75,7 @@ use m_empirical
                 self%npars=self%npars+1
 
             case ('vs' )
-                if(is_AC) then
+                if(index(ppg%info,'AC')>0) then
                     call hud('vs in PARAMETER is neglected as the PDE is ACoustic.')
                     cycle loop
                 endif
@@ -147,7 +137,7 @@ use m_empirical
 
                 call empirical_x2m('velocities-density')
                 
-                call m%apply_elastic_continuum
+                if(index(ppg%info,'EL')>0) call m%apply_elastic_continuum
                 call m%apply_freeze_zone
 
             endif
@@ -168,24 +158,83 @@ use m_empirical
         if(present(o_g)) then
             call alloc(o_g,self%n1,self%n2,self%n3,self%npars)
 
-            if(is_AC) then
+            call alloc(tmp_gvp, self%n1,self%n2,self%n3)
+            call alloc(tmp_gvs, self%n1,self%n2,self%n3)
+            call alloc(tmp_grho,self%n1,self%n2,self%n3)
+
+            n_entry=0
+
+            if(is_grho.and.is_gkpa) then
+                n_entry=n_entry+1
+                call hud('Parametrizer finds grho & gkpa')
                 !correlate_gradient(:,:,:,1) = grho
                 !correlate_gradient(:,:,:,2) = gkpa
-                if(i_vp >0) o_g(:,:,:,i_vp ) = correlate_gradient(:,:,:,2)*2*m%rho*m%vp
-                if(i_rho>0) o_g(:,:,:,i_rho) = correlate_gradient(:,:,:,2)*m%vp**2 + correlate_gradient(:,:,:,1)
+                !
+                !kpa = rho*vp² = vp*ip
+                !rho0= rho      = ip/vp
+                !So,
+                !gvp = gkpa*2*rho*vp
+                !grho= gkpa*vp² + grho0
+                tmp_gvp  = correlate_gradient(:,:,:,2)*2*m%rho*m%vp
+                tmp_grho = correlate_gradient(:,:,:,2)*m%vp**2 + correlate_gradient(:,:,:,1)
 
-                call empirical_gradient('velocities-density',o_gvp=o_g(:,:,:,i_vp),o_grho=o_g(:,:,:,i_rho))
+                call empirical_gradient('velocities-density',o_gvp=tmp_gvp,o_grho=tmp_grho)
+
+                if(i_vp >0) o_g(:,:,:,i_vp ) = tmp_gvp
+                if(i_rho>0) o_g(:,:,:,i_rho) = tmp_grho
+
             endif
 
-            if(is_EL) then
+            if(is_gbuo.and.is_gikpa) then 
+                n_entry=n_entry+1
+                call hud('Parametrizer finds gbuo & gikpa')    
+                !correlate_gradient(:,:,:,1) = gbuo
+                !correlate_gradient(:,:,:,2) = gikpa
+                !
+                !ikpa= kpa⁻¹ = rho⁻¹ vp⁻²
+                !buo = rho⁻¹
+                !So,
+                !gvp = gikpa* rho⁻¹*(-2)vp⁻³
+                !grho= -rho⁻²*( gbuo + gikpa*vp⁻² )
+                tmp_gvp  = correlate_gradient(:,:,:,2)*(-2.)/m%rho/(m%vp**3)
+                tmp_grho = -m%rho**(-2)*( &
+                    correlate_gradient(:,:,:,1) + correlate_gradient(:,:,:,2)/(m%vp**2) )
+
+                call empirical_gradient('velocities-density',o_gvp=tmp_gvp,o_grho=tmp_grho)
+
+                if(i_vp >0) o_g(:,:,:,i_vp ) = tmp_gvp
+                if(i_rho>0) o_g(:,:,:,i_rho) = tmp_grho
+
+            endif
+
+            if(is_grho.and.is_glda.and.is_gmu) then
+                n_entry=n_entry+1
+                call hud('Parametrizer finds grho glda & gmu')
                 !correlate_gradient(:,:,:,1) = grho
                 !correlate_gradient(:,:,:,2) = glda
-                !correlate_gradient(:,:,:,2) = gmu            
-                if(i_vp >0) o_g(:,:,:,i_vp ) = correlate_gradient(:,:,:,2)*2*m%rho*m%vp
-                if(i_vs >0) o_g(:,:,:,i_vs ) =(correlate_gradient(:,:,:,2)*(-2) + correlate_gradient(:,:,:,3))*2*m%rho*m%vs
-                if(i_rho>0) o_g(:,:,:,i_rho) = correlate_gradient(:,:,:,2)*m%vp**2 + (-2*correlate_gradient(:,:,:,2)+correlate_gradient(:,:,:,3))*m%vs**2 + correlate_gradient(:,:,:,1)
+                !correlate_gradient(:,:,:,2) = gmu 
+                !
+                !lda = rho(vp²-2vs²)
+                !mu  = rho*vs²
+                !rho0= rho
+                !So,
+                !gvp = glda*2rho*vp
+                !gvs = (glda*-2 + gmu)*2rho*vs
+                !grho= glda*vp² + (-2glda+gmu)*vs² + grho0
+                tmp_gvp  = correlate_gradient(:,:,:,2)*2*m%rho*m%vp
+                tmp_gvs  =(correlate_gradient(:,:,:,2)*(-2) + correlate_gradient(:,:,:,3))*2*m%rho*m%vs
+                tmp_grho = correlate_gradient(:,:,:,2)*m%vp**2 + (-2*correlate_gradient(:,:,:,2)+correlate_gradient(:,:,:,3))*m%vs**2 + correlate_gradient(:,:,:,1)
 
-                call empirical_gradient('velocities-density',o_gvp=o_g(:,:,:,i_vp),o_gvs=o_g(:,:,:,i_vs),o_grho=o_g(:,:,:,i_rho))
+                call empirical_gradient('velocities-density',o_gvp=tmp_gvp,o_gvs=tmp_gvs,o_grho=tmp_grho)
+
+                if(i_vp >0) o_g(:,:,:,i_vp ) = tmp_gvp
+                if(i_vs >0) o_g(:,:,:,i_vs ) = tmp_gvs
+                if(i_rho>0) o_g(:,:,:,i_rho) = tmp_grho
+
+            endif
+
+            if(n_entry/=1) then
+                call error('Parametrizer has n_entry='//num2str(n_entry))
             endif
 
             !normaliz g by allowed parameter range
@@ -206,4 +255,4 @@ use m_empirical
         preco_in_x=preco_in_m
     end subroutine
 
-end module
+end module  

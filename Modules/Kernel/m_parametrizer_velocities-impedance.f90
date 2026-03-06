@@ -33,6 +33,8 @@ use m_empirical
     logical :: is_grho,is_gbuo,is_gkpa,is_gikpa,is_glda,is_gmu
     integer :: i_vp=0, i_vs=0, i_ip=0
 
+    real,dimension(:,:,:),allocatable :: tmp_gvp, tmp_gvs, tmp_gip
+
     contains
     
     subroutine init(self)
@@ -119,7 +121,6 @@ use m_empirical
         real,dimension(:,:,:,:),allocatable,optional :: o_x,o_xprior,o_g
 
         real,dimension(:,:,:),allocatable :: tmp_vp
-        real,dimension(:,:,:),allocatable :: tmp_gvp, tmp_gvs, tmp_gip
 
         if(present(o_x)) then
             call alloc(o_x,self%n1,self%n2,self%n3,self%npars,oif_protect=.true.)
@@ -136,7 +137,7 @@ use m_empirical
                 if(i_vp >0) then
                     tmp_vp = o_x(:,:,:,i_vp)*self%pars(i_vp)%range +self%pars(i_vp)%min  !implicit allocation
                     m%rho = m%vp*m%rho / tmp_vp
-                    m%rho0= m%vp*m%rho0/ tmp_vp !rho0 in m%rho0 has diff meaning from grho0
+                    if(allocated(m%rho0)) m%rho0= m%vp*m%rho0/ tmp_vp !rho0 in m%rho0 has diff meaning from grho0
                     m%vp  = tmp_vp
                     deallocate(tmp_vp)
                 endif
@@ -166,9 +167,14 @@ use m_empirical
         if(present(o_g)) then
             call alloc(o_g,self%n1,self%n2,self%n3,self%npars)
 
+            call alloc(tmp_gvp,self%n1,self%n2,self%n3)
+            call alloc(tmp_gvs,self%n1,self%n2,self%n3)
+            call alloc(tmp_gip,self%n1,self%n2,self%n3)
+
             n_entry=0
 
             if(is_grho.and.is_gkpa) then
+                n_entry=n_entry+1
                 call hud('Parametrizer finds grho & gkpa')
                 !correlate_gradient(:,:,:,1) = grho0
                 !correlate_gradient(:,:,:,2) = gkpa
@@ -178,28 +184,19 @@ use m_empirical
                 !So,
                 !gvp = (gkpa*vp - grho0/vp)*rho
                 !gip =  gkpa*vp + grho0/vp
+                tmp_gvp = (correlate_gradient(:,:,:,2)*m%vp - correlate_gradient(:,:,:,1)/m%vp)*m%rho
+                tmp_gip =  correlate_gradient(:,:,:,2)*m%vp + correlate_gradient(:,:,:,1)/m%vp
 
-                call alloc(tmp_gvp,m%nz,m%nx,m%ny)
-                call alloc(tmp_gip,m%nz,m%nx,m%ny)
+                call empirical_gradient('velocities-impedance',o_gvp=tmp_gvp,o_gip=tmp_gip)
 
-                tmp_gvp =(correlate_gradient(:,:,:,2)*m%vp - correlate_gradient(:,:,:,1)/m%vp)*m%rho
-                tmp_gip = correlate_gradient(:,:,:,2)*m%vp + correlate_gradient(:,:,:,1)/m%vp
+                if(i_vp >0) o_g(:,:,:,i_vp ) = tmp_gvp
+                if(i_ip >0) o_g(:,:,:,i_ip ) = tmp_gip
 
-                if(.not.is_empirical) then
-                    if(i_vp >0) o_g(:,:,:,i_vp ) = tmp_gvp
-                    if(i_ip >0) o_g(:,:,:,i_ip ) = tmp_gip
-
-                else
-                    call empirical_gradient('velocities-impedance',o_gvp=tmp_gvp,o_gip=tmp_gip)
-                    o_g(:,:,:,i_vp)=tmp_gvp
-
-                endif
-
-                n_entry=n_entry+1
 
             endif
 
             if(is_grho.and.is_glda.and.is_gmu) then
+                n_entry=n_entry+1
                 call hud('Parametrizer finds grho glda & gmu')
                 !correlate_gradient(:,:,:,1) = grho0
                 !correlate_gradient(:,:,:,2) = glda
@@ -212,27 +209,15 @@ use m_empirical
                 !gvp = (glda*vp^2 + (2glda-gmu)vs^2 - grho0)*rho/vp
                 !gvs = (-2glda + gmu)*2vs*rho
                 !gip = (glda*vp^2 + (-2glda+gmu)*vs^2 +grho0) /vp
+                tmp_gvp =(correlate_gradient(:,:,:,2)*m%vp**2 + (2*correlate_gradient(:,:,:,2)-correlate_gradient(:,:,:,3))*m%vs**2 - correlate_gradient(:,:,:,1))*m%rho/m%vp
+                tmp_gvs =(-2*correlate_gradient(:,:,:,2) + correlate_gradient(:,:,:,3))*2*m%rho*m%vs
+                tmp_gip =(correlate_gradient(:,:,:,2)*m%vp**2 + (-2*correlate_gradient(:,:,:,2)+correlate_gradient(:,:,:,3))*m%vs**2 + correlate_gradient(:,:,:,1))/m%vp
 
-                call alloc(tmp_gvp,m%nz,m%nx,m%ny)
-                call alloc(tmp_gvs,m%nz,m%nx,m%ny)
-                call alloc(tmp_gip,m%nz,m%nx,m%ny)
+                call empirical_gradient('velocities-impedance',o_gvp=tmp_gvp,o_gvs=tmp_gvs,o_gip=tmp_gip)
 
-                tmp_gvp=(correlate_gradient(:,:,:,2)*m%vp**2 + (2*correlate_gradient(:,:,:,2)-correlate_gradient(:,:,:,3))*m%vs**2 - correlate_gradient(:,:,:,1))*m%rho/m%vp
-                tmp_gvs=(-2*correlate_gradient(:,:,:,2) + correlate_gradient(:,:,:,3))*2*m%rho*m%vs
-                tmp_gip=(correlate_gradient(:,:,:,2)*m%vp**2 + (-2*correlate_gradient(:,:,:,2)+correlate_gradient(:,:,:,3))*m%vs**2 + correlate_gradient(:,:,:,1))/m%vp
-
-                if(.not.is_empirical) then
-                    if(i_vp >0) o_g(:,:,:,i_vp ) =tmp_gvp
-                    if(i_vs >0) o_g(:,:,:,i_vs ) =tmp_gvs
-                    if(i_ip >0) o_g(:,:,:,i_ip ) =tmp_gip
-
-                else
-                    call empirical_gradient('velocities-impedance',o_gvp=o_g(:,:,:,i_vp),o_gvs=o_g(:,:,:,i_vs),o_gip=o_g(:,:,:,i_ip))    
-                    o_g(:,:,:,i_vp)=tmp_gvp
-
-                endif
-
-                n_entry=n_entry+1
+                if(i_vp >0) o_g(:,:,:,i_vp ) = tmp_gvp
+                if(i_vs >0) o_g(:,:,:,i_vs ) = tmp_gvs
+                if(i_ip >0) o_g(:,:,:,i_ip ) = tmp_gip
 
             endif
 
