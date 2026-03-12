@@ -30,7 +30,7 @@ use singleton
     real :: visac_b = -110.687
     real :: visac_d = 1111.5
     real :: visac_e = 1
-    integer :: ifsmooth = 1, smooth_interval=10
+    integer :: ifsmooth = 1, smooth_interval=100
     logical :: if_freesurface_ppg
 
     ! logical :: is_Q_attenuation
