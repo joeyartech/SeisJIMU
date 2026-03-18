@@ -54,11 +54,7 @@ use m_resampler
 
         !update wavelet
         if(setup%get_str('UPDATE_WAVELET')/='no') then
-!            call wei%update
-            call shot%update_wavelet!(wei%weight)
-            call matchfilter_apply_to_data(shot%dsyn)
-
-            !write synthetic data
+            call shot%update_wavelet
             call shot%write('updated_Ru_',shot%dsyn)
         endif
 
@@ -73,7 +69,7 @@ use m_resampler
         call hud('------------------------')
         call hud('     Build Ip model     ')
         call hud('------------------------')
-        
+
         fobj%misfit = fobj%misfit &
             + L2sq(0.5, shot%nrcv*shot%nt, wei%weight*sepa%nearoffset*sepa%reflection,shot%dobs-shot%dsyn, shot%dt)
 !            + L2sq(0.5, shot%nrcv*shot%nt, wei%weight*sepa%nearoffset, shot%dobs-shot%dsyn, shot%dt)
@@ -82,8 +78,8 @@ use m_resampler
         call shot%write('dadj_',shot%dadj)
 
         call hud('----  Solving A(m)ᴴa = RʳᴴΔdʳ and a★u  ----')
-        call ppg%init_correlate(a_star_u,'a_star_u')
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.); call fld_a%ignite
+        call ppg%init_correlate(a_star_u,'a_star_u')
         call ppg%adjoint(fld_a,fld_u,a_star_u)
 
         call hud('----  Assemble a★u  ----')
@@ -202,11 +198,8 @@ use m_resampler
         call fld_u0%acquire(o_seismo=shot%dsyn_aux);  call shot%write('Ru0_',shot%dsyn_aux)
 
         !update wavelet
-        if(setup%get_str('UPDATE_WAVELET')/='no') then
-            call wei%update
+        if(setup%get_str('UPDATE_WAVELET')/='no') then !needed?
             call shot%update_wavelet!(wei%weight)
-            call matchfilter_apply_to_data(shot%dsyn)
-            call matchfilter_apply_to_data(shot%dsyn_aux)
 
             !write synthetic data
             call shot%write('updated_Ru_',shot%dsyn)

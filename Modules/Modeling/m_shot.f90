@@ -530,6 +530,7 @@ use m_model
         call matchfilter_apply_to_wavelet(self%wavelet)
         
         call matchfilter_apply_to_data(self%dsyn)
+        if(allocated(self%dsyn_aux)) call matchfilter_apply_to_data(self%dsyn_aux)
 
         call sudata%init(self%nt,1,o_dt=self%dt,o_data=self%wavelet)
         sudata%hdrs%fldr=self%index
