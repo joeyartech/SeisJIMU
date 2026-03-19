@@ -1,3 +1,4 @@
+
 MODEL_SIZE              '143 810  1'
 MODEL_SPACING           '21  21   1'
 FILE_MODEL              'true'
@@ -13,10 +14,10 @@ IF_BLOOM                T
 
 ACQUI_GEOMETRY          spread
 FS                      '  21   1200  0'
-#DS			'  0   100   0'
-#NS			 144
-DS			'  0   400  0'
-NS			 36
+#DS                     '  0   100   0'
+#NS                     144
+DS                      '  0   400  0'
+NS                      36
 FR                      '  21   0   0'
 DR                      '  0   25  0'
 NR                       670
@@ -25,7 +26,7 @@ SCOMP                   dpdz  #p
 RCOMP                   dpdz  #p
 IF_MUST_USE_RCOMP       T
 
-WAVELET_TYPE	ricker
+WAVELET_TYPE            ricker
 
 FPEAK        4
 NT           1923
@@ -40,9 +41,9 @@ DT           0.0026
 FILE_DATA_PREFIX    './results_obs/Ru_Shot'
 WEIGHTING           'none'
 
-UPDATE_WAVELET	no
+UPDATE_WAVELET      no
 
-PARAMETER           'vp:1065:4700 qp:10:100'
+PARAMETER           'vp:1065:4700 qp:30:120'
 
 SMOOTHING     'none'
 #PRECO         'z^0'
