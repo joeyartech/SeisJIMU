@@ -7,7 +7,7 @@ use m_Modeling
     public :: empirical_init, empirical_x2m, empirical_m2x, empirical_gradient
 
     logical,public :: is_empirical=.false. !needed by m_parametrizer
-    logical :: is_gardner=.false., is_castagna=.false., is_vpqp=.false., is_vpvs=.false.
+    logical :: is_gardner=.false., is_castagna=.false., is_abdullah=.false., is_vpqp=.false., is_vpvs=.false.
 
     real :: const_a,const_b,const_k,const_p
     real :: a_vpqp

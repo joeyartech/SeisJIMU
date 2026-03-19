@@ -192,7 +192,6 @@ use m_empirical
                 if(i_vp >0) o_g(:,:,:,i_vp ) = tmp_gvp
                 if(i_ip >0) o_g(:,:,:,i_ip ) = tmp_gip
 
-
             endif
 
             if(is_grho.and.is_glda.and.is_gmu) then
@@ -200,7 +199,7 @@ use m_empirical
                 call hud('Parametrizer finds grho glda & gmu')
                 !correlate_gradient(:,:,:,1) = grho0
                 !correlate_gradient(:,:,:,2) = glda
-                !correlate_gradient(:,:,:,2) = gmu 
+                !correlate_gradient(:,:,:,3) = gmu 
                 !
                 !lda = rho(vp^2-2vs^2) = vp*ip - 2vs^2*ip/vp
                 !mu  = rho*vs^2        = vs^2*ip/vp

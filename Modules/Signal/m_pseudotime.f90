@@ -134,8 +134,9 @@ use m_arrayop
 
             !real nt needed
             nreal = ceiling(sum(Dz/v,dim=1)/Dt)
+! print*,'z->t',Dz,Dt,v(1,1,1),nreal(1,1)
             nreal = min(nreal,nt)
-
+! print*,'z->t',nt,nreal(1,1)
             do iy=1,ny; do ix=1,nx
 
                 !loop
@@ -157,7 +158,9 @@ use m_arrayop
 
             !real nz needed
             nreal = ceiling(sum(v*Dt,dim=1)/Dz)
+! print*,'t->z',Dz,Dt,v(1,1,1),nreal(1,1)
             nreal = min(nreal,nz)
+! print*,'t->z',nz,nreal(1,1)
 
             do iy=1,ny; do ix=1,nx
 
