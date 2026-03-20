@@ -177,14 +177,24 @@ use m_computebox
     function correlate_add(a,b) result(c)
         type(t_correlate) :: a,b,c
 
-        if( allocated(a%gkpa ) .and. allocated(b%gkpa ) ) allocate(c%gkpa , source=a%gkpa +b%gkpa)
-        if( allocated(a%gikpa) .and. allocated(b%gikpa) ) allocate(c%gikpa, source=a%gikpa+b%gikpa)
-        if( allocated(a%glda ) .and. allocated(b%glda ) ) allocate(c%glda , source=a%glda +b%glda )
-        if( allocated(a%gmu  ) .and. allocated(b%gmu  ) ) allocate(c%gmu  , source=a%gmu  +b%gmu  )
-        if( allocated(a%grho ) .and. allocated(b%grho ) ) allocate(c%grho , source=a%grho +b%grho )
-        if( allocated(a%gbuo ) .and. allocated(b%gbuo ) ) allocate(c%gbuo , source=a%gbuo +b%gbuo )
-        
+        ! if( allocated(a%gkpa ) .and. allocated(b%gkpa ) ) allocate(c%gkpa , source=a%gkpa +b%gkpa ) !bug: will reallocate without deallocation
+
+        call alloc_add(a%gkpa, b%gkpa, c%gkpa )
+        call alloc_add(a%gikpa,b%gikpa,c%gikpa)
+        call alloc_add(a%glda ,b%glda ,c%glda )
+        call alloc_add(a%gmu  ,b%gmu  ,c%gmu  )
+        call alloc_add(a%grho ,b%grho ,c%grho )
+        call alloc_add(a%gbuo ,b%gbuo ,c%gbuo )
+
     end function
+
+    subroutine alloc_add(a,b,c)
+        real,dimension(:,:,:),allocatable :: a,b,c
+        if( allocated(a) .and. allocated(b) ) then
+            call alloc(c, cb%nz,cb%nx,cb%ny)
+            c = a + b
+        endif
+    end subroutine
 
     subroutine correlate_mask(mask)
         real,dimension(m%nz,m%nx,m%ny) :: mask
