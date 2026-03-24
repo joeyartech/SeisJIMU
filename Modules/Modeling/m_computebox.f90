@@ -175,12 +175,12 @@ use m_shot
         ! end associate
 
         !models in computebox
-        call m2cb(m%vp ,self%vp )
-        call m2cb(m%vs ,self%vs )
+        call m2cb(m%vp, self%vp )
+        call m2cb(m%vs, self%vs )
+        call m2cb(m%rho,self%rho)
         if(either(ois_background,.false.,present(ois_background))) then
-            call m2cb(m%rho0, self%rho)
-        else
-            call m2cb(m%rho,self%rho)
+            call m2cb(m%vs0, self%vs )
+            call m2cb(m%rho0,self%rho)
         endif
         call m2cb(m%eps,self%eps)
         call m2cb(m%del,self%del)
@@ -200,9 +200,9 @@ use m_shot
 
         call hud('Computebox value ranges:')
         if(mpiworld%is_master) then
-                                    write(*,*)'vp' ,minval(self%vp),maxval(self%vp)
-            if(allocated(self%vs )) write(*,*)'vs' ,minval(self%vs),maxval(self%vs)
-                                    write(*,*)'rho',minval(self%rho),maxval(self%rho)
+                                    write(*,*)'vp' ,minval(self%vp ),maxval(self%vp ),sum(self%vp )
+            if(allocated(self%vs )) write(*,*)'vs' ,minval(self%vs ),maxval(self%vs ),sum(self%vs )
+                                    write(*,*)'rho',minval(self%rho),maxval(self%rho),sum(self%rho)
                                     write(*,*)'ip' ,minval(self%vp*self%rho),maxval(self%vp*self%rho)
             if(allocated(self%eps)) write(*,*)'eps',minval(self%eps),maxval(self%eps)
             if(allocated(self%del)) write(*,*)'del',minval(self%del),maxval(self%del)

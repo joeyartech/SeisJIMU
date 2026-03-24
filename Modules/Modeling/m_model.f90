@@ -16,7 +16,7 @@ use m_smoother_laplacian_sparse
 
         logical :: is_cubic, is_freesurface, if_has_prior
         
-        real,dimension(:,:,:),allocatable :: vp,vs,rho,rho0
+        real,dimension(:,:,:),allocatable :: vp,vs,vs0,rho,rho0
         real,dimension(:,:,:),allocatable :: eps,del,eta
         real,dimension(:,:,:),allocatable :: qp,qs
 
@@ -36,6 +36,7 @@ use m_smoother_laplacian_sparse
         procedure :: read_prior
         procedure :: set_reference
         procedure :: write
+        procedure :: apply_empirical
         procedure :: apply_freeze_zone
         procedure :: apply_elastic_continuum
 
@@ -312,6 +313,87 @@ use m_smoother_laplacian_sparse
         !ref_inv_vp & _rho should also be checkpointed
     end subroutine
 
+    subroutine apply_empirical(self)
+        class(t_model) :: self
+
+        type(t_string),dimension(:),allocatable :: list,sublist
+
+        !read in empirical law
+        list=setup%get_strs('EMPIRICAL_LAW')
+
+        do i=1,size(list)
+                if(list(i)%s(1:7)=='Gardner') then
+                    !Gardner law rho=a*vp^b
+                    !https://wiki.seg.org/wiki/Dictionary:Gardner%E2%80%99s_equation
+                    !http://www.subsurfwiki.org/wiki/Gardner%27s_equation
+                    !https://en.wikipedia.org/wiki/Gardner%27s_relation
+
+                    if(len(list(i)%s)<=7) then
+                        const_k=either(0.31,310.,m%rho(1,1,1)<1000.) !g/cm³ or kg/m³
+                        const_p=0.25
+                    else
+                        sublist=split(list(i)%s,o_sep=',') !ifort generates 'catastropic error ... internal compiler error' and lets me report...
+                        const_k=str2real(sublist(2)%s)
+                        const_p=str2real(sublist(3)%s)
+                    endif
+
+                    call hud('Applying Gardner law: m%rho = '//num2str(const_k)//'*m%vp^'//num2str(const_p))
+                    self%rho = const_k * self%vp ** const_p
+
+                elseif(list(i)%s(1:8)=='Castagna') then
+                    !Castagna mudrock line vs=a*vp+b
+                    !https://en.wikipedia.org/wiki/Mudrock_line
+                    !Note that Poisson solid vs=a*vp
+                    !can be realized by setting a=1./sqrt(3.) and b=0.
+
+                    if(len(list(i)%s)<=8) then
+                        const_a=1/1.16
+                        const_b=-1360./1.16 !m/s
+                    else
+                        sublist=split(list(i)%s,o_sep=',') !ifort generates 'catastropic error ... internal compiler error' and lets me report...
+                        const_a=str2real(sublist(2)%s)
+                        const_b=str2real(sublist(3)%s)
+                    endif
+
+                    call hud('Applying Castagna law: m%vs = '//num2str(const_a)//'*m%vp+'//num2str(const_b))
+                    self%vs = const_a * self%vp + const_b
+
+                elseif(list(i)%s(1:8)=='Abdullah') then
+                    !is = vs*rho = Castagna(vp) * Gardner(vp) = (a*vp+b)k*vp^p
+                    !vs = is/rho = (a*vp+b)k*vp^p /rho
+
+                    if(len(list(i)%s)<=8) then
+                        const_a=1/1.16
+                        const_b=-1360./1.16 !m/s
+                        const_k=either(0.31,310.,m%rho(1,1,1)<1000.) !g/cm³ or kg/m³
+                        const_p=0.25
+                    else
+                        sublist=split(list(i)%s,o_sep=',') !ifort generates 'catastropic error ... internal compiler error' and lets me report...
+                        const_a=str2real(sublist(2)%s)
+                        const_b=str2real(sublist(3)%s)
+                        const_k=str2real(sublist(4)%s)
+                        const_p=str2real(sublist(5)%s)
+                    endif
+
+                    call hud('Creating m%vs0 and Applying Abdullah law: m%(vs,vs0) = ('//num2str(const_a)//'*m%vp+'//num2str(const_b)//')*'//num2str(const_k)//'*m%vp^'//num2str(const_p)//' / m%(rho, rho0) ')
+                    self%vs = (const_a*self%vp+const_b) *const_k*self%vp**const_p /self%rho
+                    call alloc(self%vs0,self%nz,self%nx,self%ny)
+                    self%vs0= (const_a*self%vp+const_b) *const_k*self%vp**const_p /self%rho0
+
+                elseif(list(i)%s(1:4)=='VpQp') then
+
+                    call hud('Applying VpQp law: m%qp = sqrt(m%vp).')
+                    m%qp = sqrt(m%vp)
+
+                endif
+
+        enddo
+
+        if(allocated(   list)) deallocate(   list)
+        if(allocated(sublist)) deallocate(sublist)
+
+    end subroutine
+
     subroutine apply_freeze_zone(self)
         class(t_model) :: self
 
@@ -385,6 +467,10 @@ use m_smoother_laplacian_sparse
 
         where (tmp<self%vs) self%vs=tmp
 
+        if(allocated(self%vs0)) then
+            where (tmp<self%vs0) self%vs0=tmp
+        endif
+
         deallocate(tmp)
 
     end subroutine
@@ -409,8 +495,14 @@ use m_smoother_laplacian_sparse
                 endif
 
             case ('vs')
-                if(allocated(self%vp)) then
+                if(allocated(self%vs)) then
                     write(13,rec=i) self%vs
+                    ! call hud('vs model is written.')
+                endif
+
+            case ('vs0')
+                if(allocated(self%vs0)) then
+                    write(13,rec=i) self%vs0
                     ! call hud('vs model is written.')
                 endif
 

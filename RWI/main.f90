@@ -43,6 +43,10 @@ use m_Optimization
     !model
     call m%init
     call m%read
+    call m%apply_empirical
+    call m%apply_freeze_zone
+    call m%apply_elastic_continuum
+
     call ppg%check_model
 
     !shotlist

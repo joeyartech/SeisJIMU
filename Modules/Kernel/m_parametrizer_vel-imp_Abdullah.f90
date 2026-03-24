@@ -13,8 +13,8 @@ use m_empirical
     type,public :: t_parametrizer
         !info
         character(i_str_xxlen) :: info = &
-            'Parameterization: velocities-impedance'//s_NL// &
-            'Allowed pars: vp, vs, ip'
+            'Parameterization: vel-imp under Abdullah empirical law'//s_NL// &
+            'Allowed PARAMETER: vp'
 
         type(t_parameter),dimension(:),allocatable :: pars
         integer :: npars
@@ -31,7 +31,14 @@ use m_empirical
     type(t_parametrizer),public :: param
 
     logical :: is_grho,is_gbuo,is_gkpa,is_gikpa,is_glda,is_gmu
-    integer :: i_vp=0, i_vs=0, i_ip=0
+    integer :: i_vp=0
+
+    !------------- EMPIRICAL LAW --------------
+    real,parameter :: const_a=1/1.16
+    real,parameter :: const_b=-1360./1.16 !m/s
+    real,parameter :: const_k=0.31 !g/cm³
+    real,parameter :: const_p=0.25
+    !------------------------------------
 
     real,dimension(:,:,:),allocatable :: tmp_gvp, tmp_gvs, tmp_gip
 
@@ -59,7 +66,13 @@ use m_empirical
 
         !read in active parameters and their allowed ranges
         list=setup%get_strs('PARAMETER',o_default='vp:1500:3400')
-        
+
+
+        !------------- EMPIRICAL LAW --------------
+        call hud('Abdullah law is enabled: '//num2str(const_a)//', '//num2str(const_b)//', ' &
+                                            //num2str(const_k)//', '//num2str(const_p))
+        !------------------------------------
+
         self%npars=size(list)
         allocate(self%pars(self%npars))
 
@@ -74,19 +87,19 @@ use m_empirical
                 self%pars(i)%name='vp'
                 self%npars=self%npars+1
 
-            case ('vs' )
-                if(index(ppg%info,'AC')>0) then
-                    call hud('vs in PARAMETER is neglected as the PDE is ACoustic.')
-                    cycle loop
-                endif
-                i_vs=i
-                self%pars(i)%name='vs'
-                self%npars=self%npars+1
+!             case ('vs' )
+!                 if(index(ppg%info,'AC')>0) then
+!                     call hud('vs in PARAMETER is neglected as the PDE is ACoustic.')
+!                     cycle loop
+!                 endif
+!                 i_vs=i
+!                 self%pars(i)%name='vs'
+!                 self%npars=self%npars+1
 
-            case ('ip')
-                i_ip=i
-                self%pars(i)%name='ip'
-                self%npars=self%npars+1
+!             case ('ip')
+!                 i_ip=i
+!                 self%pars(i)%name='ip'
+!                 self%npars=self%npars+1
                 
             end select
 
@@ -127,43 +140,50 @@ use m_empirical
 
             if(either(o_dir,'m->x',present(o_dir))=='m->x') then
                 if(i_vp >0) o_x(:,:,:,i_vp ) = (m%vp      -self%pars(i_vp)%min)/self%pars(i_vp)%range 
-                if(i_vs >0) o_x(:,:,:,i_vs ) = (m%vs      -self%pars(i_vs)%min)/self%pars(i_vs)%range 
-                if(i_ip >0) o_x(:,:,:,i_ip ) = (m%vp*m%rho-self%pars(i_ip)%min)/self%pars(i_ip)%range 
+!                 if(i_vs >0) o_x(:,:,:,i_vs ) = (m%vs      -self%pars(i_vs)%min)/self%pars(i_vs)%range
+!                 if(i_ip >0) o_x(:,:,:,i_ip ) = (m%vp*m%rho-self%pars(i_ip)%min)/self%pars(i_ip)%range
 
-                call empirical_m2x('velocities-impedance')
+!                 call empirical_m2x('velocities-impedance')
 
             else !x->m
 
                 if(i_vp >0) then
                     tmp_vp = o_x(:,:,:,i_vp)*self%pars(i_vp)%range +self%pars(i_vp)%min  !implicit allocation
-                    m%rho = m%vp*m%rho / tmp_vp
+                                          m%rho = m%vp*m%rho / tmp_vp
                     if(allocated(m%rho0)) m%rho0= m%vp*m%rho0/ tmp_vp !rho0 in m%rho0 has diff meaning from grho0
                     m%vp  = tmp_vp
                     deallocate(tmp_vp)
                 endif
-                if(i_vs >0) m%vs  =  o_x(:,:,:,i_vs)*self%pars(i_vs)%range +self%pars(i_vs)%min
-                if(i_ip >0) m%rho = (o_x(:,:,:,i_ip)*self%pars(i_ip)%range +self%pars(i_ip)%min)/m%vp
+!                 if(i_vs >0) m%vs  =  o_x(:,:,:,i_vs)*self%pars(i_vs)%range +self%pars(i_vs)%min
+!                 if(i_ip >0) m%rho = (o_x(:,:,:,i_ip)*self%pars(i_ip)%range +self%pars(i_ip)%min)/m%vp
 
-                call empirical_x2m('velocities-impedance')
+                !call empirical_x2m('velocities-impedance')
                 
-                call m%apply_empirical
-                call m%apply_freeze_zone
+                call hud('Applying Abdullah law: m%(vs,vs0) = ('//num2str(const_a)//'*m%vp+'//num2str(const_b)//')*'//num2str(const_k)//'*m%vp^'//num2str(const_p)//' / m%(rho, rho0) ')
+                m%vs = (const_a*m%vp+const_b) *const_k*m%vp**const_p /m%rho
+                m%vs0= (const_a*m%vp+const_b) *const_k*m%vp**const_p /m%rho0
+
+                where(m%is_freeze_zone)
+                    m%vs =0.
+                    m%vs0=0.
+                endwhere
+
                 call m%apply_elastic_continuum
 
             endif
 
         endif
 
-        if(present(o_xprior)) then
-            call alloc(o_xprior,self%n1,self%n2,self%n3,self%npars)
-
-            if(i_vp >0) o_x(:,:,:,i_vp ) = (m%vp_prior            -self%pars(i_vp)%min)/self%pars(i_vp)%range
-            if(i_vs >0) o_x(:,:,:,i_vs ) = (m%vs_prior            -self%pars(i_vs)%min)/self%pars(i_vs)%range
-            if(i_ip >0) o_x(:,:,:,i_ip ) = (m%vp_prior*m%rho_prior-self%pars(i_ip)%min)/self%pars(i_ip)%range
-
-            call empirical_m2x('velocities-impedance')
-
-        endif
+!         if(present(o_xprior)) then
+!             call alloc(o_xprior,self%n1,self%n2,self%n3,self%npars)
+!
+!             if(i_vp >0) o_x(:,:,:,i_vp ) = (m%vp_prior            -self%pars(i_vp)%min)/self%pars(i_vp)%range
+!             if(i_vs >0) o_x(:,:,:,i_vs ) = (m%vs_prior            -self%pars(i_vs)%min)/self%pars(i_vs)%range
+!             if(i_ip >0) o_x(:,:,:,i_ip ) = (m%vp_prior*m%rho_prior-self%pars(i_ip)%min)/self%pars(i_ip)%range
+!
+!             call empirical_m2x('velocities-impedance')
+!
+!         endif
 
         if(present(o_g)) then
             call alloc(o_g,self%n1,self%n2,self%n3,self%npars)
@@ -172,31 +192,31 @@ use m_empirical
             call alloc(tmp_gvs,self%n1,self%n2,self%n3)
             call alloc(tmp_gip,self%n1,self%n2,self%n3)
 
-            n_entry=0
-
-            if(is_grho.and.is_gkpa) then
-                n_entry=n_entry+1
-                call hud('Parametrizer finds grho & gkpa')
-                !correlate_gradient(:,:,:,1) = grho0
-                !correlate_gradient(:,:,:,2) = gkpa
-                !
-                !kpa = rho*vp^2 = vp*ip
-                !rho0= rho      = ip/vp
-                !So,
-                !gvp = (gkpa*vp - grho0/vp)*rho
-                !gip =  gkpa*vp + grho0/vp
-                tmp_gvp = (correlate_gradient(:,:,:,2)*m%vp - correlate_gradient(:,:,:,1)/m%vp)*m%rho
-                tmp_gip =  correlate_gradient(:,:,:,2)*m%vp + correlate_gradient(:,:,:,1)/m%vp
-
-                call empirical_gradient('velocities-impedance',o_gvp=tmp_gvp,o_gip=tmp_gip)
-
-                if(i_vp >0) o_g(:,:,:,i_vp ) = tmp_gvp
-                if(i_ip >0) o_g(:,:,:,i_ip ) = tmp_gip
-
-            endif
-
-            if(is_grho.and.is_glda.and.is_gmu) then
-                n_entry=n_entry+1
+!             n_entry=0
+!
+!             if(is_grho.and.is_gkpa) then
+!                 n_entry=n_entry+1
+!                 call hud('Parametrizer finds grho & gkpa')
+!                 !correlate_gradient(:,:,:,1) = grho0
+!                 !correlate_gradient(:,:,:,2) = gkpa
+!                 !
+!                 !kpa = rho*vp^2 = vp*ip
+!                 !rho0= rho      = ip/vp
+!                 !So,
+!                 !gvp = (gkpa*vp - grho0/vp)*rho
+!                 !gip =  gkpa*vp + grho0/vp
+!                 tmp_gvp = (correlate_gradient(:,:,:,2)*m%vp - correlate_gradient(:,:,:,1)/m%vp)*m%rho
+!                 tmp_gip =  correlate_gradient(:,:,:,2)*m%vp + correlate_gradient(:,:,:,1)/m%vp
+!
+!                 call empirical_gradient('velocities-impedance',o_gvp=tmp_gvp,o_gip=tmp_gip)
+!
+!                 if(i_vp >0) o_g(:,:,:,i_vp ) = tmp_gvp
+!                 if(i_ip >0) o_g(:,:,:,i_ip ) = tmp_gip
+!
+!             endif
+!
+!             if(is_grho.and.is_glda.and.is_gmu) then
+!                 n_entry=n_entry+1
                 call hud('Parametrizer finds grho glda & gmu')
                 !correlate_gradient(:,:,:,1) = grho0
                 !correlate_gradient(:,:,:,2) = glda
@@ -209,21 +229,21 @@ use m_empirical
                 !gvp = (glda*vp^2 + (2glda-gmu)vs^2 - grho0)*rho/vp
                 !gvs = (-2glda + gmu)*2vs*rho
                 !gip = (glda*vp^2 + (-2glda+gmu)*vs^2 +grho0) /vp
-                tmp_gvp =(correlate_gradient(:,:,:,2)*m%vp**2 + (2*correlate_gradient(:,:,:,2)-correlate_gradient(:,:,:,3))*m%vs**2 - correlate_gradient(:,:,:,1))*m%rho/m%vp
-                tmp_gvs =(-2*correlate_gradient(:,:,:,2) + correlate_gradient(:,:,:,3))*2*m%rho*m%vs
-                tmp_gip =(correlate_gradient(:,:,:,2)*m%vp**2 + (-2*correlate_gradient(:,:,:,2)+correlate_gradient(:,:,:,3))*m%vs**2 + correlate_gradient(:,:,:,1))/m%vp
+                tmp_gvp =(correlate_gradient(:,:,:,2)*m%vp**2 + (2*correlate_gradient(:,:,:,2)-correlate_gradient(:,:,:,3))*m%vs0**2 - correlate_gradient(:,:,:,1))*m%rho0/m%vp
+                tmp_gvs =(-2*correlate_gradient(:,:,:,2) + correlate_gradient(:,:,:,3))*2*m%rho0*m%vs0
+!                 tmp_gip =(correlate_gradient(:,:,:,2)*m%vp**2 + (-2*correlate_gradient(:,:,:,2)+correlate_gradient(:,:,:,3))*m%vs**2 + correlate_gradient(:,:,:,1))/m%vp
 
-                call empirical_gradient('velocities-impedance',o_gvp=tmp_gvp,o_gvs=tmp_gvs,o_gip=tmp_gip)
+!                 call empirical_gradient('velocities-impedance',o_gvp=tmp_gvp,o_gvs=tmp_gvs,o_gip=tmp_gip)
 
-                if(i_vp >0) o_g(:,:,:,i_vp ) = tmp_gvp
-                if(i_vs >0) o_g(:,:,:,i_vs ) = tmp_gvs
-                if(i_ip >0) o_g(:,:,:,i_ip ) = tmp_gip
+                if(i_vp >0) o_g(:,:,:,i_vp ) = tmp_gvp + tmp_gvs*(const_a*(const_p+2)+const_b*(const_p+1)/m%vp)
+!                 if(i_vs >0) o_g(:,:,:,i_vs ) = tmp_gvs
+!                 if(i_ip >0) o_g(:,:,:,i_ip ) = tmp_gip
 
-            endif
-
-            if(n_entry/=1) then
-                call error('Parametrizer has n_entry='//num2str(n_entry))
-            endif
+!             endif
+!
+!             if(n_entry/=1) then
+!                 call error('Parametrizer has n_entry='//num2str(n_entry))
+!             endif
 
             !normaliz g by allowed parameter range
             !s.t. g is in unit [Nm]
