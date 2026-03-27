@@ -12,6 +12,7 @@ module m_linesearcher
 use m_System
 use m_Modeling
 use m_Kernel
+use, intrinsic :: ieee_arithmetic
 
     private
     
@@ -20,7 +21,7 @@ use m_Kernel
 
     !Wolfe conditions parameters (Nocedal value)
     real,parameter :: c1=1e-4 !, c2=0.9 !c2=0.9 for (quasi-)Newton method, 0.1 for NLCG
-real :: c2=0.9
+    real :: c2=0.9
     !Bracketting parameter (Gilbert value)
     real,parameter :: multiplier=10.
     
@@ -69,8 +70,6 @@ real :: c2=0.9
 
         !read setup        
         self%max_search=setup%get_int('MAX_SEARCH',o_default='12')
-
-c2=setup%get_real('WOLFE_C2',o_default='0.9')
 
     end subroutine
     
@@ -150,7 +149,12 @@ c2=setup%get_real('WOLFE_C2',o_default='0.9')
             !if_1st_cond = (pert%f <= curr%f)
             if_2nd_cond = (abs(pert%g_dot_d) <= c2*abs(curr%g_dot_d)) !strong curvature condition
             !if_2nd_cond = (pert%g_dot_d >= c2*curr%g_dot_d) !weak curvature condition (note the diff of inequal sign..)
-            
+!detect NaN..
+if( ieee_is_nan(pert%g_dot_d) .or. ieee_is_nan(curr%g_dot_d) ) then
+call warn('Detect NaN on pert or curr%g_dot_d. Set if_2nd_cond=.true.',mpiworld%iproc)
+if_2nd_cond=.true.
+endif
+
             !occasionally optimizers on processors don't have same behavior
             !try to avoid this by broadcast controlling logicals.
             call mpi_bcast(if_1st_cond, 1, mpi_logical, 0, mpiworld%communicator, mpiworld%ierr)

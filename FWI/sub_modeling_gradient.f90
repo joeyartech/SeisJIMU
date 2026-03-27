@@ -10,6 +10,7 @@ use m_smoother_laplacian_sparse
 use m_resampler
 use m_hilbert
 ! use m_hilbert_nofft
+use m_butterworth
 
     logical,save :: is_first_in=.true.
 
@@ -64,12 +65,29 @@ use m_hilbert
             call wei%update
             call alloc(shot%dadj,shot%nt,shot%nrcv)
 
+
+call hud('butterworth filtering')
+fpasshi=setup%get_real('FILT_FPEAK',o_default=num2str(shot%fpeak))
+fstophi=setup%get_real('FILT_FMAX', o_default=num2str(shot%fmax ))
+call butterworth(shot%dobs,shot%nt,shot%nrcv,shot%dt, oif_locut=.false., o_fpasshi=fpasshi,o_fstophi=fstophi)
+call butterworth(shot%dsyn,shot%nt,shot%nrcv,shot%dt, oif_locut=.false., o_fpasshi=fpasshi,o_fstophi=fstophi)
+call shot%write('filt_dobs_',shot%dobs)
+call shot%write('filt_dsyn_',shot%dsyn)
+
             if(.not.allocated(dnorm)) dnorm=setup%get_str('DATA_NORM','DNORM',o_default='L2')
             select case (dnorm)
                 case ('L2')
                 fobj%misfit = fobj%misfit &
                     + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)
                 call kernel_L2sq(shot%dadj)
+
+! call shot%write('raw_dadj_',shot%dadj)
+! call hud('butterworth filtering')
+! call butterworth(shot%dadj,shot%nt,shot%nrcv,shot%dt, &
+!     oif_locut=.false., &
+!     o_fpasshi=shot%fpeak,o_fstophi=shot%fmax)
+
+
                 call fld_reA%ignite(o_wavelet=shot%dadj)
                 call shot%write('dadj_',shot%dadj)
                 call shot%write('Hdadj_',hilbert(shot%dadj))
