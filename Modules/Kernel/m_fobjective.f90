@@ -423,12 +423,17 @@ use m_preconditioner
         !scale preconditioned gvp gvs w/ their respective L2 norm
         if(param%npars>1)then
             if(setup%get_bool('IF_PARA_SCAL',o_default='T')) then
-            if(param%pars(1)%name=='vp' .and. param%pars(2)%name=='vs') then
+!            if(param%pars(1)%name=='vp' .and. param%pars(2)%name=='vs') then
                 gvp_norm = sum(abs(qp%pg(:,:,:,1)))
                 gvs_norm = sum(abs(qp%pg(:,:,:,2)))
                 if(gvp_norm>gvs_norm) qp%pg(:,:,:,2)=qp%pg(:,:,:,2)/gvs_norm*gvp_norm !scale on gvs
                 if(gvp_norm<gvs_norm) qp%pg(:,:,:,1)=qp%pg(:,:,:,1)/gvp_norm*gvs_norm !scale on gvp
             endif
+
+            if(param%npars>2)then !handle grho
+                gvp_norm = sum(abs(qp%pg(:,:,:,1)))
+                grho_nrom= sum(abs(qp%pg(:,:,:,3)))
+                qp%pg(:,:,:,3)=qp%pg(:,:,:,3)/grho_norm*gvp_norm !scale on grho
             endif
         endif
 

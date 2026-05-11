@@ -130,6 +130,11 @@ use m_smoother_laplacian_sparse
                 read(12,rec=i) self%vs
                 call hud('vs model is read.')
 
+            case ('vs0')
+                call alloc(self%vs0,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%vs0
+                call hud('vs0 model is read.')
+
             case ('rho')
                 call alloc(self%rho,self%nz,self%nx,self%ny)
                 read(12,rec=i) self%rho
@@ -412,6 +417,10 @@ use m_smoother_laplacian_sparse
             case ('vs')
                 read(12,rec=i) tmp
                 where(self%is_freeze_zone) self%vs=tmp
+
+            case ('vs0')
+                read(12,rec=i) tmp
+                where(self%is_freeze_zone) self%vs0=tmp
 
             case ('rho')
                 read(12,rec=i) tmp
