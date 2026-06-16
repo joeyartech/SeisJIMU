@@ -97,7 +97,11 @@ use m_empirical
 
         deallocate(list,sublist)
 
-        is0=m%vs*m%rho
+        if(allocated(m%vs0)) then
+            is0=m%vs0*m%rho0 !update Vp
+        else
+            is0=m%vs*m%rho !build Ip
+        endif
 
         !check vp,vs,rho [min,max] is in the same range as m%ref_vp,ref_vs,ref_rho
         !
@@ -135,17 +139,25 @@ use m_empirical
 
             else !x->m
 
-                if(i_vp >0) then
-                    tmp_vp = o_x(:,:,:,i_vp)*self%pars(i_vp)%range +self%pars(i_vp)%min  !implicit allocation
+                if(i_ip >0) then
                     tmp_ip = o_x(:,:,:,i_ip)*self%pars(i_ip)%range +self%pars(i_ip)%min  !implicit allocation
 
+                    m%vs  = is0/tmp_ip*m%vp
+                    m%rho = tmp_ip/m%vp
+
+                    deallocate(tmp_ip)
+                endif
+
+                if(i_vp >0) then
+                    tmp_vp = o_x(:,:,:,i_vp)*self%pars(i_vp)%range +self%pars(i_vp)%min  !implicit allocation
+                    tmp_ip = m%vp*m%rho
+
                     m%vp  = tmp_vp
+                    m%vs  = is0/tmp_ip*tmp_vp
                     m%rho = tmp_ip/tmp_vp
-                    m%vs  = is0/m%rho
 
                     deallocate(tmp_vp,tmp_ip)
                 endif
-
 !                 call empirical_x2m('velocities-impedance')
 
 !                 call m%apply_empirical
@@ -195,16 +207,16 @@ use m_empirical
 !                 mu  = rho      *vs^2  = is0^2/ip*vp
 !                 rho0= rho             = ip/vp
 !                 So,
-            if(index(setup%get_str('JOB',o_mandatory=1),'build Ip')>0) then !high-k
+            if(index(setup%get_str('JOB',o_mandatory=1),'build Ip')>0) then !ip
 !                 gip = grho0/vp + glda*(vp + 2is^2*vp/ip^2) + gmu*(-is^2*vp/ip^2)
 !                     = grho0/vp + glda*(vp + 2vs^2/vp)      + gmu*(-vs^2/vp)
                 o_g(:,:,:,i_ip ) = correlate_gradient(:,:,:,1)/m%vp &
                                   +correlate_gradient(:,:,:,2)*(m%vp +2*m%vs**2/m%vp) &
                                   +correlate_gradient(:,:,:,3)*(-m%vs**2/m%vp)
 
-            else !low-k
+            else !vp
 !                 gvp = grho0(-ip/vp^2) + glda*(ip - 2is0^2/ip) + gmu*(is0^2/ip)
-                tmp_ip = m%vp*m%rho
+                tmp_ip = m%vp*m%rho0
                 o_g(:,:,:,i_vp ) = correlate_gradient(:,:,:,1)*(-tmp_ip/m%vp**2) &
                                   +correlate_gradient(:,:,:,2)*(tmp_ip -2*is0**2/tmp_ip) &
                                   +correlate_gradient(:,:,:,3)*is0**2/tmp_ip

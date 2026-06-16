@@ -147,15 +147,30 @@ use m_smoother_laplacian_sparse
 
             case ('ip')
                 if(.not.allocated(self%vp)) call error('vp model has NOT been read!')
-                call alloc(self%rho,self%nz,self%nx,self%ny)
-                read(12,rec=i) self%rho; self%rho=self%rho/self%vp
+                call alloc(tmp,self%nz,self%nx,self%ny)
+                read(12,rec=i) tmp; self%rho=tmp/self%vp
                 call hud('ip model is read and rho model is updated.')
 
             case ('ip0')
                 if(.not.allocated(self%vp)) call error('vp model has NOT been read!')
-                call alloc(self%rho0,self%nz,self%nx,self%ny)
-                read(12,rec=i) self%rho0; self%rho0=self%rho0/self%vp
-                call hud('ip0 model is read and rho0 model is updated')
+                call alloc(tmp,self%nz,self%nx,self%ny)
+                read(12,rec=i) tmp; self%rho0=tmp/self%vp
+                call hud('ip model is read and rho model is updated.')
+
+
+case ('is')
+call alloc(tmp,self%nz,self%nx,self%ny)
+read(12,rec=i) tmp
+self%vs=tmp/self%rho
+call hud('is model is read and vs model is updated')
+deallocate(tmp)
+
+case ('is0')
+call alloc(tmp,self%nz,self%nx,self%ny)
+read(12,rec=i) tmp
+self%vs0=tmp/(self%rho0)
+call hud('is0 model is read and vs0 model is updated')
+deallocate(tmp)
 
             case ('eps')
                 call alloc(self%eps,self%nz,self%nx,self%ny)
@@ -542,7 +557,13 @@ use m_smoother_laplacian_sparse
             case ('is')
                 if(allocated(self%vs).and.allocated(self%rho)) then
                     write(13,rec=i) self%vs*self%rho
-                    ! call hud('is model is written.')
+                    call hud('is model is written.')
+                endif
+
+            case ('is0')
+                if(allocated(self%vs0).and.allocated(self%rho0)) then
+                    write(13,rec=i) self%vs0*self%rho0
+                    call hud('is0 model is written.')
                 endif
 
             case ('eps')

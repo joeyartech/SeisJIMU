@@ -1,4 +1,5 @@
 subroutine modeling_gradient_ip
+    call modeling_gradient_vp
 end subroutine
 
 
