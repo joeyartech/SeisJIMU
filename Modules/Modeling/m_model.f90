@@ -17,8 +17,11 @@ use m_smoother_laplacian_sparse
         logical :: is_cubic, is_freesurface, if_has_prior
         
         real,dimension(:,:,:),allocatable :: vp,vs,rho
-        real,dimension(:,:,:),allocatable :: eps,del,eta
+        ! real,dimension(:,:,:),allocatable :: eps,del,eta
         real,dimension(:,:,:),allocatable :: qp,qs
+
+        real,dimension(:,:,:),allocatable :: eps,mu,sgma
+
 
         !prior models
         real,dimension(:,:,:),allocatable :: vp_prior,vs_prior,rho_prior
@@ -96,7 +99,7 @@ use m_smoother_laplacian_sparse
 
         self%file=setup%get_file('FILE_MODEL') 
 
-        self%attributes_read =setup%get_strs('MODEL_ATTRIBUTES',o_default='vp rho')
+        self%attributes_read =setup%get_strs('MODEL_ATTRIBUTES',o_default='eps mu sgma')
         self%attributes_write=setup%get_strs('MODEL_ATTRIBUTES_WRITE',o_default=strcat(self%attributes_read))
         
     end subroutine
@@ -119,45 +122,60 @@ use m_smoother_laplacian_sparse
         
         do i=1,size(self%attributes_read)
             select case(self%attributes_read(i)%s)
-            case ('vp')
-                call alloc(self%vp,self%nz,self%nx,self%ny)
-                read(12,rec=i) self%vp
-                call hud('vp model is read.')
+            ! case ('vp')
+            !     call alloc(self%vp,self%nz,self%nx,self%ny)
+            !     read(12,rec=i) self%vp
+            !     call hud('vp model is read.')
 
-            case ('vs')
-                call alloc(self%vs,self%nz,self%nx,self%ny)
-                read(12,rec=i) self%vs
-                call hud('vs model is read.')
+            ! case ('vs')
+            !     call alloc(self%vs,self%nz,self%nx,self%ny)
+            !     read(12,rec=i) self%vs
+            !     call hud('vs model is read.')
 
-            case ('rho')
-                call alloc(self%rho,self%nz,self%nx,self%ny)
-                read(12,rec=i) self%rho
-                call hud('rho model is read.')
+            ! case ('rho')
+            !     call alloc(self%rho,self%nz,self%nx,self%ny)
+            !     read(12,rec=i) self%rho
+            !     call hud('rho model is read.')
+
+            ! case ('eps')
+            !     call alloc(self%eps,self%nz,self%nx,self%ny)
+            !     read(12,rec=i) self%eps
+            !     call hud('eps model is read.')
+
+            ! case ('del')
+            !     call alloc(self%del,self%nz,self%nx,self%ny)
+            !     read(12,rec=i) self%del
+            !     call hud('del model is read.')
+
+            ! case ('eta')
+            !     call alloc(self%eta,self%nz,self%nx,self%ny)
+            !     read(12,rec=i) self%eta
+            !     call hud('eta model is read.')
+
+            ! case ('qp')
+            !     call alloc(self%qp,self%nz,self%nx,self%ny)
+            !     read(12,rec=i) self%qp
+            !     call hud('qp model is read.')
+
+            ! case ('qs')
+            !     call alloc(self%qs,self%nz,self%nx,self%ny)
+            !     read(12,rec=i) self%qs
+            !     call hud('qs model is read.')
 
             case ('eps')
                 call alloc(self%eps,self%nz,self%nx,self%ny)
                 read(12,rec=i) self%eps
                 call hud('eps model is read.')
 
-            case ('del')
-                call alloc(self%del,self%nz,self%nx,self%ny)
-                read(12,rec=i) self%del
-                call hud('del model is read.')
+            case ('mu')
+                call alloc(self%mu,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%eps
+                call hud('mu model is read.')
 
-            case ('eta')
-                call alloc(self%eta,self%nz,self%nx,self%ny)
-                read(12,rec=i) self%eta
-                call hud('eta model is read.')
-
-            case ('qp')
-                call alloc(self%qp,self%nz,self%nx,self%ny)
-                read(12,rec=i) self%qp
-                call hud('qp model is read.')
-
-            case ('qs')
-                call alloc(self%qs,self%nz,self%nx,self%ny)
-                read(12,rec=i) self%qs
-                call hud('qs model is read.')
+            case ('sgma')
+                call alloc(self%sgma,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%eps
+                call hud('sgma model is read.')
 
             end select
 
@@ -168,58 +186,58 @@ use m_smoother_laplacian_sparse
         !freesurface
         self%is_freesurface=setup%get_bool('IS_FREESURFACE',o_default='T')
         
-        !bathymetry or topography
-        call alloc(self%ibathy,self%nx,self%ny)
+        ! !bathymetry or topography
+        ! call alloc(self%ibathy,self%nx,self%ny)
 
-        !freeze zone
-        allocate(self%is_freeze_zone(self%nz,self%nx,self%ny),source=.false.)
+        ! !freeze zone
+        ! allocate(self%is_freeze_zone(self%nz,self%nx,self%ny),source=.false.)
 
-        !check file bathymetry or topography
-        file=setup%get_file('FILE_BATHYMETRY','FILE_BATHY')
-        if(file=='') file=setup%get_file('FILE_TOPOGRAPHY','FILE_TOPO')
-        if(file/='') then
-            call alloc(tmp,self%nx,self%ny,1)
-            call sysio_read(file,tmp,self%n)
-            call hud('bathy minmax value: '//num2str(minval(tmp))//' , '//num2str(maxval(tmp)))
-            call hud('water or air layer is from #1 to #(floor(bathy/dz)+1) grid points in depth')
+        ! !check file bathymetry or topography
+        ! file=setup%get_file('FILE_BATHYMETRY','FILE_BATHY')
+        ! if(file=='') file=setup%get_file('FILE_TOPOGRAPHY','FILE_TOPO')
+        ! if(file/='') then
+        !     call alloc(tmp,self%nx,self%ny,1)
+        !     call sysio_read(file,tmp,self%n)
+        !     call hud('bathy minmax value: '//num2str(minval(tmp))//' , '//num2str(maxval(tmp)))
+        !     call hud('water or air layer is from #1 to #(floor(bathy/dz)+1) grid points in depth')
 
-            do iy=1,self%ny; do ix=1,self%nx    
-                self%ibathy(ix,iy)=floor(tmp(ix,iy,1)/self%dz)+1
-            enddo; enddo
+        !     do iy=1,self%ny; do ix=1,self%nx    
+        !         self%ibathy(ix,iy)=floor(tmp(ix,iy,1)/self%dz)+1
+        !     enddo; enddo
 
-            do iy=1,self%ny; do ix=1,self%nx    
-                self%is_freeze_zone(1:self%ibathy(ix,iy),ix,iy)=.true.
-            enddo; enddo
+        !     do iy=1,self%ny; do ix=1,self%nx    
+        !         self%is_freeze_zone(1:self%ibathy(ix,iy),ix,iy)=.true.
+        !     enddo; enddo
             
-            call hud('Freeze zone is set from FILE_BATHYMETRY or FILE_TOPOGRAPHY.')
-        endif
+        !     call hud('Freeze zone is set from FILE_BATHYMETRY or FILE_TOPOGRAPHY.')
+        ! endif
 
-        !2nd check vs model
-        if(allocated(self%vs)) then
-            if(setup%get_bool('IF_BATHY_FROM_VS',o_default='T')) then
-                !self%ibathy = maxloc(self%vs, dim=1, mask=(self%vs<10), back=.true.)+1 !the "back" argument isn't implemented in gfortran until version 9 ..
-                do iy=1,self%ny; do ix=1,self%nx
-                    loopz: do iz=1,self%nz
-                        if(self%vs(iz,ix,iy)<10.) then
-                            self%is_freeze_zone(iz,ix,iy) = .true.
-                        else
-                            exit loopz
-                        endif
-                    enddo loopz
-                enddo; enddo
-                call hud('Freeze zone is additionally set from vs model.')
-            endif
-        endif
+        ! !2nd check vs model
+        ! if(allocated(self%vs)) then
+        !     if(setup%get_bool('IF_BATHY_FROM_VS',o_default='T')) then
+        !         !self%ibathy = maxloc(self%vs, dim=1, mask=(self%vs<10), back=.true.)+1 !the "back" argument isn't implemented in gfortran until version 9 ..
+        !         do iy=1,self%ny; do ix=1,self%nx
+        !             loopz: do iz=1,self%nz
+        !                 if(self%vs(iz,ix,iy)<10.) then
+        !                     self%is_freeze_zone(iz,ix,iy) = .true.
+        !                 else
+        !                     exit loopz
+        !                 endif
+        !             enddo loopz
+        !         enddo; enddo
+        !         call hud('Freeze zone is additionally set from vs model.')
+        !     endif
+        ! endif
 
-        !3rd check if file freeze is given
-        file=setup%get_file('FILE_FREEZE_ZONE')
-        if(file/='') then
-            call alloc(tmp,self%nz,self%nx,self%ny)
-            call sysio_read(file,tmp,self%n)
+        ! !3rd check if file freeze is given
+        ! file=setup%get_file('FILE_FREEZE_ZONE')
+        ! if(file/='') then
+        !     call alloc(tmp,self%nz,self%nx,self%ny)
+        !     call sysio_read(file,tmp,self%n)
             
-            where(tmp==0.) self%is_freeze_zone=.true.
-            call hud('Freeze zone is additionally set from FILE_FREEZE_ZONE.')
-        endif
+        !     where(tmp==0.) self%is_freeze_zone=.true.
+        !     call hud('Freeze zone is additionally set from FILE_FREEZE_ZONE.')
+        ! endif
 
         call dealloc(tmp)
 
@@ -279,12 +297,8 @@ use m_smoother_laplacian_sparse
                 self%ref_rho   =tmp(2)
 
             else
-                if(allocated(self%vp)) then
-                    self%ref_inv_vel=1./self%vp(iz,ix,iy)
-                else
-                    self%ref_inv_vel=1./self%vs(iz,ix,iy)
-                endif
-                self%ref_rho   =   self%rho(iz,ix,iy)
+                self%ref_inv_vel=sqrt(self%eps(iz,ix,iy)*self%mu(iz,ix,iy))
+                self%ref_rho    =self%mu(iz,ix,iy)
 
             endif
 
@@ -310,37 +324,17 @@ use m_smoother_laplacian_sparse
 
         do i=1,size(self%attributes_read)
             select case(self%attributes_read(i)%s)
-            case ('vp')        
-                read(12,rec=i) tmp
-                where(self%is_freeze_zone) self%vp=tmp
-
-            case ('vs')
-                read(12,rec=i) tmp
-                where(self%is_freeze_zone) self%vs=tmp
-
-            case ('rho')
-                read(12,rec=i) tmp
-                where(self%is_freeze_zone) self%rho=tmp
-
-            case ('eps')
+            case ('eps')        
                 read(12,rec=i) tmp
                 where(self%is_freeze_zone) self%eps=tmp
 
-            case ('del')
+            case ('mu')
                 read(12,rec=i) tmp
-                where(self%is_freeze_zone) self%del=tmp
+                where(self%is_freeze_zone) self%mu=tmp
 
-            case ('eta')
+            case ('sgma')
                 read(12,rec=i) tmp
-                where(self%is_freeze_zone) self%eta=tmp
-
-            case ('qp')
-                read(12,rec=i) tmp
-                where(self%is_freeze_zone) self%qp=tmp
-
-            case ('qs')
-                read(12,rec=i) tmp
-                where(self%is_freeze_zone) self%qs=tmp
+                where(self%is_freeze_zone) self%sgma=tmp
 
             end select
 
@@ -355,18 +349,18 @@ use m_smoother_laplacian_sparse
     subroutine apply_elastic_continuum(self)
         class(t_model) :: self
 
-        !vp²=(K+4/3*G)/ρ; vs²=G/ρ
-        !lowest possible vp²=K/ρ=500 m/s
-        !so vp²  500² + 4/3vs²
-        !0.75(vp²-500²) >= vs²
+    !     !vp²=(K+4/3*G)/ρ; vs²=G/ρ
+    !     !lowest possible vp²=K/ρ=500 m/s
+    !     !so vp²  500² + 4/3vs²
+    !     !0.75(vp²-500²) >= vs²
         
-        real,dimension(:,:,:),allocatable :: tmp
+    !     real,dimension(:,:,:),allocatable :: tmp
         
-        tmp = sqrt(0.75* (self%vp**2 - 500**2))
+    !     tmp = sqrt(0.75* (self%vp**2 - 500**2))
 
-        where (tmp<self%vs) self%vs=tmp
+    !     where (tmp<self%vs) self%vs=tmp
 
-        deallocate(tmp)
+    !     deallocate(tmp)
 
     end subroutine
 
@@ -383,65 +377,17 @@ use m_smoother_laplacian_sparse
         
         do i=1,size(self%attributes_write)
             select case(self%attributes_write(i)%s)
-            case ('vp')
-                if(allocated(self%vp)) then
-                    write(13,rec=i) self%vp
-                    ! call hud('vp model is written.')
-                endif
-
-            case ('vs')
-                if(allocated(self%vs)) then
-                    write(13,rec=i) self%vs
-                    ! call hud('vs model is written.')
-                endif
-
-            case ('rho')
-                if(allocated(self%rho)) then
-                    write(13,rec=i) self%rho
-                    ! call hud('rho model is written.')
-                endif
-
-            case ('ip')
-                if(allocated(self%vp).and.allocated(self%rho)) then
-                    write(13,rec=i) self%vp*self%rho
-                    ! call hud('ip model is written.')
-                endif
-
-            case ('is')
-                if(allocated(self%vs).and.allocated(self%rho)) then
-                    write(13,rec=i) self%vs*self%rho
-                    ! call hud('is model is written.')
-                endif
-
             case ('eps')
-                if(allocated(self%eps)) then
-                    write(13,rec=i) self%eps
-                    ! call hud('eps model is written.')
-                endif
+                write(13,rec=i) self%eps
 
-            case ('del')
-                if(allocated(self%del)) then
-                    write(13,rec=i) self%del
-                    ! call hud('del model is written.')
-                endif
+            case ('mu')
+                write(13,rec=i) self%mu
 
-            case ('eta')
-                if(allocated(self%eta)) then
-                    write(13,rec=i) self%eta
-                    ! call hud('eta model is written.')
-                endif
+            case ('sgma')
+                write(13,rec=i) self%sgma
 
-            case ('qp')
-                if(allocated(self%qp)) then
-                    write(13,rec=i) self%qp
-                    ! call hud('qp model is written.')
-                endif
-
-            case ('qs')
-                if(allocated(self%qs)) then
-                    write(13,rec=i) self%qs
-                    ! call hud('qs model is written.')
-                endif
+            case ('celerity')
+                write(13,rec=i) sqrt(1./self%eps/self%mu)
 
             end select
 

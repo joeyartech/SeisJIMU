@@ -41,9 +41,12 @@ use m_shot
 
         real :: velmin=huge(1.), velmax=0.
 
-        real,dimension(:,:,:),allocatable :: vp,vs,rho
-        real,dimension(:,:,:),allocatable :: eps,del,eta
-        real,dimension(:,:,:),allocatable :: qp,qs
+        ! real,dimension(:,:,:),allocatable :: vp,vs,rho
+        ! real,dimension(:,:,:),allocatable :: eps,del,eta
+        ! real,dimension(:,:,:),allocatable :: qp,qs
+
+        real,dimension(:,:,:),allocatable :: mu,eps,sgma
+        real,dimension(:,:,:),allocatable :: celerity
         
         real,dimension(:,:,:,:),allocatable :: grad, imag, engy, corr
         
@@ -174,38 +177,22 @@ use m_shot
         ! end associate
 
         !models in computebox
-        call m2cb(m%vp ,self%vp )
-        call m2cb(m%vs ,self%vs )
-        call m2cb(m%rho,self%rho)
-        call m2cb(m%eps,self%eps)
-        call m2cb(m%del,self%del)
-        call m2cb(m%eta,self%eta)
-        call m2cb(m%qp ,self%qp )
-        call m2cb(m%qs ,self%qs )
+        call m2cb(m%eps, self%eps )
+        call m2cb(m%mu,  self%mu  )
+        call m2cb(m%sgma,self%sgma)
 
-        if(allocated(self%vp)) then
-            self%velmin=minval(self%vp)
-            self%velmax=maxval(self%vp)
-        endif
-
-        if(allocated(self%eps)) then
-            self%velmax=max( self%velmax, maxval(self%vp*sqrt(1.+2*self%eps)) )  !I don't think negative epsilon value can play a role here..
-        endif
-
-        if(allocated(self%vs)) then
-            self%velmin=min( self%velmin, minval(self%vs,self%vs>0.) )
-            self%velmax=max( self%velmax, maxval(self%vs,self%vs>0.) )
-        endif
+        self%celerity = sqrt(1/self%eps/self%mu)
+        
+        self%velmin=minval(self%celerity)
+        self%velmax=maxval(self%celerity)
 
         call hud('Computebox value ranges:')
         if(mpiworld%is_master) then
-            if(allocated(self%vp )) write(*,*)'vp' ,minval(self%vp),maxval(self%vp)
-            if(allocated(self%vs )) write(*,*)'vs' ,minval(self%vs),maxval(self%vs)
-                                    write(*,*)'rho',minval(self%rho),maxval(self%rho)
-            if(allocated(self%vp )) write(*,*)'ip' ,minval(self%vp*self%rho),maxval(self%vp*self%rho)
-            if(allocated(self%eps)) write(*,*)'eps',minval(self%eps),maxval(self%eps)
-            if(allocated(self%del)) write(*,*)'del',minval(self%del),maxval(self%del)
-
+            write(*,*)'eps' ,minval(self%eps),maxval(self%eps)
+            write(*,*)'mu'  ,minval(self%mu ),maxval(self%mu )
+            write(*,*)'celerity',minval(self%celerity ),maxval(self%celerity)
+            write(*,*)'sgma',minval(self%sgma),maxval(self%sgma)
+            
         end if
 
     end subroutine
@@ -272,9 +259,8 @@ use m_shot
     subroutine final(self)
         type(t_computebox) :: self
 
-        call dealloc(self%vp, self%vs, self%rho)
-        call dealloc(self%eps,self%del,self%eta)
-        call dealloc(self%qp,self%qs)
+        call dealloc(self%eps, self%mu, self%sgma)
+        call dealloc(self%celerity)
         call dealloc(self%grad,self%imag,self%engy)
 
     end subroutine
