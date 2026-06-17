@@ -329,54 +329,57 @@ use m_cpml
     ! ∂zᵇ*dz := c₁(v(iz  )-v(iz-1)) +c₂(v(iz+1)-v(iz-2))  ~O(x⁴)
     ! ∂zᶠ*dz := c₁(s(iz+1)-s(iz  )) +c₂(s(iz+2)-s(iz-1))  ~O(x⁴)
     
-!!    ! Time marching:
-!!    ! [vz^n+1 ]   [vz^n  ]      [∂zᵇ p^n+½              ]
-!!    ! |vx^n+1 | = |vx^n  | + M⁻¹|∂ₓᵇ p^n+½              |dt  +M⁻¹f*dt
-!!    ! [ p^n+1½]   [ p^n+½]      [∂zᶠ vz^n+1 + ∂ₓᶠ vx^n+1]
-!!    ! Step #1: v^n += src
-!!    ! Step #2: v^n+1 = v^n + spatial FD(p^n+½)
-!!    ! Step #3: p^n+½ += src
-!!    ! Step #4: p^n+1½ = p^n+½ + spatial FD(v^n+1)
-!!    ! Step #5: sample v^n & p^n++½ at receivers
-!!    ! Step #6: save v^n+1 to boundary values
+    ! Time marching:    
+    !      [szy^n ]   [ 0    0   ∂zᵇ][szy^n+1]      [∂zᵇ vy^n+½               ]
+    ! M ∂ₜᶠ|sxy^n | = | 0    0   ∂ₓᵇ||sxy^n+1| +f = |∂ₓᵇ vy^n+½               | +f
+    !      [vy^n+1]   [∂zᶠ  ∂ₓᶠ   0 ][vy^n+½ ]      [∂zᶠ szy^n+1 + ∂ₓᶠ sxy^n+1]
+    ! [szy^n+1 ]   [szy^n  ]      [∂zᵇ vy^n+½             ]
+    ! |sxy^n+1 | = |sxy^n  | + M⁻¹|∂ₓᵇ vy^n+½             |dt  +M⁻¹f*dt
+    ! [ vy^n+1½]   [ vy^n+½]      [∂zᶠszy^n+1 + ∂ₓᶠsxy^n+1]
+    ! Step #1: s^n += src
+    ! Step #2: s^n+1 = s^n + spatial FD(v^n+½)
+    ! Step #3: v^n+½ += src
+    ! Step #4: v^n+1½ = v^n+½ + spatial FD(s^n+1)
+    ! Step #5: sample v^n & s^n+½ at receivers
+    ! Step #6: save s^n+1 to boundary values
 
-!!    ! Reverse time marching (for wavefield reconstruction)
-!!    ! [ p^n+½]   [ p^n+1½]      [∂zᶠ vz^n+1 + ∂ₓᶠ vx^n+1]
-!!    ! |vx^n  | = |vx^n+1 | - M⁻¹|∂ₓᵇ p^n+½              |dt  -M⁻¹f*dt
-!!    ! [vz^n  ]   [vz^n+1 ]      [∂zᵇ p^n+½              ]
-!!    ! Step #6: load boundary values for v^n+1
-!!    ! Step #4: p^n+½ = p^n+1½ - spatial FD(v^n+1)
-!!    ! Step #3: p^n+½ -= src
-!!    ! Step #2: v^n+1 = v^n - spatial FD(p^n+½)
-!!    ! Step #1: v^n -= src
-!!    ! N.B. Same codes for spatial FDs as in forward time marching, with a negated dt.
+    ! Reverse time marching (for wavefield reconstruction)
+    ! [ vy^n+½]   [ vy^n+1½]      [∂zᶠszy^n+1 + ∂ₓᶠsxy^n+1]
+    ! |sxy^n  | = |sxy^n+1 | - M⁻¹|∂ₓᵇvy^n+½              |dt  -M⁻¹f*dt
+    ! [szy^n  ]   [szy^n+1 ]      [∂zᵇvy^n+½              ]
+    ! Step #6: load boundary values for v^n+1
+    ! Step #4: v^n+½ = v^n+1½ - spatial FD(s^n+1)
+    ! Step #3: v^n+½ -= src
+    ! Step #2: s^n+1 = v^n - spatial FD(v^n+½)
+    ! Step #1: s^n -= src
+    ! N.B. Same codes for spatial FDs as in forward time marching, with a negated dt.
     
     ! Adjoint:
     ! FD eqn:
-!!    !      [vzᵃ^n  ]   [ 0      0     ∂zᶠᵀ][vzᵃ^n+1]
-!!    ! M ∂ₜᶠᵀ|vxᵃ^n  | = | 0      0     ∂ₓᶠᵀ||vxᵃ^n+1|  +d
-!!    !      [ pᵃ^n+1]   [∂zᵇᵀ   ∂ₓᵇᵀ    0  ][ pᵃ^n+½]
-!!    ! ∂ₜᶠᵀ = v^n-1 -v^n   = -∂ₜᵇ
-!!    ! ∂zᵇᵀ = c₁(v[i  ]-v[i+½]) +c₂(v[i- ½]-v[i+1½]) = -∂zᶠ
-!!    ! ∂zᶠᵀ = c₁(p[i-½]-p[i  ]) +c₂(p[i-1½]-p[i+ ½]) = -∂zᵇ
-!!    !      [vzᵃ^n  ]   [ 0      0     ∂zᵇ ][vzᵃ^n+1]
-!!    ! M ∂ₜᵇ |vxᵃ^n  | = | 0      0     ∂ₓᵇ ||vxᵃ^n+1|  -d
-!!    !      [ pᵃ^n+1]   [∂zᶠ    ∂ₓᶠ    0   ][ pᵃ^n+½]
-!!    ! ie. Dᵀ=-D, antisymmetric
+    !       [szyᵃ^n  ]   [ 0      0     ∂zᶠᵀ][szyᵃ^n+1]
+    ! M ∂ₜᶠᵀ|sxyᵃ^n  | = | 0      0     ∂ₓᶠᵀ||sxyᵃ^n+1|  +d
+    !       [ vyᵃ^n+1]   [∂zᵇᵀ   ∂ₓᵇᵀ    0  ][ vyᵃ^n+½]
+    ! ∂ₜᶠᵀ = s^n-1 -s^n   = -∂ₜᵇ
+    ! ∂zᵇᵀ = c₁(s[i  ]-s[i+½]) +c₂(s[i- ½]-s[i+1½]) = -∂zᶠ
+    ! ∂zᶠᵀ = c₁(v[i-½]-v[i  ]) +c₂(v[i-1½]-v[i+ ½]) = -∂zᵇ
+    !       [szyᵃ^n  ]   [ 0      0     ∂zᵇ ][szyᵃ^n+1]
+    ! M ∂ₜᵇ |sxyᵃ^n  | = | 0      0     ∂ₓᵇ ||sxyᵃ^n+1|  -d
+    !       [ vyᵃ^n+1]   [∂zᶠ    ∂ₓᶠ    0   ][ vyᵃ^n+½]
+    ! ie. Dᵀ=-D, antisymmetric
     
-!!    ! Time marching:
-!!    ! [vzᵃ^n+1 ]   [vzᵃ^n  ]      [∂zᵇ pᵃ^n+½               ]
-!!    ! |vxᵃ^n+1 | = |vxᵃ^n  | + M⁻¹|∂ₓᵇ pᵃ^n+½               |dt  -M⁻¹d*dt
-!!    ! [ pᵃ^n+1½]   [ pᵃ^n+½]      [∂zᶠ vzᵃ^n+1 + ∂ₓᶠ vxᵃ^n+1]
-!!    ! but we have to do it in reverse time:
-!!    ! [ pᵃ^n+½]   [ pᵃ^n+1½]      [∂zᶠ vzᵃ^n+1 + ∂ₓᶠ vxᵃ^n+1]
-!!    ! |vxᵃ^n  | = |vxᵃ^n+1 | - M⁻¹|∂ₓᵇ pᵃ^n+½               |dt  +M⁻¹d*dt
-!!    ! [vzᵃ^n  ]   [vzᵃ^n+1 ]      [∂zᵇ pᵃ^n+½               ]
-!!    ! Step #5: pᵃ^n+1½ += adjsrc
-!!    ! Step #4: pᵃ^n+½ = pᵃ^n+1½ - spatial FD(vᵃ^n+1)
-!!    ! Step #3: vᵃ^n+1 += adjsrc
-!!    ! Step #2: vᵃ^n = vᵃ^n+1 - spatial FD(pᵃ^n+½)
-!!    ! N.B. Same codes for spatial FDs as in forward time marching, with a negated dt, but the RHS should use a "+" sign (regardless of the reverse time direction).
+    ! Time marching:
+    ! [szyᵃ^n+1 ]   [szyᵃ^n  ]      [∂zᵇ vyᵃ^n+½              ]
+    ! |sxyᵃ^n+1 | = |sxyᵃ^n  | + M⁻¹|∂ₓᵇ vyᵃ^n+½              |dt  -M⁻¹d*dt
+    ! [ vyᵃ^n+1½]   [ vyᵃ^n+½]      [∂zᶠszyᵃ^n+1 + ∂ₓᶠsxyᵃ^n+1]
+    ! but we have to do it in reverse time:
+    ! [ vyᵃ^n+½]   [ vyᵃ^n+1½]      [∂zᶠszyᵃ^n+1 + ∂ₓᶠsxyᵃ^n+1]
+    ! |sxyᵃ^n  | = |sxyᵃ^n+1 | - M⁻¹|∂ₓᵇ vyᵃ^n+½              |dt  +M⁻¹d*dt
+    ! [szyᵃ^n  ]   [szyᵃ^n+1 ]      [∂zᵇ vyᵃ^n+½              ]
+    ! Step #5: vᵃ^n+1½ += adjsrc
+    ! Step #4: vᵃ^n+½ = vᵃ^n+1½ - spatial FD(sᵃ^n+1)
+    ! Step #3: sᵃ^n+1 += adjsrc
+    ! Step #2: sᵃ^n = sᵃ^n+1 - spatial FD(vᵃ^n+½)
+    ! N.B. Same codes for spatial FDs as in forward time marching, with a negated dt, but the RHS should use a "+" sign (regardless of the reverse time direction).
     
 !!    ! For adjoint test:
 !!    ! In each step of forward time marching: dsyn=RGANf

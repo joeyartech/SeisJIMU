@@ -340,54 +340,75 @@ use m_cpml
     ! ∂zᵇ*dz := c₁(v(iz  )-v(iz-1)) +c₂(v(iz+1)-v(iz-2))  ~O(x⁴)
     ! ∂zᶠ*dz := c₁(s(iz+1)-s(iz  )) +c₂(s(iz+2)-s(iz-1))  ~O(x⁴)
     
-!!    ! Time marching:
-!!    ! [vz^n+1 ]   [vz^n  ]      [∂zᵇ p^n+½              ]
-!!    ! |vx^n+1 | = |vx^n  | + M⁻¹|∂ₓᵇ p^n+½              |dt  +M⁻¹f*dt
-!!    ! [ p^n+1½]   [ p^n+½]      [∂zᶠ vz^n+1 + ∂ₓᶠ vx^n+1]
-!!    ! Step #1: v^n += src
-!!    ! Step #2: v^n+1 = v^n + spatial FD(p^n+½)
-!!    ! Step #3: p^n+½ += src
-!!    ! Step #4: p^n+1½ = p^n+½ + spatial FD(v^n+1)
-!!    ! Step #5: sample v^n & p^n++½ at receivers
-!!    ! Step #6: save v^n+1 to boundary values
+    ! Time marching:    
+    !           [Hx^n  ]               [Hx^n+1 ]               [Hx^n  ])
+    ! (Mₚ∂ₜᶠ+Md)|Hz^n  | = (Mₚ/dt+Md/2)|Hz^n+1 | - (Mₚ/dt-Md/2)|Hz^n  |)
+    !           [Ey^n+1]               [Ey^n+1½]               [Ey^n+½])
+    !                     [ 0    0   ∂zᵇ][Hx^n+1]      [∂zᵇ Ey^n+½             ]
+    !                    =| 0    0   ∂ₓᵇ||Hz^n+1| +f = |∂ₓᵇ Ey^n+½             | +f
+    !                     [∂zᶠ  ∂ₓᶠ   0 ][Ey^n+½]      [∂zᶠ Hx^n+1 + ∂ₓᶠ Hz^n+1]
+    !that is,
+    !            [Hx^n+1 ]               [Hx^n  ]   [∂zᵇ Ey^n+½             ]
+    !(Mₚ/dt+Md/2)|Hz^n+1 | - (Mₚ/dt-Md/2)|Hz^n  | = |∂ₓᵇ Ey^n+½             | +f
+    !            [Ey^n+1½]               [Ey^n+½]   [∂zᶠ Hx^n+1 + ∂ₓᶠ Hz^n+1]
+    !
+    ! [Hx^n+1 ]                 [            [Hx^n  ]   [∂zᵇ Ey^n+½             ]   ]
+    ! |Hz^n+1 | = (Mₚ/dt+Md/2)⁻¹[(Mₚ/dt-Md/2)|Hz^n  | + |∂ₓᵇ Ey^n+½             | +f]
+    ! [Ey^n+1½]                 [            [Ey^n+½]   [∂zᶠ Hy^n+1 + ∂ₓᶠ Hy^n+1]   ]
+    !compared w/ SH propagator, swap Steps 1 & 2 and 3 & 4 here
+    ! Step #1: H^n+1 = H^n + spatial FD(E^n+½)
+    !! Step #2: H^n += src
+    ! Step #3: E^n+1½ = E^n+½ + spatial FD(H^n+1)
+    ! Step #4: E^n+½ += src
+    ! Step #5: sample H^n & E^n+½ at receivers
+    ! Step #6: save H^n+1 to boundary values
 
-!!    ! Reverse time marching (for wavefield reconstruction)
-!!    ! [ p^n+½]   [ p^n+1½]      [∂zᶠ vz^n+1 + ∂ₓᶠ vx^n+1]
-!!    ! |vx^n  | = |vx^n+1 | - M⁻¹|∂ₓᵇ p^n+½              |dt  -M⁻¹f*dt
-!!    ! [vz^n  ]   [vz^n+1 ]      [∂zᵇ p^n+½              ]
-!!    ! Step #6: load boundary values for v^n+1
-!!    ! Step #4: p^n+½ = p^n+1½ - spatial FD(v^n+1)
-!!    ! Step #3: p^n+½ -= src
-!!    ! Step #2: v^n+1 = v^n - spatial FD(p^n+½)
-!!    ! Step #1: v^n -= src
-!!    ! N.B. Same codes for spatial FDs as in forward time marching, with a negated dt.
+    ! Reverse time marching (for wavefield reconstruction)
+    !            [Hx^n  ]               [Hx^n+1 ]   [∂zᵇ Ey^n+½             ]
+    !(Mₚ/dt-Md/2)|Hz^n  | = (Mₚ/dt+Md/2)|Hz^n+1 | - |∂ₓᵇ Ey^n+½             | -f
+    !            [Ey^n+½]               [Ey^n+1½]   [∂zᶠ Hx^n+1 + ∂ₓᶠ Hz^n+1]
+    !
+    !            [Ey^n+½]               [Ey^n+1½]   [∂zᶠ Hx^n+1 + ∂ₓᶠ Hz^n+1]
+    !(Mₚ/dt-Md/2)|Hz^n  | = (Mₚ/dt+Md/2)|Hz^n+1 | - |∂ₓᵇ Ey^n+½             | -f
+    !            [Hx^n  ]               [Hx^n+1 ]   [∂zᵇ Ey^n+½             ]
+    !
+    ![Ey^n+½]                 [            [Ey^n+1½]   [∂zᶠ Hx^n+1 + ∂ₓᶠ Hz^n+1]    ]
+    !|Hz^n  | = (Mₚ/dt-Md/2)⁻¹[(Mₚ/dt+Md/2)|Hz^n+1 | - |∂ₓᵇ Ey^n+½             | -f ]
+    ![Hx^n  ]                 [            [Hx^n+1 ]   [∂zᵇ Ey^n+½             ]    ]
+    !
+    ! Step #6: load boundary values for v^n+1
+    ! Step #4: E^n+½ -= src
+    ! Step #3: E^n+½ = E^n+1½ - spatial FD(H^n+1)
+    ! Step #2: H^n -= src
+    ! Step #1: H^n+1 = E^n - spatial FD(E^n+½)
+    ! N.B. Same codes for spatial FDs as in forward time marching, with a negated dt.
     
     ! Adjoint:
     ! FD eqn:
-!!    !      [vzᵃ^n  ]   [ 0      0     ∂zᶠᵀ][vzᵃ^n+1]
-!!    ! M ∂ₜᶠᵀ|vxᵃ^n  | = | 0      0     ∂ₓᶠᵀ||vxᵃ^n+1|  +d
-!!    !      [ pᵃ^n+1]   [∂zᵇᵀ   ∂ₓᵇᵀ    0  ][ pᵃ^n+½]
-!!    ! ∂ₜᶠᵀ = v^n-1 -v^n   = -∂ₜᵇ
-!!    ! ∂zᵇᵀ = c₁(v[i  ]-v[i+½]) +c₂(v[i- ½]-v[i+1½]) = -∂zᶠ
-!!    ! ∂zᶠᵀ = c₁(p[i-½]-p[i  ]) +c₂(p[i-1½]-p[i+ ½]) = -∂zᵇ
-!!    !      [vzᵃ^n  ]   [ 0      0     ∂zᵇ ][vzᵃ^n+1]
-!!    ! M ∂ₜᵇ |vxᵃ^n  | = | 0      0     ∂ₓᵇ ||vxᵃ^n+1|  -d
-!!    !      [ pᵃ^n+1]   [∂zᶠ    ∂ₓᶠ    0   ][ pᵃ^n+½]
-!!    ! ie. Dᵀ=-D, antisymmetric
+    !           [Hxᵃ^n  ]   [∂zᵇ Eyᵃ^n+½              ]
+    ! (Mₚ∂ₜᶠ-Md)|Hzᵃ^n  | = |∂ₓᵇ Eyᵃ^n+½              | -d
+    !           [Eyᵃ^n+1]   [∂zᶠ Hxᵃ^n+1 + ∂ₓᶠ Hxᵃ^n+1]
+    !because ∂ₜᶠᵀ = -∂ₜᵇ, ∂zᵇᵀ = -∂zᶠ, ∂zᶠᵀ = -∂zᵇ, Dᵀ=-D (antisymmetric)
     
-!!    ! Time marching:
-!!    ! [vzᵃ^n+1 ]   [vzᵃ^n  ]      [∂zᵇ pᵃ^n+½               ]
-!!    ! |vxᵃ^n+1 | = |vxᵃ^n  | + M⁻¹|∂ₓᵇ pᵃ^n+½               |dt  -M⁻¹d*dt
-!!    ! [ pᵃ^n+1½]   [ pᵃ^n+½]      [∂zᶠ vzᵃ^n+1 + ∂ₓᶠ vxᵃ^n+1]
-!!    ! but we have to do it in reverse time:
-!!    ! [ pᵃ^n+½]   [ pᵃ^n+1½]      [∂zᶠ vzᵃ^n+1 + ∂ₓᶠ vxᵃ^n+1]
-!!    ! |vxᵃ^n  | = |vxᵃ^n+1 | - M⁻¹|∂ₓᵇ pᵃ^n+½               |dt  +M⁻¹d*dt
-!!    ! [vzᵃ^n  ]   [vzᵃ^n+1 ]      [∂zᵇ pᵃ^n+½               ]
-!!    ! Step #5: pᵃ^n+1½ += adjsrc
-!!    ! Step #4: pᵃ^n+½ = pᵃ^n+1½ - spatial FD(vᵃ^n+1)
-!!    ! Step #3: vᵃ^n+1 += adjsrc
-!!    ! Step #2: vᵃ^n = vᵃ^n+1 - spatial FD(pᵃ^n+½)
-!!    ! N.B. Same codes for spatial FDs as in forward time marching, with a negated dt, but the RHS should use a "+" sign (regardless of the reverse time direction).
+    ! Time marching:
+    !             [Hxᵃ^n+1 ]               [Hxᵃ^n  ]   [∂zᵇ Eyᵃ^n+½              ]
+    ! (Mₚ/dt-Md/2)|Hzᵃ^n+1 | - (Mₚ/dt+Md/2)|Hzᵃ^n  | = |∂ₓᵇ Eyᵃ^n+½              | -d
+    !             [Eyᵃ^n+1½]               [Eyᵃ^n+½]   [∂zᶠ Hxᵃ^n+1 + ∂ₓᶠ Hzᵃ^n+1]
+    !but we evolve it in reverse time:
+    !             [Eyᵃ^n+½]               [Eyᵃ^n+1½]   [∂zᶠ Hxᵃ^n+1 + ∂ₓᶠ Hzᵃ^n+1]
+    ! (Mₚ/dt+Md/2)|Hzᵃ^n  | - (Mₚ/dt-Md/2)|Hzᵃ^n+1 | =-|∂ₓᵇ Eyᵃ^n+½              | +d
+    !             [Hxᵃ^n  ]               [Hxᵃ^n+1 ]   [∂zᵇ Eyᵃ^n+½              ]
+    !
+    ! [Eyᵃ^n+½]                 [            [Eyᵃ^n+1½]  [∂zᶠ Hxᵃ^n+1 + ∂ₓᶠ Hzᵃ^n+1]   ]
+    ! |Hzᵃ^n  | = (Mₚ/dt+Md/2)⁻¹[(Mₚ/dt-Md/2)|Hzᵃ^n+1 | -|∂ₓᵇ Eyᵃ^n+½              | +d]
+    ! [Hxᵃ^n  ]                 [            [Hxᵃ^n+1 ]  [∂zᵇ Eyᵃ^n+½              ]   ]
+    !
+    ! Step #5: Eᵃ^n+½ = Eᵃ^n+1½ - spatial FD(Hᵃ^n+1)
+    ! Step #4: Eᵃ^n+1½ += adjsrc
+    ! Step #3: Hᵃ^n = Hᵃ^n+1 - spatial FD(Hᵃ^n+½)
+    !! Step #2: Hᵃ^n+1 += adjsrc
+    ! N.B. Same codes for spatial FDs as in forward time marching, just negate the sign of the Laplacian
+    ! and do NOT negate the sign of the RHS
     
 !!    ! For adjoint test:
 !!    ! In each step of forward time marching: dsyn=RGANf
@@ -417,11 +438,8 @@ use m_cpml
             endif
 
             !do forward time stepping (step# conforms with backward & adjoint time stepping)
-            !!step 1: add forces to v^it, no need
-            !call cpu_time(tic)
-            !call self%inject_H(fld_u,time_dir,it)
-            !call cpu_time(toc)
-            !tt1=tt1+toc-tic
+            !unlike m_propagator_SH_FDSG_O4
+            !here, let's update the field before injection..
 
             !step 2: from H^it to H^it+1 by differences of E^it+0.5
             call cpu_time(tic)
@@ -429,17 +447,23 @@ use m_cpml
             call cpu_time(toc)
             tt2=tt2+toc-tic
 
-            !step 3: add current density vector to E^it+0.5
-            call cpu_time(tic)
-            call self%inject_E(fld_u,time_dir,it)
-            call cpu_time(toc)
-            tt3=tt3+toc-tic
+            !!step 1: add forces to v^it, no need
+            !call cpu_time(tic)
+            !call self%inject_H(fld_u,time_dir,it)
+            !call cpu_time(toc)
+            !tt1=tt1+toc-tic
 
             !step 4: from E^it+0.5 to E^it+1.5 by differences of H^it+1
             call cpu_time(tic)
             call self%update_E(fld_u,time_dir,it)
             call cpu_time(toc)
             tt4=tt4+toc-tic
+
+            !step 3: add current density vector to E^it+0.5
+            call cpu_time(tic)
+            call self%inject_E(fld_u,time_dir,it)
+            call cpu_time(toc)
+            tt3=tt3+toc-tic
 
             !step 5: sample E^it+1.5 at receivers
             call cpu_time(tic)
@@ -520,6 +544,12 @@ use m_cpml
             call fld_u%boundary_transport_magnetic('load',it)
             call cpu_time(toc)
             tt1=tt1+toc-tic
+
+            !backward step 3: rm force from E^it+0.5
+            call cpu_time(tic)
+            call self%inject_E(fld_u,time_dir,it)
+            call cpu_time(toc)
+            tt3=tt3+toc-tic
         
             !backward step 4: E^it+1.5 -> E^it+0.5 by FD of H^it+1
             call cpu_time(tic)
@@ -527,25 +557,19 @@ use m_cpml
             call cpu_time(toc)
             tt2=tt2+toc-tic
 
-            !backward step 3: rm force from E^it+0.5
-            call cpu_time(tic)
-            call self%inject_E(fld_u,time_dir,it)
-            call cpu_time(toc)
-            tt3=tt3+toc-tic
-
             !--------------------------------------------------------!
-
-            !adjoint step 5: inject to E^it+1.5 at receivers
-            call cpu_time(tic)
-            call self%inject_E(fld_a,time_dir,it)
-            call cpu_time(toc)
-            tt4=tt4+toc-tic
 
             !adjoint step 4: E^it+1.5 -> E^it+0.5 by FD^T of H^it+1
             call cpu_time(tic)
             call self%update_E(fld_a,time_dir,it)
             call cpu_time(toc)
             tt5=tt5+toc-tic
+
+            !adjoint step 5: inject to E^it+1.5 at receivers
+            call cpu_time(tic)
+            call self%inject_E(fld_a,time_dir,it)
+            call cpu_time(toc)
+            tt4=tt4+toc-tic
 
             !gkpa: rf%s^it+0.5 star D sf%s_dt^it+0.5
             !use sf%v^it+1 to compute sf%s_dt^it+0.5, as backward step
@@ -562,25 +586,20 @@ use m_cpml
             old_Hx = fld_u%Hx
             old_Hz = fld_u%Hz
 
+            !!backward step 1: rm  from H^it
+            !call cpu_time(tic)
+            !call self%inject_H(fld_u,time_dir,it)
+            !call cpu_time(toc)
+            !tt8=tt8+toc-tic
+
             !backward step 2: H^it+1 -> H^it by FD of E^it+0.5
             call cpu_time(tic)
             call self%update_H(fld_u,time_dir,it)
             call cpu_time(toc)
             tt7=tt7+toc-tic
 
-            !!backward step 1: rm  from H^it
-            !call cpu_time(tic)
-            !call self%inject_stresses(fld_u,time_dir,it)
-            !call cpu_time(toc)
-            !tt8=tt8+toc-tic
 
             !--------------------------------------------------------!
-
-            !!adjoint step 3: inject to v^it+1 at receivers
-            !call cpu_time(tic)
-            !call self%inject_stresses(fld_a,time_dir,it)
-            !call cpu_time(toc)
-            !tt9=tt9+toc-tic
 
             !adjoint step 2: H^it+1 -> H^it by FD^T of E^it+0.5
             call cpu_time(tic)
@@ -588,6 +607,12 @@ use m_cpml
             call cpu_time(toc)
             tt10=tt10+toc-tic
             
+            !!adjoint step 3: inject to v^it+1 at receivers
+            !call cpu_time(tic)
+            !call self%inject_H(fld_a,time_dir,it)
+            !call cpu_time(toc)
+            !tt9=tt9+toc-tic
+
             !adjoint step 1: sample E^it+0.5 at source position
             if(propagator_if_record_adjseismo) then
                 call cpu_time(tic)
@@ -659,7 +684,7 @@ use m_cpml
                 ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
                 
                 wl=time_dir*f%wavelet(1,it)*wavelet_scaler
-                if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest.
+                ! if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest.
                 
             
                 if(if_hicks) then
@@ -684,7 +709,7 @@ use m_cpml
                     ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
                     
                     wl=f%wavelet(i,it)*wavelet_scaler
-                    if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest.
+                    ! if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest.
                     
                     if(if_hicks) then
                         f%Ey(ifz:ilz,ifx:ilx,1) = f%Ey(ifz:ilz,ifx:ilx,1) + wl/self%eps(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
@@ -1121,7 +1146,7 @@ use m_cpml
                 
                 !εdE + σE = ∂zHx + ∂ₓHz
                 !ε(E^n+1-E^n)/dt + σ(E^n+1+E^n)/2 = ∂zHx + ∂ₓHz
-                !(ε/dt+σ/2) (E^n+1) - (ε/dt-σ/2)(E^n) = ∂zHx + ∂ₓHz
+                !(ε/dt+σ/2) (E^n+1) -(ε/dt-σ/2)(E^n)   = ∂zHx + ∂ₓHz
                 Ey(iz_ix) = ((eps(iz_ix)/dt-sgma(iz_ix)/2)*Ey(iz_ix) + dHx_dz_+dHz_dx_) &
                            / (eps(iz_ix)/dt+sgma(iz_ix)/2)
                 

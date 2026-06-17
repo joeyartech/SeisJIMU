@@ -4,7 +4,8 @@
 ############
 # Modeling #
 ############
-WaveEq=SH
+WaveEq=TE
+#WaveEq=SH
 #WaveEq=PSV
 #WaveEq=DAS
 #WaveEq=DASAC
