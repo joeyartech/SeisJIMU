@@ -167,10 +167,22 @@ use m_smoother_laplacian_sparse
                 read(12,rec=i) self%eps
                 call hud('eps model is read.')
 
+            case ('eps_r')
+                call alloc(self%eps,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%eps
+                self%eps = r_eps0 * self%eps
+                call hud('eps_r model is read and is converted to eps.')
+
             case ('mu')
                 call alloc(self%mu,self%nz,self%nx,self%ny)
-                read(12,rec=i) self%eps
+                read(12,rec=i) self%mu
                 call hud('mu model is read.')
+
+            case ('mu_r')
+                call alloc(self%mu,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%mu
+                self%mu = r_mu0 * self%mu
+                call hud('mu_r model is read and is converted to mu.')
 
             case ('sgma')
                 call alloc(self%sgma,self%nz,self%nx,self%ny)
@@ -186,58 +198,58 @@ use m_smoother_laplacian_sparse
         !freesurface
         self%is_freesurface=setup%get_bool('IS_FREESURFACE',o_default='T')
         
-        ! !bathymetry or topography
-        ! call alloc(self%ibathy,self%nx,self%ny)
+        !bathymetry or topography
+        call alloc(self%ibathy,self%nx,self%ny)
 
-        ! !freeze zone
-        ! allocate(self%is_freeze_zone(self%nz,self%nx,self%ny),source=.false.)
+        !freeze zone
+        allocate(self%is_freeze_zone(self%nz,self%nx,self%ny),source=.false.)
 
-        ! !check file bathymetry or topography
-        ! file=setup%get_file('FILE_BATHYMETRY','FILE_BATHY')
-        ! if(file=='') file=setup%get_file('FILE_TOPOGRAPHY','FILE_TOPO')
-        ! if(file/='') then
-        !     call alloc(tmp,self%nx,self%ny,1)
-        !     call sysio_read(file,tmp,self%n)
-        !     call hud('bathy minmax value: '//num2str(minval(tmp))//' , '//num2str(maxval(tmp)))
-        !     call hud('water or air layer is from #1 to #(floor(bathy/dz)+1) grid points in depth')
+        !check file bathymetry or topography
+        file=setup%get_file('FILE_BATHYMETRY','FILE_BATHY')
+        if(file=='') file=setup%get_file('FILE_TOPOGRAPHY','FILE_TOPO')
+        if(file/='') then
+            call alloc(tmp,self%nx,self%ny,1)
+            call sysio_read(file,tmp,self%n)
+            call hud('bathy minmax value: '//num2str(minval(tmp))//' , '//num2str(maxval(tmp)))
+            call hud('water or air layer is from #1 to #(floor(bathy/dz)+1) grid points in depth')
 
-        !     do iy=1,self%ny; do ix=1,self%nx    
-        !         self%ibathy(ix,iy)=floor(tmp(ix,iy,1)/self%dz)+1
-        !     enddo; enddo
+            do iy=1,self%ny; do ix=1,self%nx    
+                self%ibathy(ix,iy)=floor(tmp(ix,iy,1)/self%dz)+1
+            enddo; enddo
 
-        !     do iy=1,self%ny; do ix=1,self%nx    
-        !         self%is_freeze_zone(1:self%ibathy(ix,iy),ix,iy)=.true.
-        !     enddo; enddo
+            do iy=1,self%ny; do ix=1,self%nx    
+                self%is_freeze_zone(1:self%ibathy(ix,iy),ix,iy)=.true.
+            enddo; enddo
             
-        !     call hud('Freeze zone is set from FILE_BATHYMETRY or FILE_TOPOGRAPHY.')
-        ! endif
+            call hud('Freeze zone is set from FILE_BATHYMETRY or FILE_TOPOGRAPHY.')
+        endif
 
-        ! !2nd check vs model
-        ! if(allocated(self%vs)) then
-        !     if(setup%get_bool('IF_BATHY_FROM_VS',o_default='T')) then
-        !         !self%ibathy = maxloc(self%vs, dim=1, mask=(self%vs<10), back=.true.)+1 !the "back" argument isn't implemented in gfortran until version 9 ..
-        !         do iy=1,self%ny; do ix=1,self%nx
-        !             loopz: do iz=1,self%nz
-        !                 if(self%vs(iz,ix,iy)<10.) then
-        !                     self%is_freeze_zone(iz,ix,iy) = .true.
-        !                 else
-        !                     exit loopz
-        !                 endif
-        !             enddo loopz
-        !         enddo; enddo
-        !         call hud('Freeze zone is additionally set from vs model.')
-        !     endif
-        ! endif
+        !2nd check eps_r model
+        if(allocated(self%vs)) then
+            if(setup%get_bool('IF_TOPO_FROM_EPS',o_default='T')) then
+                !self%ibathy = maxloc(self%vs, dim=1, mask=(self%vs<10), back=.true.)+1 !the "back" argument isn't implemented in gfortran until version 9 ..
+                do iy=1,self%ny; do ix=1,self%nx
+                    loopz: do iz=1,self%nz
+                        if(self%eps(iz,ix,iy)/r_eps0<1.1) then !air
+                            self%is_freeze_zone(iz,ix,iy) = .true.
+                        else
+                            exit loopz
+                        endif
+                    enddo loopz
+                enddo; enddo
+                call hud('Freeze zone is additionally set from vs model.')
+            endif
+        endif
 
-        ! !3rd check if file freeze is given
-        ! file=setup%get_file('FILE_FREEZE_ZONE')
-        ! if(file/='') then
-        !     call alloc(tmp,self%nz,self%nx,self%ny)
-        !     call sysio_read(file,tmp,self%n)
+        !3rd check if file freeze is given
+        file=setup%get_file('FILE_FREEZE_ZONE')
+        if(file/='') then
+            call alloc(tmp,self%nz,self%nx,self%ny)
+            call sysio_read(file,tmp,self%n)
             
-        !     where(tmp==0.) self%is_freeze_zone=.true.
-        !     call hud('Freeze zone is additionally set from FILE_FREEZE_ZONE.')
-        ! endif
+            where(tmp==0.) self%is_freeze_zone=.true.
+            call hud('Freeze zone is additionally set from FILE_FREEZE_ZONE.')
+        endif
 
         call dealloc(tmp)
 
@@ -380,8 +392,14 @@ use m_smoother_laplacian_sparse
             case ('eps')
                 write(13,rec=i) self%eps
 
+            case ('eps_r')
+                write(13,rec=i) self%eps/r_eps0
+
             case ('mu')
                 write(13,rec=i) self%mu
+
+            case ('mu_r')
+                write(13,rec=i) self%mu/r_mu0
 
             case ('sgma')
                 write(13,rec=i) self%sgma

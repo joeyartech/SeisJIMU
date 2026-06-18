@@ -50,7 +50,7 @@ use m_cpml
         logical :: if_compute_engy=.false.
 
         !local models shared between fields
-        real,dimension(:,:),allocatable :: imuz, imux, eps, sgma
+        real,dimension(:,:),allocatable :: imuz, imux, epsdt_p_sgma, epsdt_m_sgma
 
         !time frames
         integer :: nt
@@ -107,16 +107,21 @@ use m_cpml
     
     subroutine check_model(self)
         class(t_propagator) :: self
-        
-        ! if(index(self%info,'vs')>0  .and. .not. allocated(m%vs)) then
-        !     call alloc(m%vs,m%nz,m%nx,1,o_init=866.)
-        !     call warn('Constant vs model (866 m/s) is allocated by propagator.')
-        ! endif
 
-        ! if(index(self%info,'rho')>0 .and. .not. allocated(m%rho)) then
-        !     call alloc(m%rho,m%nz,m%nx,m%ny,o_init=1000.)
-        !     call warn('Constant rho model (1000 kg/m³) is allocated by propagator.')
-        ! endif
+        if(.not. allocated(m%eps)) then
+            call alloc(m%eps,m%nz,m%nx,m%ny,o_init=r_eps0)
+            call warn('Constant eps model (8.854e-12 F/m) is allocated by propagator.')
+        endif        
+
+        if(.not. allocated(m%mu)) then
+            call alloc(m%mu,m%nz,m%nx,m%ny,o_init=r_mu0)
+            call warn('Constant mu model (4π×10⁻⁷ H/m) is allocated by propagator.')
+        endif
+
+        if(.not. allocated(m%sgma)) then
+            call alloc(m%sgma,m%nz,m%nx,m%ny,o_init=0.)
+            call warn('Constant sgma model (0 S/m) is allocated by propagator.')
+        endif
                 
     end subroutine
     
@@ -170,10 +175,10 @@ use m_cpml
 
         if_hicks=shot%if_hicks
 
-        call alloc(self%eps, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        call alloc(self%sgma,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%imuz,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         call alloc(self%imux,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(self%epsdt_p_sgma,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
+        call alloc(self%epsdt_m_sgma,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         
         call alloc(temp_imu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         temp_imu(:,:) = 1./cb%mu(:,:,1)
@@ -188,8 +193,8 @@ use m_cpml
 
         deallocate(temp_imu)
 
-        self%eps =cb%eps (:,:,1)
-        self%sgma=cb%sgma(:,:,1)
+        self%epsdt_p_sgma = cb%eps(:,:,1)/self%dt + cb%sgma(:,:,1)/2
+        self%epsdt_m_sgma = cb%eps(:,:,1)/self%dt - cb%sgma(:,:,1)/2
 
         !initialize m_field
         call field_init(.true.,self%nt,self%dt)
@@ -355,6 +360,10 @@ use m_cpml
     ! [Hx^n+1 ]                 [            [Hx^n  ]   [∂zᵇ Ey^n+½             ]   ]
     ! |Hz^n+1 | = (Mₚ/dt+Md/2)⁻¹[(Mₚ/dt-Md/2)|Hz^n  | + |∂ₓᵇ Ey^n+½             | +f]
     ! [Ey^n+1½]                 [            [Ey^n+½]   [∂zᶠ Hy^n+1 + ∂ₓᶠ Hy^n+1]   ]
+    !                                  [Hx^n  ]   (μ/dt)⁻¹    [∂zᵇ Ey^n+½             ]
+    !           =                      |Hz^n  | + (μ/dt)⁻¹    |∂ₓᵇ Ey^n+½             |
+    !             (ε/dt-σ/2)/(ε/dt+σ/2)[Ey^n+½]   (ε/dt+σ/2)⁻¹[∂zᶠ Hy^n+1 + ∂ₓᶠ Hy^n+1] +(ε/dt+σ/2)⁻¹Jy
+    !
     !compared w/ SH propagator, swap Steps 1 & 2 and 3 & 4 here
     ! Step #1: H^n+1 = H^n + spatial FD(E^n+½)
     !! Step #2: H^n += src
@@ -375,6 +384,9 @@ use m_cpml
     ![Ey^n+½]                 [            [Ey^n+1½]   [∂zᶠ Hx^n+1 + ∂ₓᶠ Hz^n+1]    ]
     !|Hz^n  | = (Mₚ/dt-Md/2)⁻¹[(Mₚ/dt+Md/2)|Hz^n+1 | - |∂ₓᵇ Ey^n+½             | -f ]
     ![Hx^n  ]                 [            [Hx^n+1 ]   [∂zᵇ Ey^n+½             ]    ]
+    !           (ε/dt+σ/2)/(ε/dt-σ/2)[Ey^n+1½]   (ε/dt-σ/2)⁻¹[∂zᶠ Hx^n+1 + ∂ₓᶠ Hz^n+1] -(ε/dt-σ/2)⁻¹Jy
+    !         =                      |Hz^n+1 | - (μ/dt)⁻¹    |∂ₓᵇ Ey^n+½             |
+    !                                [Hx^n+1 ]   (μ/dt)⁻¹    [∂zᵇ Ey^n+½             ]
     !
     ! Step #6: load boundary values for v^n+1
     ! Step #4: E^n+½ -= src
@@ -402,6 +414,9 @@ use m_cpml
     ! [Eyᵃ^n+½]                 [            [Eyᵃ^n+1½]  [∂zᶠ Hxᵃ^n+1 + ∂ₓᶠ Hzᵃ^n+1]   ]
     ! |Hzᵃ^n  | = (Mₚ/dt+Md/2)⁻¹[(Mₚ/dt-Md/2)|Hzᵃ^n+1 | -|∂ₓᵇ Eyᵃ^n+½              | +d]
     ! [Hxᵃ^n  ]                 [            [Hxᵃ^n+1 ]  [∂zᵇ Eyᵃ^n+½              ]   ]
+    !             (ε/dt-σ/2)/(ε/dt+σ/2)[Eyᵃ^n+1½]   (ε/dt+σ/2)⁻¹[∂zᶠ Hxᵃ^n+1 + ∂ₓᶠ Hzᵃ^n+1] +(ε/dt+σ/2)⁻¹ +d
+    !           =                      |Hzᵃ^n+1 | - (μ/dt    )⁻¹|∂ₓᵇ Eyᵃ^n+½              |
+    !                                  [Hxᵃ^n+1 ]   (μ/dt    )⁻¹[∂zᵇ Eyᵃ^n+½              ]  
     !
     ! Step #5: Eᵃ^n+½ = Eᵃ^n+1½ - spatial FD(Hᵃ^n+1)
     ! Step #4: Eᵃ^n+1½ += adjsrc
@@ -455,7 +470,7 @@ use m_cpml
 
             !step 4: from E^it+0.5 to E^it+1.5 by differences of H^it+1
             call cpu_time(tic)
-            call self%update_E(fld_u,time_dir,it)
+            call self%update_E(fld_u,1)
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
@@ -553,7 +568,7 @@ use m_cpml
         
             !backward step 4: E^it+1.5 -> E^it+0.5 by FD of H^it+1
             call cpu_time(tic)
-            call self%update_E(fld_u,time_dir,it)
+            call self%update_E(fld_u,2)
             call cpu_time(toc)
             tt2=tt2+toc-tic
 
@@ -561,7 +576,7 @@ use m_cpml
 
             !adjoint step 4: E^it+1.5 -> E^it+0.5 by FD^T of H^it+1
             call cpu_time(tic)
-            call self%update_E(fld_a,time_dir,it)
+            call self%update_E(fld_a,3)
             call cpu_time(toc)
             tt5=tt5+toc-tic
 
@@ -688,10 +703,10 @@ use m_cpml
                 
             
                 if(if_hicks) then
-                    f%Ey(ifz:ilz,ifx:ilx,1) = f%Ey(ifz:ilz,ifx:ilx,1) + wl/self%eps(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
+                    f%Ey(ifz:ilz,ifx:ilx,1) = f%Ey(ifz:ilz,ifx:ilx,1) + wl/self%epsdt_p_sgma(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
                     
                 else
-                    f%Ey(iz,ix,1) = f%Ey(iz,ix,1) + wl/self%eps(iz,ix)
+                    f%Ey(iz,ix,1) = f%Ey(iz,ix,1) + wl/self%epsdt_p_sgma(iz,ix)
                 
                 endif
             
@@ -712,10 +727,10 @@ use m_cpml
                     ! if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest.
                     
                     if(if_hicks) then
-                        f%Ey(ifz:ilz,ifx:ilx,1) = f%Ey(ifz:ilz,ifx:ilx,1) + wl/self%eps(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
+                        f%Ey(ifz:ilz,ifx:ilx,1) = f%Ey(ifz:ilz,ifx:ilx,1) + wl/self%epsdt_p_sgma(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
                         
                     else
-                        f%Ey(iz,ix,1) = f%Ey(iz,ix,1) + wl/self%eps(iz,ix) !no time_dir needed!
+                        f%Ey(iz,ix,1) = f%Ey(iz,ix,1) + wl/self%epsdt_p_sgma(iz,ix) !no time_dir needed!
                     
                     endif
                
@@ -738,7 +753,7 @@ use m_cpml
         ify=f%bloom(5,it)+2
         ily=f%bloom(6,it)-1
 
-        if(m%is_freesurface) ifz=max(ifz,1)
+        ! if(m%is_freesurface) ifz=max(ifz,1)
 
         call fd2d_H(f%Hx,f%Hz,f%Ey,                 &
                     f%dEy_dz,f%dEy_dx,              &
@@ -758,78 +773,9 @@ use m_cpml
 
     end subroutine
 
-    ! !forward: add RHS to s^it+0.5
-    ! !adjoint: add RHS to s^it+1.5
-    ! subroutine inject_H(self,f,time_dir,it)
-    !     class(t_propagator) :: self
-    !     type(t_field) :: f
-
-    !     if(.not. f%is_adjoint) then
-
-    !         ifz=shot%src%ifz-cb%ioz+1; iz=shot%src%iz-cb%ioz+1; ilz=shot%src%ilz-cb%ioz+1
-    !         ifx=shot%src%ifx-cb%iox+1; ix=shot%src%ix-cb%iox+1; ilx=shot%src%ilx-cb%iox+1
-            
-    !         wl=time_dir*f%wavelet(1,it)*wavelet_scaler
-            
-    !         if(if_hicks) then
-    !             if(shot%src%comp=='szy') then
-    !                 f%szy(ifz:ilz,ifx:ilx,1) = f%szy(ifz:ilz,ifx:ilx,1) + wl*self%muz(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
-
-    !             else if(shot%src%comp=='sxy') then
-    !                 f%sxy(ifz:ilz,ifx:ilx,1) = f%sxy(ifz:ilz,ifx:ilx,1) + wl*self%mux(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
-                
-    !             endif
-                
-    !         else
-    !             if(shot%src%comp=='szy') then
-    !                 f%szy(iz,ix,1) = f%szy(iz,ix,1) + wl*self%muz(iz,ix)
-                
-    !             else if(shot%src%comp=='sxy') then
-    !                 f%sxy(iz,ix,1) = f%sxy(iz,ix,1) + wl*self%mux(iz,ix)
-                
-    !             endif
-                
-    !         endif
-
-    !         return
-
-    !     endif
-
-    !         do i=1,shot%nrcv
-
-    !             ifz=shot%rcv(i)%ifz-cb%ioz+1; iz=shot%rcv(i)%iz-cb%ioz+1; ilz=shot%rcv(i)%ilz-cb%ioz+1
-    !             ifx=shot%rcv(i)%ifx-cb%iox+1; ix=shot%rcv(i)%ix-cb%iox+1; ilx=shot%rcv(i)%ilx-cb%iox+1
-                
-    !             !adjsource for pressure
-    !             wl=f%wavelet(i,it)*wavelet_scaler
-                
-    !             if(if_hicks) then 
-
-    !                 if(shot%rcv(i)%comp=='szy') then
-    !                     f%szy(ifz:ilz,ifx:ilx,1) = f%szy(ifz:ilz,ifx:ilx,1) +wl*self%muz(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
-    !                 elseif(shot%rcv(i)%comp=='sxy') then
-    !                     f%sxy(ifz:ilz,ifx:ilx,1) = f%sxy(ifz:ilz,ifx:ilx,1) +wl*self%mux(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
-    !                 endif
-
-    !             else
-
-    !                 if(shot%rcv(i)%comp=='szy') then
-    !                     !szy[iz,ix,1]
-    !                     f%szy(iz,ix,1) = f%szy(iz,ix,1) +wl*self%muz(iz,ix) !no time_dir needed!
-    !                 elseif(shot%rcv(i)%comp=='sxy') then
-    !                     !sxy[iz,ix,1]
-    !                     f%sxy(iz,ix,1) = f%sxy(iz,ix,1) +wl*self%mux(iz,ix) !no time_dir needed!
-    !                 endif
-
-    !             endif
-
-    !         enddo
-        
-    ! end subroutine
-
     !forward: s^it+0.5 -> s^it+1.5 by FD of v^it+1
     !adjoint: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
-    subroutine update_E(self,f,time_dir,it)
+    subroutine update_E(self,f,iopt)
         class(t_propagator) :: self
         type(t_field) :: f
 
@@ -838,12 +784,12 @@ use m_cpml
         ifx=f%bloom(3,it)+1
         ilx=f%bloom(4,it)-2
         
-        if(m%is_freesurface) ifz=max(ifz,1)
+        ! if(m%is_freesurface) ifz=max(ifz,1)
 
         call fd2d_E(f%Hx,f%Hz,f%Ey,                 &
                     f%dHx_dz,f%dHz_dx,              &
-                    self%eps,self%sgma,             &
-                    ifz,ilz,ifx,ilx,time_dir*self%dt)
+                    self%epsdt_p_sgma,self%epsdt_m_sgma,&
+                    ifz,ilz,ifx,ilx,iopt)
         
         !if(m%is_freesurface) then
         !    !apply free surface boundary condition if needed
@@ -928,7 +874,7 @@ use m_cpml
     
     subroutine final(self)
         type(t_propagator) :: self
-        call dealloc(self%imuz, self%imux, self%eps, self%sgma)
+        call dealloc(self%imuz, self%imux, self%epsdt_p_sgma, self%epsdt_m_sgma)
         call dealloc(old_Hx, old_Hz, old_Ey)
     end subroutine
 
@@ -1042,7 +988,7 @@ use m_cpml
 
     !========= Finite-Difference on flattened arrays ==================
 
-    subroutine fd2d_H(Hx,Hz,Ey,       &
+    subroutine fd2d_H(Hx,Hz,Ey,         &
                       dEy_dz,dEy_dx,    &
                       imuz,imux,        &
                       ifz,ilz,ifx,ilx,dt)
@@ -1099,19 +1045,20 @@ use m_cpml
         
     end subroutine
     
-    subroutine fd2d_E(Hx,Hz,Ey,       &
-                      dHx_dz,dHz_dx,  &
-                      eps,sgma,              &
-                      ifz,ilz,ifx,ilx,dt)
+    subroutine fd2d_E(Hx,Hz,Ey,                 &
+                      dHx_dz,dHz_dx,            &
+                      epsdt_p_sgma,epsdt_m_sgma,&
+                      ifz,ilz,ifx,ilx, iopt     )
         real,dimension(*) :: Hx,Hz,Ey
         real,dimension(*) :: dHx_dz,dHz_dx
-        real,dimension(*) :: eps,sgma
+        real,dimension(*) :: epsdt_p_sgma,epsdt_m_sgma
         
         nz=cb%nz
         nx=cb%nx
         
         dHx_dz_=0.; dHz_dx_=0.
         
+
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
         !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
@@ -1144,18 +1091,23 @@ use m_cpml
                 dHx_dz_=dHx_dz_*cpml%kpa_z(iz) + dHx_dz(iz_ix)
                 dHz_dx_=dHz_dx_*cpml%kpa_x(ix) + dHz_dx(iz_ix)
                 
-                !εdE + σE = ∂zHx + ∂ₓHz
-                !ε(E^n+1-E^n)/dt + σ(E^n+1+E^n)/2 = ∂zHx + ∂ₓHz
-                !(ε/dt+σ/2) (E^n+1) -(ε/dt-σ/2)(E^n)   = ∂zHx + ∂ₓHz
-                Ey(iz_ix) = ((eps(iz_ix)/dt-sgma(iz_ix)/2)*Ey(iz_ix) + dHx_dz_+dHz_dx_) &
-                           / (eps(iz_ix)/dt+sgma(iz_ix)/2)
-                
+                !E. Is this fine?
+                if(iopt==1) then !forward sfield in time
+                    Ey(iz_ix) = epsdt_m_sgma(iz_ix)/epsdt_p_sgma(iz_ix) * Ey(iz_ix)      &
+                                                +1./epsdt_p_sgma(iz_ix) *(dHx_dz_+dHz_dx_)
+                elseif(iopt==2) then !reverse sfield in time
+                    Ey(iz_ix) = epsdt_p_sgma(iz_ix)/epsdt_m_sgma(iz_ix) * Ey(iz_ix)      &
+                                                +1./epsdt_m_sgma(iz_ix) *(dHx_dz_+dHz_dx_)
+                else !reverse rfield in time
+                    Ey(iz_ix) = epsdt_m_sgma(iz_ix)/epsdt_p_sgma(iz_ix) * Ey(iz_ix)      &
+                                                -1./epsdt_p_sgma(iz_ix) *(dHx_dz_+dHz_dx_)
+                endif
             enddo
             
         enddo
         !$omp enddo 
         !$omp end parallel
-        
+
     end subroutine
     
 
