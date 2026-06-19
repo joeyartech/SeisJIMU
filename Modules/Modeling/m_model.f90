@@ -199,15 +199,8 @@ use m_smoother_laplacian_sparse
 
             case ('sgma')
                 call alloc(self%sgma,self%nz,self%nx,self%ny)
-                read(12,rec=i) self%sgma
-                if(.not.self%if_microsec) self%sgma=self%sgma*1e18 !convert S/m=A²·s³/kg/m² to A²·µs³/kg/m²
+                read(12,rec=i) self%sgma !no need to convert S/m=A²·s³/kg/m² to A²·µs³/kg/m²
                 call hud('sgma model is read.')
-
-            case ('sgma_r')
-                call alloc(self%sgma,self%nz,self%nx,self%ny)
-                read(12,rec=i) self%sgma
-                self%sgma = 1e18 * self%sgma
-                call hud('sgma_r model is read and is converted to sgma.')
 
             end select
 
@@ -367,8 +360,7 @@ use m_smoother_laplacian_sparse
                 where(self%is_freeze_zone) self%mu=tmp
 
             case ('sgma')
-                read(12,rec=i) tmp
-                if(.not.self%if_microsec) tmp=tmp*1e18 !convert S/m=A²·s³/kg/m² to A²·µs³/kg/m²
+                read(12,rec=i) tmp !no need to convert S/m=A²·s³/kg/m² to A²·µs³/kg/m²
                 where(self%is_freeze_zone) self%sgma=tmp
 
             end select

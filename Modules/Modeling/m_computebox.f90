@@ -1,5 +1,6 @@
 module m_computebox
 use m_System
+use m_math
 use m_model
 use m_shot
 
@@ -8,22 +9,25 @@ use m_shot
 !geometry of model & computebox
 !                                      ifx<---- nx ---->ilx
 !                                    ifz+~~~~~~~~~~~~~~~~+
-!       iox     iox+mx-1              ^ l   1      mx    l
+!                                     ^ l   1      mx    l
+!                                     | l   +-------+    l
+!       iox     iox+mx-1              | l   |   A   |    l
 !  ++====+-------+===========++       | l  1+-------+    l
-!  ||    | *     |           ||       | l   |       |    l
-!  || A  |   C   |     B     ||         l D |   C   |    l
-!  ||    |       |           ||      nz l   |       |    l
+!  ||    | *     |           ||         l   |       |    l
+!  || B  |   C   |     B     ||      nz l D |   C   |    l
 !  ||    |       |           ||         l   |       |    l
+!  ||    |       |           ||       | l   |       |    l
 !  ++====+-------+===========++       | l mz+-------+    l
 !                                     v l absorbinglayer l
-!       Model: A+B+C                 ilz+~~~~~~~~~~~~~~~~+
+!       Model: B+C+B                 ilz+~~~~~~~~~~~~~~~~+
 !       * source point
-!                                        Computebox: C+D
+!                                        Computebox: A+C+D
 
     real,dimension(4) :: add_aperture
     
     type,public :: t_computebox
 
+        integer :: nairlayer !thickness of A
         integer :: nabslayer !thickness of D
 
         !C's index in Model
@@ -32,7 +36,7 @@ use m_shot
         !C's index in Computebox
         integer :: mz,mx,my !=m%nz,nx,ny
         
-        !C+D's index in Computebox
+        !A+C+D's index in Computebox
         integer :: ifz,ifx,ify
         integer :: ilz,ilx,ily
         integer :: nz,nx,ny,n !>m%nz,nx,ny,n
@@ -71,15 +75,8 @@ use m_shot
         !add aperture; aperture default to whole model
         add_aperture=setup%get_reals('ADD_APERTURE',o_default='-99999 99999 -99999 99999')
 
-        ! self%cell_volume = m%dz*m%dx*m%dy
-
-        ! if(m%is_cubic) then
-        !     self%cell_diagonal=sqrt(m%dz**2+m%dx**2+m%dy**2)
-        !     self%cell_inv_diagonal=sqrt(m%dz**(-2) + m%dx**(-2) + m%dy**(-2))
-        ! else
-        !     self%cell_diagonal=sqrt(m%dz**2+m%dx**2)
-        !     self%cell_inv_diagonal=sqrt(m%dz**(-2) + m%dx**(-2))
-        ! endif
+        !thickness of A
+        self%nairlayer=setup%get_int('AIRLAYER_THICKNESS','NAIRL',o_default='10')
 
         !thickness of D = 
         !thickness of user given + thickness required by propagator
@@ -113,7 +110,7 @@ use m_shot
         self%ilx = self%mx + self%nabslayer
         self%ify = 1       - self%nabslayer
         self%ily = self%my + self%nabslayer
-        self%ifz = 1       - self%nabslayer
+        self%ifz = 1       - self%nabslayer - self%nairlayer
         self%ilz = self%mz + self%nabslayer
         
         !take care of y
@@ -140,46 +137,10 @@ use m_shot
             write(*,*)'  ioy,my:',self%ioy,self%my
         endif
 
-        !move this piece of code to m_propagator.f90
-        !as we need to write dsyn during modelings in WPI
-        ! !shift source-receiver positions by computebox origin
-        ! !then positions are 0-based inside computebox
-        ! !source side
-        ! associate(s=>shot%src)
-        !     s%iz=s%iz-self%ioz+1
-        !     s%ix=s%ix-self%iox+1
-        !     s%iy=s%iy-self%iox+1
-
-        !     s%ifz=s%ifz-self%ioz+1; s%ilz=s%ilz-self%ioz+1
-        !     s%ifx=s%ifx-self%iox+1; s%ilx=s%ilx-self%iox+1
-        !     s%ify=s%ify-self%ioy+1; s%ily=s%ily-self%ioy+1
-            
-        !     s%z=s%z-(self%ioz-1)*m%dz
-        !     s%x=s%x-(self%iox-1)*m%dx
-        !     s%y=s%y-(self%ioy-1)*m%dy
-        ! end associate
-
-        ! !receiver side
-        ! associate(r=>shot%rcv)
-        !     do i=1,shot%nrcv
-        !         r(i)%iz=r(i)%iz-self%ioz+1
-        !         r(i)%ix=r(i)%ix-self%iox+1
-        !         r(i)%iy=r(i)%iy-self%ioy+1
-
-        !         r(i)%ifz=r(i)%ifz-self%ioz+1; r(i)%ilz=r(i)%ilz-self%ioz+1
-        !         r(i)%ifx=r(i)%ifx-self%iox+1; r(i)%ilx=r(i)%ilx-self%iox+1
-        !         r(i)%ify=r(i)%ify-self%ioy+1; r(i)%ily=r(i)%ily-self%ioy+1
-
-        !         r(i)%z=r(i)%z-(self%ioz-1)*m%dz
-        !         r(i)%x=r(i)%x-(self%iox-1)*m%dx
-        !         r(i)%y=r(i)%y-(self%ioy-1)*m%dy
-        !     enddo
-        ! end associate
-
         !models in computebox
-        call m2cb(m%eps, self%eps )
-        call m2cb(m%mu,  self%mu  )
-        call m2cb(m%sgma,self%sgma)
+        call m2cb(m%eps, self%eps ,r_eps0)
+        call m2cb(m%mu,  self%mu  ,r_mu0 )
+        call m2cb(m%sgma,self%sgma,0.)
 
         self%celerity = sqrt(1/self%eps/self%mu)
         
@@ -197,7 +158,7 @@ use m_shot
 
     end subroutine
     
-    subroutine m2cb(big,small)
+    subroutine m2cb(big,small,air_value)
         real,dimension(:,:,:),allocatable :: big, small
        
         if(.not.allocated(big)) return
@@ -212,8 +173,10 @@ use m_shot
                 cb%ioy:cb%ioy+cb%my-1)
 
         !values in boundary layers
+        !!air
+        do iz=0,-cb%nairlayer+1,-1         ; small(iz,:,:)=air_value    ; enddo
         !!top
-        do iz=cb%ifz ,0      ; small(iz,:,:)=small(1    ,:,:) ; enddo
+        do iz=cb%ifz,cb%ifz+cb%nabslayer-1 ; small(iz,:,:)=small(cb%ifz+cb%nabslayer,:,:) ; enddo
         !!bottom
         do iz=cb%mz+1,cb%ilz ; small(iz,:,:)=small(cb%mz,:,:) ; enddo
         !!left

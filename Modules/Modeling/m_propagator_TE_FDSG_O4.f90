@@ -704,7 +704,7 @@ use m_cpml
                 
             
                 if(if_hicks) then
-                    f%Ey(ifz:ilz,ifx:ilx,1) = f%Ey(ifz:ilz,ifx:ilx,1) + wl/self%epsdt_p_sgma(ifz:ilz,ifx:ilx)*shot%src%interp_coef(:,:,1)
+                    f%Ey(ifz:ilz,ifx:ilx,1) = f%Ey(ifz:ilz,ifx:ilx,1) + wl/self%epsdt_p_sgma(ifz:ilz,ifx:ilx)*shot%src%interp_coef_full(:,:,1)
                     
                 else
                     f%Ey(iz,ix,1) = f%Ey(iz,ix,1) + wl/self%epsdt_p_sgma(iz,ix)
@@ -728,7 +728,7 @@ use m_cpml
                     ! if(m%is_freesurface.and.shot%rcv(i)%iz==1) wl=2*wl !required to pass adjointtest.
                     
                     if(if_hicks) then
-                        f%Ey(ifz:ilz,ifx:ilx,1) = f%Ey(ifz:ilz,ifx:ilx,1) + wl/self%epsdt_p_sgma(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef(:,:,1) !no time_dir needed!
+                        f%Ey(ifz:ilz,ifx:ilx,1) = f%Ey(ifz:ilz,ifx:ilx,1) + wl/self%epsdt_p_sgma(ifz:ilz,ifx:ilx)*shot%rcv(i)%interp_coef_full(:,:,1) !no time_dir needed!
                         
                     else
                         f%Ey(iz,ix,1) = f%Ey(iz,ix,1) + wl/self%epsdt_p_sgma(iz,ix) !no time_dir needed!
@@ -815,7 +815,7 @@ use m_cpml
                     select case (shot%rcv(i)%comp)
                         
                         case ('Ey')
-                        f%seismo(i,it)=sum(f%Ey(ifz:ilz,ifx:ilx,1) *shot%rcv(i)%interp_coef(:,:,1))
+                        f%seismo(i,it)=sum(f%Ey(ifz:ilz,ifx:ilx,1) *shot%rcv(i)%interp_coef_full(:,:,1))
                         case ('Hx')
                         f%seismo(i,it)=sum(f%Hx(ifz:ilz,ifx:ilx,1)*shot%rcv(i)%interp_coef(:,:,1))
                         case ('Hz')
@@ -846,7 +846,7 @@ use m_cpml
             if(if_hicks) then
                 select case (shot%src%comp)
                     case ('Ey')
-                    f%seismo(1,it)=sum(f%Ey(ifz:ilz,ifx:ilx,1) *shot%src%interp_coef(:,:,1))
+                    f%seismo(1,it)=sum(f%Ey(ifz:ilz,ifx:ilx,1) *shot%src%interp_coef_full(:,:,1))
                     
                     case ('Hx')
                     f%seismo(1,it)=sum(f%Hx(ifz:ilz,ifx:ilx,1)*shot%src%interp_coef(:,:,1))
