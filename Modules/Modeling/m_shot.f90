@@ -383,7 +383,7 @@ use m_model
         case('vy','py')
             call hicks_put_position(self%src%z,       self%src%x,       self%src%y+halfy)
 
-        case('p','szz','sxx','ez','ex') !explosive source or normal stress/strain
+        case('p','szz','sxx','ez','ex', 'Ey') !explosive source or normal stress/strain
             call hicks_put_position(self%src%z,       self%src%x,       self%src%y)
 
         case('szx','es') !shear stress/strain
@@ -413,7 +413,7 @@ use m_model
         case('vy','py')
             call hicks_get_coefficient('truncate', self%src%interp_coef)
 
-        case('p','szz','sxx')
+        case('p','szz','sxx', 'Ey')
             call hicks_get_coefficient('antisymm', self%src%interp_coef_anti) !inject szz component
             call hicks_get_coefficient('symmetric',self%src%interp_coef_symm) !inject sxx component
             call hicks_get_coefficient('truncate', self%src%interp_coef_trunc)!extract sxx component
@@ -455,7 +455,7 @@ use m_model
             case('vy','py')
                 call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y+halfy)
 
-            case('p','szz','sxx','ez','ex')
+            case('p','szz','sxx','ez','ex', 'Ey')
                 call hicks_put_position(self%rcv(i)%z,       self%rcv(i)%x,       self%rcv(i)%y)
             
             case('szx','es')
@@ -485,7 +485,7 @@ use m_model
             case('vy','py')
                 call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef)
 
-            case('p','szz','sxx')
+            case('p','szz','sxx', 'Ey')
                 call hicks_get_coefficient('antisymm', self%rcv(i)%interp_coef_anti) !inject szz component
                 call hicks_get_coefficient('symmetric',self%rcv(i)%interp_coef_symm) !inject sxx component
                 call hicks_get_coefficient('truncate', self%rcv(i)%interp_coef_trunc)!extract sxx component

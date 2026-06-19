@@ -63,9 +63,9 @@ module m_math
     real,parameter :: r_eps=1e-15 !1e-3
     complex,parameter :: c_i=cmplx(0.,1.)
 
-    real,parameter :: r_eps0=8.85418782e-12 !(F/m) permittivity of free space
-    real,parameter :: r_mu0 =4*r_pi*1e-7 !(H/m) permeability of free space
-    real,parameter :: r_c0 = sqrt(1/r_eps0/r_mu0) !=299795635.48 !(m/s) speed of light
+    real,parameter :: r_eps0=8.854187817e-6 !*1e-6 F/m or 1 A·µs/(V·m), permittivity of free space
+    real,parameter :: r_mu0 =4*r_pi*1e-1    !*1e-6 H/m or 1 V·µs/(A·m), permeability of free space
+    real,parameter :: r_c0 = sqrt(1/r_eps0/r_mu0) !=299.79563548 !m/µs, speed of light
     
     contains
 

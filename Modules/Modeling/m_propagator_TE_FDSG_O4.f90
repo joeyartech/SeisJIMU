@@ -1,5 +1,6 @@
 module m_propagator
 use m_System
+use m_math
 use m_hicks, only : hicks_r
 use m_resampler
 use m_model
@@ -110,17 +111,17 @@ use m_cpml
 
         if(.not. allocated(m%eps)) then
             call alloc(m%eps,m%nz,m%nx,m%ny,o_init=r_eps0)
-            call warn('Constant eps model (8.854e-12 F/m) is allocated by propagator.')
+            call warn('Vacuum eps model (8.85e(-6-6) F/m) is allocated by propagator.')
         endif        
 
         if(.not. allocated(m%mu)) then
             call alloc(m%mu,m%nz,m%nx,m%ny,o_init=r_mu0)
-            call warn('Constant mu model (4π×10⁻⁷ H/m) is allocated by propagator.')
+            call warn('Vacuum mu model (4π*1e(-1-6) H/m) is allocated by propagator.')
         endif
 
         if(.not. allocated(m%sgma)) then
             call alloc(m%sgma,m%nz,m%nx,m%ny,o_init=0.)
-            call warn('Constant sgma model (0 S/m) is allocated by propagator.')
+            call warn('Vaccum sgma model (0 S/m) is allocated by propagator.')
         endif
                 
     end subroutine
@@ -360,9 +361,9 @@ use m_cpml
     ! [Hx^n+1 ]                 [            [Hx^n  ]   [∂zᵇ Ey^n+½             ]   ]
     ! |Hz^n+1 | = (Mₚ/dt+Md/2)⁻¹[(Mₚ/dt-Md/2)|Hz^n  | + |∂ₓᵇ Ey^n+½             | +f]
     ! [Ey^n+1½]                 [            [Ey^n+½]   [∂zᶠ Hy^n+1 + ∂ₓᶠ Hy^n+1]   ]
-    !                                  [Hx^n  ]   (μ/dt)⁻¹    [∂zᵇ Ey^n+½             ]
-    !           =                      |Hz^n  | + (μ/dt)⁻¹    |∂ₓᵇ Ey^n+½             |
-    !             (ε/dt-σ/2)/(ε/dt+σ/2)[Ey^n+½]   (ε/dt+σ/2)⁻¹[∂zᶠ Hy^n+1 + ∂ₓᶠ Hy^n+1] +(ε/dt+σ/2)⁻¹Jy
+    !                                             (μ/dt)⁻¹    [∂zᵇ Ey^n+½             ]
+    !           =                               + (μ/dt)⁻¹    |∂ₓᵇ Ey^n+½             | +
+    !             (ε/dt-σ/2)/(ε/dt+σ/2)[Ey^n+½]   (ε/dt+σ/2)⁻¹[∂zᶠ Hy^n+1 + ∂ₓᶠ Hy^n+1]  (ε/dt+σ/2)⁻¹Jy
     !
     !compared w/ SH propagator, swap Steps 1 & 2 and 3 & 4 here
     ! Step #1: H^n+1 = H^n + spatial FD(E^n+½)
@@ -384,9 +385,9 @@ use m_cpml
     ![Ey^n+½]                 [            [Ey^n+1½]   [∂zᶠ Hx^n+1 + ∂ₓᶠ Hz^n+1]    ]
     !|Hz^n  | = (Mₚ/dt-Md/2)⁻¹[(Mₚ/dt+Md/2)|Hz^n+1 | - |∂ₓᵇ Ey^n+½             | -f ]
     ![Hx^n  ]                 [            [Hx^n+1 ]   [∂zᵇ Ey^n+½             ]    ]
-    !           (ε/dt+σ/2)/(ε/dt-σ/2)[Ey^n+1½]   (ε/dt-σ/2)⁻¹[∂zᶠ Hx^n+1 + ∂ₓᶠ Hz^n+1] -(ε/dt-σ/2)⁻¹Jy
-    !         =                      |Hz^n+1 | - (μ/dt)⁻¹    |∂ₓᵇ Ey^n+½             |
-    !                                [Hx^n+1 ]   (μ/dt)⁻¹    [∂zᵇ Ey^n+½             ]
+    !           (ε/dt+σ/2)/(ε/dt-σ/2)[Ey^n+1½]   (ε/dt-σ/2)⁻¹[∂zᶠ Hx^n+1 + ∂ₓᶠ Hz^n+1]  (ε/dt-σ/2)⁻¹Jy
+    !         =                                - (μ/dt)⁻¹    |∂ₓᵇ Ey^n+½             | -
+    !                                            (μ/dt)⁻¹    [∂zᵇ Ey^n+½             ]
     !
     ! Step #6: load boundary values for v^n+1
     ! Step #4: E^n+½ -= src
@@ -414,9 +415,9 @@ use m_cpml
     ! [Eyᵃ^n+½]                 [            [Eyᵃ^n+1½]  [∂zᶠ Hxᵃ^n+1 + ∂ₓᶠ Hzᵃ^n+1]   ]
     ! |Hzᵃ^n  | = (Mₚ/dt+Md/2)⁻¹[(Mₚ/dt-Md/2)|Hzᵃ^n+1 | -|∂ₓᵇ Eyᵃ^n+½              | +d]
     ! [Hxᵃ^n  ]                 [            [Hxᵃ^n+1 ]  [∂zᵇ Eyᵃ^n+½              ]   ]
-    !             (ε/dt-σ/2)/(ε/dt+σ/2)[Eyᵃ^n+1½]   (ε/dt+σ/2)⁻¹[∂zᶠ Hxᵃ^n+1 + ∂ₓᶠ Hzᵃ^n+1] +(ε/dt+σ/2)⁻¹ +d
-    !           =                      |Hzᵃ^n+1 | - (μ/dt    )⁻¹|∂ₓᵇ Eyᵃ^n+½              |
-    !                                  [Hxᵃ^n+1 ]   (μ/dt    )⁻¹[∂zᵇ Eyᵃ^n+½              ]  
+    !             (ε/dt-σ/2)/(ε/dt+σ/2)[Eyᵃ^n+1½]   (ε/dt+σ/2)⁻¹[∂zᶠ Hxᵃ^n+1 + ∂ₓᶠ Hzᵃ^n+1]  (ε/dt+σ/2)⁻¹d
+    !           =                                 - (μ/dt    )⁻¹|∂ₓᵇ Eyᵃ^n+½              | +
+    !                                               (μ/dt    )⁻¹[∂zᵇ Eyᵃ^n+½              ]  
     !
     ! Step #5: Eᵃ^n+½ = Eᵃ^n+1½ - spatial FD(Hᵃ^n+1)
     ! Step #4: Eᵃ^n+1½ += adjsrc
@@ -470,7 +471,7 @@ use m_cpml
 
             !step 4: from E^it+0.5 to E^it+1.5 by differences of H^it+1
             call cpu_time(tic)
-            call self%update_E(fld_u,1)
+            call self%update_E(fld_u,it,1)
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
@@ -568,7 +569,7 @@ use m_cpml
         
             !backward step 4: E^it+1.5 -> E^it+0.5 by FD of H^it+1
             call cpu_time(tic)
-            call self%update_E(fld_u,2)
+            call self%update_E(fld_u,it,2)
             call cpu_time(toc)
             tt2=tt2+toc-tic
 
@@ -576,7 +577,7 @@ use m_cpml
 
             !adjoint step 4: E^it+1.5 -> E^it+0.5 by FD^T of H^it+1
             call cpu_time(tic)
-            call self%update_E(fld_a,3)
+            call self%update_E(fld_a,it,3)
             call cpu_time(toc)
             tt5=tt5+toc-tic
 
@@ -775,7 +776,7 @@ use m_cpml
 
     !forward: s^it+0.5 -> s^it+1.5 by FD of v^it+1
     !adjoint: s^it+1.5 -> s^it+0.5 by FD^T of v^it+1
-    subroutine update_E(self,f,iopt)
+    subroutine update_E(self,f,it,iopt)
         class(t_propagator) :: self
         type(t_field) :: f
 
@@ -1058,7 +1059,6 @@ use m_cpml
         
         dHx_dz_=0.; dHz_dx_=0.
         
-
         !$omp parallel default (shared)&
         !$omp private(iz,ix,i,&
         !$omp         izm1_ix,iz_ix,izp1_ix,izp2_ix,&
@@ -1102,6 +1102,7 @@ use m_cpml
                     Ey(iz_ix) = epsdt_m_sgma(iz_ix)/epsdt_p_sgma(iz_ix) * Ey(iz_ix)      &
                                                 -1./epsdt_p_sgma(iz_ix) *(dHx_dz_+dHz_dx_)
                 endif
+
             enddo
             
         enddo

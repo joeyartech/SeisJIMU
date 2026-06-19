@@ -1,5 +1,6 @@
 module m_model
 use m_System
+use m_math
 use m_smoother_laplacian_sparse
 
     private
@@ -29,6 +30,9 @@ use m_smoother_laplacian_sparse
         !reference values
         real :: ref_inv_vel, ref_rho
 
+        !time unit
+        logical :: if_microsec=.true.
+
         integer,dimension(:,:),allocatable :: ibathy
         logical,dimension(:,:,:),allocatable :: is_freeze_zone
 
@@ -40,7 +44,8 @@ use m_smoother_laplacian_sparse
         procedure :: set_reference
         procedure :: write
         procedure :: apply_freeze_zone
-        procedure :: apply_elastic_continuum
+        procedure :: apply_relativity
+        ! procedure :: apply_elastic_continuum
 
     end type
     
@@ -102,6 +107,12 @@ use m_smoother_laplacian_sparse
         self%attributes_read =setup%get_strs('MODEL_ATTRIBUTES',o_default='eps mu sgma')
         self%attributes_write=setup%get_strs('MODEL_ATTRIBUTES_WRITE',o_default=strcat(self%attributes_read))
         
+        self%if_microsec=setup%get_bool('IF_MICROSECOND',o_default='T')
+
+        if(.not.self%if_microsec) then
+            call error("Time unit is NOT microsecond (µs)...")
+        endif
+
     end subroutine
 
     subroutine read(self)
@@ -111,8 +122,8 @@ use m_smoother_laplacian_sparse
         character(:),allocatable :: file, str
 
         if(self%file=='') then !no read
-            !freesurface
-            self%is_freesurface=setup%get_bool('IS_FREESURFACE',o_default='T')
+            ! !freesurface
+            ! self%is_freesurface=setup%get_bool('IS_FREESURFACE',o_default='T')
             !freeze zone
             allocate(self%is_freeze_zone(self%nz,self%nx,self%ny),source=.false.)
             return
@@ -165,6 +176,7 @@ use m_smoother_laplacian_sparse
             case ('eps')
                 call alloc(self%eps,self%nz,self%nx,self%ny)
                 read(12,rec=i) self%eps
+                if(.not.self%if_microsec) self%eps=self%eps*1e6 !convert F/m=A·s/V/m to A·µs/V/m
                 call hud('eps model is read.')
 
             case ('eps_r')
@@ -176,6 +188,7 @@ use m_smoother_laplacian_sparse
             case ('mu')
                 call alloc(self%mu,self%nz,self%nx,self%ny)
                 read(12,rec=i) self%mu
+                if(.not.self%if_microsec) self%mu=self%mu*1e6 !convert H/m=V·s/A/m to V·µs/A/m
                 call hud('mu model is read.')
 
             case ('mu_r')
@@ -186,8 +199,15 @@ use m_smoother_laplacian_sparse
 
             case ('sgma')
                 call alloc(self%sgma,self%nz,self%nx,self%ny)
-                read(12,rec=i) self%eps
+                read(12,rec=i) self%sgma
+                if(.not.self%if_microsec) self%sgma=self%sgma*1e18 !convert S/m=A²·s³/kg/m² to A²·µs³/kg/m²
                 call hud('sgma model is read.')
+
+            case ('sgma_r')
+                call alloc(self%sgma,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%sgma
+                self%sgma = 1e18 * self%sgma
+                call hud('sgma_r model is read and is converted to sgma.')
 
             end select
 
@@ -338,14 +358,17 @@ use m_smoother_laplacian_sparse
             select case(self%attributes_read(i)%s)
             case ('eps')        
                 read(12,rec=i) tmp
+                if(.not.self%if_microsec) tmp=tmp*1e6 !convert F/m=A·s/V/m to A·µs/V/m
                 where(self%is_freeze_zone) self%eps=tmp
 
             case ('mu')
                 read(12,rec=i) tmp
+                if(.not.self%if_microsec) tmp=tmp*1e6 !convert H/m=V·s/A/m to V·µs/A/m
                 where(self%is_freeze_zone) self%mu=tmp
 
             case ('sgma')
                 read(12,rec=i) tmp
+                if(.not.self%if_microsec) tmp=tmp*1e18 !convert S/m=A²·s³/kg/m² to A²·µs³/kg/m²
                 where(self%is_freeze_zone) self%sgma=tmp
 
             end select
@@ -373,6 +396,26 @@ use m_smoother_laplacian_sparse
     !     where (tmp<self%vs) self%vs=tmp
 
     !     deallocate(tmp)
+
+    end subroutine
+
+    subroutine apply_relativity(self)
+        class(t_model) :: self
+
+        real,dimension(:,:,:),allocatable :: tmpcel
+
+        !celerity cannot surpass the speed of light
+
+        tmpcel = sqrt(1./self%eps/self%mu)
+
+        where(tmpcel > r_c0)
+            tmpcel = r_c0
+            self%mu = r_mu0
+        endwhere
+
+        self%eps = 1./tmpcel**2 / self%mu
+
+        deallocate(tmpcel)
 
     end subroutine
 
