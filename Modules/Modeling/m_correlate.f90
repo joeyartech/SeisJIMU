@@ -143,8 +143,8 @@ use m_computebox
         if(if_snapshot) then !write snapshots
 
             if(o_it==1 .or. mod(o_it,i_snapshot)==0 .or. o_it==nt) then
-                if(allocated(self%geps ))  call sysio_write('snap_'//self%name//'%geps '//suf, self%geps , m%n,o_mode='append')
-                if(allocated(self%gmu  ))  call sysio_write('snap_'//self%name//'%gmu  '//suf, self%gmu  , m%n,o_mode='append')
+                if(allocated(self%geps ))  call sysio_write('snap_'//self%name//'%geps'//suf,  self%geps , m%n,o_mode='append')
+                if(allocated(self%gmu  ))  call sysio_write('snap_'//self%name//'%gmu'//suf,   self%gmu  , m%n,o_mode='append')
                 if(allocated(self%gsgma))  call sysio_write('snap_'//self%name//'%gsgma'//suf, self%gsgma, m%n,o_mode='append')
                 
                 if(allocated(self%ipp))    call sysio_write('snap_'//self%name//'%ipp'//suf   ,self%ipp,   m%n,o_mode='append')

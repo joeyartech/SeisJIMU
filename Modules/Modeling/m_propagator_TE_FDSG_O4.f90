@@ -156,8 +156,8 @@ use m_cpml
 
         endif
 
-        inv_dt  = 1./dt
-        inv_4dt = 1./4./dt
+        inv_dt  = 1./self%dt
+        inv_4dt = 1./4./self%dt
         
     end subroutine
 
@@ -382,9 +382,9 @@ use m_cpml
     !(Mₚ/dt-Md/2)|Hz^n  | = (Mₚ/dt+Md/2)|Hz^n+1 | - |∂ₓᵇ Ey^n+½             | -f
     !            [Hx^n  ]               [Hx^n+1 ]   [∂zᵇ Ey^n+½             ]
     !
-    ![Ey^n+½]                 [            [Ey^n+1½]   [∂zᶠ Hx^n+1 + ∂ₓᶠ Hz^n+1]    ]
-    !|Hz^n  | = (Mₚ/dt-Md/2)⁻¹[(Mₚ/dt+Md/2)|Hz^n+1 | - |∂ₓᵇ Ey^n+½             | -f ]
-    ![Hx^n  ]                 [            [Hx^n+1 ]   [∂zᵇ Ey^n+½             ]    ]
+    ![Ey^n+½]                 [            [Ey^n+1½]   [∂zᶠ Hx^n+1 + ∂ₓᶠ Hz^n+1]   ]
+    !|Hz^n  | = (Mₚ/dt-Md/2)⁻¹[(Mₚ/dt+Md/2)|Hz^n+1 | - |∂ₓᵇ Ey^n+½             | -f]
+    ![Hx^n  ]                 [            [Hx^n+1 ]   [∂zᵇ Ey^n+½             ]   ]
     !           (ε/dt+σ/2)/(ε/dt-σ/2)[Ey^n+1½]   (ε/dt-σ/2)⁻¹[∂zᶠ Hx^n+1 + ∂ₓᶠ Hz^n+1]  (ε/dt-σ/2)⁻¹Jy
     !         =                                - (μ/dt)⁻¹    |∂ₓᵇ Ey^n+½             | -
     !                                            (μ/dt)⁻¹    [∂zᵇ Ey^n+½             ]
@@ -1091,13 +1091,13 @@ use m_cpml
                 dHx_dz_=dHx_dz_*cpml%kpa_z(iz) + dHx_dz(iz_ix)
                 dHz_dx_=dHz_dx_*cpml%kpa_x(ix) + dHz_dx(iz_ix)
                 
-                !E. Is this fine?
+                !E. Does if-condition inside omp fine?
                 if(iopt==1) then !forward sfield in time
                     Ey(iz_ix) = epsdt_m_sgma(iz_ix)/epsdt_p_sgma(iz_ix) * Ey(iz_ix)      &
                                                 +1./epsdt_p_sgma(iz_ix) *(dHx_dz_+dHz_dx_)
                 elseif(iopt==2) then !reverse sfield in time
                     Ey(iz_ix) = epsdt_p_sgma(iz_ix)/epsdt_m_sgma(iz_ix) * Ey(iz_ix)      &
-                                                +1./epsdt_m_sgma(iz_ix) *(dHx_dz_+dHz_dx_)
+                                                -1./epsdt_m_sgma(iz_ix) *(dHx_dz_+dHz_dx_)
                 else !reverse rfield in time
                     Ey(iz_ix) = epsdt_m_sgma(iz_ix)/epsdt_p_sgma(iz_ix) * Ey(iz_ix)      &
                                                 -1./epsdt_p_sgma(iz_ix) *(dHx_dz_+dHz_dx_)
@@ -1140,7 +1140,7 @@ use m_cpml
                 iz_ixp1=i  +nz  !iz,ix+1
                 
                 grad(j)=grad(j) +( (rf_Hx(izp1_ix)+rf_Hx(iz_ix))*(sf_Hx(izp1_ix)+sf_Hx(iz_ix)-old_Hx(izp1_ix)-old_Hx(iz_ix)) &
-                                  +(rf_Hz(iz_ixp1)+rf_Hx(iz_ix))*(sf_Hx(iz_ixp1)+sf_Hx(iz_ix)-old_Hx(iz_ixp1)-old_Hx(iz_ix)) &
+                                  +(rf_Hz(iz_ixp1)+rf_Hz(iz_ix))*(sf_Hz(iz_ixp1)+sf_Hz(iz_ix)-old_Hz(iz_ixp1)-old_Hz(iz_ix)) &
                                  )*inv_4dt
 
             end do
@@ -1170,7 +1170,7 @@ use m_cpml
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
                 j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
-                geps (j)=geps (j) + rf_Ey(i)*(sf_Ey(i)-old_Ey(i)) *invdt
+                geps (j)=geps (j) + rf_Ey(i)*(sf_Ey(i)-old_Ey(i)) *inv_dt
                 gsgma(j)=gsgma(j) + rf_Ey(i)* sf_Ey(i)
                 
             enddo
