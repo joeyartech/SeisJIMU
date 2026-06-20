@@ -1056,6 +1056,9 @@ use m_model
                 scalco=setup%get_real('SU_SCALCO',o_default=num2str(find_proper_scalco()))
             endif
 
+            sudata%hdrs(:)%scalel=int(scalel)
+            sudata%hdrs(:)%scalco=int(scalco)
+
             if(scalel>0.) scalel=1./scalel
             if(scalco>0.) scalco=1./scalco
 
@@ -1064,9 +1067,6 @@ use m_model
 
             if(scalel<0.) scalel=-scalel
             if(scalco<0.) scalco=-scalco
-
-            sudata%hdrs(:)%scalel=int(scalel)
-            sudata%hdrs(:)%scalco=int(scalco)
 
             do i=1,self%nrcv
                 sudata%hdrs(i)%tracl=i
