@@ -407,6 +407,8 @@ use m_preconditioner
                     select case (param%pars(j)%name)
                         case ('vp' ); call smoother_Laplacian_pseudo_nonstationary(qp%g(:,:,:,j),m%vp)
                         case ('vs' ); call smoother_Laplacian_pseudo_nonstationary(qp%g(:,:,:,j),m%vs)
+
+                        case default; call smoother_Laplacian_pseudo_nonstationary(qp%g(:,:,:,j),r_c0/sqrt(m%epsr*m%mur))
                     end select
                 enddo
             endif
@@ -441,14 +443,22 @@ use m_preconditioner
 
         !scale preconditioned gvp gvs w/ their respective L2 norm
         if(setup%get_bool('IF_PARA_SCAL',o_default='F')) then
-            if(param%npars==2)then
+        if(param%npars==2)then
             if(param%pars(1)%name=='vp' .and. param%pars(2)%name=='vs') then
                 gvp_norm = sum(abs(qp%pg(:,:,:,1)))
                 gvs_norm = sum(abs(qp%pg(:,:,:,2)))
                 if(gvp_norm>gvs_norm) qp%pg(:,:,:,2)=qp%pg(:,:,:,2)/gvs_norm*gvp_norm !scale on gvs
                 if(gvp_norm<gvs_norm) qp%pg(:,:,:,1)=qp%pg(:,:,:,1)/gvp_norm*gvs_norm !scale on gvp
             endif
-            endif
+
+            ! if(param%pars(1)%name=='epsr' .and. param%pars(2)%name=='vs') then
+            !     gvp_norm = sum(abs(qp%pg(:,:,:,1)))
+            !     gvs_norm = sum(abs(qp%pg(:,:,:,2)))
+            !     if(gvp_norm>gvs_norm) qp%pg(:,:,:,2)=qp%pg(:,:,:,2)/gvs_norm*gvp_norm !scale on gvs
+            !     if(gvp_norm<gvs_norm) qp%pg(:,:,:,1)=qp%pg(:,:,:,1)/gvp_norm*gvs_norm !scale on gvp
+            ! endif
+
+        endif
         endif
 
         !save some RAM

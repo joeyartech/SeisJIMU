@@ -14,8 +14,8 @@ use m_Modeling
     type,public :: t_parametrizer
         !info
         character(i_str_xxlen) :: info = &
-            'Parameterization: eps-mu-sgma'//s_NL// &
-            'Allowed pars: eps_r, mu_r, sgma'
+            'Parameterization: epsr-mur-sgma'//s_NL// &
+            'Allowed pars: epsr, mur, sgma'
 
         type(t_parameter),dimension(:),allocatable :: pars
         integer :: npars
@@ -31,8 +31,7 @@ use m_Modeling
 
     type(t_parametrizer),public :: param
 
-    ! logical :: is_geps, is_gmu, is_gsgma
-    integer :: i_eps_r=0, i_mu_r=0, i_sgma=0
+    integer :: i_epsr=0, i_mur=0, i_sgma=0
 
     contains
     
@@ -57,7 +56,7 @@ use m_Modeling
         ! is_gimu = index(ppg%info,'gimu')>0
 
         !read in active parameters and their allowed ranges
-        list=setup%get_strs('PARAMETER',o_default='eps_r:1:30')
+        list=setup%get_strs('PARAMETER',o_default='epsr:1:30')
         
         self%npars=size(list)
         allocate(self%pars(self%npars))
@@ -68,14 +67,14 @@ use m_Modeling
             sublist=split(list(i)%s,o_sep=':') !=[name, min, max]
 
             select case (sublist(1)%s)
-            case ('eps_r' )
-                i_eps_r=i
-                self%pars(i)%name='eps_r'
+            case ('epsr')
+                i_epsr=i
+                self%pars(i)%name='epsr'
                 self%npars=self%npars+1
 
-            case ('mu_r' )
-                i_mu_r=i
-                self%pars(i)%name='mu_r'
+            case ('mur')
+                i_mur=i
+                self%pars(i)%name='mur'
                 self%npars=self%npars+1
 
             case ('sgma')
@@ -115,28 +114,28 @@ use m_Modeling
         character(4),optional :: o_dir
         real,dimension(:,:,:,:),allocatable,optional :: o_x,o_xprior,o_g
 
-        real,dimension(:,:,:),allocatable :: tmp_gvp, tmp_gvs, tmp_grho
+        ! real,dimension(:,:,:),allocatable :: tmp_gvp, tmp_gvs, tmp_grho
 
         if(present(o_x)) then
             call alloc(o_x,self%n1,self%n2,self%n3,self%npars,oif_protect=.true.)
 
             if(either(o_dir,'m->x',present(o_dir))=='m->x') then
-                if(i_eps_r>0) o_x(:,:,:,i_eps_r) = (m%eps/r_eps0-self%pars(i_eps_r)%min)/self%pars(i_eps_r)%range
-                if(i_mu_r >0) o_x(:,:,:,i_mu_r ) = (m%mu /r_mu0 -self%pars(i_mu_r )%min)/self%pars(i_mu_r )%range
-                if(i_sgma >0) o_x(:,:,:,i_sgma ) = (m%sgma      -self%pars(i_sgma )%min)/self%pars(i_sgma )%range
+                if(i_epsr>0) o_x(:,:,:,i_epsr) = (m%epsr-self%pars(i_epsr)%min)/self%pars(i_epsr)%range
+                if(i_mur >0) o_x(:,:,:,i_mur ) = (m%mur -self%pars(i_mur )%min)/self%pars(i_mur )%range
+                if(i_sgma>0) o_x(:,:,:,i_sgma) = (m%sgma-self%pars(i_sgma)%min)/self%pars(i_sgma)%range
 
                 ! call empirical_m2x('velocities-density')
 
             else !x->m
-                if(i_eps_r>0) m%eps= ( o_x(:,:,:,i_eps_r)*self%pars(i_eps_r)%range +self%pars(i_eps_r)%min )*r_eps0
-                if(i_mu_r >0) m%mu = ( o_x(:,:,:,i_mu_r )*self%pars(i_mu_r )%range +self%pars(i_mu_r )%min )*r_mu0
-                if(i_sgma >0) m%sgma = o_x(:,:,:,i_sgma )*self%pars(i_sgma )%range +self%pars(i_sgma )%min
+                if(i_epsr>0) m%epsr= o_x(:,:,:,i_epsr)*self%pars(i_epsr)%range +self%pars(i_epsr)%min
+                if(i_mur >0) m%mur = o_x(:,:,:,i_mur )*self%pars(i_mur )%range +self%pars(i_mur )%min
+                if(i_sgma>0) m%sgma= o_x(:,:,:,i_sgma)*self%pars(i_sgma)%range +self%pars(i_sgma)%min
 
                 ! call empirical_x2m('velocities-density')
                 
                 call m%apply_relativity
                 call m%apply_freeze_zone
-
+                
             endif
 
         endif
@@ -161,13 +160,11 @@ use m_Modeling
             ! call hud('Parametrizer finds grho & gkpa')
             !correlate_gradient(:,:,:,1) = gmu
             !correlate_gradient(:,:,:,2) = geps
-            !correlate_gradient(:,:,:,2) = gsgma
-            !
-            !mu_r = mu/r_mu0 => gmu_r=gmu/r_mu0
-
-            if(i_mu_r >0) o_g(:,:,:,i_mu_r ) = correlate_gradient(:,:,:,1)/r_mu0
-            if(i_eps_r>0) o_g(:,:,:,i_eps_r) = correlate_gradient(:,:,:,2)/r_eps0
-            if(i_sgma >0) o_g(:,:,:,i_sgma ) = correlate_gradient(:,:,:,3)
+            !correlate_gradient(:,:,:,2) = gsgmar
+            
+            if(i_mur >0) o_g(:,:,:,i_mur ) = correlate_gradient(:,:,:,1)
+            if(i_epsr>0) o_g(:,:,:,i_epsr) = correlate_gradient(:,:,:,2)
+            if(i_sgma>0) o_g(:,:,:,i_sgma) = correlate_gradient(:,:,:,3)
 
             !normaliz g by allowed parameter range
             !s.t. g is in unit [Nm]

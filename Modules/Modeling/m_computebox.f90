@@ -49,7 +49,7 @@ use m_shot
         ! real,dimension(:,:,:),allocatable :: eps,del,eta
         ! real,dimension(:,:,:),allocatable :: qp,qs
 
-        real,dimension(:,:,:),allocatable :: mu,eps,sgma
+        real,dimension(:,:,:),allocatable :: mur,epsr,sgma
         real,dimension(:,:,:),allocatable :: celerity
         
         real,dimension(:,:,:,:),allocatable :: grad, imag, engy, corr
@@ -138,19 +138,19 @@ use m_shot
         endif
 
         !models in computebox
-        call m2cb(m%eps, self%eps ,r_eps0)
-        call m2cb(m%mu,  self%mu  ,r_mu0 )
+        call m2cb(m%epsr,self%epsr,1.)
+        call m2cb(m%mur, self%mur ,1.)
         call m2cb(m%sgma,self%sgma,0.)
 
-        self%celerity = sqrt(1/self%eps/self%mu)
+        self%celerity = r_c0/sqrt(self%epsr*self%mur)
         
         self%velmin=minval(self%celerity)
         self%velmax=maxval(self%celerity)
 
         call hud('Computebox value ranges:')
         if(mpiworld%is_master) then
-            write(*,*)'eps' ,minval(self%eps),maxval(self%eps)
-            write(*,*)'mu'  ,minval(self%mu ),maxval(self%mu )
+            write(*,*)'epsr' ,minval(self%epsr),maxval(self%epsr)
+            write(*,*)'mur'  ,minval(self%mur ),maxval(self%mur )
             write(*,*)'celerity',minval(self%celerity ),maxval(self%celerity)
             write(*,*)'sgma',minval(self%sgma),maxval(self%sgma)
             
@@ -222,7 +222,7 @@ use m_shot
     subroutine final(self)
         type(t_computebox) :: self
 
-        call dealloc(self%eps, self%mu, self%sgma)
+        call dealloc(self%epsr,self%mur, self%sgma)
         call dealloc(self%celerity)
         call dealloc(self%grad,self%imag,self%engy)
 

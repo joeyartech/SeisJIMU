@@ -563,7 +563,7 @@ use, intrinsic :: ieee_arithmetic
     subroutine acquire(self,o_seismo)
         class(t_field) :: self
         real,dimension(:,:),allocatable,optional :: o_seismo
-
+        
         if(present(o_seismo)) then
             o_seismo=transpose(self%seismo)
 

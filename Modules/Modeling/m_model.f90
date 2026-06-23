@@ -21,7 +21,7 @@ use m_smoother_laplacian_sparse
         ! real,dimension(:,:,:),allocatable :: eps,del,eta
         real,dimension(:,:,:),allocatable :: qp,qs
 
-        real,dimension(:,:,:),allocatable :: eps,mu,sgma
+        real,dimension(:,:,:),allocatable :: epsr,mur,sgma
 
 
         !prior models
@@ -30,8 +30,8 @@ use m_smoother_laplacian_sparse
         !reference values
         real :: ref_inv_vel, ref_rho
 
-        !time unit
-        logical :: if_microsec=.true.
+        !temporal scale
+        real :: time_scale
 
         integer,dimension(:,:),allocatable :: ibathy
         logical,dimension(:,:,:),allocatable :: is_freeze_zone
@@ -107,11 +107,10 @@ use m_smoother_laplacian_sparse
         self%attributes_read =setup%get_strs('MODEL_ATTRIBUTES',o_default='eps mu sgma')
         self%attributes_write=setup%get_strs('MODEL_ATTRIBUTES_WRITE',o_default=strcat(self%attributes_read))
         
-        self%if_microsec=setup%get_bool('IF_MICROSECOND',o_default='T')
-
-        if(.not.self%if_microsec) then
-            call error("Time unit is NOT microsecond (µs)...")
-        endif
+        !convert from second to microsecond: F/m=A·s/V/m to A·µs/V/m, H/m=V·s/A/m to V·µs/A/m
+        !but no need to convert S/m=A²·s³/kg/m² to A²·µs³/kg/m²
+        self%time_scale=setup%get_real('MODEL_TIME_UNIT',o_default='1e6') 
+        call hud('If absolute eps, mu, sgma models are read, apply temporal scaling: '//num2str(self%time_scale))
 
     end subroutine
 
@@ -174,32 +173,30 @@ use m_smoother_laplacian_sparse
             !     call hud('qs model is read.')
 
             case ('eps')
-                call alloc(self%eps,self%nz,self%nx,self%ny)
-                read(12,rec=i) self%eps
-                if(.not.self%if_microsec) self%eps=self%eps*1e6 !convert F/m=A·s/V/m to A·µs/V/m
-                call hud('eps model is read.')
+                call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
+                tmp=tmp*self%time_scale
+                self%epsr = tmp/r_eps0 !convert from absolute to relative permittivity
+                call hud('eps model is read and is converted to epsr.')
 
-            case ('eps_r')
-                call alloc(self%eps,self%nz,self%nx,self%ny)
-                read(12,rec=i) self%eps
-                self%eps = r_eps0 * self%eps
-                call hud('eps_r model is read and is converted to eps.')
+            case ('epsr')
+                call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
+                self%epsr = tmp
+                call hud('epsr model is read.')
 
             case ('mu')
-                call alloc(self%mu,self%nz,self%nx,self%ny)
-                read(12,rec=i) self%mu
-                if(.not.self%if_microsec) self%mu=self%mu*1e6 !convert H/m=V·s/A/m to V·µs/A/m
-                call hud('mu model is read.')
+                call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
+                tmp=tmp*self%time_scale
+                self%mur = tmp/r_mu0 !convert from absolute to relative permeability
+                call hud('mu model is read and is converted to mur.')
 
-            case ('mu_r')
-                call alloc(self%mu,self%nz,self%nx,self%ny)
-                read(12,rec=i) self%mu
-                self%mu = r_mu0 * self%mu
-                call hud('mu_r model is read and is converted to mu.')
+            case ('mur')
+                call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
+                self%mur = tmp
+                call hud('mur model is read.')
 
             case ('sgma')
-                call alloc(self%sgma,self%nz,self%nx,self%ny)
-                read(12,rec=i) self%sgma !no need to convert S/m=A²·s³/kg/m² to A²·µs³/kg/m²
+                call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
+                self%sgma = tmp
                 call hud('sgma model is read.')
 
             end select
@@ -222,7 +219,7 @@ use m_smoother_laplacian_sparse
         if(file=='') file=setup%get_file('FILE_TOPOGRAPHY','FILE_TOPO')
         if(file/='') then
             call alloc(tmp,self%nx,self%ny,1)
-            call sysio_read(file,tmp,self%n)
+            call sysio_read(file,tmp,self%nx*self%ny)
             call hud('bathy minmax value: '//num2str(minval(tmp))//' , '//num2str(maxval(tmp)))
             call hud('water or air layer is from #1 to #(floor(bathy/dz)+1) grid points in depth')
 
@@ -243,14 +240,14 @@ use m_smoother_laplacian_sparse
                 !self%ibathy = maxloc(self%vs, dim=1, mask=(self%vs<10), back=.true.)+1 !the "back" argument isn't implemented in gfortran until version 9 ..
                 do iy=1,self%ny; do ix=1,self%nx
                     loopz: do iz=1,self%nz
-                        if(self%eps(iz,ix,iy)/r_eps0<1.1) then !air
+                        if(self%epsr(iz,ix,iy)<1.1) then !air
                             self%is_freeze_zone(iz,ix,iy) = .true.
                         else
                             exit loopz
                         endif
                     enddo loopz
                 enddo; enddo
-                call hud('Freeze zone is additionally set from vs model.')
+                call hud('Freeze zone is additionally set from epsr model.')
             endif
         endif
 
@@ -322,8 +319,8 @@ use m_smoother_laplacian_sparse
                 self%ref_rho   =tmp(2)
 
             else
-                self%ref_inv_vel=sqrt(self%eps(iz,ix,iy)*self%mu(iz,ix,iy))
-                self%ref_rho    =self%mu(iz,ix,iy)
+                self%ref_inv_vel= 1./sqrt(r_eps0mu0*self%epsr(iz,ix,iy)*self%mur(iz,ix,iy))
+                self%ref_rho    = self%mur(iz,ix,iy)
 
             endif
 
@@ -333,7 +330,7 @@ use m_smoother_laplacian_sparse
         endif
         
         call mpi_bcast(self%ref_inv_vel,1,mpi_real,0,mpiworld%communicator,mpiworld%ierr)
-        call mpi_bcast(self%ref_rho   ,1,mpi_real,0,mpiworld%communicator,mpiworld%ierr)
+        call mpi_bcast(self%ref_rho    ,1,mpi_real,0,mpiworld%communicator,mpiworld%ierr)
 
         !ref_inv_vel & _rho should also be checkpointed
     end subroutine
@@ -349,18 +346,26 @@ use m_smoother_laplacian_sparse
 
         do i=1,size(self%attributes_read)
             select case(self%attributes_read(i)%s)
-            case ('eps')        
-                read(12,rec=i) tmp
-                if(.not.self%if_microsec) tmp=tmp*1e6 !convert F/m=A·s/V/m to A·µs/V/m
-                where(self%is_freeze_zone) self%eps=tmp
+            case ('eps')
+                call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
+                tmp=tmp*self%time_scale
+                where(self%is_freeze_zone) self%epsr=tmp/r_eps0 !convert from absolute to relative permittivity
 
+            case ('epsr')
+                call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
+                where(self%is_freeze_zone) self%epsr=tmp
+                
             case ('mu')
-                read(12,rec=i) tmp
-                if(.not.self%if_microsec) tmp=tmp*1e6 !convert H/m=V·s/A/m to V·µs/A/m
-                where(self%is_freeze_zone) self%mu=tmp
+                call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
+                tmp=tmp*self%time_scale
+                where(self%is_freeze_zone) self%mur = tmp/r_mu0 !convert from absolute to relative permeability
+
+            case ('mur')
+                call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
+                where(self%is_freeze_zone) self%mur=tmp
 
             case ('sgma')
-                read(12,rec=i) tmp !no need to convert S/m=A²·s³/kg/m² to A²·µs³/kg/m²
+                call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
                 where(self%is_freeze_zone) self%sgma=tmp
 
             end select
@@ -394,20 +399,17 @@ use m_smoother_laplacian_sparse
     subroutine apply_relativity(self)
         class(t_model) :: self
 
-        real,dimension(:,:,:),allocatable :: tmpcel
+        real,dimension(:,:,:),allocatable :: tmp
+
+        tmp = self%epsr*self%mur
 
         !celerity cannot surpass the speed of light
+        where(tmp < 1.) tmp = 1.
 
-        tmpcel = sqrt(1./self%eps/self%mu)
+        !epsr < 1 is more un-usual than mur < 1 (diamagnetic)
+        self%epsr = tmp / self%mur
 
-        where(tmpcel > r_c0)
-            tmpcel = r_c0
-            self%mu = r_mu0
-        endwhere
-
-        self%eps = 1./tmpcel**2 / self%mu
-
-        deallocate(tmpcel)
+        deallocate(tmp)
 
     end subroutine
 
@@ -425,22 +427,22 @@ use m_smoother_laplacian_sparse
         do i=1,size(self%attributes_write)
             select case(self%attributes_write(i)%s)
             case ('eps')
-                write(13,rec=i) self%eps
+                write(13,rec=i) self%epsr * r_eps0 / self%time_scale
 
-            case ('eps_r')
-                write(13,rec=i) self%eps/r_eps0
+            case ('epsr')
+                write(13,rec=i) self%epsr
 
             case ('mu')
-                write(13,rec=i) self%mu
+                write(13,rec=i) self%mur * r_mu0 / self%time_scale
 
-            case ('mu_r')
-                write(13,rec=i) self%mu/r_mu0
+            case ('mur')
+                write(13,rec=i) self%mur
 
             case ('sgma')
                 write(13,rec=i) self%sgma
 
             case ('celerity')
-                write(13,rec=i) sqrt(1./self%eps/self%mu)
+                write(13,rec=i) 1./sqrt(r_eps0mu0*self%epsr*self%mur)
 
             end select
 

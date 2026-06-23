@@ -36,12 +36,12 @@ use m_cpml
             'Cartesian O(x⁴,t²) stencil'//s_NL// &
             'CFL = Σ|coef| *Vmax *dt /rev_cell_diagonal'//s_NL// &
             '   -> dt ≤ 0.606(for 2D) or 0.494(3D) *Vmax/dx'//s_NL// &
-            'Required model attributes: eps, sgma, mu'//s_NL// &
+            'Required model attributes: mur, epsr, sgma'//s_NL// &
             'Required field components: Hx, Hy, Ey'//s_NL// &
             'Required boundary layer thickness: 2'//s_NL// &
             'Imaging conditions: iEyEy'//s_NL// &
             'Energy terms: Σ_shot ∫ sfield%Ey² dt'//s_NL// &
-            'Basic gradients: gmu geps gsgma'
+            'Basic gradients: gmur gepsr gsgma'
 
         integer :: nbndlayer=max(2,hicks_r) !minimum absorbing layer thickness
         integer :: ngrad=3 !number of basic gradients
@@ -109,19 +109,19 @@ use m_cpml
     subroutine check_model(self)
         class(t_propagator) :: self
 
-        if(.not. allocated(m%eps)) then
-            call alloc(m%eps,m%nz,m%nx,m%ny,o_init=r_eps0)
-            call warn('Vacuum eps model (8.85e(-6-6) F/m) is allocated by propagator.')
+        if(.not. allocated(m%epsr)) then
+            call alloc(m%epsr,m%nz,m%nx,m%ny,o_init=1.)
+            call warn('Vacuum epsr model (=1) is allocated by propagator.')
         endif        
 
-        if(.not. allocated(m%mu)) then
-            call alloc(m%mu,m%nz,m%nx,m%ny,o_init=r_mu0)
-            call warn('Vacuum mu model (4π*1e(-1-6) H/m) is allocated by propagator.')
+        if(.not. allocated(m%mur)) then
+            call alloc(m%mur,m%nz,m%nx,m%ny,o_init=1.)
+            call warn('Vacuum mur model (=1) is allocated by propagator.')
         endif
 
         if(.not. allocated(m%sgma)) then
             call alloc(m%sgma,m%nz,m%nx,m%ny,o_init=0.)
-            call warn('Vaccum sgma model (0 S/m) is allocated by propagator.')
+            call warn('Vaccum sgma model (=0) is allocated by propagator.')
         endif
                 
     end subroutine
@@ -182,7 +182,7 @@ use m_cpml
         call alloc(self%epsdt_m_sgma,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
         
         call alloc(temp_imu,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx])
-        temp_imu(:,:) = 1./cb%mu(:,:,1)
+        temp_imu(:,:) = 1./cb%mur(:,:,1)/r_mu0
 
         do iz=cb%ifz+1,cb%ilz
             self%imuz(iz,:)=(temp_imu(iz,:)+temp_imu(iz-1,:))/2.
@@ -194,8 +194,8 @@ use m_cpml
 
         deallocate(temp_imu)
 
-        self%epsdt_p_sgma = cb%eps(:,:,1)/self%dt + cb%sgma(:,:,1)/2
-        self%epsdt_m_sgma = cb%eps(:,:,1)/self%dt - cb%sgma(:,:,1)/2
+        self%epsdt_p_sgma = cb%epsr(:,:,1)*r_eps0/self%dt + cb%sgma(:,:,1)/2
+        self%epsdt_m_sgma = cb%epsr(:,:,1)*r_eps0/self%dt - cb%sgma(:,:,1)/2
 
         !initialize m_field
         call field_init(.true.,self%nt,self%dt)
@@ -248,8 +248,8 @@ use m_cpml
         corr%name=name
 
         ! if(name(1:1)=='g') then !gradient components
-            call alloc(corr%gmu,m%nz,m%nx,m%ny)
-            call alloc(corr%geps,m%nz,m%nx,m%ny)
+            call alloc(corr%gmur, m%nz,m%nx,m%ny)
+            call alloc(corr%gepsr,m%nz,m%nx,m%ny)
             call alloc(corr%gsgma,m%nz,m%nx,m%ny)
         !else !image components
         !    call alloc(corr%ipp,m%nz,m%nx,m%ny)
@@ -277,8 +277,8 @@ use m_cpml
         !endif
 
         if(allocated(correlate_gradient)) then
-            call correlate_assemble(corr%gmu,  correlate_gradient(:,:,:,1))
-            call correlate_assemble(corr%geps, correlate_gradient(:,:,:,2))
+            call correlate_assemble(corr%gmur, correlate_gradient(:,:,:,1))
+            call correlate_assemble(corr%gepsr,correlate_gradient(:,:,:,2))
             call correlate_assemble(corr%gsgma,correlate_gradient(:,:,:,3))
         endif        
         
@@ -292,7 +292,7 @@ use m_cpml
     !u=[Hx,Hz,Ey]ᵀ, where H=[Hx,0,-Hz]ᵀ is the magnetic field, E=[0 Ey 0]ᵀ is the electric field
     !f=[0,0,Jy]ᵀδ(x-xs) is the source term, where J=[0,-Jy,0] is the injection current density vector,
     !and d is recorded data
-    !Mₚ=diag[μ μ ε], μ is magnetic permeability, ε is electric permittivity,
+    !Mₚ=diag[μ μ ε], μ=μ₀μᵣ is absolute magnetic permeability, ε=ε₀εᵣ is absolute electric permittivity,
     !Md=diag[0 0 σ], σ is electric conductivity,
     !  [0  0  ∂z]
     !D=|0  0  ∂ₓ|
@@ -897,7 +897,7 @@ use m_cpml
         ilx=min(sf%bloom(4,it),rf%bloom(4,it),cb%mx)    
         
         call grad2d_geps_gsgma(rf%Ey,sf%Ey,old_Ey,&
-                         corr%geps, corr%gsgma,   &
+                         corr%gepsr, corr%gsgma,  &
                          ifz,ilz,ifx,ilx)
         
     end subroutine
@@ -914,7 +914,7 @@ use m_cpml
         
         !inexact greadient
         call grad2d_gmu(rf%Hx,rf%Hz,sf%Hx,sf%Hz,old_Hx,old_Hz,&
-                        corr%gmu,                             &
+                        corr%gmur,                            &
                         ifz,ilz,ifx,ilx                       )
 
     end subroutine
@@ -951,6 +951,14 @@ use m_cpml
         type(t_correlate) :: corr
         
         if(allocated(correlate_gradient)) then
+
+            !scale by constant
+            corr%gmur = -corr%gmur *inv_4dt
+            corr%gepsr= -corr%gepsr*inv_dt
+
+            !scale to relative parameters
+            corr%gmur  = corr%gmur  *r_mu0
+            corr%gepsr = corr%gepsr *r_eps0
             
             !remove singular point at the src position,
             !because we didn't consider src when deriving the gradient formula
@@ -962,20 +970,20 @@ use m_cpml
             ifx=either(ix-2,ix,ix>=3); ilx=either(ix+2,ix,ix<=m%nx-2)
             
             !first remove otherwise will appear in the sum below
-            corr%geps (iz,ix,1)=0
-            corr%gsgma(iz,ix,1)=0
-            corr%gmu  (iz,ix,1)=0
+            corr%gmur (iz,ix,1)=0.
+            corr%gepsr(iz,ix,1)=0.
+            corr%gsgma(iz,ix,1)=0.
 
             !then replace singular point by sum
-            ncells=size(corr%geps(ifz:ilz,ifx:ilx,1))-1
-            corr%geps (iz,ix,1) = sum(corr%geps (ifz:ilz,ifx:ilx,1))/ncells
+            ncells=size(corr%gepsr(ifz:ilz,ifx:ilx,1))-1
+            corr%gmur (iz,ix,1) = sum(corr%gmur (ifz:ilz,ifx:ilx,1))/ncells
+            corr%gepsr(iz,ix,1) = sum(corr%gepsr(ifz:ilz,ifx:ilx,1))/ncells
             corr%gsgma(iz,ix,1) = sum(corr%gsgma(ifz:ilz,ifx:ilx,1))/ncells
-            corr%gmu  (iz,ix,1) = sum(corr%gmu  (ifz:ilz,ifx:ilx,1))/ncells
             
-            !remove singular top boundary
-            corr%geps (1,:,:) = corr%geps (2,:,:)
+            !fill top boundary
+            corr%gmur (1,:,:) = corr%gmur (2,:,:)
+            corr%gepsr(1,:,:) = corr%gepsr(2,:,:)
             corr%gsgma(1,:,:) = corr%gsgma(2,:,:)
-            corr%gmu  (1,:,:) = corr%gmu  (2,:,:)
 
         endif
 
@@ -1139,9 +1147,14 @@ use m_cpml
                 izp1_ix=i+1  !iz+1,ix            
                 iz_ixp1=i  +nz  !iz,ix+1
                 
+                ! grad(j)=grad(j) -( (rf_Hx(izp1_ix)+rf_Hx(iz_ix))*(sf_Hx(izp1_ix)+sf_Hx(iz_ix)-old_Hx(izp1_ix)-old_Hx(iz_ix)) &
+                !                   +(rf_Hz(iz_ixp1)+rf_Hz(iz_ix))*(sf_Hz(iz_ixp1)+sf_Hz(iz_ix)-old_Hz(iz_ixp1)-old_Hz(iz_ix)) &
+                !                  )*inv_4dt
+                !                 !the minus sign is because old_H is actually in future
+                !                 !moved to cross_correlate_postprocess
                 grad(j)=grad(j) +( (rf_Hx(izp1_ix)+rf_Hx(iz_ix))*(sf_Hx(izp1_ix)+sf_Hx(iz_ix)-old_Hx(izp1_ix)-old_Hx(iz_ix)) &
                                   +(rf_Hz(iz_ixp1)+rf_Hz(iz_ix))*(sf_Hz(iz_ixp1)+sf_Hz(iz_ix)-old_Hz(iz_ixp1)-old_Hz(iz_ix)) &
-                                 )*inv_4dt
+                                 )
 
             end do
             
@@ -1170,7 +1183,10 @@ use m_cpml
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
                 j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
-                geps (j)=geps (j) + rf_Ey(i)*(sf_Ey(i)-old_Ey(i)) *inv_dt
+                ! geps (j)=geps (j) - rf_Ey(i)*(sf_Ey(i)-old_Ey(i)) *inv_dt
+                !                   !the minus sign is because old_H is actually in future
+                !                   !moved to cross_correlate_postprocess
+                geps (j)=geps (j) + rf_Ey(i)*(sf_Ey(i)-old_Ey(i))
                 gsgma(j)=gsgma(j) + rf_Ey(i)* sf_Ey(i)
                 
             enddo
