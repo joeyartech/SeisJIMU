@@ -2,7 +2,7 @@ module m_parametrizer
 use m_System
 use m_math
 use m_Modeling
-! use m_empirical
+use m_empirical
 
     private
 
@@ -14,8 +14,8 @@ use m_Modeling
     type,public :: t_parametrizer
         !info
         character(i_str_xxlen) :: info = &
-            'Parameterization: epsr-mur-sgma'//s_NL// &
-            'Allowed pars: epsr, mur, sgma'
+            'Parameterization: celerity-permeability'//s_NL// &
+            'Allowed pars: cel, mu'
 
         type(t_parameter),dimension(:),allocatable :: pars
         integer :: npars
@@ -31,7 +31,7 @@ use m_Modeling
 
     type(t_parametrizer),public :: param
 
-    integer :: i_epsr=0, i_mur=0, i_sgma=0
+    integer :: i_cel=0, i_mu=0
 
     contains
     
@@ -56,7 +56,7 @@ use m_Modeling
         ! is_gimu = index(ppg%info,'gimu')>0
 
         !read in active parameters and their allowed ranges
-        list=setup%get_strs('PARAMETER',o_default='epsr:1:30')
+        list=setup%get_strs('PARAMETER',o_default='cel:80:299')
         
         self%npars=size(list)
         allocate(self%pars(self%npars))
@@ -67,19 +67,14 @@ use m_Modeling
             sublist=split(list(i)%s,o_sep=':') !=[name, min, max]
 
             select case (sublist(1)%s)
-            case ('epsr')
-                i_epsr=i
-                self%pars(i)%name='epsr'
+            case ('cel' )
+                i_cel=i
+                self%pars(i)%name='cel'
                 self%npars=self%npars+1
 
-            case ('mur')
-                i_mur=i
-                self%pars(i)%name='mur'
-                self%npars=self%npars+1
-
-            case ('sgma')
-                i_sgma=i
-                self%pars(i)%name='sgma'
+            case ('mu')
+                i_mu=i
+                self%pars(i)%name='mu'
                 self%npars=self%npars+1
                 
             end select
@@ -114,28 +109,39 @@ use m_Modeling
         character(4),optional :: o_dir
         real,dimension(:,:,:,:),allocatable,optional :: o_x,o_xprior,o_g
 
-        ! real,dimension(:,:,:),allocatable :: tmp_gvp, tmp_gvs, tmp_grho
+        real,dimension(:,:,:),allocatable :: tmp_cel
 
+        !c⁻² = εμ = ε₀εᵣμ  ==>  εᵣ = c⁻²/(ε₀μ) = c⁻²/(ε₀μ₀μᵣ) ; μᵣ = μ/μ₀
+        
         if(present(o_x)) then
             call alloc(o_x,self%n1,self%n2,self%n3,self%npars,oif_protect=.true.)
 
             if(either(o_dir,'m->x',present(o_dir))=='m->x') then
-                if(i_epsr>0) o_x(:,:,:,i_epsr) = (m%epsr-self%pars(i_epsr)%min)/self%pars(i_epsr)%range
-                if(i_mur >0) o_x(:,:,:,i_mur ) = (m%mur -self%pars(i_mur )%min)/self%pars(i_mur )%range
-                if(i_sgma>0) o_x(:,:,:,i_sgma) = (m%sgma-self%pars(i_sgma)%min)/self%pars(i_sgma)%range
+                if(i_cel>0) then
+                    tmp_cel = r_c0/sqrt(m%epsr*m%mur)
+                    o_x(:,:,:,i_cel) = (tmp_cel     -self%pars(i_cel)%min)/self%pars(i_cel)%range
+                endif
+                if(i_mu >0) then
+                    o_x(:,:,:,i_mu ) = (r_mu0*m%mur -self%pars(i_mu )%min)/self%pars(i_mu )%range
+                endif
 
                 ! call empirical_m2x('velocities-density')
 
             else !x->m
-                if(i_epsr>0) m%epsr= o_x(:,:,:,i_epsr)*self%pars(i_epsr)%range +self%pars(i_epsr)%min
-                if(i_mur >0) m%mur = o_x(:,:,:,i_mur )*self%pars(i_mur )%range +self%pars(i_mur )%min
-                if(i_sgma>0) m%sgma= o_x(:,:,:,i_sgma)*self%pars(i_sgma)%range +self%pars(i_sgma)%min
+                if(i_mu >0) then
+                    m%mur  = (o_x(:,:,:,i_mu )*self%pars(i_mu )%range +self%pars(i_mu )%min) / r_mu0
+                endif
+                if(i_cel>0) then
+                    tmp_cel=  o_x(:,:,:,i_cel)*self%pars(i_cel)%range +self%pars(i_cel)%min
+                    m%epsr =  tmp_cel**(-2)/r_eps0mu0/m%mur
+                endif
+                ! if(i_rho>0) m%rho= o_x(:,:,:,i_rho)*self%pars(i_rho)%range +self%pars(i_rho)%min
 
                 ! call empirical_x2m('velocities-density')
                 
                 call m%apply_relativity
                 call m%apply_freeze_zone
-                
+
             endif
 
         endif
@@ -154,17 +160,32 @@ use m_Modeling
         if(present(o_g)) then
             call alloc(o_g,self%n1,self%n2,self%n3,self%npars)
 
-            n_entry=0
-
-
             ! call hud('Parametrizer finds grho & gkpa')
             !correlate_gradient(:,:,:,1) = gmur
             !correlate_gradient(:,:,:,2) = gepsr
             !correlate_gradient(:,:,:,3) = gsgma
             
-            if(i_mur >0) o_g(:,:,:,i_mur ) = correlate_gradient(:,:,:,1)
-            if(i_epsr>0) o_g(:,:,:,i_epsr) = correlate_gradient(:,:,:,2)
-            if(i_sgma>0) o_g(:,:,:,i_sgma) = correlate_gradient(:,:,:,3)
+            !c⁻² = εμ = ε₀εᵣμ  ==>  εᵣ = c⁻²μ⁻¹/ε₀; μᵣ = μ/μ₀
+            !So,
+            !gcel = gepsr ∂εᵣ/∂c + gmur ∂μᵣ/∂c = gepsr (-2)(c⁻³μ⁻¹/ε₀)
+            !     = gepsr (-2)(εᵣ/c)
+            !gmu  = gepsr ∂εᵣ/∂μ + gmur ∂μᵣ/∂μ = gepsr (-1)(c⁻²μ⁻²/ε₀) + gmur 1/μ₀
+            !     = gepsr (-1)(εᵣμ⁻¹) + gmur μ₀⁻¹
+
+            call alloc(tmp_cel, m%nz,m%nx,m%ny)
+
+            tmp_cel = r_c0 / sqrt(m%epsr*m%mur)
+
+            if(i_cel>0) then
+                o_g(:,:,:,i_cel) = correlate_gradient(:,:,:,2)*(-2)*r_eps0/tmp_cel
+            endif
+
+            if(i_mu >0) then
+                o_g(:,:,:,i_mu ) = correlate_gradient(:,:,:,2)*(-1)*r_eps0/r_mu0/m%mur &
+                                  +correlate_gradient(:,:,:,1)/r_mu0
+            endif
+            
+            ! if(i_sgma>0) o_g(:,:,:,i_sgma) = correlate_gradient(:,:,:,3)
 
             !normaliz g by allowed parameter range
             !s.t. g is in unit [Nm]

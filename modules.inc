@@ -16,8 +16,9 @@ ShotDec=batching
 ##########
 # Kernel #
 ##########
-#Param=vp-rho
-Param=velocities-density
+#Param=epsr-mur-sgma
+Param=celerity-permeability
+#Param=velocities-density
 #Param=velocities-density_pseudotime
 #Param=velocities-impedance
 #Param=slowness-density
