@@ -26,7 +26,7 @@ use m_cpml
 
     type,public :: t_propagator
         !info
-        character(i_str_xxlen) :: info = &
+        character(i_str_xxxlen) :: info = &
             'Time-domain ISOtropic 2D/3D ACoustic propagation'//s_NL// &
             '1st-order Velocity-Stress formulation'//s_NL// &
             'Vireux-Levandar Staggered-Grid Finite-Difference (FDSG) method'//s_NL// &
@@ -248,9 +248,7 @@ use m_cpml
 
         !if(name(1:1)=='g') then !gradient components
             call alloc(corr%grho,m%nz,m%nx,m%ny)
-print*,mpiworld%sproc,'before'
             call alloc(corr%gkpa,m%nz,m%nx,m%ny)
-print*,mpiworld%sproc,'after'
         !else !image components
         !    call alloc(corr%ipp,m%nz,m%nx,m%ny)
         !    call alloc(corr%ibksc,m%nz,m%nx,m%ny)
@@ -600,14 +598,14 @@ print*,mpiworld%sproc,'after'
                 tt11=tt11+toc-tic
             endif
             
-!            !grho: sfield%v_dt^it \dot rfield%v^it
-!            !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
-!            if(if_compute_grad.and.mod(it,irdt)==0) then
-!                call cpu_time(tic)
-!                call cross_correlate_grho(fld_a,fld_u,it,cb%grad(:,:,1,1))
-!                call cpu_time(toc)
-!                tt6=tt6+toc-tic
-!            endif
+            !grho: sfield%v_dt^it \dot rfield%v^it
+            !use sfield%s^it+0.5 to compute sfield%v_dt^it, as backward step 2
+            if(mod(it,irdt)==0) then
+                call cpu_time(tic)
+                call cross_correlate_grho(fld_a,fld_u,a_star_u,it)
+                call cpu_time(toc)
+                tt6=tt6+toc-tic
+            endif
             
             !snapshot
             call fld_a%write(it,o_suffix='_rev')
@@ -773,8 +771,10 @@ print*,mpiworld%sproc,'after'
 
         !apply free surface boundary condition if needed
         !Levandar & Roberttson's stress image method
-        f%vz(cb%ifz:1,:,1)=0.
-        f%vx(cb%ifz:0,:,1)=0.
+        if(m%is_freesurface) then
+            f%vz(cb%ifz:1,:,1)=0.
+            f%vx(cb%ifz:0,:,1)=0.
+        endif
         
     end subroutine
 
@@ -865,8 +865,10 @@ print*,mpiworld%sproc,'after'
         
         !apply free surface boundary condition if needed
         !Levandar & Roberttson's stress image method
-        f%p(1,:,1)=0.
-        f%p(0:cb%ifz:-1, :,1)=-f%p(2:2+0-cb%ifz, :,1)
+        if(m%is_freesurface) then
+	    f%p(1,:,1)=0.
+            f%p(0:cb%ifz:-1, :,1)=-f%p(2:2+0-cb%ifz, :,1)
+        endif
 
     end subroutine
 
@@ -1081,13 +1083,15 @@ print*,mpiworld%sproc,'after'
             ifz=either(iz-2,iz,iz>=3); ilz=either(iz+2,iz,iz<=m%nz-2)
             ifx=either(ix-2,ix,ix>=3); ilx=either(ix+2,ix,ix<=m%nx-2)
             
-            corr%gikpa(iz,ix,1)=0 !first remove otherwise will appear in the sum below
-            ncells=size(corr%gikpa(ifz:ilz,ifx:ilx,1))-1
-            corr%gikpa(iz,ix,1) = sum(corr%gikpa(ifz:ilz,ifx:ilx,1))/ncells
+            corr%grho(iz,ix,1)=0.
+            corr%gkpa(iz,ix,1)=0 !first remove otherwise will appear in the sum below
+            ncells=size(corr%gkpa(ifz:ilz,ifx:ilx,1))-1
+            corr%grho(iz,ix,1) = sum(corr%grho(ifz:ilz,ifx:ilx,1))/ncells
+            corr%gkpa(iz,ix,1) = sum(corr%gkpa(ifz:ilz,ifx:ilx,1))/ncells
             
                     
             !remove singular top boundary..
-            ! corr%grho(1,:,:) = corr%grho(2,:,:)
+            corr%grho(1,:,:) = corr%grho(2,:,:)
             corr%gkpa(1,:,:) = corr%gkpa(2,:,:)
             
         endif

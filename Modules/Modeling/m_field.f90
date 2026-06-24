@@ -389,8 +389,8 @@ use, intrinsic :: ieee_arithmetic
                     case ('es')
                         call sysio_write('snap_'//self%name//'%es'//suf,self%es,cb%n,o_mode='append')
 
-                    ! case ('p')
-                    !     call sysio_write('snap_'//self%name//'%p'//suf,self%p,cb%n,o_mode='append')
+                    case ('p')
+                        call sysio_write('snap_'//self%name//'%p'//suf,self%p,cb%n,o_mode='append')
                     ! case ('p_prev')
                     !     call sysio_write('snap_'//self%name//'%p_prev'//suf,self%p_prev,cb%n,o_mode='append')
                     ! case ('p_next')
