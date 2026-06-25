@@ -15,7 +15,7 @@ use m_empirical
         !info
         character(i_str_xxlen) :: info = &
             'Parameterization: celerity-permeability'//s_NL// &
-            'Allowed pars: cel, mu'
+            'Allowed pars: cel, mu, sgma'
 
         type(t_parameter),dimension(:),allocatable :: pars
         integer :: npars
@@ -31,7 +31,7 @@ use m_empirical
 
     type(t_parametrizer),public :: param
 
-    integer :: i_cel=0, i_mu=0
+    integer :: i_cel=0, i_mu=0, i_sgma=0
 
     contains
     
@@ -76,6 +76,11 @@ use m_empirical
                 i_mu=i
                 self%pars(i)%name='mu'
                 self%npars=self%npars+1
+
+            case ('sgma')
+                i_sgma=i
+                self%pars(i)%name='sgma'
+                self%npars=self%npars+1
                 
             end select
 
@@ -113,29 +118,38 @@ use m_empirical
 
         !c⁻² = εμ = ε₀εᵣμ  ==>  εᵣ = c⁻²/(ε₀μ) = c⁻²/(ε₀μ₀μᵣ) ; μᵣ = μ/μ₀
         
+        call alloc(tmp_cel, m%nz,m%nx,m%ny)
+
         if(present(o_x)) then
             call alloc(o_x,self%n1,self%n2,self%n3,self%npars,oif_protect=.true.)
 
             if(either(o_dir,'m->x',present(o_dir))=='m->x') then
                 if(i_cel>0) then
                     tmp_cel = r_c0/sqrt(m%epsr*m%mur)
-                    o_x(:,:,:,i_cel) = (tmp_cel     -self%pars(i_cel)%min)/self%pars(i_cel)%range
+                    o_x(:,:,:,i_cel) = (tmp_cel     -self%pars(i_cel )%min)/self%pars(i_cel )%range
                 endif
                 if(i_mu >0) then
-                    o_x(:,:,:,i_mu ) = (r_mu0*m%mur -self%pars(i_mu )%min)/self%pars(i_mu )%range
+                    o_x(:,:,:,i_mu ) = (r_mu0*m%mur -self%pars(i_mu  )%min)/self%pars(i_mu  )%range
+                endif
+                if(i_sgma>0) then
+                    o_x(:,:,:,i_sgma) = (     m%sgma-self%pars(i_sgma)%min)/self%pars(i_sgma)%range
                 endif
 
                 ! call empirical_m2x('velocities-density')
 
             else !x->m
                 if(i_mu >0) then
+                    tmp_cel = r_c0/sqrt(m%epsr*m%mur)
                     m%mur  = (o_x(:,:,:,i_mu )*self%pars(i_mu )%range +self%pars(i_mu )%min) / r_mu0
+                    m%epsr = (r_c0/tmp_cel)**2/m%mur
                 endif
                 if(i_cel>0) then
                     tmp_cel=  o_x(:,:,:,i_cel)*self%pars(i_cel)%range +self%pars(i_cel)%min
-                    m%epsr =  tmp_cel**(-2)/r_eps0mu0/m%mur
+                    m%epsr =  1./tmp_cel/tmp_cel/r_eps0mu0/m%mur
                 endif
-                ! if(i_rho>0) m%rho= o_x(:,:,:,i_rho)*self%pars(i_rho)%range +self%pars(i_rho)%min
+                if(i_sgma>0) then
+                    m%sgma = (o_x(:,:,:,i_sgma)*self%pars(i_sgma)%range +self%pars(i_sgma)%min)
+                endif
 
                 ! call empirical_x2m('velocities-density')
                 
@@ -172,17 +186,19 @@ use m_empirical
             !gmu  = gepsr ∂εᵣ/∂μ + gmur ∂μᵣ/∂μ = gepsr (-1)(c⁻²μ⁻²/ε₀) + gmur 1/μ₀
             !     = gepsr (-1)(εᵣμ⁻¹) + gmur μ₀⁻¹
 
-            call alloc(tmp_cel, m%nz,m%nx,m%ny)
+            tmp_cel = r_c0/sqrt(m%epsr*m%mur)
 
-            tmp_cel = r_c0 / sqrt(m%epsr*m%mur)
-
-            if(i_cel>0) then
-                o_g(:,:,:,i_cel) = correlate_gradient(:,:,:,2)*(-2)*r_eps0/tmp_cel
+            if(i_cel >0) then
+                o_g(:,:,:,i_cel ) = correlate_gradient(:,:,:,2)*(-2)*m%epsr/tmp_cel
             endif
 
-            if(i_mu >0) then
-                o_g(:,:,:,i_mu ) = correlate_gradient(:,:,:,2)*(-1)*r_eps0/r_mu0/m%mur &
-                                  +correlate_gradient(:,:,:,1)/r_mu0
+            if(i_mu  >0) then
+                o_g(:,:,:,i_mu  ) = correlate_gradient(:,:,:,2)*(-1)*m%epsr/m%mur/r_mu0 &
+                                   +correlate_gradient(:,:,:,1)/r_mu0
+            endif
+
+            if(i_sgma>0) then
+                o_g(:,:,:,i_sgma) = correlate_gradient(:,:,:,3)
             endif
             
             ! if(i_sgma>0) o_g(:,:,:,i_sgma) = correlate_gradient(:,:,:,3)

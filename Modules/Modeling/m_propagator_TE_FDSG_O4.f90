@@ -18,8 +18,8 @@ use m_cpml
     real :: c1x, c1y, c1z
     real :: c2x, c2y, c2z
 
-    !local const
-    real :: inv_dt, inv_4dt
+    !!local const
+    !real :: inv_dt, inv_4dt
 
     !old sfield
     real,dimension(:,:,:),allocatable :: old_Hx, old_Hz, old_Ey
@@ -156,9 +156,6 @@ use m_cpml
 
         endif
 
-        inv_dt  = 1./self%dt
-        inv_4dt = 1./4./self%dt
-        
     end subroutine
 
     subroutine init(self)
@@ -172,7 +169,7 @@ use m_cpml
         ! inv_2dz =1./2/m%dz
         ! inv_2dx =1./2/m%dx
         
-        wavelet_scaler=self%dt/m%cell_volume
+        wavelet_scaler=1./m%cell_volume !*self%dt  will multiply dt through self%epsdt_p/m_sgma
 
         if_hicks=shot%if_hicks
 
@@ -953,12 +950,8 @@ use m_cpml
         if(allocated(correlate_gradient)) then
 
             !scale by constant
-            corr%gmur = -corr%gmur *inv_4dt
-            corr%gepsr= -corr%gepsr*inv_dt
-
-            !scale to relative parameters
-            corr%gmur  = corr%gmur  *r_mu0
-            corr%gepsr = corr%gepsr *r_eps0
+            corr%gmur = corr%gmur /(4.*ppg%dt)  *r_mu0
+            corr%gepsr= corr%gepsr/ppg%dt       *r_eps0
             
             !remove singular point at the src position,
             !because we didn't consider src when deriving the gradient formula
@@ -1147,14 +1140,9 @@ use m_cpml
                 izp1_ix=i+1  !iz+1,ix            
                 iz_ixp1=i  +nz  !iz,ix+1
                 
-                ! grad(j)=grad(j) -( (rf_Hx(izp1_ix)+rf_Hx(iz_ix))*(sf_Hx(izp1_ix)+sf_Hx(iz_ix)-old_Hx(izp1_ix)-old_Hx(iz_ix)) &
-                !                   +(rf_Hz(iz_ixp1)+rf_Hz(iz_ix))*(sf_Hz(iz_ixp1)+sf_Hz(iz_ix)-old_Hz(iz_ixp1)-old_Hz(iz_ix)) &
-                !                  )*inv_4dt
-                !                 !the minus sign is because old_H is actually in future
-                !                 !moved to cross_correlate_postprocess
-                grad(j)=grad(j) +( (rf_Hx(izp1_ix)+rf_Hx(iz_ix))*(sf_Hx(izp1_ix)+sf_Hx(iz_ix)-old_Hx(izp1_ix)-old_Hx(iz_ix)) &
-                                  +(rf_Hz(iz_ixp1)+rf_Hz(iz_ix))*(sf_Hz(iz_ixp1)+sf_Hz(iz_ix)-old_Hz(iz_ixp1)-old_Hz(iz_ix)) &
-                                 )
+                grad(j)=grad(j) +( (rf_Hx(izp1_ix)+rf_Hx(iz_ix))*(old_Hx(izp1_ix)+old_Hx(iz_ix)-sf_Hx(izp1_ix)-sf_Hx(iz_ix)) &
+                                  +(rf_Hz(iz_ixp1)+rf_Hz(iz_ix))*(old_Hz(iz_ixp1)+old_Hz(iz_ix)-sf_Hz(iz_ixp1)-sf_Hz(iz_ix)) &
+                                 ) !/(4*self%dt) !moved to cross_correlate_postprocess
 
             end do
             
@@ -1183,11 +1171,8 @@ use m_cpml
                 i=(iz-cb%ifz)+(ix-cb%ifx)*cb%nz+1 !field has boundary layers
                 j=(iz-1)     +(ix-1)     *cb%mz+1 !grad has no boundary layers
                 
-                ! geps (j)=geps (j) - rf_Ey(i)*(sf_Ey(i)-old_Ey(i)) *inv_dt
-                !                   !the minus sign is because old_H is actually in future
-                !                   !moved to cross_correlate_postprocess
-                geps (j)=geps (j) + rf_Ey(i)*(sf_Ey(i)-old_Ey(i))
-                gsgma(j)=gsgma(j) + rf_Ey(i)* sf_Ey(i)
+                geps (j)=geps (j) + rf_Ey(i)*(old_Ey(i)-sf_Ey(i)) !/self%dt !moved to cross_correlate_postprocess
+                gsgma(j)=gsgma(j) + rf_Ey(i)*           sf_Ey(i)
                 
             enddo
             
