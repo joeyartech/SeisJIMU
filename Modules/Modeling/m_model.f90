@@ -110,7 +110,7 @@ use m_smoother_laplacian_sparse
         !convert from second to microsecond: F/m=A·s/V/m to A·µs/V/m, H/m=V·s/A/m to V·µs/A/m
         !but no need to convert S/m=A²·s³/kg/m² to A²·µs³/kg/m²
         self%time_scale=setup%get_real('MODEL_TIME_UNIT',o_default='1e6') 
-        call hud('If absolute eps, mu, sgma models are read, apply temporal scaling: '//num2str(self%time_scale))
+        call hud('If absolute eps, mu, cel models are read, apply temporal scaling: '//num2str(self%time_scale))
 
     end subroutine
 
@@ -193,6 +193,13 @@ use m_smoother_laplacian_sparse
                 call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
                 self%mur = tmp
                 call hud('mur model is read.')
+
+            case ('cel')
+                call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
+                tmp=tmp*self%time_scale
+                !cel**-2 = eps0mu0 * epsr*mur
+                self%epsr = tmp**(-2) / r_eps0mu0/self%mur
+                call hud('cel model is read and is converted to epsr based on mur.')
 
             case ('sgma')
                 call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
