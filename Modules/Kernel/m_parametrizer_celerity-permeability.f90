@@ -56,7 +56,7 @@ use m_empirical
         ! is_gimu = index(ppg%info,'gimu')>0
 
         !read in active parameters and their allowed ranges
-        list=setup%get_strs('PARAMETER',o_default='cel:80:299')
+        list=setup%get_strs('PARAMETER',o_default='cel:55:299')
         
         self%npars=size(list)
         allocate(self%pars(self%npars))

@@ -114,10 +114,23 @@ use m_cpml
             call warn('Vacuum epsr model (=1) is allocated by propagator.')
         endif        
 
+        if(m%epsr(1,1,1)<1) then
+            call warn('epsr seems to be too small (<1). Are your sure its temporal unit is microsecond?')
+        endif
+
         if(.not. allocated(m%mur)) then
             call alloc(m%mur,m%nz,m%nx,m%ny,o_init=1.)
             call warn('Vacuum mur model (=1) is allocated by propagator.')
         endif
+
+        if(m%mur(1,1,1)<1) then
+            call warn('mur seems to be too small (<1). Are your sure its temporal unit is microsecond?')
+        endif
+
+        if(any(m%epsr*m%mur<1.)) then
+            call error('epsr*mur < 1! Check your models..')
+        endif
+
 
         if(.not. allocated(m%sgma)) then
             call alloc(m%sgma,m%nz,m%nx,m%ny,o_init=0.)

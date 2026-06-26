@@ -30,9 +30,6 @@ use m_smoother_laplacian_sparse
         !reference values
         real :: ref_inv_vel, ref_rho
 
-        !temporal scale
-        real :: time_scale
-
         integer,dimension(:,:),allocatable :: ibathy
         logical,dimension(:,:,:),allocatable :: is_freeze_zone
 
@@ -107,10 +104,10 @@ use m_smoother_laplacian_sparse
         self%attributes_read =setup%get_strs('MODEL_ATTRIBUTES',o_default='eps mu sgma')
         self%attributes_write=setup%get_strs('MODEL_ATTRIBUTES_WRITE',o_default=strcat(self%attributes_read))
         
-        !convert from second to microsecond: F/m=A·s/V/m to A·µs/V/m, H/m=V·s/A/m to V·µs/A/m
-        !but no need to convert S/m=A²·s³/kg/m² to A²·µs³/kg/m²
-        self%time_scale=setup%get_real('MODEL_TIME_UNIT',o_default='1e6') 
-        call hud('If absolute eps, mu, cel models are read, apply temporal scaling: '//num2str(self%time_scale))
+        ! !convert from second to microsecond: F/m=A·s/V/m to A·µs/V/m, H/m=V·s/A/m to V·µs/A/m
+        ! !but no need to convert S/m=A²·s³/kg/m² to A²·µs³/kg/m²
+        ! self%time_scale=setup%get_real('MODEL_TIME_UNIT',o_default='1e6') 
+        ! call hud('If absolute eps, mu, cel models are read, apply temporal scaling: '//num2str(self%time_scale))
 
     end subroutine
 
@@ -174,7 +171,6 @@ use m_smoother_laplacian_sparse
 
             case ('eps')
                 call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
-                tmp=tmp*self%time_scale
                 self%epsr = tmp/r_eps0 !convert from absolute to relative permittivity
                 call hud('eps model is read and is converted to epsr.')
 
@@ -185,7 +181,6 @@ use m_smoother_laplacian_sparse
 
             case ('mu')
                 call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
-                tmp=tmp*self%time_scale
                 self%mur = tmp/r_mu0 !convert from absolute to relative permeability
                 call hud('mu model is read and is converted to mur.')
 
@@ -196,7 +191,6 @@ use m_smoother_laplacian_sparse
 
             case ('cel')
                 call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
-                tmp=tmp*self%time_scale
                 !cel**-2 = eps0mu0 * epsr*mur
                 self%epsr = tmp**(-2) / r_eps0mu0/self%mur
                 call hud('cel model is read and is converted to epsr based on mur.')
@@ -355,7 +349,6 @@ use m_smoother_laplacian_sparse
             select case(self%attributes_read(i)%s)
             case ('eps')
                 call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
-                tmp=tmp*self%time_scale
                 where(self%is_freeze_zone) self%epsr=tmp/r_eps0 !convert from absolute to relative permittivity
 
             case ('epsr')
@@ -364,7 +357,6 @@ use m_smoother_laplacian_sparse
                 
             case ('mu')
                 call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
-                tmp=tmp*self%time_scale
                 where(self%is_freeze_zone) self%mur = tmp/r_mu0 !convert from absolute to relative permeability
 
             case ('mur')
@@ -434,13 +426,13 @@ use m_smoother_laplacian_sparse
         do i=1,size(self%attributes_write)
             select case(self%attributes_write(i)%s)
             case ('eps')
-                write(13,rec=i) self%epsr * r_eps0 / self%time_scale
+                write(13,rec=i) self%epsr*r_eps0
 
             case ('epsr')
                 write(13,rec=i) self%epsr
 
             case ('mu')
-                write(13,rec=i) self%mur * r_mu0 / self%time_scale
+                write(13,rec=i) self%mur*r_mu0
 
             case ('mur')
                 write(13,rec=i) self%mur
