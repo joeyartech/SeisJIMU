@@ -197,12 +197,12 @@ use, intrinsic :: ieee_arithmetic
             disty = cb%velmax * dt / m%dy
 
             if(.not.self%is_adjoint) then
-                self%bloom(1,1)=max(shot%src%iz -initial_half_bloomwidth, cb%ifz)
-                self%bloom(2,1)=min(shot%src%iz +initial_half_bloomwidth, cb%ilz)
-                self%bloom(3,1)=max(shot%src%ix -initial_half_bloomwidth, cb%ifx)
-                self%bloom(4,1)=min(shot%src%ix +initial_half_bloomwidth, cb%ilx)
-                self%bloom(5,1)=max(shot%src%iy -initial_half_bloomwidth, cb%ify)
-                self%bloom(6,1)=min(shot%src%iy +initial_half_bloomwidth, cb%ily)
+                self%bloom(1,1)=max(shot%src%iz-cb%ioz -initial_half_bloomwidth, cb%ifz)
+                self%bloom(2,1)=min(shot%src%iz-cb%ioz +initial_half_bloomwidth, cb%ilz)
+                self%bloom(3,1)=max(shot%src%ix-cb%iox -initial_half_bloomwidth, cb%ifx)
+                self%bloom(4,1)=min(shot%src%ix-cb%iox +initial_half_bloomwidth, cb%ilx)
+                self%bloom(5,1)=max(shot%src%iy-cb%ioy -initial_half_bloomwidth, cb%ify)
+                self%bloom(6,1)=min(shot%src%iy-cb%ioy +initial_half_bloomwidth, cb%ily)
                 do it=2,nt
                     self%bloom(1,it)=max(nint(self%bloom(1,1)-it*distz),cb%ifz) !bloombox ifz
                     self%bloom(2,it)=min(nint(self%bloom(2,1)+it*distz),cb%ilz) !bloombox ilz
@@ -213,12 +213,12 @@ use, intrinsic :: ieee_arithmetic
                 enddo
             
             else
-                self%bloom(1,nt)=max(minval(shot%rcv(:)%iz) -initial_half_bloomwidth, cb%ifz)
-                self%bloom(2,nt)=min(maxval(shot%rcv(:)%iz) +initial_half_bloomwidth, cb%ilz)
-                self%bloom(3,nt)=max(minval(shot%rcv(:)%ix) -initial_half_bloomwidth, cb%ifx)
-                self%bloom(4,nt)=min(maxval(shot%rcv(:)%ix) +initial_half_bloomwidth, cb%ilx)
-                self%bloom(5,nt)=max(minval(shot%rcv(:)%iy) -initial_half_bloomwidth, cb%ify)
-                self%bloom(6,nt)=min(maxval(shot%rcv(:)%iy) +initial_half_bloomwidth, cb%ily)
+                self%bloom(1,nt)=max(minval(shot%rcv(:)%iz)-cb%ioz -initial_half_bloomwidth, cb%ifz)
+                self%bloom(2,nt)=min(maxval(shot%rcv(:)%iz)-cb%ioz +initial_half_bloomwidth, cb%ilz)
+                self%bloom(3,nt)=max(minval(shot%rcv(:)%ix)-cb%iox -initial_half_bloomwidth, cb%ifx)
+                self%bloom(4,nt)=min(maxval(shot%rcv(:)%ix)-cb%iox +initial_half_bloomwidth, cb%ilx)
+                self%bloom(5,nt)=max(minval(shot%rcv(:)%iy)-cb%ioy -initial_half_bloomwidth, cb%ify)
+                self%bloom(6,nt)=min(maxval(shot%rcv(:)%iy)-cb%ioy +initial_half_bloomwidth, cb%ily)
                 do it=nt-1,1,-1
                     it_fwd=nt-it+1
                     self%bloom(1,it)=max(nint(self%bloom(1,nt)-it_fwd*distz),cb%ifz) !bloombox ifz

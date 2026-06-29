@@ -407,9 +407,9 @@ endif
         call ppg%init_correlate(a_star_u,'a_star_u')
         call ppg%adjoint(fld_a,fld_u,a_star_u)
 
-if(allocated(a_star_u%gepsr)) call sysio_write('gepsr_'//shot%sindex,a_star_u%gepsr,m%n)
-if(allocated(a_star_u%gmur )) call sysio_write('gmur_' //shot%sindex,a_star_u%gmur ,m%n)
-if(allocated(a_star_u%gsgma)) call sysio_write('gsgma_'//shot%sindex,a_star_u%gsgma,m%n)
+if(allocated(a_star_u%gepsr)) call sysio_write('gepsr_'//shot%sindex,a_star_u%gepsr,cb%mz*cb%mx)
+if(allocated(a_star_u%gmur )) call sysio_write('gmur_' //shot%sindex,a_star_u%gmur ,cb%mz*cb%mx)
+if(allocated(a_star_u%gsgma)) call sysio_write('gsgma_'//shot%sindex,a_star_u%gsgma,cb%mz*cb%mx)
 
         call hud('----  Assemble  ----')
         call ppg%assemble(a_star_u)

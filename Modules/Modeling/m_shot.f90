@@ -136,6 +136,7 @@ use m_model
         type(t_string),dimension(:),allocatable :: scomp, rcomp
 
         type(t_suformat) :: sudata
+        real :: scalel=0., scalco=0.
         character(:),allocatable :: str, zerophase, locut, hicut
         character(:),allocatable :: fstoplo,fpasslo,fpasshi,fstophi
         character(:),allocatable :: astoplo,apasslo,apasshi,astophi
@@ -1041,7 +1042,7 @@ use m_model
         character(:),allocatable,save :: format
         type(t_suformat) :: sudata
         logical,save :: is_first_in=.true.
-        real,save :: scalel, scalco
+        real :: scalel=0., scalco=0.
 
         if(is_first_in) format=setup%get_str('DATA_FORMAT',o_default='su')
 
@@ -1049,12 +1050,11 @@ use m_model
 
             call sudata%init(self%nt,self%nrcv,o_dt=self%dt,o_data=data)
 
-            !assume all shots share same same scalel & scalco
-            !or given by user
-            if(is_first_in) then
-                scalel=setup%get_real('SU_SCALEL',o_default=num2str(find_proper_scalel()))
-                scalco=setup%get_real('SU_SCALCO',o_default=num2str(find_proper_scalco()))
-            endif
+            !assume all shots share same same scalel & scalco, or given by user
+            !if(is_first_in) then
+            scalel=setup%get_real('SU_SCALEL',o_default=num2str(find_proper_scalel()))
+            scalco=setup%get_real('SU_SCALCO',o_default=num2str(find_proper_scalco()))
+            !endif
 
             sudata%hdrs(:)%scalel=int(scalel)
             sudata%hdrs(:)%scalco=int(scalco)

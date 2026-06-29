@@ -197,10 +197,12 @@ use m_cpml
         do iz=cb%ifz+1,cb%ilz
             self%imuz(iz,:)=(temp_imu(iz,:)+temp_imu(iz-1,:))/2.
         enddo
+        self%imuz(cb%ifz,:)=self%imuz(cb%ifz+1,:)
         
         do ix=cb%ifx+1,cb%ilx
             self%imux(:,ix)=(temp_imu(:,ix)+temp_imu(:,ix-1))/2.
         enddo
+        self%imux(:,cb%ifx)=self%imux(:,cb%ifx+1)
 
         deallocate(temp_imu)
 
@@ -258,9 +260,9 @@ use m_cpml
         corr%name=name
 
         ! if(name(1:1)=='g') then !gradient components
-            call alloc(corr%gmur, m%nz,m%nx,m%ny)
-            call alloc(corr%gepsr,m%nz,m%nx,m%ny)
-            call alloc(corr%gsgma,m%nz,m%nx,m%ny)
+            call alloc(corr%gmur, cb%mz,cb%mx,cb%my)
+            call alloc(corr%gepsr,cb%mz,cb%mx,cb%my)
+            call alloc(corr%gsgma,cb%mz,cb%mx,cb%my)
         !else !image components
         !    call alloc(corr%ipp,m%nz,m%nx,m%ny)
         !    call alloc(corr%ibksc,m%nz,m%nx,m%ny)
@@ -712,16 +714,16 @@ use m_cpml
                 wl=time_dir*f%wavelet(1,it)*wavelet_scaler
                 ! if(m%is_freesurface.and.shot%src%iz==1) wl=2*wl !required to pass adjointtest.
                 
-            
                 if(if_hicks) then
                     f%Ey(ifz:ilz,ifx:ilx,1) = f%Ey(ifz:ilz,ifx:ilx,1) + wl/self%epsdt_p_sgma(ifz:ilz,ifx:ilx)*shot%src%interp_coef_full(:,:,1)
-                    
+
                 else
                     f%Ey(iz,ix,1) = f%Ey(iz,ix,1) + wl/self%epsdt_p_sgma(iz,ix)
-                
+
                 endif
-            
+
             endif
+
 
             return
 
@@ -801,13 +803,13 @@ use m_cpml
                     f%dHx_dz,f%dHz_dx,              &
                     self%epsdt_p_sgma,self%epsdt_m_sgma,&
                     ifz,ilz,ifx,ilx,iopt)
-        
-        !if(m%is_freesurface) then
-        !    !apply free surface boundary condition if needed
-        !    !Levandar & Roberttson's stress image method
-        !    f%vy(cb%ifz:0,:,1)=0.
-	!
-        !endif
+
+!         if(m%is_freesurface) then
+!            !apply free surface boundary condition if needed
+!            !Levandar & Roberttson's stress image method
+!            f%vy(cb%ifz:0,:,1)=0.
+!
+!         endif
 
     end subroutine
 
