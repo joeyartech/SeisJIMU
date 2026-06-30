@@ -264,9 +264,9 @@ use m_cpml
             call alloc(corr%gepsr,cb%mz,cb%mx,cb%my)
             call alloc(corr%gsgma,cb%mz,cb%mx,cb%my)
         !else !image components
-        !    call alloc(corr%ipp,m%nz,m%nx,m%ny)
-        !    call alloc(corr%ibksc,m%nz,m%nx,m%ny)
-        !    call alloc(corr%ifwsc,m%nz,m%nx,m%ny)
+        !    call alloc(corr%ipp,  cb%mz,cb%mx,cb%my)
+        !    call alloc(corr%ibksc,cb%mz,cb%mx,cb%my)
+        !    call alloc(corr%ifwsc,cb%mz,cb%mx,cb%my)
         ! endif
 
     end subroutine
@@ -968,25 +968,25 @@ use m_cpml
             corr%gmur = corr%gmur /(4.*ppg%dt)  *r_mu0
             corr%gepsr= corr%gepsr/ppg%dt       *r_eps0
             
-            !remove singular point at the src position,
-            !because we didn't consider src when deriving the gradient formula
-            iz=shot%src%iz-cb%ioz+1
-            ix=shot%src%ix-cb%iox+1
-            !for point source
-            !safeguards
-            ifz=either(iz-2,iz,iz>=3); ilz=either(iz+2,iz,iz<=m%nz-2)
-            ifx=either(ix-2,ix,ix>=3); ilx=either(ix+2,ix,ix<=m%nx-2)
-            
-            !first remove otherwise will appear in the sum below
-            corr%gmur (iz,ix,1)=0.
-            corr%gepsr(iz,ix,1)=0.
-            corr%gsgma(iz,ix,1)=0.
-
-            !then replace singular point by sum
-            ncells=size(corr%gepsr(ifz:ilz,ifx:ilx,1))-1
-            corr%gmur (iz,ix,1) = sum(corr%gmur (ifz:ilz,ifx:ilx,1))/ncells
-            corr%gepsr(iz,ix,1) = sum(corr%gepsr(ifz:ilz,ifx:ilx,1))/ncells
-            corr%gsgma(iz,ix,1) = sum(corr%gsgma(ifz:ilz,ifx:ilx,1))/ncells
+!             !remove singular point at the src position,
+!             !because we didn't consider src when deriving the gradient formula
+!             iz=shot%src%iz-cb%ioz+1
+!             ix=shot%src%ix-cb%iox+1
+!             !for point source
+!             !safeguards
+!             ifz=either(iz-2,iz,iz>=3); ilz=either(iz+2,iz,iz<=m%nz-2)
+!             ifx=either(ix-2,ix,ix>=3); ilx=either(ix+2,ix,ix<=m%nx-2)
+!
+!             !first remove otherwise will appear in the sum below
+!             corr%gmur (iz,ix,1)=0.
+!             corr%gepsr(iz,ix,1)=0.
+!             corr%gsgma(iz,ix,1)=0.
+!
+!             !then replace singular point by sum
+!             ncells=size(corr%gepsr(ifz:ilz,ifx:ilx,1))-1
+!             corr%gmur (iz,ix,1) = sum(corr%gmur (ifz:ilz,ifx:ilx,1))/ncells
+!             corr%gepsr(iz,ix,1) = sum(corr%gepsr(ifz:ilz,ifx:ilx,1))/ncells
+!             corr%gsgma(iz,ix,1) = sum(corr%gsgma(ifz:ilz,ifx:ilx,1))/ncells
             
             !fill top boundary
             corr%gmur (1,:,:) = corr%gmur (2,:,:)

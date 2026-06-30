@@ -286,9 +286,9 @@ use m_preconditioner
 
                 !spatial gradient
                 do i4=1,param%npars
-                do i3=1,param%n3
-                do i2=1,param%n2
-                do i1=1,param%n1
+                do i3=2,param%n3-1
+                do i2=2,param%n2-1
+                do i1=2,param%n1-1
                     ! spatgrad(i1,i2,i3,i4) = spatgrad(i1,i2,i3,i4) &
                     !     -xnorms_weights(1)*(x(i1-1,i2,i3,i4)-2.*x(i1,i2,i3,i4)+x(i1+1,i2,i3,i4)) &
                     !     -xnorms_weights(2)*(x(i1,i2-1,i3,i4)-2.*x(i1,i2,i3,i4)+x(i1,i2+1,i3,i4)) &

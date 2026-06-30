@@ -129,13 +129,13 @@ use m_computebox
         suf=either(o_suffix,'',present(o_suffix))
 
         if(.not.present(o_it)) then !just write
-            if(allocated(self%gepsr))  call sysio_write(self%name//'%gepsr'//suf,self%gepsr,m%n)
-            if(allocated(self%gmur ))  call sysio_write(self%name//'%gmur'//suf ,self%gmur, m%n)
-            if(allocated(self%gsgma))  call sysio_write(self%name//'%gsgma'//suf,self%gsgma,m%n)
+            if(allocated(self%gepsr))  call sysio_write(self%name//'%gepsr'//suf,self%gepsr,cb%mz*cb%mx*cb%my) !NOTE that cb%mz*cb%mx*cb%my /= m%n esp when ADD_APERTURE is enabled
+            if(allocated(self%gmur ))  call sysio_write(self%name//'%gmur'//suf ,self%gmur, cb%mz*cb%mx*cb%my)
+            if(allocated(self%gsgma))  call sysio_write(self%name//'%gsgma'//suf,self%gsgma,cb%mz*cb%mx*cb%my)
 
-            if(allocated(self%ipp))    call sysio_write(self%name//'%ipp'//suf   ,self%ipp,   m%n)
-            if(allocated(self%ibksc))  call sysio_write(self%name//'%ibksc'//suf ,self%ibksc, m%n)
-            if(allocated(self%ifwsc))  call sysio_write(self%name//'%ifwsc'//suf ,self%ifwsc, m%n)
+            if(allocated(self%ipp))    call sysio_write(self%name//'%ipp'//suf   ,self%ipp,   cb%mz*cb%mx*cb%my)
+            if(allocated(self%ibksc))  call sysio_write(self%name//'%ibksc'//suf ,self%ibksc, cb%mz*cb%mx*cb%my)
+            if(allocated(self%ifwsc))  call sysio_write(self%name//'%ifwsc'//suf ,self%ifwsc, cb%mz*cb%mx*cb%my)
             return
 
         endif
@@ -143,13 +143,13 @@ use m_computebox
         if(if_snapshot) then !write snapshots
 
             if(o_it==1 .or. mod(o_it,i_snapshot)==0 .or. o_it==nt) then
-                if(allocated(self%gepsr))  call sysio_write('snap_'//self%name//'%gepsr'//suf, self%gepsr, m%n,o_mode='append')
-                if(allocated(self%gmur ))  call sysio_write('snap_'//self%name//'%gmur'//suf,  self%gmur , m%n,o_mode='append')
-                if(allocated(self%gsgma))  call sysio_write('snap_'//self%name//'%gsgma'//suf, self%gsgma, m%n,o_mode='append')
+                if(allocated(self%gepsr))  call sysio_write('snap_'//self%name//'%gepsr'//suf, self%gepsr, cb%mz*cb%mx*cb%my,o_mode='append')
+                if(allocated(self%gmur ))  call sysio_write('snap_'//self%name//'%gmur'//suf,  self%gmur , cb%mz*cb%mx*cb%my,o_mode='append')
+                if(allocated(self%gsgma))  call sysio_write('snap_'//self%name//'%gsgma'//suf, self%gsgma, cb%mz*cb%mx*cb%my,o_mode='append')
                 
-                if(allocated(self%ipp))    call sysio_write('snap_'//self%name//'%ipp'//suf   ,self%ipp,   m%n,o_mode='append')
-                if(allocated(self%ibksc))  call sysio_write('snap_'//self%name//'%ibksc'//suf ,self%ibksc, m%n,o_mode='append')
-                if(allocated(self%ifwsc))  call sysio_write('snap_'//self%name//'%ifwsc'//suf ,self%ifwsc, m%n,o_mode='append')
+                if(allocated(self%ipp))    call sysio_write('snap_'//self%name//'%ipp'//suf   ,self%ipp,   cb%mz*cb%mx*cb%my,o_mode='append')
+                if(allocated(self%ibksc))  call sysio_write('snap_'//self%name//'%ibksc'//suf ,self%ibksc, cb%mz*cb%mx*cb%my,o_mode='append')
+                if(allocated(self%ifwsc))  call sysio_write('snap_'//self%name//'%ifwsc'//suf ,self%ifwsc, cb%mz*cb%mx*cb%my,o_mode='append')
 
             endif
 
