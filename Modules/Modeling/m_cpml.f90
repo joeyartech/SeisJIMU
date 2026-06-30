@@ -152,7 +152,7 @@ use m_computebox
         do i = cb%ifz,cb%ilz
 
             !!top edge
-            abscissa_in_pml = -(i-1-cb%nairlayer)*m%dz
+            abscissa_in_pml = -(i-1+cb%nairlayer)*m%dz
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_z
                 d_z(i)          = d0_z * abscissa_normalized**npower
@@ -161,7 +161,7 @@ use m_computebox
             endif
 
             !!top edge half gridpoint
-            abscissa_in_pml = -(i-1-cb%nairlayer)*m%dz + m%dz/2.
+            abscissa_in_pml = -(i-1+cb%nairlayer)*m%dz + m%dz/2.
             if(abscissa_in_pml >= 0.)then
                 abscissa_normalized = abscissa_in_pml / thickness_pml_z
                 d_z_half(i)     = d0_z * abscissa_normalized**npower

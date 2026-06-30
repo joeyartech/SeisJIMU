@@ -375,7 +375,7 @@ use, intrinsic :: ieee_arithmetic
         call alloc(self%bnd%Hx_top,n,nt)
         call alloc(self%bnd%Hx_bot,n,nt)
         
-        n=cb%mz*3*cb%my
+        n=(cb%mz+cb%nairlayer)*3*cb%my
         call alloc(self%bnd%Hz_left, n,nt)
         call alloc(self%bnd%Hz_right,n,nt)
 
@@ -785,13 +785,16 @@ use, intrinsic :: ieee_arithmetic
         
         !top
         ! if(.not. m%is_freesurface) &
-        call copy(action,self%Hx,self%bnd%Hx_top(:,it),  [1,3],    [1,nx],[1,1])
+        call copy(action,self%Hx,self%bnd%Hx_top(:,it),  [1-cb%nairlayer,3-cb%nairlayer],    [1,nx],[1,1])
+        !call copy(action,self%Hx,self%bnd%Hx_top(:,it),  [1,3],    [1,nx],[1,1])
         !bottom
         call copy(action,self%Hx,self%bnd%Hx_bot(:,it),  [nz-1,nz+1],[1,nx],[1,1])
         !left
-        call copy(action,self%Hz,self%bnd%Hz_left(:,it), [1,nz],[1,3],    [1,1])
+        call copy(action,self%Hz,self%bnd%Hz_left(:,it), [1-cb%nairlayer,nz],[1,3],    [1,1])
+        !call copy(action,self%Hz,self%bnd%Hz_left(:,it), [1,nz],[1,3],    [1,1])
         !right
-        call copy(action,self%Hz,self%bnd%Hz_right(:,it),[1,nz],[nx-1,nx+1],[1,1])
+        call copy(action,self%Hz,self%bnd%Hz_right(:,it),[1-cb%nairlayer,nz],[nx-1,nx+1],[1,1])
+        !call copy(action,self%Hz,self%bnd%Hz_right(:,it),[1,nz],[nx-1,nx+1],[1,1])
         
     end subroutine
 
