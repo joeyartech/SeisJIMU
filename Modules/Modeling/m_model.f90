@@ -440,8 +440,8 @@ use m_smoother_laplacian_sparse
             case ('sgma')
                 write(13,rec=i) self%sgma
 
-            case ('celerity')
-                write(13,rec=i) 1./sqrt(r_eps0mu0*self%epsr*self%mur)
+            case ('cel')
+                write(13,rec=i) r_c0/sqrt(self%epsr*self%mur)
 
             end select
 
