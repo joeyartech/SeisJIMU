@@ -22,6 +22,7 @@ use m_smoother_laplacian_sparse
         real,dimension(:,:,:),allocatable :: qp,qs
 
         real,dimension(:,:,:),allocatable :: epsr,mur,sgma
+        real,dimension(:,:,:),allocatable :: mur0 !background mur
 
 
         !prior models
@@ -129,46 +130,6 @@ use m_smoother_laplacian_sparse
         
         do i=1,size(self%attributes_read)
             select case(self%attributes_read(i)%s)
-            ! case ('vp')
-            !     call alloc(self%vp,self%nz,self%nx,self%ny)
-            !     read(12,rec=i) self%vp
-            !     call hud('vp model is read.')
-
-            ! case ('vs')
-            !     call alloc(self%vs,self%nz,self%nx,self%ny)
-            !     read(12,rec=i) self%vs
-            !     call hud('vs model is read.')
-
-            ! case ('rho')
-            !     call alloc(self%rho,self%nz,self%nx,self%ny)
-            !     read(12,rec=i) self%rho
-            !     call hud('rho model is read.')
-
-            ! case ('eps')
-            !     call alloc(self%eps,self%nz,self%nx,self%ny)
-            !     read(12,rec=i) self%eps
-            !     call hud('eps model is read.')
-
-            ! case ('del')
-            !     call alloc(self%del,self%nz,self%nx,self%ny)
-            !     read(12,rec=i) self%del
-            !     call hud('del model is read.')
-
-            ! case ('eta')
-            !     call alloc(self%eta,self%nz,self%nx,self%ny)
-            !     read(12,rec=i) self%eta
-            !     call hud('eta model is read.')
-
-            ! case ('qp')
-            !     call alloc(self%qp,self%nz,self%nx,self%ny)
-            !     read(12,rec=i) self%qp
-            !     call hud('qp model is read.')
-
-            ! case ('qs')
-            !     call alloc(self%qs,self%nz,self%nx,self%ny)
-            !     read(12,rec=i) self%qs
-            !     call hud('qs model is read.')
-
             case ('eps')
                 call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
                 self%epsr = tmp/r_eps0 !convert from absolute to relative permittivity
@@ -189,11 +150,27 @@ use m_smoother_laplacian_sparse
                 self%mur = tmp
                 call hud('mur model is read.')
 
-            case ('cel')
-                call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
-                !cel**-2 = eps0mu0 * epsr*mur
+            case ('mur0') !background permeability
+                call alloc(self%mur0,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%mur0
+                call hud('mur0 model is read.')
+
+            case ('cel') !celerity, c⁻² = (ε₀μ₀)εᵣμᵣ 
+                call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp                
                 self%epsr = tmp**(-2) / r_eps0mu0/self%mur
                 call hud('cel model is read and is converted to epsr based on mur.')
+
+            case ('imp') !impedance, η² = (μ₀/ε₀)(μᵣ/εᵣ)
+                if(.not.allocated(self%epsr)) call error('epsr model has NOT been read!')
+                call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
+                self%mur = tmp**2 *self%epsr / (r_mu0/r_eps0)
+                call hud('imp model is read and is converted to mur based on epsr.')
+
+            case ('imp0') !background impedance
+                if(.not.allocated(self%epsr)) call error('epsr model has NOT been read!')
+                call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
+                self%mur0= tmp**2 *self%epsr / (r_mu0/r_eps0)
+                call hud('imp0 model is read and is converted to mur0 based on epsr.')
 
             case ('sgma')
                 call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
@@ -363,6 +340,18 @@ use m_smoother_laplacian_sparse
                 call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
                 where(self%is_freeze_zone) self%mur=tmp
 
+            case ('mur0')
+                call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
+                where(self%is_freeze_zone) self%mur0=tmp
+
+            case ('imp')
+                call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
+                where(self%is_freeze_zone) self%mur=tmp**2 *self%epsr / (r_mu0/r_eps0)
+
+            case ('imp0')
+                call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
+                where(self%is_freeze_zone) self%mur0=tmp**2 *self%epsr / (r_mu0/r_eps0)
+
             case ('sgma')
                 call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
                 where(self%is_freeze_zone) self%sgma=tmp
@@ -437,11 +426,20 @@ use m_smoother_laplacian_sparse
             case ('mur')
                 write(13,rec=i) self%mur
 
+            case ('mur0')
+                write(13,rec=i) self%mur0
+
             case ('sgma')
                 write(13,rec=i) self%sgma
 
             case ('cel')
                 write(13,rec=i) r_c0/sqrt(self%epsr*self%mur)
+
+            case ('imp') !impedance, η² = (μ₀/ε₀)(μᵣ/εᵣ)
+                write(13,rec=i) (r_mu0/r_eps0)*(self%mur/self%epsr)
+
+            case ('imp0')
+                write(13,rec=i) (r_mu0/r_eps0)*(self%mur0/self%epsr)
 
             end select
 

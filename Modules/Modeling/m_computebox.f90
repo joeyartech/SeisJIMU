@@ -84,8 +84,9 @@ use m_shot
 
     end subroutine
     
-    subroutine project(self)
+    subroutine project(self,ois_background)
         class(t_computebox) :: self
+        logical,optional :: ois_background
 
         !C's origin index in model
         self%ioz=1 !always from top of model
@@ -139,8 +140,15 @@ use m_shot
 
         !models in computebox
         call m2cb(m%epsr,self%epsr,1.)
-        call m2cb(m%mur, self%mur ,1.)
+!        call m2cb(m%mur, self%mur ,1.)
         call m2cb(m%sgma,self%sgma,0.)
+
+
+	    if(either(ois_background,.false.,present(ois_background))) then
+            call m2cb(m%mur0, self%mur,1.)
+        else
+            call m2cb(m%mur,  self%mur,1.)
+        endif
 
         self%celerity = r_c0/sqrt(self%epsr*self%mur)
         

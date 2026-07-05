@@ -22,7 +22,7 @@ use m_preconditioner
         real,dimension(:),allocatable :: dnorm_normalizers, xnorm_normalizers
         real,dimension(:),allocatable :: dnorm_weights,     xnorm_weights
 
-        real misfit
+        real misfit, reflection, diving
 
         contains
 
