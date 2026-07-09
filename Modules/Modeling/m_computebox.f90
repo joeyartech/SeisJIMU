@@ -139,16 +139,14 @@ use m_shot
         endif
 
         !models in computebox
-        call m2cb(m%epsr,self%epsr,1.)
-!        call m2cb(m%mur, self%mur ,1.)
-        call m2cb(m%sgma,self%sgma,0.)
-
-
-	    if(either(ois_background,.false.,present(ois_background))) then
-            call m2cb(m%mur0, self%mur,1.)
+        if(either(ois_background,.false.,present(ois_background))) then
+            call m2cb(m%epsr0,self%epsr,1.)
+            call m2cb(m%mur0, self%mur, 1.)
         else
-            call m2cb(m%mur,  self%mur,1.)
+            call m2cb(m%epsr,self%epsr,1.)
+            call m2cb(m%mur, self%mur, 1.)
         endif
+        call m2cb(m%sgma,self%sgma,0.)
 
         self%celerity = r_c0/sqrt(self%epsr*self%mur)
         

@@ -359,8 +359,13 @@ use m_preconditioner
         ! if(either(oif_approx,.false.,present(oif_approx))) then
         !     call modeling_gradient_approximate(fobj)
         ! else
-            call modeling_gradient!(qp%is_fitting_data)
+        !     call modeling_gradient!(qp%is_fitting_data)
         ! endif
+        if(index(setup%get_str('JOB',o_mandatory=1),'build Ip')>0) then
+            call modeling_gradient_ip!(qp%is_fitting_data)
+        else
+            call modeling_gradient_vp!(qp%is_fitting_data)
+        endif
 
         ! if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'max')>0) then
         !     if(setup%get_bool('IF_FLIP_PROBLEM',o_default='T')) then

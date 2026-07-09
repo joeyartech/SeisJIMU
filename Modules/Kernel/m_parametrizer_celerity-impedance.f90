@@ -14,7 +14,7 @@ use m_empirical
     type,public :: t_parametrizer
         !info
         character(i_str_xxlen) :: info = &
-            'Parameterization: celerity-density'//s_NL// &
+            'Parameterization: celerity-impedance'//s_NL// &
             'Allowed pars: cel, imp, sgma'
 !In electrical engineering, the electrical impedance Z is the total opposition to an alternating current (AC) in a circuit.
 !In electromagnetics, the intrinsic impedance η describes how a medium interacts with an open wave.

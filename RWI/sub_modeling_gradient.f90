@@ -373,8 +373,8 @@ endif
         call cb%project
         call ppg%init
         call ppg%init_field(fld_a ,name='fld_a' ,ois_adjoint=.true.); call fld_a%ignite
-        call ppg%init_correlate(a_star_u,'a_star_u','gradient') !a★u
-        call ppg%adjoint(fld_a,fld_u,o_a_star_u=a_star_u)
+        call ppg%init_correlate(a_star_u,'a_star_u') !a★u
+        call ppg%adjoint(fld_a,fld_u,a_star_u)
 
 
         call hud('----  Computing diving obj func & dadj  ----')
@@ -422,17 +422,18 @@ endif
         call cb%project(ois_background=.true.)
         call ppg%init
         call ppg%init_field(fld_a0,name='fld_a0',ois_adjoint=.true.); call fld_a0%ignite
-        call ppg%init_correlate(a0_star_u0,'a0_star_u0','gradient') !a₀★u₀                    
+        call ppg%init_correlate(a0_star_u0,'a0_star_u0') !a₀★u₀
         call ppg%adjoint(fld_a0,fld_u0,a0_star_u0)
 
+call sysio_write('gepsr_'//shot%sindex,   a_star_u%gepsr,cb%mz*cb%mx)
+call sysio_write('g0epsr_'//shot%sindex,a0_star_u0%gepsr,cb%mz*cb%mx)
+call sysio_write('gmur_' //shot%sindex,   a_star_u%gmur ,cb%mz*cb%mx)
+call sysio_write('g0mur_' //shot%sindex,a0_star_u0%gmur ,cb%mz*cb%mx)
+call sysio_write('gsgma_'//shot%sindex, a_star_u%gsgma  ,cb%mz*cb%mx)
 
         a_star_u%gepsr = a_star_u%gepsr + a0_star_u0%gepsr
         a_star_u%gmur  = a_star_u%gmur  + a0_star_u0%gmur
         a_star_u%gsgma = a_star_u%gsgma + a0_star_u0%gsgma
-
-if(allocated(a_star_u%gepsr)) call sysio_write('gepsr_'//shot%sindex,a_star_u%gepsr,cb%mz*cb%mx)
-if(allocated(a_star_u%gmur )) call sysio_write('gmur_' //shot%sindex,a_star_u%gmur ,cb%mz*cb%mx)
-if(allocated(a_star_u%gsgma)) call sysio_write('gsgma_'//shot%sindex,a_star_u%gsgma,cb%mz*cb%mx)
 
         call hud('----  Assemble  ----')
         call ppg%assemble(a_star_u)
@@ -462,7 +463,7 @@ if(allocated(a_star_u%gsgma)) call sysio_write('gsgma_'//shot%sindex,a_star_u%gs
     !write correlate
     if(mpiworld%is_master) then
         call a_star_u%write
-        call a0_star_u0%write
+        ! call a0_star_u0%write
     endif
 
     !allreduce energy, gradient

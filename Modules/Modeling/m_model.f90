@@ -22,7 +22,7 @@ use m_smoother_laplacian_sparse
         real,dimension(:,:,:),allocatable :: qp,qs
 
         real,dimension(:,:,:),allocatable :: epsr,mur,sgma
-        real,dimension(:,:,:),allocatable :: mur0 !background mur
+        real,dimension(:,:,:),allocatable :: epsr0, mur0 !background model
 
 
         !prior models
@@ -139,6 +139,11 @@ use m_smoother_laplacian_sparse
                 call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp
                 self%epsr = tmp
                 call hud('epsr model is read.')
+
+            case ('epsr0') !background permittivity
+                call alloc(self%epsr0,self%nz,self%nx,self%ny)
+                read(12,rec=i) self%epsr0
+                call hud('epsr0 model is read.')
 
             case ('mu')
                 call alloc(tmp,self%nz,self%nx,self%ny); read(12,rec=i) tmp

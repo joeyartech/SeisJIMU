@@ -17,7 +17,8 @@ ShotDec=batching
 # Kernel #
 ##########
 #Param=epsr-mur-sgma
-Param=celerity-permeability
+#Param=celerity-permeability
+Param=celerity-impedance
 #Param=velocities-density
 #Param=velocities-density_pseudotime
 #Param=velocities-impedance
