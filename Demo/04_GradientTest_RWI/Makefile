@@ -3,7 +3,8 @@ include ../../compiler.inc
 include ../../modules.inc
 #make sure the correct module is used
 App=RWI
-Param=celerity-impedance
+#Param=celerity-impedance
+Param=celerity-impedance_pseudotime
 LineS=enumerate
 
 
@@ -43,14 +44,14 @@ mod :
 	#Modeling
 	(cd ../../Modules/Modeling; make)
 	#Kernel
-	(cd ../../Modules/Kernel; make App=FWI)
+	(cd ../../Modules/Kernel; make App=RWI Param=$(Param) )
 	#Linesearch
 	(cd ../../Modules/Optimization; make m_linesearcher_$(LineS).o)
 
 
 exe : ../../$(App)/sub_modeling_gradient.o main.o sub_optimizer_init_loop.o
-	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../../exe/gradienttest_$(App)_$(WaveEq)_$(Solver)_$(Order)
-	(cd ../../exe; ln -sf gradienttest_$(App)_$(WaveEq)_$(Solver)_$(Order) GradientTest )
+	$(F90) $(FLAGF90) $(MOD) $(obj) $^ -o ../../exe/gradienttest_$(App)_$(WaveEq)_$(Solver)_$(Order)_$(Param)
+	(cd ../../exe; ln -sf gradienttest_$(App)_$(WaveEq)_$(Solver)_$(Order)_$(Param) GradientTest )
 
 clean :
 	-rm main.o

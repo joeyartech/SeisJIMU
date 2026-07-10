@@ -1,6 +1,7 @@
 module m_parametrizer
 use m_System
 use m_math
+use m_pseudotime
 use m_Modeling
 use m_empirical
 
@@ -14,8 +15,8 @@ use m_empirical
     type,public :: t_parametrizer
         !info
         character(i_str_xxlen) :: info = &
-            'Parameterization: celerity-impedance'//s_NL// &
-            'Allowed pars: cel, imp, sgma'
+            'Parameterization: celerity-impedance in pseudotime'//s_NL// &
+            'Allowed pars: cel, imp'
 !In electrical engineering, the electrical impedance Z is the total opposition to an alternating current (AC) in a circuit.
 !In electromagnetics, the intrinsic impedance η describes how a medium interacts with an open wave.
 
@@ -73,16 +74,18 @@ use m_empirical
                 i_cel=i
                 self%pars(i)%name='cel'
                 self%npars=self%npars+1
+                vmin=str2real(sublist(2)%s)
+                vmax=str2real(sublist(3)%s)
 
             case ('imp')
                 i_imp=i
                 self%pars(i)%name='imp'
                 self%npars=self%npars+1
 
-            case ('sgma')
-                i_sgma=i
-                self%pars(i)%name='sgma'
-                self%npars=self%npars+1
+            ! case ('sgma')
+            !     i_sgma=i
+            !     self%pars(i)%name='sgma'
+            !     self%npars=self%npars+1
                 
             end select
 
@@ -98,13 +101,17 @@ use m_empirical
         !
 
         ! call empirical_init
+        
+        call pseudotime_init('z->t',vmin,vmax,m%nx,m%ny,&
+            nz_=m%nz,   Dz_=m%dz, &
+            nt_=self%n1,Dt_=self%d1)
 
-        self%n1=m%nz
+        call hud('pseudotime dimension nt, dt = '//num2str(self%n1)//' , '//num2str(self%d1))
+        
         self%n2=m%nx
         self%n3=m%ny
         self%n=self%n1*self%n2*self%n3*self%npars
 
-        self%d1=m%dz
         self%d2=m%dx
         self%d3=m%dy
 
@@ -116,67 +123,70 @@ use m_empirical
         character(4),optional :: o_dir
         real,dimension(:,:,:,:),allocatable,optional :: o_x,o_xprior,o_g
 
-        real,dimension(:,:,:),allocatable :: tmp_imp, tmp_cel
+        real,dimension(:,:,:),allocatable :: v_t !velocity model in pseudotime domain
+        real,dimension(:,:,:),allocatable :: tmp_imp, tmp_cel, tmp_gimp, tmp_gcel, tmp
 
         !c⁻² = εμ ; η² = (cμ)² = μ/ε ==>  
         !ε = 1/(ηc) ; μ = η/c
 
+
         if(present(o_x)) then
             call alloc(o_x,self%n1,self%n2,self%n3,self%npars,oif_protect=.true.)
 
-            if(either(o_dir,'m->x',present(o_dir))=='m->x') then
+            tmp_cel = r_c0/sqrt(m%epsr*m%mur)
+
+            if(either(o_dir,'m->x',present(o_dir))=='m->x') then !z->t
                 if(i_cel>0) then
-                    o_x(:,:,:,i_cel) =( r_c0/sqrt(m%epsr*m%mur) &
-                                        -self%pars(i_cel)%min )/self%pars(i_cel)%range
+                    call pseudotime_convert('z->t',tmp_cel,v_t)
+                    o_x(:,:,:,i_cel) =( v_t-self%pars(i_cel)%min )/self%pars(i_cel)%range
                 endif
                 if(i_imp>0) then
-                    o_x(:,:,:,i_imp) =( sqrt( (r_mu0*m%mur)/(r_eps0*m%epsr) ) &
-                                        -self%pars(i_imp)%min )/self%pars(i_imp)%range
+                    call pseudotime_convert('z->t',sqrt( (r_mu0*m%mur)/(r_eps0*m%epsr) ), &
+                                                    tmp_imp,o_v=tmp_cel)
+                    o_x(:,:,:,i_imp) =( tmp_imp-self%pars(i_imp)%min )/self%pars(i_imp)%range
                 endif
-                if(i_sgma>0) then
-                    o_x(:,:,:,i_sgma)=(m%sgma-self%pars(i_sgma)%min)/self%pars(i_sgma)%range
-                endif
+                ! if(i_sgma>0) then
+                !     o_x(:,:,:,i_sgma)=(m%sgma-self%pars(i_sgma)%min)/self%pars(i_sgma)%range
+                ! endif
 
                 ! call empirical_m2x('velocities-density')
 
-            else !x->m
+            else !x->m, t->z
+                ! if(i_cel>0) then
+                
+                !first convert velocity
+                v_t=o_x(:,:,:,i_cel)*self%pars(i_cel)%range +self%pars(i_cel)%min
+                call pseudotime_convert('t->z',v_t,tmp_cel)
+                
+                tmp_imp =  sqrt( (r_mu0*m%mur)/(r_eps0*m%epsr) )
+                m%epsr = 1/(tmp_imp*tmp_cel) /r_eps0
+                m%mur  =    tmp_imp/tmp_cel  /r_mu0
 
-                call alloc(tmp_imp, m%nz,m%nx,m%ny)
-                call alloc(tmp_cel, m%nz,m%nx,m%ny)
+                if(allocated(m%epsr0).and.allocated(m%mur0)) then
+                    call hud('transform m%epsr0 m%mur0 too')
+                    tmp_imp =  sqrt( (r_mu0*m%mur0)/(r_eps0*m%epsr0) )
+                    m%epsr0 = 1/(tmp_imp*tmp_cel) /r_eps0
+                    m%mur0  =    tmp_imp/tmp_cel  /r_mu0
+                endif
 
-                if(i_imp>0) then
-                    tmp_imp = (o_x(:,:,:,i_imp)*self%pars(i_imp)%range +self%pars(i_imp)%min)
-                    
-                    tmp_cel = r_c0/sqrt(m%epsr*m%mur)
-                    m%epsr = 1/(tmp_imp*tmp_cel) /r_eps0
-                    m%mur  =    tmp_imp/tmp_cel  /r_mu0
+                ! if(i_imp>0) then
+                !     call pseudotime_convert('t->z',o_x(:,:,:,i_imp)*self%pars(i_imp)%range +self%pars(i_imp)%min, &
+                !             tmp_imp, o_v=v_t)
+                !     tmp_cel = r_c0/sqrt(m%epsr*m%mur)
 
-                    if(allocated(m%epsr0).and.allocated(m%mur0)) then
-                        call hud('transform m%epsr0 m%mur0 too')
-                        tmp_cel = r_c0/sqrt(m%epsr0*m%mur0)
-                        m%epsr0 = 1/(tmp_imp*tmp_cel) /r_eps0
-                        m%mur0  =    tmp_imp/tmp_cel  /r_mu0
-                    endif
-                endif
-                if(i_cel>0) then
-                    tmp_cel = (o_x(:,:,:,i_cel)*self%pars(i_cel)%range +self%pars(i_cel)%min)
-                    
-                    tmp_imp =  sqrt( (r_mu0*m%mur)/(r_eps0*m%epsr) )
-                    m%epsr = 1/(tmp_imp*tmp_cel) /r_eps0
-                    m%mur  =    tmp_imp/tmp_cel  /r_mu0
-                    
-                    if(allocated(m%epsr0).and.allocated(m%mur0)) then
-                        call hud('transform m%epsr0 m%mur0 too')
-                        tmp_imp =  sqrt( (r_mu0*m%mur0)/(r_eps0*m%epsr0) )
-                        m%epsr0 = 1/(tmp_imp*tmp_cel) /r_eps0
-                        m%mur0  =    tmp_imp/tmp_cel  /r_mu0
-                    endif
-                endif
-                if(i_sgma>0) then
-                    m%sgma = (o_x(:,:,:,i_sgma)*self%pars(i_sgma)%range +self%pars(i_sgma)%min)
-                endif
+                !     m%epsr = 1/(tmp_imp*tmp_cel) /r_eps0
+                !     m%mur  =    tmp_imp/tmp_cel  /r_mu0
+                !     if(allocated(m%epsr0).and.allocated(m%mur0)) then
+                !         call hud('transform m%epsr0 m%mur0 too')
+                !         tmp_cel = r_c0/sqrt(m%epsr0*m%mur0)
+                !         m%epsr0 = 1/(tmp_imp*tmp_cel) /r_eps0
+                !         m%mur0  =    tmp_imp/tmp_cel  /r_mu0
+                !     endif
+                ! endif
 
                 ! call empirical_x2m('velocities-density')
+
+                ! endif
                 
                 call m%apply_relativity
                 call m%apply_freeze_zone
@@ -215,38 +225,51 @@ use m_empirical
             tmp_cel = r_c0/sqrt(m%epsr*m%mur)
             tmp_imp = sqrt( (r_mu0*m%mur)/(r_eps0*m%epsr) )
 
-            if(i_cel >0) then
-                o_g(:,:,:,i_cel) =-( correlate_gradient(:,:,:,2)/r_eps0/tmp_imp + correlate_gradient(:,:,:,1)/r_mu0*tmp_imp ) &
-                                    /tmp_cel/tmp_cel
+            tmp_gcel =-( correlate_gradient(:,:,:,2)/r_eps0/tmp_imp + correlate_gradient(:,:,:,1)/r_mu0*tmp_imp ) &
+                        /tmp_cel/tmp_cel
+            tmp_gimp = (-correlate_gradient(:,:,:,2)/r_eps0/tmp_imp/tmp_imp + correlate_gradient(:,:,:,1)/r_mu0) &
+                        /tmp_cel
+
+            if(i_cel>0) then
+                call pseudotime_convert_gradient(tmp_gcel,tmp_cel,tmp)
+                o_g(:,:,:,i_cel) = tmp
             endif
 
-            if(i_imp >0) then
-                o_g(:,:,:,i_imp) = (-correlate_gradient(:,:,:,2)/r_eps0/tmp_imp/tmp_imp + correlate_gradient(:,:,:,1)/r_mu0) &
-                                    /tmp_cel
+            if(i_imp>0) then
+                call pseudotime_convert_gradient(tmp_gimp,tmp_cel,tmp)
+                o_g(:,:,:,i_imp) = tmp
             endif
 
-            if(i_sgma>0) then
-                o_g(:,:,:,i_sgma) = correlate_gradient(:,:,:,3)
-            endif
-            
-            ! if(i_sgma>0) o_g(:,:,:,i_sgma) = correlate_gradient(:,:,:,3)
 
             !normaliz g by allowed parameter range
             !s.t. g is in unit [Nm]
             do i=1,param%npars
                 o_g(:,:,:,i)=o_g(:,:,:,i)*param%pars(i)%range
             enddo
+
+            ! !apply bathymetry
+            ! call pseudotime_convert('z->t',bools2reals(m%is_freeze_zone),freeze_zone_in_t,o_v=m%vp)
+            ! do i=1,self%npars
+            !    o_g(:,:,:,i)=o_g(:,:,:,i)*(1.-freeze_zone_in_t)
+            ! enddo
             
         endif
+
+        call dealloc(tmp_cel,tmp_imp,tmp_gcel,tmp_gimp,tmp)
+        call dealloc(v_t)
 
     end subroutine
 
     subroutine transform_preconditioner(self,preco_in_m,preco_in_x)
         class(t_parametrizer) :: self
         real,dimension(m%nz,m%nx,m%ny) :: preco_in_m
-        real,dimension(self%n1,self%n2,self%n3) :: preco_in_x
+        real,dimension(:,:,:),allocatable :: preco_in_x
 
-        preco_in_x=preco_in_m
+        real,dimension(:,:,:),allocatable :: tmp_cel
+
+        tmp_cel = r_c0/sqrt(m%epsr*m%mur)
+        call pseudotime_convert('z->t',preco_in_m,preco_in_x,o_v=tmp_cel)
+
     end subroutine
 
 end module  

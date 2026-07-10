@@ -383,10 +383,10 @@ use m_preconditioner
         if(.not. either(oif_gradient,.true.,present(oif_gradient))) return
 
 
-        !freeze_zone as hard mask
-        do i=1,param%npars
-            where(m%is_freeze_zone) qp%g(:,:,:,i)=0.
-        enddo
+        ! !freeze_zone as hard mask
+        ! do i=1,param%npars
+        !     where(m%is_freeze_zone) qp%g(:,:,:,i)=0.
+        ! enddo
 
         !soft mask
         smask=setup%get_file('GRADIENT_SOFT_MASK','MASK')
@@ -419,10 +419,10 @@ use m_preconditioner
             endif
         enddo
 
-        !freeze_zone as hard mask
-        do i=1,param%npars
-            where(m%is_freeze_zone) qp%g(:,:,:,i)=0.
-        enddo
+        ! !freeze_zone as hard mask
+        ! do i=1,param%npars
+        !     where(m%is_freeze_zone) qp%g(:,:,:,i)=0.
+        ! enddo
 
         !soft mask
         smask=setup%get_file('GRADIENT_SOFT_MASK','MASK')
