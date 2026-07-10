@@ -88,6 +88,8 @@ use m_shot
         class(t_computebox) :: self
         logical,optional :: ois_background
 
+        real,dimension(:,:,:),allocatable :: tmp_imp
+
         !C's origin index in model
         self%ioz=1 !always from top of model
 
@@ -157,7 +159,9 @@ use m_shot
         if(mpiworld%is_master) then
             write(*,*)'epsr' ,minval(self%epsr),maxval(self%epsr)
             write(*,*)'mur'  ,minval(self%mur ),maxval(self%mur )
-            write(*,*)'celerity',minval(self%celerity ),maxval(self%celerity)
+            write(*,*)'celerity', minval(self%celerity),maxval(self%celerity)
+            tmp_imp = sqrt((r_mu0/r_eps0)*(self%mur/self%epsr))
+            write(*,*)'impedance',minval(tmp_imp),maxval(tmp_imp)
             write(*,*)'sgma',minval(self%sgma),maxval(self%sgma)
             
         end if
