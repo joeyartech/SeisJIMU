@@ -69,7 +69,7 @@ use m_Kernel
         !read setup        
         self%max_search=setup%get_int('MAX_SEARCH',o_default='12')
 
-	c1=setup%get_real('WOLFE_C1',o_default='1e-4')
+        c1=setup%get_real('WOLFE_C1',o_default='1e-4')
         c2=setup%get_real('WOLFE_C2',o_default='0.9')
 
     end subroutine
@@ -146,8 +146,12 @@ use m_Kernel
             call hud('Perturb qp%f, ║g║₁ = '//num2str(pert%f)//', '//num2str(sum(abs(pert%g))))
             
             !Wolfe conditions
-            if_1st_cond = (pert%f <= curr%f+c1*self%alpha*curr%g_dot_d) !sufficient descent condition
-            !if_1st_cond = (pert%f <= curr%f)
+            if(curr%f+c1*self%alpha*curr%g_dot_d > 0.) then
+                if_1st_cond = (pert%f <= curr%f+c1*self%alpha*curr%g_dot_d) !sufficient descent condition
+            else
+                call warn('curr%f + c1*α*curr%g_dot_d <= 0')
+                if_1st_cond = (pert%f <  curr%f)
+            endif
             if_2nd_cond = (abs(pert%g_dot_d) <= c2*abs(curr%g_dot_d)) !strong curvature condition
             !if_2nd_cond = (pert%g_dot_d >= c2*curr%g_dot_d) !weak curvature condition (note the diff of inequal sign..)
             

@@ -460,7 +460,7 @@ use m_cpml
         ift=1; ilt=self%nt
 
         do it=ift,ilt
-            if(mod(it,100)==0 .and. mpiworld%is_master) then
+            if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
                 call fld_u%check_value(fld_u%Ey)
             endif

@@ -111,7 +111,9 @@ use m_linesearcher
                     ! call sysio_mv( 'RE0_Shot'//sindex//'.su', 'RE0_Iter'//siterate//'_Shot'//sindex//'.su')
                     ! call sysio_mv( 'RdE_Shot'//sindex//'.su', 'RdE_Iter'//siterate//'_Shot'//sindex//'.su')
                     call sysio_mv( 'Ru_Shot'//sindex//'.su', 'Ru_Iter'//siterate//'_Shot'//sindex//'.su')
+                    call sysio_mv('Ru0_Shot'//sindex//'.su','Ru0_Iter'//siterate//'_Shot'//sindex//'.su')
                     call sysio_mv( 'updated_Ru_Shot'//sindex//'.su', 'updated_Ru_Iter'//siterate//'_Shot'//sindex//'.su')
+                    call sysio_mv( 'updated_Ru0_Shot'//sindex//'.su','updated_Ru0_Iter'//siterate//'_Shot'//sindex//'.su')
                     call sysio_mv( 'RE_Shot'//sindex//'.su', 'RE_Iter'//siterate//'_Shot'//sindex//'.su')
                     call sysio_mv('dadj_Shot'//sindex//'.su','dadj_Iter'//siterate//'_Shot'//sindex//'.su')
                 enddo

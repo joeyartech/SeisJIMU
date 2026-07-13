@@ -565,7 +565,12 @@ use, intrinsic :: ieee_arithmetic
         real,dimension(:,:),allocatable,optional :: o_seismo
         
         if(present(o_seismo)) then
-            o_seismo=transpose(self%seismo)
+            call alloc(o_seismo,shot%nt,shot%nrcv)
+            do i=1,shot%nrcv
+                call resampler(self%seismo(i,:),o_seismo(:,i),1,&
+                                din=dt,nin=nt,&
+                                dout=shot%dt,nout=shot%nt)
+            enddo
 
         else
 

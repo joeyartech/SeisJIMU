@@ -150,6 +150,7 @@ use m_shot
         endif
         call m2cb(m%sgma,self%sgma,0.)
 
+        call alloc(self%celerity ,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
         self%celerity = r_c0/sqrt(self%epsr*self%mur)
         
         self%velmin=minval(self%celerity)
@@ -157,12 +158,13 @@ use m_shot
 
         call hud('Computebox value ranges:')
         if(mpiworld%is_master) then
-            write(*,*)'epsr' ,minval(self%epsr),maxval(self%epsr)
-            write(*,*)'mur'  ,minval(self%mur ),maxval(self%mur )
-            write(*,*)'celerity', minval(self%celerity),maxval(self%celerity)
+            write(*,*)'epsr',minval(self%epsr    (1:cb%mz,:,:)),maxval(self%epsr    (1:cb%mz,:,:)), minval(self%epsr),    maxval(self%epsr)
+            write(*,*)'mur', minval(self%mur     (1:cb%mz,:,:)),maxval(self%mur     (1:cb%mz,:,:)), minval(self%mur ),    maxval(self%mur )
+            write(*,*)'cel', minval(self%celerity(1:cb%mz,:,:)),maxval(self%celerity(1:cb%mz,:,:)), minval(self%celerity),maxval(self%celerity)
+            call alloc(tmp_imp,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
             tmp_imp = sqrt((r_mu0/r_eps0)*(self%mur/self%epsr))
-            write(*,*)'impedance',minval(tmp_imp),maxval(tmp_imp)
-            write(*,*)'sgma',minval(self%sgma),maxval(self%sgma)
+            write(*,*)'imp', minval(tmp_imp  (1:cb%mz,:,:)),maxval(tmp_imp  (1:cb%mz,:,:)), minval(tmp_imp),  maxval(tmp_imp)
+            write(*,*)'sgma',minval(self%sgma(1:cb%mz,:,:)),maxval(self%sgma(1:cb%mz,:,:)), minval(self%sgma),maxval(self%sgma)
             
         end if
 

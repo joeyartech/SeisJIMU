@@ -441,10 +441,10 @@ use m_smoother_laplacian_sparse
                 write(13,rec=i) r_c0/sqrt(self%epsr*self%mur)
 
             case ('imp') !impedance, η² = (μ₀/ε₀)(μᵣ/εᵣ)
-                write(13,rec=i) (r_mu0/r_eps0)*(self%mur/self%epsr)
+                write(13,rec=i) sqrt((r_mu0/r_eps0)*(self%mur/self%epsr))
 
             case ('imp0')
-                write(13,rec=i) (r_mu0/r_eps0)*(self%mur0/self%epsr)
+                write(13,rec=i) sqrt((r_mu0/r_eps0)*(self%mur0/self%epsr0))
 
             end select
 
