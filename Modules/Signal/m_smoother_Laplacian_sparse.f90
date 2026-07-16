@@ -126,7 +126,7 @@ use m_System
         endif
         
         preserve = either(o_preserve, &
-            setup%get_str('LAPLACIAN_SMTH_PRESERVE_GRAD_NORM','LAP_PRESERVE',o_default='nopreserve'), &
+            setup%get_str('LAPLACIAN_SMTH_PRESERVE_GRAD_NORM','LAP_PRESERVE',o_default='L1norm'), &
             present(o_preserve))
 
     end subroutine
