@@ -347,6 +347,7 @@ use m_preconditioner
         type(t_string),dimension(:),allocatable :: smoothings
         character(:),allocatable :: smask
         real,dimension(:,:,:),allocatable :: mask
+real,dimension(:,:,:),allocatable :: tmp_cel
 
         real,dimension(:,:,:),allocatable :: freeze_zone_in_m, freeze_zone_in_x
 
@@ -367,13 +368,55 @@ use m_preconditioner
             call modeling_gradient_vp!(qp%is_fitting_data)
         endif
 
-        ! if(index(setup%get_str('MODE',o_default='min I w/ data residual'),'max')>0) then
-        !     if(setup%get_bool('IF_FLIP_PROBLEM',o_default='T')) then
-        !         call hud('flip problem sign due to maximization')
-        !         self%dnorms=-self%dnorms
-        !         correlate_gradient =-correlate_gradient
-        !     endif
-        ! endif    
+
+! !freeze_zone as hard mask
+! do i=1,param%npars
+!     where(m%is_freeze_zone) qp%g(:,:,:,i)=0.
+! enddo
+
+!soft mask
+smask=setup%get_file('GRADIENT_SOFT_MASK','MASK')
+if(smask/='') then
+    call alloc(mask,m%nz,m%nx,m%ny)
+    call sysio_read(smask,mask,size(mask))
+
+    do i=1,ppg%ngrad
+        correlate_gradient(:,:,:,i)=correlate_gradient(:,:,:,i)*mask
+    enddo
+endif
+
+!post-modeling smoothing
+smoothings=setup%get_strs('SMOOTHING','SMTH',o_default='Laplacian')
+do i=1,size(smoothings)
+!Laplacian smoothing
+if(smoothings(i)%s=='Laplacian') then
+    call hud('Laplacian smoothing')
+    call smoother_Laplacian_init([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%fpeak)
+    tmp_cel = r_c0/sqrt(m%epsr*m%mur)
+    do j=1,ppg%ngrad
+        call smoother_Laplacian_extend_mirror(correlate_gradient(:,:,:,j),m%ibathy)
+        call smoother_Laplacian_pseudo_nonstationary(correlate_gradient(:,:,:,j),tmp_cel)
+    enddo
+    deallocate(tmp_cel)
+endif
+enddo
+
+
+! !freeze_zone as hard mask
+! do i=1,param%npars
+!     where(m%is_freeze_zone) qp%g(:,:,:,i)=0.
+! enddo
+
+!soft mask
+smask=setup%get_file('GRADIENT_SOFT_MASK','MASK')
+if(smask/='') then
+    call alloc(mask,m%nz,m%nx,m%ny)
+    call sysio_read(smask,mask,size(mask))
+
+    do i=1,ppg%ngrad
+        correlate_gradient(:,:,:,i)=correlate_gradient(:,:,:,i)*mask
+    enddo
+endif
 
         !transform to x-domain
         call param%transform(o_g=qp%g)
@@ -382,58 +425,6 @@ use m_preconditioner
 
         if(.not. either(oif_gradient,.true.,present(oif_gradient))) return
 
-
-        ! !freeze_zone as hard mask
-        ! do i=1,param%npars
-        !     where(m%is_freeze_zone) qp%g(:,:,:,i)=0.
-        ! enddo
-
-        !soft mask
-        smask=setup%get_file('GRADIENT_SOFT_MASK','MASK')
-        if(smask/='') then
-            call alloc(mask,m%nz,m%nx,m%ny)
-            call sysio_read(smask,mask,size(mask))
-            
-            do i=1,param%npars
-                qp%g(:,:,:,i)=qp%g(:,:,:,i)*mask
-            enddo
-        endif
-
-        !post-modeling smoothing in physical (model) domain
-        smoothings=setup%get_strs('SMOOTHING','SMTH',o_default='Laplacian')
-
-        do i=1,size(smoothings)
-            !Laplacian smoothing
-            if(smoothings(i)%s=='Laplacian') then
-                call hud('Laplacian smoothing')
-                call smoother_Laplacian_init([m%nz,m%nx,m%ny],[m%dz,m%dx,m%dy],shot%fpeak)
-                do j=1,param%npars
-                    call smoother_Laplacian_extend_mirror(qp%g(:,:,:,j),m%ibathy)
-                    select case (param%pars(j)%name)
-                        case ('vp' ); call smoother_Laplacian_pseudo_nonstationary(qp%g(:,:,:,j),m%vp)
-                        case ('vs' ); call smoother_Laplacian_pseudo_nonstationary(qp%g(:,:,:,j),m%vs)
-
-                        case default; call smoother_Laplacian_pseudo_nonstationary(qp%g(:,:,:,j),r_c0/sqrt(m%epsr*m%mur))
-                    end select
-                enddo
-            endif
-        enddo
-
-        ! !freeze_zone as hard mask
-        ! do i=1,param%npars
-        !     where(m%is_freeze_zone) qp%g(:,:,:,i)=0.
-        ! enddo
-
-        !soft mask
-        smask=setup%get_file('GRADIENT_SOFT_MASK','MASK')
-        if(smask/='') then
-            call alloc(mask,m%nz,m%nx,m%ny)
-            call sysio_read(smask,mask,size(mask))
-            
-            do i=1,param%npars
-                qp%g(:,:,:,i)=qp%g(:,:,:,i)*mask
-            enddo
-        endif
 
         !Regularization in x-domain
         ! if(either(oif_approx,.false.,present(oif_approx))) then
