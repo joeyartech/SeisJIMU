@@ -42,6 +42,10 @@ rwi :
 	(cd RWI; make)
 	@printf "\n"
 
+diffrawi :
+	(cd DiffraWI_0off; make)
+	@printf "\n"
+
 rtm :
 	(cd RTM; make)
 	@printf "\n"
