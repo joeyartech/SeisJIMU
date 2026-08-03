@@ -52,7 +52,7 @@ rtm :
 
 
 clean :
-	-rm FWD/*.o FWI/*.o RTM/*.o
+	-rm FWD/*.o FWI/*.o RTM/*.o RWI/*.o DiffraWI_0off/*.o
 
 cleanmod :
 	(cd Modules/System; make clean)

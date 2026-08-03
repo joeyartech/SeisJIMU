@@ -28,7 +28,8 @@ use m_butterworth
     function wavelet_ricker(nt,dt,fpeak) result(wavelet)
         real,dimension(:),allocatable :: wavelet
 
-        t0=setup%get_real('RICKER_DELAYTIME','T0',o_default=num2str(1./fpeak))
+        t0 =setup%get_real('RICKER_DELAYTIME','T0', o_default=num2str(1./fpeak))
+        amp=setup%get_real('RICKER_AMPLITUDE','AMP',o_default=num2str(1.))
         
         if (fpeak*2.5 > 1./dt) then
             call warn('Ricker wavelet peak frequency too high (fpeak*2.5 > 1/dt). Reduce it.')
@@ -42,7 +43,7 @@ use m_butterworth
 
             x=r_pi*fpeak*t
             x=-x*x
-            wavelet(it)=(1.+2.*x)*exp(x)
+            wavelet(it)=amp*(1.+2.*x)*exp(x)
 
         enddo
 

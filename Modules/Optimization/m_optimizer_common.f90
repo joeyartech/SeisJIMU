@@ -105,18 +105,31 @@ use m_linesearcher
                 list=setup%get_ints('ITERATE_KEEP_SHOT',&
                     o_default='1 '// either( tmp(size(tmp)/2+1)%s, '', size(tmp)>1 ))
 
-                do i=1,size(list)
-                    sindex=num2str(list(i),o_format='(i0.4)')
-                    call sysio_mv('dsyn_Shot'//sindex//'.su','dsyn_Iter'//siterate//'_Shot'//sindex//'.su')
-                    ! call sysio_mv( 'RE0_Shot'//sindex//'.su', 'RE0_Iter'//siterate//'_Shot'//sindex//'.su')
-                    ! call sysio_mv( 'RdE_Shot'//sindex//'.su', 'RdE_Iter'//siterate//'_Shot'//sindex//'.su')
-                    call sysio_mv( 'Ru_Shot'//sindex//'.su', 'Ru_Iter'//siterate//'_Shot'//sindex//'.su')
-                    call sysio_mv('Ru0_Shot'//sindex//'.su','Ru0_Iter'//siterate//'_Shot'//sindex//'.su')
-                    call sysio_mv( 'updated_Ru_Shot'//sindex//'.su', 'updated_Ru_Iter'//siterate//'_Shot'//sindex//'.su')
-                    call sysio_mv( 'updated_Ru0_Shot'//sindex//'.su','updated_Ru0_Iter'//siterate//'_Shot'//sindex//'.su')
-                    call sysio_mv( 'RE_Shot'//sindex//'.su', 'RE_Iter'//siterate//'_Shot'//sindex//'.su')
-                    call sysio_mv('dadj_Shot'//sindex//'.su','dadj_Iter'//siterate//'_Shot'//sindex//'.su')
-                enddo
+                if(list(1)<0) then !keep all shots
+                    do i=1,shls%nshot
+                        sindex=num2str(i,o_format='(i0.4)')
+                        call sysio_mv( 'Ru_Shot'//sindex//'.su', 'Ru_Iter'//siterate//'_Shot'//sindex//'.su')
+                        call sysio_mv('Ru0_Shot'//sindex//'.su','Ru0_Iter'//siterate//'_Shot'//sindex//'.su')
+                        ! call sysio_mv( 'updated_Ru_Shot'//sindex//'.su', 'updated_Ru_Iter'//siterate//'_Shot'//sindex//'.su')
+                        ! call sysio_mv( 'updated_Ru0_Shot'//sindex//'.su','updated_Ru0_Iter'//siterate//'_Shot'//sindex//'.su')
+                    enddo
+
+                else
+
+                    do i=1,size(list)
+                        sindex=num2str(list(i),o_format='(i0.4)')
+                        call sysio_mv('dsyn_Shot'//sindex//'.su','dsyn_Iter'//siterate//'_Shot'//sindex//'.su')
+                        ! call sysio_mv( 'RE0_Shot'//sindex//'.su', 'RE0_Iter'//siterate//'_Shot'//sindex//'.su')
+                        ! call sysio_mv( 'RdE_Shot'//sindex//'.su', 'RdE_Iter'//siterate//'_Shot'//sindex//'.su')
+                        call sysio_mv( 'Ru_Shot'//sindex//'.su', 'Ru_Iter'//siterate//'_Shot'//sindex//'.su')
+                        call sysio_mv('Ru0_Shot'//sindex//'.su','Ru0_Iter'//siterate//'_Shot'//sindex//'.su')
+                        call sysio_mv( 'updated_Ru_Shot'//sindex//'.su', 'updated_Ru_Iter'//siterate//'_Shot'//sindex//'.su')
+                        call sysio_mv( 'updated_Ru0_Shot'//sindex//'.su','updated_Ru0_Iter'//siterate//'_Shot'//sindex//'.su')
+                        call sysio_mv( 'RE_Shot'//sindex//'.su', 'RE_Iter'//siterate//'_Shot'//sindex//'.su')
+                        call sysio_mv('dadj_Shot'//sindex//'.su','dadj_Iter'//siterate//'_Shot'//sindex//'.su')
+                    enddo
+
+                endif
 
             case('maximum')
                 open(16,file=dir_out//'optimization.log',position='append',action='write')

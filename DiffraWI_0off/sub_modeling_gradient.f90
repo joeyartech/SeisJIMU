@@ -18,6 +18,8 @@ use m_resampler
     type(t_field) :: fld_u, fld_a
     type(t_correlate) :: a_star_u
 
+    type(t_suformat) :: onlydir
+    
     !character(:),allocatable :: s_job
     
     !RWI misfit
@@ -63,7 +65,7 @@ use m_resampler
 
         call hud('----  Computing obj func & dadj  ----')
 
-            call sepa%update
+            ! call sepa%update
             call wei%update!('_4IMAGING')
             call alloc(shot%dadj,shot%nt,shot%nrcv)
 
@@ -82,7 +84,7 @@ endif
                 call alloc(shot%dadj,shot%nt,shot%nrcv)
 
                 fobj%misfit = fobj%misfit &                                                                   
-                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight*sepa%nearoffset*sepa%reflection, shot%dobs-shot%dsyn, shot%dt)  
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-shot%dsyn, shot%dt)  
 
                 call kernel_L2sq(shot%dadj)
           
@@ -90,6 +92,20 @@ if(s_update_wavelet/='') then
 call hud('update adjoint source')
 call shot%update_adjsource
 endif
+
+
+            case('L2_nodir'); call hud('0.5|| W(u-u0 - d)||² => adjsrc = W W(u-u0 - d)')
+                if(is_first_in) call shot%write('onlydir_',shot%dsyn)
+                call onlydir%read(dir_out//'onlydir_'//shot%sindex//'.su',shot%sindex)
+                
+                call wei%update
+                call alloc(shot%dadj,shot%nt,shot%nrcv)
+
+                fobj%misfit = fobj%misfit &
+                    + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, shot%dobs-(shot%dsyn-onlydir%trs), shot%dt)
+
+                call kernel_L2sq(shot%dadj)
+
 
             case default
                 call error('No DNORM specified!')
@@ -220,7 +236,7 @@ use m_resampler
         call mpiworld%barrier
 
         call hud('----  Computing reflection obj func & dadj  ----')
-        call sepa%update
+        ! call sepa%update
         call wei%update
         call alloc(shot%dadj,shot%nt,shot%nrcv)
 
@@ -249,12 +265,14 @@ use m_resampler
         call ppg%forward(fld_u0)
         call fld_u0%acquire(o_seismo=shot%dsyn_aux);  call shot%write('Ru0_',shot%dsyn_aux)
 
+        call mpiworld%barrier
+
         call ppg%init_field(fld_a,name='fld_a0',ois_adjoint=.true.)
 
         call hud('----  Computing diving obj func & dadj  ----')
 
         select case (setup%get_str('DATA_NORM','DNORM',o_default='L2'))
-        case ('L2'); call hud('0.5|| W(u - d)||² => adjsrc = W²(u - d)')
+        case ('L2_grad'); call hud('0.5|| W(Du - d)||² => adjsrc = DᵀW²(Du - d)')
 
             dadj_refl =shot%dadj
             
@@ -336,6 +354,8 @@ contains
     subroutine compute_L2_grad(fname_prefix,swave)
         character(*) :: fname_prefix, swave
 
+        character(:),allocatable :: s_m1, s_p1, fname_data_prefix
+
         type(t_suformat) ::    Ru_m1,    Ru_p1
         type(t_suformat) ::     d_m1,     d_p1
         type(t_suformat) :: W2res_m1, W2res_p1
@@ -349,22 +369,35 @@ contains
         !     |u5-u3|   |    -1 0 1||u4|        |       1  0 -1||u4|   | u3-u5|
         !     [u5-u4]   [      -1 1][u5]        [          1  1][u5]   [ u4+u5]
 
-        ! call Ru_m1%read(fname_prefix//'Shotm1')
-        ! call Ru_p1%read(fname_prefix//'Shotp1')
+        !residuals
+        i_m1 = shot%index-1; if(i_m1==0           ) i_m1=1
+        i_p1 = shot%index+1; if(i_p1==shls%nshot+1) i_p1=shls%nshot
 
-        ! call d_m1%read('d_Shotm1')
-        ! call d_p1%read('d_Shotp1')
+        s_m1 = num2str(i_m1,'(i0.4)')
+        s_p1 = num2str(i_p1,'(i0.4)')
+
+        fname_data_prefix=setup%get_str('FILE_DATA_PREFIX')
+
+        call hud('Will read Shot#'//s_m1//' & '//s_p1,mpiworld%iproc)
+
+        call Ru_m1%read(dir_out//fname_prefix//'Shot'//s_m1//'.su',shot%sindex)
+        call Ru_p1%read(dir_out//fname_prefix//'Shot'//s_p1//'.su',shot%sindex)
+
+        call d_m1%read(fname_data_prefix//s_m1//'.su')
+        call d_p1%read(fname_data_prefix//s_p1//'.su')
 
         DRu = Ru_p1%trs -Ru_m1%trs
-        Dd =   d_p1%trs - d_m1%trs
+        Dd  =  d_p1%trs - d_m1%trs
 
         if(swave=='reflection') then
             fobj%reflection = fobj%reflection &
-                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight*(1.-sepa%nearoffset)*sepa%reflection, Dd-DRu, shot%dt)
+                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, Dd-DRu, shot%dt)
+                
         else
             fobj%diving = fobj%diving &
-                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight*(1.-sepa%nearoffset)*sepa%diving, shot%dobs-shot%dsyn, shot%dt)
-            
+                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, Dd-DRu, shot%dt)
+            fobj%diving = 0.
+
         endif
 
         call alloc(W2res,shot%nt,shot%nrcv)
@@ -373,10 +406,18 @@ contains
 
         call mpiworld%barrier
 
-        ! call W2res_m1%read('W2res_Shotm1')
-        ! call W2res_p1%read('W2res_Shotp1')
 
-        shot%dadj = W2res_m1%trs - W2res_p1%trs
+        !adjoint sources
+        call W2res_m1%read(dir_out//'W2res_Shot'//s_m1//'.su')
+        call W2res_p1%read(dir_out//'W2res_Shot'//s_p1//'.su')
+
+        if     (shot%index==1) then
+            shot%dadj =-W2res_m1%trs - W2res_p1%trs
+        else if(shot%index==shls%nshot) then
+            shot%dadj = W2res_m1%trs + W2res_p1%trs
+        else
+            shot%dadj = W2res_m1%trs - W2res_p1%trs
+        endif
 
     end subroutine
     
