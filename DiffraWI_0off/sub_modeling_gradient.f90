@@ -243,7 +243,11 @@ use m_resampler
         select case (setup%get_str('DATA_NORM','DNORM',o_default='L2_grad'))
         case ('L2_grad'); call hud('0.5|| W(Du - d)||² => adjsrc = DᵀW²(Du - d)')
 
-            call compute_L2_grad('Ru_','reflection')
+            call compute_L2_grad()
+
+        case ('L2_slope'); call hud('0.5|| W(pDu - pDd)||² => adjsrc = Dᵀ[∂p/∂Du]W²Δp')
+
+            call compute_L2_slope()
 
         case default
             call error('No DNORM specified!')
@@ -272,13 +276,15 @@ use m_resampler
         call hud('----  Computing diving obj func & dadj  ----')
 
         select case (setup%get_str('DATA_NORM','DNORM',o_default='L2'))
-        case ('L2_grad'); call hud('0.5|| W(Du - d)||² => adjsrc = DᵀW²(Du - d)')
+        case ('L2_grad'); !call hud('0.5|| W(Du - d)||² => adjsrc = DᵀW²(Du - d)')
 
-            dadj_refl =shot%dadj
-            
-            call compute_L2_grad('Ru0_','diving')
+            fobj%diving =0.
+            shot%dadj = -shot%dadj
 
-            shot%dadj = shot%dadj - dadj_refl !diving minus reflection residuals
+        case ('L2_slope'); !call hud('0.5|| W(pDu - pDd)||² => adjsrc = Dᵀ[∂p/∂Du]W²Δp')
+
+            fobj%diving =0.
+            shot%dadj = -shot%dadj
 
         case default
             call error('No DNORM specified!')
@@ -351,8 +357,7 @@ call sysio_write('g0mur_' //shot%sindex,a0_star_u0%gmur ,cb%mz*cb%mx)
 
 contains
 
-    subroutine compute_L2_grad(fname_prefix,swave)
-        character(*) :: fname_prefix, swave
+    subroutine compute_L2_grad()
 
         character(:),allocatable :: s_m1, s_p1, fname_data_prefix
 
@@ -380,8 +385,8 @@ contains
 
         call hud('Will read Shot#'//s_m1//' & '//s_p1,mpiworld%iproc)
 
-        call Ru_m1%read(dir_out//fname_prefix//'Shot'//s_m1//'.su',shot%sindex)
-        call Ru_p1%read(dir_out//fname_prefix//'Shot'//s_p1//'.su',shot%sindex)
+        call Ru_m1%read(dir_out//'Ru_Shot'//s_m1//'.su',shot%sindex)
+        call Ru_p1%read(dir_out//'Ru_Shot'//s_p1//'.su',shot%sindex)
 
         call d_m1%read(fname_data_prefix//s_m1//'.su')
         call d_p1%read(fname_data_prefix//s_p1//'.su')
@@ -389,16 +394,8 @@ contains
         DRu = Ru_p1%trs -Ru_m1%trs
         Dd  =  d_p1%trs - d_m1%trs
 
-        if(swave=='reflection') then
-            fobj%reflection = fobj%reflection &
-                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, Dd-DRu, shot%dt)
-                
-        else
-            fobj%diving = fobj%diving &
-                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, Dd-DRu, shot%dt)
-            fobj%diving = 0.
-
-        endif
+        fobj%reflection = fobj%reflection &
+            + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, Dd-DRu, shot%dt)
 
         call alloc(W2res,shot%nt,shot%nrcv)
         call kernel_L2sq(W2res)
@@ -422,124 +419,119 @@ contains
     end subroutine
     
 
-    subroutine compute_L2_slope(swave)
+    subroutine compute_L2_slope()
     use m_median2d
-        character(*) :: swave
         real,dimension(:,:),allocatable :: Ru, d, DRu, Dd, pu, pd, W2res, pua, dadj
 
-        if(mpiworld%is_master) then
-            call alloc(Ru,shot%nt,shls%nshot)
-            call alloc( d,shot%nt,shls%nshot)
-        endif
+        call alloc(Ru,shot%nt,shls%nshot)
+        call alloc( d,shot%nt,shls%nshot)
+    
         call MPI_Gather(shot%dsyn, shot%nt, MPI_REAL, Ru, shot%nt, MPI_REAL, 0, MPI_COMM_WORLD, ierr)
         call MPI_Gather(shot%dobs, shot%nt, MPI_REAL,  d, shot%nt, MPI_REAL, 0, MPI_COMM_WORLD, ierr)
 
-        DRu = grad(Ru,2)
-        Dd  = grad(d, 2)
+        if(mpiworld%is_master) then
+            DRu = grad(Ru,2)
+            Dd  = grad(d, 2)
 
-        dtr = setup%get_real('DTR',o_mandatory=1)
+            dtr = setup%get_real('DTR',o_mandatory=1)
+            
+            pu = median2d(slope(DRu,shot%dt,dtr),20) !20 is half width
+            pd = median2d(slope(Dd ,shot%dt,dtr),20)
 
-        pu = median2d(slope(DRu,shot%dt,dtr),20) !20 is half width
-        pd = median2d(slope(Dd ,shot%dt,dtr),20)
-
-        !L2_slope: '0.5|| W(pDu - pDd)||² => adjsrc = Dᵀ[∂p/∂Du]W²Δp')
-        if(swave=='reflection') then
+            !L2_slope: '0.5|| W(pDu - pDd)||² => adjsrc = Dᵀ[∂p/∂Du]W²Δp')
             fobj%reflection = fobj%reflection &
                 + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, pd-pu, shot%dt)
 
-        else
-            fobj%diving = fobj%diving &
-                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, pd-pu, shot%dt)
-            fobj%diving = 0.
+            call alloc(W2res,shot%nt,shls%nshot)
+            call kernel_L2sq(W2res)
+            call sysio_write('W2res',W2res,size(W2res))
+
+            pua= part_p_part_u(W2res,DRu,shot%dt,dtr)
+            call sysio_write('pua',pua,size(pua))
+
+            !
+            !     [u2-u1]   [-1 1      ][u1]        [-1 -1         ][u1]   [-u1-u2]
+            !     |u3-u1|   |-1 0 1    ||u2|        | 1  0 -1      ||u2|   | u1-u3|
+            !Du = |u4-u2| = |  -1 0 1  ||u3|, Dᵀu = |    1  0 -1   ||u3| = | u2-u4|
+            !     |u5-u3|   |    -1 0 1||u4|        |       1  0 -1||u4|   | u3-u5|
+            !     [u5-u4]   [      -1 1][u5]        [          1  1][u5]   [ u4+u5]
+
+            call alloc(dadj,shot%nt,shls%nshot)
+                dadj(:,1)  = -pua(:,1)    -pua(:,2)
+            do ix=2,shls%nshot-1
+                dadj(:,ix) =  pua(:,ix-1) -pua(:,ix+1)
+            enddo
+                dadj(:,shls%nshot) = pua(:,shls%nshot-1) +pua(:,shls%nshot)
 
         endif
 
-        call alloc(W2res,shot%nt,shot%nrcv)
-        call kernel_L2sq(W2res)
-
-        call sysio_write('W2res',W2res,size(W2res))
-
-        pua= part_p_part_u(W2res,DRu,shot%dt,dtr)
-        call sysio_write('pua',pua,size(pua))
-
-        !
-        !     [u2-u1]   [-1 1      ][u1]        [-1 -1         ][u1]   [-u1-u2]
-        !     |u3-u1|   |-1 0 1    ||u2|        | 1  0 -1      ||u2|   | u1-u3|
-        !Du = |u4-u2| = |  -1 0 1  ||u3|, Dᵀu = |    1  0 -1   ||u3| = | u2-u4|
-        !     |u5-u3|   |    -1 0 1||u4|        |       1  0 -1||u4|   | u3-u5|
-        !     [u5-u4]   [      -1 1][u5]        [          1  1][u5]   [ u4+u5]
-
-        call alloc(dadj,shot%nt,shls%nshot)
-
-            dadj(:,1)  = -pua(:,1)    -pua(:,2)
-        do ix=2,shls%nshot-1
-            dadj(:,ix) =  pua(:,ix-1) -pua(:,ix+1)
-        enddo
-            dadj(:,shls%nshot) = pua(:,shls%nshot-1) +pua(:,shls%nshot)
+        if(.not.mpiworld%is_master) allocate(dadj(1,1)) !this is nonsense..
 
         call alloc(shot%dadj,shot%nt,shot%nrcv)
-        call MPI_Scatter(dadj, shot%nt, MPI_REAL, &
-                        shot%dadj, shot%nt, MPI_REAL, &
-                        0, MPI_COMM_WORLD, ierr)
+        call MPI_Scatter(dadj, shot%nt, MPI_REAL, shot%dadj, shot%nt, MPI_REAL, 0, MPI_COMM_WORLD, ierr)
+
+        deallocate(dadj)
 
     end subroutine
 
 
-function grad(u,iaxis) result(g)
-    real,dimension(:,:)             :: u
-    real,dimension(:,:),allocatable :: g
-    
-    n1=size(u,1)
-    n2=size(u,2)
-    call alloc(g,n1,n2)
+    function grad(u,iaxis) result(g)
+        real,dimension(:,:)             :: u
+        real,dimension(:,:),allocatable :: g
+        
+        n1=size(u,1)
+        n2=size(u,2)
+        call alloc(g,n1,n2)
 
-    if(iaxis==1) then
-            g(1,:) = u(2,:)   -u(1,:)
-        do i=2,n2-1
-            g(i,:) = u(i+1,:) -u(i-1,:)
-        enddo
-            g(n2,:)= u(n2,:)  -u(n2-1,:)
-    endif
+        if(iaxis==1) then
+                g(1,:) = u(2,:)   -u(1,:)
+            do i=2,n2-1
+                g(i,:) = u(i+1,:) -u(i-1,:)
+            enddo
+                g(n2,:)= u(n2,:)  -u(n2-1,:)
+        endif
 
-    if(iaxis==2) then
-            g(:,1) = u(:,2)   -u(:,1)
-        do i=2,n2-1
-            g(:,i) = u(:,i+1) -u(:,i-1)
-        enddo
-            g(:,n2)= u(:,n2)  -u(:,n2-1)
-    endif
+        if(iaxis==2) then
+                g(:,1) = u(:,2)   -u(:,1)
+            do i=2,n2-1
+                g(:,i) = u(:,i+1) -u(:,i-1)
+            enddo
+                g(:,n2)= u(:,n2)  -u(:,n2-1)
+        endif
 
-end function
+    end function
 
-function slope(u,d1,d2) result(p)
-    real,dimension(:,:)             :: u
-    real,dimension(:,:),allocatable :: p
+    function slope(u,d1,d2) result(p)
+        real,dimension(:,:)             :: u
+        real,dimension(:,:),allocatable :: p
 
-    n1=size(u,1)
-    n2=size(u,2)
-    call alloc(p,n1,n2)
+        n1=size(u,1)
+        n2=size(u,2)
+        call alloc(p,n1,n2)
 
-    p = -grad(u,2)/grad(u,1)/d2*d1
+        p = -grad(u,2)/grad(u,1)/d2*d1
 
-end function
+    end function
 
-function part_p_part_u(Dp,u,d1,d2) result(pua)
-    real,dimension(:,:)             :: Dp, u
-    real,dimension(:,:),allocatable :: pua
+    function part_p_part_u(Dp,u,d1,d2) result(pua)
+        real,dimension(:,:)             :: Dp, u
+        real,dimension(:,:),allocatable :: pua
 
-    real,dimension(:,:),allocatable :: ut,ux, Dp_ut,ux_ut
+        real,dimension(:,:),allocatable :: ut,ux, Dp_ut,ux_ut
 
-    ! ∂p/∂u = ∂ₓ(Δp/∂ₜu) -∂ₜ(Δp*∂ₓu/∂ₜu/∂ₜu) 
-    ut = grad(u,1)/d1
-    water = 1e-5*maxval(abs(ut))
-    Dp_ut = ut*Dp / (ut*ut + water)
-    ux = grad(u,2)/d2
-    ux_ut = ut*ux / (ut*ut + water)
+        ! ∂p/∂u = ∂ₓ(Δp/∂ₜu) -∂ₜ(Δp*∂ₓu/∂ₜu/∂ₜu) 
+        ut = grad(u,1)/d1
+        water = 1e-5*maxval(abs(ut))
+        Dp_ut = ut*Dp / (ut*ut + water)
+        ux = grad(u,2)/d2
+        ux_ut = ut*ux / (ut*ut + water)
 
-    call alloc(pua,n1,n2)
-    pua = grad( Dp_ut ,2)/d2 - grad( Dp_ut*ux_ut ,1)/d1
+        n1=size(u,1)
+        n2=size(u,2)
+        call alloc(pua,n1,n2)
+        pua = grad( Dp_ut ,2)/d2 - grad( Dp_ut*ux_ut ,1)/d1
 
-end function
+    end function
 
 
 end subroutine
