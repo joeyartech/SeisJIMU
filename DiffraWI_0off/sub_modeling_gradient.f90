@@ -421,26 +421,38 @@ contains
 
     subroutine compute_L2_slope()
     use m_median2d
-        real,dimension(:,:),allocatable :: Ru, d, DRu, Dd, pu, pd, W2res, pua, dadj
+        real,dimension(:,:),allocatable :: Ru, d, weight, DRu, Dd, pu, pd, W2res, pua, dadj
 
         call alloc(Ru,shot%nt,shls%nshot)
         call alloc( d,shot%nt,shls%nshot)
+        call alloc(weight,shot%nt,shls%nshot)
     
         call MPI_Gather(shot%dsyn, shot%nt, MPI_REAL, Ru, shot%nt, MPI_REAL, 0, MPI_COMM_WORLD, ierr)
         call MPI_Gather(shot%dobs, shot%nt, MPI_REAL,  d, shot%nt, MPI_REAL, 0, MPI_COMM_WORLD, ierr)
+        call MPI_Gather(wei%weight,shot%nt, MPI_REAL, weight, shot%nt, MPI_REAL, 0, MPI_COMM_WORLD, ierr)
 
         if(mpiworld%is_master) then
             DRu = grad(Ru,2)
             Dd  = grad(d, 2)
 
+! call sysio_write('Ru',Ru,size(Ru))
+! call sysio_write('d',  d,size( d))
+! call sysio_write('DRu',DRu,size(DRu))
+! call sysio_write('Dd',  Dd,size( Dd))
+
             dtr = setup%get_real('DTR',o_mandatory=1)
             
             pu = median2d(slope(DRu,shot%dt,dtr),20) !20 is half width
             pd = median2d(slope(Dd ,shot%dt,dtr),20)
+            ! pu = slope(DRu,shot%dt,dtr)
+            ! pd = slope(Dd ,shot%dt,dtr)
+
+! call sysio_write('pu',pu,size(pu))
+! call sysio_write('pd',pd,size(pd))
 
             !L2_slope: '0.5|| W(pDu - pDd)||² => adjsrc = Dᵀ[∂p/∂Du]W²Δp')
             fobj%reflection = fobj%reflection &
-                + L2sq(0.5, shot%nrcv*shot%nt, wei%weight, pd-pu, shot%dt)
+                + L2sq(0.5, shot%nt*shls%nshot, weight, pd-pu, shot%dt)
 
             call alloc(W2res,shot%nt,shls%nshot)
             call kernel_L2sq(W2res)
@@ -449,20 +461,8 @@ contains
             pua= part_p_part_u(W2res,DRu,shot%dt,dtr)
             call sysio_write('pua',pua,size(pua))
 
-            !
-            !     [u2-u1]   [-1 1      ][u1]        [-1 -1         ][u1]   [-u1-u2]
-            !     |u3-u1|   |-1 0 1    ||u2|        | 1  0 -1      ||u2|   | u1-u3|
-            !Du = |u4-u2| = |  -1 0 1  ||u3|, Dᵀu = |    1  0 -1   ||u3| = | u2-u4|
-            !     |u5-u3|   |    -1 0 1||u4|        |       1  0 -1||u4|   | u3-u5|
-            !     [u5-u4]   [      -1 1][u5]        [          1  1][u5]   [ u4+u5]
-
-            call alloc(dadj,shot%nt,shls%nshot)
-                dadj(:,1)  = -pua(:,1)    -pua(:,2)
-            do ix=2,shls%nshot-1
-                dadj(:,ix) =  pua(:,ix-1) -pua(:,ix+1)
-            enddo
-                dadj(:,shls%nshot) = pua(:,shls%nshot-1) +pua(:,shls%nshot)
-
+            dadj = grad_adj(pua)
+                
         endif
 
         if(.not.mpiworld%is_master) allocate(dadj(1,1)) !this is nonsense..
@@ -484,32 +484,83 @@ contains
         call alloc(g,n1,n2)
 
         if(iaxis==1) then
-                g(1,:) = u(2,:)   -u(1,:)
-            do i=2,n2-1
-                g(i,:) = u(i+1,:) -u(i-1,:)
+                g(1,:) =  u(2,:)   -u(1,:)
+            do i=2,n1-1
+                g(i,:) = (u(i+1,:) -u(i-1,:))/2
             enddo
-                g(n2,:)= u(n2,:)  -u(n2-1,:)
+                g(n1,:)=  u(n1,:)  -u(n1-1,:)
+        
+        elseif(iaxis==2) then
+                g(:,1) =  u(:,2)   -u(:,1)
+            do i=2,n2-1
+                g(:,i) = (u(:,i+1) -u(:,i-1))/2
+            enddo
+                g(:,n2)=  u(:,n2)  -u(:,n2-1)
+        
+        else
+            call error('grad: iaxis='//num2str(iaxis)//' is not a valid number!')
+
         endif
 
-        if(iaxis==2) then
-                g(:,1) = u(:,2)   -u(:,1)
-            do i=2,n2-1
-                g(:,i) = u(:,i+1) -u(:,i-1)
+    end function
+    !     [ u2-u1   ]   [-1 1      ][u1]        [-1 -½         ][u1]   [-u1  -u2/2 ]
+    !     |(u3-u1)/2|   |-½ 0 ½    ||u2|        | 1  0 -½      ||u2|   | u1  -u3/2 |
+    !Du = |(u4-u2)/2| = |  -½ 0 ½  ||u3|, Dᵀu = |    ½  0 -½   ||u3| = |(u2  -u4)/2|
+    !     |(u5-u3)/2|   |    -½ 0 ½||u4|        |       ½  0 -1||u4|   | u3/2-u5   |
+    !     [ u5-u4   ]   [      -1 1][u5]        [          ½  1][u5]   [ u4/2+u5   ]
+    function grad_adj(u) result(g)
+        real,dimension(:,:)             :: u
+        real,dimension(:,:),allocatable :: g
+        
+        n1=size(u,1)
+        n2=size(u,2)
+        call alloc(g,n1,n2)
+
+        ! if(iaxis==1) then
+                g(1,:) = -u(1,:) -u(2,:)/2
+                g(2,:) =  u(1,:) -u(3,:)/2
+            do i=3,n1-2
+                g(i,:) =( u(i-1,:) -u(i+1,:) )/2
             enddo
-                g(:,n2)= u(:,n2)  -u(:,n2-1)
-        endif
+                g(n1-1,:)=  u(n1-2,:)/2  -u(n1,:)
+                g(n1  ,:)=  u(n1-1,:)/2  +u(n1,:)
+        
+        ! elseif(iaxis==2) then
+        !         g(:,1) =  u(:,2)   -u(:,1)
+        !     do i=2,n2-1
+        !         g(:,i) = (u(:,i+1) -u(:,i-1))/2
+        !     enddo
+        !         g(:,n2)=  u(:,n2)  -u(:,n2-1)
+        
+        ! else
+        !     call error('grad_adj: iaxis='//num2str(iaxis)//' is not a valid number!')
+
+        ! endif
 
     end function
 
     function slope(u,d1,d2) result(p)
+    use m_hilbert
         real,dimension(:,:)             :: u
         real,dimension(:,:),allocatable :: p
 
+        real,dimension(:,:),allocatable :: v,gu1,gv1
+
         n1=size(u,1)
         n2=size(u,2)
+        call alloc(v,n1,n2)
         call alloc(p,n1,n2)
+        call alloc(gu1,n1,n2)
+        call alloc(gv1,n1,n2)
 
-        p = -grad(u,2)/grad(u,1)/d2*d1
+        call hilbert_transform(u,v,n1,n2)
+        gu1 = grad(u,1)
+        gv1 = grad(v,1)
+
+        water = 1e-5*maxval(gv1*gu1)
+        p = -gv1*grad(u,2)/(gv1*gu1+water)/d2*d1
+
+        deallocate(v,gu1,gv1)
 
     end function
 
