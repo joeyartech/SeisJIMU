@@ -30,11 +30,17 @@ use singleton
     real :: visac_b = -110.687
     real :: visac_d = 1111.5
     real :: visac_e = 1
-    integer :: ifsmooth = 1, smooth_interval=100
+
     logical :: if_freesurface_ppg
 
     ! logical :: is_Q_attenuation
     character(:),allocatable :: stablize_method
+    integer :: smooth_interval=100
+
+    !FCT
+    real :: eta1 = 0.01
+    real :: eta2 = 0.012
+    real,dimension(:,:,:),allocatable :: p_FCT !temporary wavefield
 
     !local const
     real :: dt2, inv_2dt, inv_2dz, inv_2dx
@@ -95,7 +101,6 @@ use singleton
         procedure :: update_pressure
         procedure :: evolve_pressure
         procedure :: extract
-        ! procedure :: gaussian_smooth
 
         ! procedure :: dft2d
         ! procedure :: idft2d
@@ -165,13 +170,9 @@ use singleton
             visac_b = 0.
             visac_d = 0.
             visac_e = 0.
-            ifsmooth = 0
         endif
 
-        call hud('visac coefs:'//num2str(visac_a)//', '//num2str(visac_b)//', '//num2str(visac_d)//', '//num2str(visac_e)//', if smooth =' //num2str(ifsmooth))
-                
-        ! stablize_method=setup%get_str('STABLIZE_METHOD',o_default='fft complex field')
-        ! stablize_method=setup%get_str('STABLIZE_METHOD',o_default='Non')
+        call hud('visac coefs:'//num2str(visac_a)//', '//num2str(visac_b)//', '//num2str(visac_d)//', '//num2str(visac_e))
 
     end subroutine
 
@@ -283,6 +284,9 @@ use singleton
         if_freesurface_ppg=setup%get_bool('FREE_SURFACE_PPG',o_default='T')
 
         deallocate(C2,C1,C0) !save some RAM
+
+        stablize_method=setup%get_str('PPG_STABLIZE_METHOD',o_default='smooth')
+        if(stablize_method=='smooth') call hud('Gaussian smooth interval = '//num2str(smooth_interval))
 
     end subroutine
 
@@ -409,16 +413,22 @@ use singleton
         call alloc(fld_reU%seismo,shot%nrcv,self%nt)
         call alloc(fld_imU%seismo,shot%nrcv,self%nt)
 
-        call build_mask(mask, fld_reU)
-        ! call hilbert_transform(fld_reU%wavelet,fld_imU%wavelet,1,self%nt,o_axis=2)
+        if(stablize_method=='smooth') then
+            call build_mask(mask, fld_reU)
+            ! call hilbert_transform(fld_reU%wavelet,fld_imU%wavelet,1,self%nt,o_axis=2)
+        
+        elseif(stablize_method=="FCT") then
+            call alloc(p_FCT, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+
+        endif
+
 
         tt1=0.; tt2=0.; tt3=0.; tt4=0.; tt5=0.; tt6=0.; tt7=0.
 
         ift=1; ilt=self%nt
 
         do it=ift,ilt
-            ! if(mod(it,500)==0 .and. mpiworld%is_master) then
-            if(mod(it,500)==0) then
+            if(mod(it,500)==0 .and. mpiworld%is_master) then
                 write(*,*) 'it----',it
                 call fld_reU%check_value
                 call fld_imU%check_value
@@ -457,18 +467,22 @@ use singleton
             call cpu_time(toc)
             tt4=tt4+toc-tic
 
-            ! if(mod(it,1000)==0) then
-            !     call self%gaussian_smooth(fld_reU)
-            !     call self%gaussian_smooth(fld_imU)
-            ! endif
-            
 
-            if(mod(it,smooth_interval)==0 .and. ifsmooth==1) then
+            if(stablize_method=='smooth') then
+                if(mod(it,smooth_interval)==0) then
+                    call smooth_fft(fld_reU, mask, it)
+                    call smooth_fft(fld_imU, mask, it)
+                    ! deallocate(mask)
+                endif
 
-                call fft_gassian_filt(fld_reU, mask, it)
-                call fft_gassian_filt(fld_imU, mask, it)
-                ! deallocate(mask)
+            elseif(stablize_method=="FCT") then
+                call FCT(fld_reU%p_next,fld_reU%p,fld_reU%p_prev,eta1,eta2,p_FCT)
+                fld_reU%p_next = p_FCT
+                call FCT(fld_imU%p_next,fld_imU%p,fld_imU%p_prev,eta1,eta2,p_FCT)
+                fld_imU%p_next = p_FCT
+
             endif
+
 
             !step 5: evolve pressure, it -> it+1
             call cpu_time(tic)
@@ -482,7 +496,7 @@ use singleton
             call self%extract(fld_reU,it)
             call self%extract(fld_imU,it)
             call cpu_time(toc)
-            tt7=tt7+toc-tic
+            tt7=tt7+toc-tic 
             
             !snapshot
             call fld_reU%write(it)
@@ -522,7 +536,15 @@ use singleton
         if(if_record_adjseismo)  call alloc(fld_reA%seismo,1,self%nt)
         if(if_record_adjseismo)  call alloc(fld_imA%seismo,1,self%nt)
         
-        call build_mask(mask, fld_reU)
+        if(stablize_method=='smooth') then
+            call build_mask(mask, fld_reU)
+            ! call hilbert_transform(fld_reU%wavelet,fld_imU%wavelet,1,self%nt,o_axis=2)
+        
+        elseif(stablize_method=="FCT") then
+            call alloc(p_FCT, [cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+
+        endif
+
 
         !timing
         tt1=0.; tt2=0.; tt3=0.
@@ -562,22 +584,22 @@ use singleton
                 call cpu_time(toc)
                 tt4=tt4+toc-tic
 
-                if(mod(it,smooth_interval)==0 .and. ifsmooth==1) then
-                    ! call build_mask(mask, fld_reU, it)
-                    ! print *,'mask size=',size(mask,1),size(mask,2),'it=',it
-                    ! if(it==4400) then
-                    ! open(unit=10, file='../../Demo/11_Marmousi/mask.bin', form='unformatted', access='stream', status='replace')
-                    ! write(10) mask
-                    ! close(10)
-                    ! stop
-                    ! endif 
-                    
-                    call fft_gassian_filt(fld_reU, mask, it)
-                    call fft_gassian_filt(fld_imU, mask, it)
-                    ! deallocate(mask)
-                    ! print *,'fld_reU shape=',size(fld_reU%p,1),size(fld_reU%p,2)
-                 endif
-                 
+
+                if(stablize_method=='smooth') then
+                    if(mod(it,smooth_interval)==0) then
+                        call smooth_fft(fld_reU, mask, it)
+                        call smooth_fft(fld_imU, mask, it)
+                        ! deallocate(mask)
+                    endif
+
+                elseif(stablize_method=="FCT") then
+                    call FCT(fld_reU%p_prev,fld_reU%p,fld_reU%p_next,eta1,eta2,p_FCT)
+                    fld_reU%p_prev = p_FCT
+                    call FCT(fld_imU%p_prev,fld_imU%p,fld_imU%p_next,eta1,eta2,p_FCT)
+                    fld_imU%p_prev = p_FCT
+
+                endif
+
 
                 !backward step 1: rm p^it at source
                 call cpu_time(tic)
@@ -601,12 +623,22 @@ use singleton
             call cpu_time(toc)
             tt9=tt9+toc-tic
 
-            if(mod(it,smooth_interval)==0 .and. ifsmooth==1) then
-                ! call build_mask(mask, fld_reA, it)
-                call fft_gassian_filt(fld_reA, mask, it)
-                call fft_gassian_filt(fld_imA, mask, it)
-                ! deallocate(mask)
+
+            if(stablize_method=='smooth') then
+                if(mod(it,smooth_interval)==0) then
+                    call smooth_fft(fld_reA, mask, it)
+                    call smooth_fft(fld_imA, mask, it)
+                    ! deallocate(mask)
+                endif
+
+            elseif(stablize_method=="FCT") then
+                call FCT(fld_reA%p_prev,fld_reA%p,fld_reA%p_next,eta1,eta2,p_FCT)
+                fld_reA%p_prev = p_FCT
+                call FCT(fld_imA%p_prev,fld_imA%p,fld_imA%p_next,eta1,eta2,p_FCT)
+                fld_imA%p_prev = p_FCT
+
             endif
+
 
             !image: rf%p^it star sf%p^it
             if(mod(it,irdt)==0) then
@@ -771,8 +803,8 @@ use singleton
         class(t_propagator) :: self
         type(t_field) :: f_re, f_im
 
+        logical,dimension(:,:,:),allocatable :: mask
         complex,dimension(:,:,:),allocatable :: Uprev, U, Unext, Lap
-
                 
         ! !necessary after computing the secondary source
         ! f%lap=0.
@@ -864,11 +896,20 @@ use singleton
         !         f_im%p_prev = aimag(Uprev)
         ! endif
 
+        ! call alloc(mask,[cb%ifz,cb%ilz],[cb%ifx,cb%ilx],[cb%ify,cb%ily])
+        ! call alloc(mask,cb%nz,cb%nx,cb%ny)
+        ! do ix = ifx,ilx
+        ! do iz = ifz,ilz
+        !     mask(iz,ix,1) = .true.
+        ! enddo
+        ! enddo
+
         !advanced scheme for 1st-order time derivative
         !use central FD in both backward & forward modeling
         !which can make the field disappear after backpropagation
         if(.not. f_re%is_adjoint) then !PDE
             if(time_dir>0. ) then !forward in time
+            ! where(mask)
                 Uprev = cmplx(f_re%p_prev,f_im%p_prev)
                 U     = cmplx(f_re%p     ,f_im%p     )
                 Lap   = cmplx(f_re%lap   ,f_im%lap   )
@@ -876,8 +917,8 @@ use singleton
                 !Uⁿ⁺¹  =2Uⁿ -Uⁿ⁻¹  +  i C₁/C₂    (Uⁿ⁺¹-Uⁿ⁻¹) 0.5dt      -   C₀/C₂ Uⁿdt² +      1/C₂*dt²*Lap
                 !(1-iC₁/C₂ 0.5dt)Uⁿ⁺¹  =2Uⁿ -Uⁿ⁻¹  +  i C₁/C₂    (-Uⁿ⁻¹) 0.5dt      -   C₀/C₂ Uⁿdt² +      1/C₂*dt²*Lap
                 Unext              = ( 2*U  -Uprev +c_i*self%C1n*(-Uprev)*0.5*self%dt -self%C0n*U*dt2 +self%invC2*dt2*self%kpa*Lap ) &
-                    /(1-c_i*self%C1n*0.5*self%dt)
-                
+                    /(1-c_i*self%C1n*0.5*self%dt)    
+
 ! if(it>400.)then
 ! if(stablize_method=='fft complex field') then
 ! call stablize_complex(Unext)
@@ -885,6 +926,8 @@ use singleton
 ! endif
                 f_re%p_next =  real(Unext)
                 f_im%p_next = aimag(Unext)
+
+            ! end where
 
 ! if(it>400)then
 ! if(stablize_method=='fft real field') then
@@ -894,6 +937,7 @@ use singleton
 ! endif
 
             else !backward in time
+            ! where(mask)
                 Unext = cmplx(f_re%p_next,f_im%p_next)
                 U     = cmplx(f_re%p     ,f_im%p     )
                 Lap   = cmplx(f_re%lap   ,f_im%lap   )
@@ -910,9 +954,11 @@ use singleton
                 f_re%p_prev =  real(Uprev)
                 f_im%p_prev = aimag(Uprev)
 
+            ! end where
             endif
 
         else !Adjoint, backward in time
+        ! where(mask)
                 Unext = cmplx(f_re%p_next,f_im%p_next)
                 U     = cmplx(f_re%p     ,f_im%p     )
                 Lap   = cmplx(f_re%lap   ,f_im%lap   )
@@ -929,6 +975,7 @@ use singleton
                 f_re%p_prev =  real(Uprev)
                 f_im%p_prev = aimag(Uprev)
 
+        ! end where
         endif
 
         ! !apply free surface boundary condition if needed
@@ -984,106 +1031,107 @@ use singleton
 
     end subroutine
 
-    subroutine stablize_complex(p) !by fft
-use singleton
-        complex,dimension(cb%nz,cb%nx) :: p
+    ! subroutine stablize_complex(p) !by fft
+    ! use singleton
+    !     complex,dimension(cb%nz,cb%nx) :: p
 
-        complex(fftkind),dimension(:,:),allocatable :: p_fft
+    !     complex(fftkind),dimension(:,:),allocatable :: p_fft
 
-        logical,save :: is_first_in=.true.
-        real,save :: threshold
-        real,save,allocatable :: kabs(:,:)
-        real :: kz,kx
+    !     logical,save :: is_first_in=.true.
+    !     real,save :: threshold
+    !     real,save,allocatable :: kabs(:,:)
+    !     real :: kz,kx
 
-        ! !wavenumber
-        if(is_first_in) then
-            lda = cb%velmin / shot%fmax !min wavelength
-            threshold = 1./lda !max wavenumber
+    !     ! !wavenumber
+    !     if(is_first_in) then
+    !         lda = cb%velmin / shot%fmax !min wavelength
+    !         threshold = 1./lda !max wavenumber
 
-            dkz = 1./(cb%nz-1)/m%dz
-            dkx = 1./(cb%nx-1)/m%dx
+    !         dkz = 1./(cb%nz-1)/m%dz
+    !         dkx = 1./(cb%nx-1)/m%dx
 
-            call alloc(kabs,cb%nz,cb%nx)
+    !         call alloc(kabs,cb%nz,cb%nx)
 
-            do ikx=1,cb%nx
-                                kx=(  ikx-1  )*dkx
-                if(ikx>cb%nx/2) kx=(cb%nx-ikx)*dkx
-            do ikz=1,cb%nz
-                                kz=(  ikz-1  )*dkz
-                if(ikz>cb%nz/2) kz=(cb%nz-ikz)*dkz
+    !         do ikx=1,cb%nx
+    !                             kx=(  ikx-1  )*dkx
+    !             if(ikx>cb%nx/2) kx=(cb%nx-ikx)*dkx
+    !         do ikz=1,cb%nz
+    !                             kz=(  ikz-1  )*dkz
+    !             if(ikz>cb%nz/2) kz=(cb%nz-ikz)*dkz
 
-                kabs(ikz,ikx) = sqrt( kx**2 + kz**2 )
+    !             kabs(ikz,ikx) = sqrt( kx**2 + kz**2 )
 
-            enddo
-            enddo
+    !         enddo
+    !         enddo
 
-            is_first_in=.false.
-        endif
+    !         is_first_in=.false.
+    !     endif
 
-        allocate(p_fft(cb%nz,cb%nx))
+    !     allocate(p_fft(cb%nz,cb%nx))
 
-        p_fft=fft(cmplx(p,kind=fftkind))
+    !     p_fft=fft(cmplx(p,kind=fftkind))
         
-        where (kabs > threshold)
-            p_fft=0.
-        endwhere
+    !     where (kabs > threshold)
+    !         p_fft=0.
+    !     end where
 
-        p=cmplx(fft(p_fft,inv=.true.),kind=4)
+    !     p=cmplx(fft(p_fft,inv=.true.),kind=4)
 
-        deallocate(p_fft)
+    !     deallocate(p_fft)
 
-    end subroutine stablize_complex
+    ! end subroutine stablize_complex
 
 
-    subroutine stablize(p) !by fft
-use singleton
-        real,dimension(cb%nz,cb%nx) :: p
+    ! subroutine stablize(p) !by fft
+    ! use singleton
+    !     real,dimension(cb%nz,cb%nx) :: p
 
-        complex(fftkind),dimension(:,:),allocatable :: p_fft
+    !     complex(fftkind),dimension(:,:),allocatable :: p_fft
 
-        logical,save :: is_first_in=.true.
-        real,save :: threshold
-        real,save,allocatable :: kabs(:,:)
-        real :: kz,kx
+    !     logical,save :: is_first_in=.true.
+    !     real,save :: threshold
+    !     real,save,allocatable :: kabs(:,:)
+    !     real :: kz,kx
 
-        ! !wavenumber
-        if(is_first_in) then
-            lda = cb%velmin / shot%fmax !min wavelength
-            threshold = 1./lda !max wavenumber
+    !     ! !wavenumber
+    !     if(is_first_in) then
+    !         lda = cb%velmin / shot%fmax !min wavelength
+    !         threshold = 1./lda !max wavenumber
 
-            dkz = 1./(cb%nz-1)/m%dz
-            dkx = 1./(cb%nx-1)/m%dx
+    !         dkz = 1./(cb%nz-1)/m%dz
+    !         dkx = 1./(cb%nx-1)/m%dx
 
-            call alloc(kabs,cb%nz,cb%nx)
+    !         call alloc(kabs,cb%nz,cb%nx)
 
-            do ikx=1,cb%nx
-                                kx=(  ikx-1  )*dkx
-                if(ikx>cb%nx/2) kx=(cb%nx-ikx)*dkx
-            do ikz=1,cb%nz
-                                kz=(  ikz-1  )*dkz
-                if(ikz>cb%nz/2) kz=(cb%nz-ikz)*dkz
+    !         do ikx=1,cb%nx
+    !                             kx=(  ikx-1  )*dkx
+    !             if(ikx>cb%nx/2) kx=(cb%nx-ikx)*dkx
+    !         do ikz=1,cb%nz
+    !                             kz=(  ikz-1  )*dkz
+    !             if(ikz>cb%nz/2) kz=(cb%nz-ikz)*dkz
 
-                kabs(ikz,ikx) = sqrt( kx**2 + kz**2 )
+    !             kabs(ikz,ikx) = sqrt( kx**2 + kz**2 )
 
-            enddo
-            enddo
+    !         enddo
+    !         enddo
 
-            is_first_in=.false.
-        endif
+    !         is_first_in=.false.
+    !     endif
 
-        allocate(p_fft(cb%nz,cb%nx))
+    !     allocate(p_fft(cb%nz,cb%nx))
 
-        p_fft=fft(cmplx(p,0.,kind=fftkind))
+    !     p_fft=fft(cmplx(p,0.,kind=fftkind))
 
-        where (kabs > threshold)
-            p_fft=0.
-        endwhere
+    !     where (kabs > threshold)
+    !         p_fft=0.
+    !     end where
 
-        p=real(fft(p_fft,inv=.true.), kind=4)
+    !     p=real(fft(p_fft,inv=.true.), kind=4)
 
-        deallocate(p_fft)
+    !     deallocate(p_fft)
 
-    end subroutine stablize
+    ! end subroutine stablize
+
 
     subroutine evolve_pressure(self,f,time_dir,it)
         class(t_propagator) :: self
@@ -1233,36 +1281,49 @@ use singleton
         type(t_field), intent(in) :: reA, imA, reU, imU
         type(t_correlate) :: corr
 
+        logical,dimension(:,:,:),allocatable :: mask
         complex,dimension(:,:,:),allocatable :: Uprev, U, Unext, A
 
         ! real,dimension(:,:,:),allocatable,save :: re_gikpa_rere, re_gikpa_imim, im_gikpa
         ! complex,dimension(:,:,:),allocatable :: Ulap, Aconj
 
         !nonzero only when sf touches rf
-        ! ifz=max(reU%bloom(1,it),reA%bloom(1,it),2)
-        ! ilz=min(reU%bloom(2,it),reA%bloom(2,it),cb%mz)
-        ! ifx=max(reU%bloom(3,it),reA%bloom(3,it),1)
-        ! ilx=min(reU%bloom(4,it),reA%bloom(4,it),cb%mx)
-        ! ify=max(sf%bloom(5,it),rf%bloom(5,it),1)
-        ! ily=min(sf%bloom(6,it),rf%bloom(6,it),cb%my)
+        ifz=max(reU%bloom(1,it),reA%bloom(1,it),2)
+        ilz=min(reU%bloom(2,it),reA%bloom(2,it),cb%mz)
+        ifx=max(reU%bloom(3,it),reA%bloom(3,it),1)
+        ilx=min(reU%bloom(4,it),reA%bloom(4,it),cb%mx)
+        ify=max(reU%bloom(5,it),reA%bloom(5,it),1)
+        ily=min(reU%bloom(6,it),reA%bloom(6,it),cb%my)
 
-        Uprev = cmplx(reU%p_prev(1:m%nz,1:m%nx,1:m%ny),reU%p_prev(1:m%nz,1:m%nx,1:m%ny))
-        U     = cmplx(reU%p(1:m%nz,1:m%nx,1:m%ny)     ,reU%p(1:m%nz,1:m%nx,1:m%ny)     )
-        Unext = cmplx(reU%p_next(1:m%nz,1:m%nx,1:m%ny),reU%p_next(1:m%nz,1:m%nx,1:m%ny))
-        A     = cmplx(reA%p(1:m%nz,1:m%nx,1:m%ny)     ,imA%p(1:m%nz,1:m%nx,1:m%ny)     )
+        call alloc(mask,m%nz,m%nx,m%ny)
+        do ix = ifx,ilx
+        do iz = ifz,ilz
+            mask(iz,ix,1) = .true.
+        enddo
+        enddo
 
-        corr%gikpa = corr%gikpa + reA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny) !should use this one because we just use the real part in the misfit function, only the re-re term is needed here.
-        ! corr%giqp = corr%giqp + reA%p(1:m%nz,1:m%nx,1:m%ny)/ppg%kpa(1:m%nz,1:m%nx,1:m%ny)* &
-        !     real(ppg%dC2dQ*(Unext + Uprev- 2*U)/dt2 &
-        !         -ppg%dC1dQ*(Unext - Uprev)/(2*ppg%dt) &
-        !         +ppg%dC0dQ* U &
-        !         )
 
-        corr%giqp = corr%giqp + reA%p(1:m%nz,1:m%nx,1:m%ny)/ppg%kpa(1:m%nz,1:m%nx,1:m%ny)* &
-                real(ppg%dC2dQ*(reU%p_next(1:m%nz,1:m%nx,1:m%ny) + reU%p_prev(1:m%nz,1:m%nx,1:m%ny)- 2*reU%p(1:m%nz,1:m%nx,1:m%ny))/dt2 &
-                    -ppg%dC1dQ*(reU%p_next(1:m%nz,1:m%nx,1:m%ny) - reU%p_prev(1:m%nz,1:m%nx,1:m%ny))/(2*ppg%dt) &
-                    +ppg%dC0dQ* reU%p(1:m%nz,1:m%nx,1:m%ny) &
-                    )
+            ! Uprev = cmplx(reU%p_prev(1:m%nz,1:m%nx,1:m%ny),reU%p_prev(1:m%nz,1:m%nx,1:m%ny))
+            ! U     = cmplx(reU%p(1:m%nz,1:m%nx,1:m%ny)     ,reU%p(1:m%nz,1:m%nx,1:m%ny)     )
+            ! Unext = cmplx(reU%p_next(1:m%nz,1:m%nx,1:m%ny),reU%p_next(1:m%nz,1:m%nx,1:m%ny))
+            ! A     = cmplx(reA%p(1:m%nz,1:m%nx,1:m%ny)     ,imA%p(1:m%nz,1:m%nx,1:m%ny)     )
+
+        where(mask)
+
+            corr%gikpa = corr%gikpa + reA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny) !should use this one because we just use the real part in the misfit function, only the re-re term is needed here.
+            ! corr%giqp = corr%giqp + reA%p(1:m%nz,1:m%nx,1:m%ny)/ppg%kpa(1:m%nz,1:m%nx,1:m%ny)* &
+            !     real(ppg%dC2dQ*(Unext + Uprev- 2*U)/dt2 &
+            !         -ppg%dC1dQ*(Unext - Uprev)/(2*ppg%dt) &
+            !         +ppg%dC0dQ* U &
+            !         )
+
+            corr%giqp = corr%giqp + reA%p(1:m%nz,1:m%nx,1:m%ny)/ppg%kpa(1:m%nz,1:m%nx,1:m%ny)* &
+                    real(ppg%dC2dQ*(reU%p_next(1:m%nz,1:m%nx,1:m%ny) + reU%p_prev(1:m%nz,1:m%nx,1:m%ny)- 2*reU%p(1:m%nz,1:m%nx,1:m%ny))/dt2 &
+                        -ppg%dC1dQ*(reU%p_next(1:m%nz,1:m%nx,1:m%ny) - reU%p_prev(1:m%nz,1:m%nx,1:m%ny))/(2*ppg%dt) &
+                        +ppg%dC0dQ* reU%p(1:m%nz,1:m%nx,1:m%ny) &
+                        )
+
+        end where
 
         ! corr%giqp = corr%giqp + 1/2*real(A(1:m%nz,1:m%nx,1:m%ny)/ppg%kpa(1:m%nz,1:m%nx,1:m%ny)* &
         !         (ppg%dC2dQ*(Unext(1:m%nz,1:m%nx,1:m%ny) + Uprev(1:m%nz,1:m%nx,1:m%ny)- 2*U(1:m%nz,1:m%nx,1:m%ny))/dt2 &
@@ -1270,7 +1331,7 @@ use singleton
         !         +ppg%dC0dQ* U(1:m%nz,1:m%nx,1:m%ny) &
         !         ))
         
-        deallocate(Uprev, U, Unext, A)
+        ! deallocate(Uprev, U, Unext, A)
         ! corr%gikpa = corr%gikpa + imA%p(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny) !same value as above
         ! corr%gikpa = corr%gikpa + reA%p(1:m%nz,1:m%nx,1:m%ny)*reU%lap(1:m%nz,1:m%nx,1:m%ny) &
         !                         + imA%p(1:m%nz,1:m%nx,1:m%ny)*imU%lap(1:m%nz,1:m%nx,1:m%ny) !twice magnitude as above
@@ -1701,6 +1762,7 @@ use singleton
     end subroutine
 
 
+
     subroutine build_mask(mask, f, freq_cut, h_in, sigma_filter_in)
         type(t_field) :: f
         real,intent(in), optional    :: h_in, sigma_filter_in, freq_cut
@@ -1773,14 +1835,14 @@ use singleton
             mask(:,:,1) = 1.0
         elsewhere
             mask(:,:,1) = exp( - ((K - k_cut)/(sigma_filter*k_cut))**2 )
-        endwhere
+        end where
 
         deallocate(kx, kz, kx_grid, kz_grid, K)
 
     end subroutine
 
 
-    subroutine fft_gassian_filt(f, mask, it)
+    subroutine smooth_fft(f, mask, it)
         type(t_field) :: f
         complex(fftkind),dimension(:,:,:),allocatable :: Pprev, Pcurr, Pnext, Pprev_filt, Pcurr_filt, Pnext_filt, K_az, K_ax, K_az_filt, K_ax_filt
         real,dimension(:,:,:), intent(in) :: mask
@@ -2022,5 +2084,90 @@ use singleton
 
     !     deallocate(kx, kz, kx_grid, kz_grid, K)
     ! end subroutine build_mask
+
+
+    subroutine FCT(P_next, P, P_prev, eta1, eta2, P_FCT)
+        real,dimension(cb%nz,cb%nx),intent(in) :: P_next, P, P_prev
+        real,dimension(cb%nz,cb%nx),intent(out) :: P_FCT
+
+        !later
+        ! ifz=f%bloom(1,it)
+        ! ilz=f%bloom(2,it)
+        ! ifx=f%bloom(3,it)
+        ! ilx=f%bloom(4,it)
+
+        real,dimension(:,:),allocatable :: Qx, Qz, Qx_bar, Qz_bar, P_bar
+        real,dimension(:,:),allocatable :: X, Z, X_c, Z_c
+        real,dimension(:,:),allocatable :: Sx, Sz
+
+        real inner
+
+
+        nz=cb%nz
+        nx=cb%nx
+        
+        allocate(Qx(nz,nx), Qz(nz,nx))
+        allocate(Qx_bar(nz,nx), Qz_bar(nz,nx), P_bar(nz,nx))
+        allocate(X(nz,nx), Z(nz,nx), X_c(nz,nx), Z_c(nz,nx))
+        allocate(Sx(nz,nx), Sz(nz,nx))
+
+
+        ! ---- Eq. (A-1): Q^n in x and z -----------------------------------
+        ! z-derivative  -> flux at (i, j+1/2), stored in Qz(j, :)
+        Qz(1:nz-1,:) = eta1*( (P(2:nz,:)-P(1:nz-1,:)) - (P_prev(2:nz,:)-P_prev(1:nz-1,:)) )
+        ! x-derivative  -> flux at (i+1/2, j), stored in Qx(:, i)
+        Qx(:,1:nx-1) = eta1*( (P(:,2:nx)-P(:,1:nx-1)) - (P_prev(:,2:nx)-P_prev(:,1:nx-1)) )
+
+        ! ---- Eq. (A-2): Qbar^{n+1} in x and z ---------------------------        
+        Qz_bar(1:nz-1,:) = eta2*( (P_next(2:nz,:)-P_next(1:nz-1,:)) - (P(2:nz,:) - P(1:nz-1,:)))
+        Qx_bar(:,1:nx-1) = eta2*( (P_next(:,2:nx)-P_next(:,1:nx-1)) - (P(:,2:nx) - P(:,1:nx-1)))
+        
+        ! ---- Eq. (A-3): diffuse -----------------------------------------
+        P_bar = P_next
+        P_bar(2:nz-1, 2:nx-1) = P_bar(2:nz-1, 2:nx-1) + &
+            (Qx(2:nz-1,2:nx-1) - Qx(2:nz-1,1:nx-2)) + &
+            (Qz(2:nz-1,2:nx-1) - Qz(1:nz-2,2:nx-1))
+
+        ! ---- Eq. (A-4): X and Z from diffused field ---------------------
+        Z(1:nz-1,:) = (P_bar(2:nz,:) - P_bar(1:nz-1,:)) - &
+                      (    P(2:nz,:) -     P(1:nz-1,:))
+        X(:,1:nx-1) = (P_bar(:,2:nx) - P_bar(:,1:nx-1)) - &
+                      (    P(:,2:nx) -     P(:,1:nx-1))
+
+        ! ---- Eq. (A-5): limit Z (z-direction) ---------------------------
+        Sz = sign(1., Qz_bar)
+        if(nz >= 4) then
+            Z_c(2:nz-2,:) = Sz(2:nz-2,:) * max(0., &
+                min( &
+                    min( Sz(2:nz-2,:)*Z(1:nz-3,:), abs(Qz_bar(2:nz-2,:)) ), &
+                    Sz(2:nz-2,:)*Z(3:nz-1,:) &
+                    ) )
+        endif
+
+        Z_c(1      ,:)=0.
+        Z_c(nz-1:nz,:)=0.
+
+        ! ---- Eq. (A-5): limit X (x-direction) ---------------------------
+        Sx = sign(1., Qx_bar)
+        if(nx >= 4) then
+            X_c(:,2:nx-2) = Sx(:,2:nx-2) * max(0., &
+                min( &
+                    min( Sx(:,2:nx-2)*X(:,1:nx-3), abs(Qx_bar(:,2:nx-2)) ), &
+                    Sx(:,2:nx-2)*X(:,3:nx-1) &
+                    ) )
+        endif
+
+        X_c(:,1      )=0.
+        X_c(:,nx-1:nx)=0.
+
+        ! ---- Eq. (A-5): apply limited antidiffusion ---------------------
+        P_FCT = P_bar
+        P_FCT(2:nz-1, 2:nx-1) = P_FCT(2:nz-1, 2:nx-1) - &
+            (X_c(2:nz-1, 2:nx-1) - X_c(2:nz-1, 1:nx-2)) - &
+            (Z_c(2:nz-1, 2:nx-1) - Z_c(1:nz-2, 2:nx-1))
+
+        deallocate(Qx, Qz, Qx_bar, Qz_bar, P_bar, X, Z, X_c, Z_c, Sx, Sz)
+
+    end subroutine
 
 end
