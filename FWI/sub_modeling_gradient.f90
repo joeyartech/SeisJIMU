@@ -1,4 +1,7 @@
-subroutine modeling_gradient
+subroutine modeling_gradient_ip
+end subroutine
+
+subroutine modeling_gradient_vp
 use mpi
 use m_System
 use m_Modeling
@@ -59,8 +62,6 @@ use m_resampler
         call ppg%forward(fld_u)
         call fld_u%acquire; call shot%write('Ru_',shot%dsyn)
 
-
-        if(setup%get_str('JOB')=='forward') cycle
 
         call ppg%init_field(fld_a,name='fld_a',ois_adjoint=.true.)
 
@@ -210,6 +211,9 @@ endif
         call shot%write('dadj_',shot%dadj)
 
 
+if(setup%get_str('JOB')=='forward') cycle
+
+
         call hud('----  Solving adjoint eqn & xcorrelate  ----')
 
         call ppg%init_correlate(a_star_u,'a_star_u')
@@ -227,6 +231,12 @@ if(allocated(a_star_u%gsgma)) call sysio_write('gsgma_'//shot%sindex,a_star_u%gs
     enddo
     
     call hud('        END LOOP OVER SHOTS        ')
+
+
+if(setup%get_str('JOB')=='forward') then
+call mpiworld%final
+stop
+endif
 
     
     !allreduce misfit values

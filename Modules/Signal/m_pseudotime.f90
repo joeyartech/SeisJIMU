@@ -89,7 +89,7 @@ use m_arrayop
         endif
 
         if(dir=='t->z') then
-            Dt=Dt;  nt=nt_
+            Dt=Dt_;  nt=nt_
 
             !dz = dt*v(z) >= Dt*vmin
             dz=Dt*vmin
