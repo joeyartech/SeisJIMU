@@ -122,6 +122,16 @@ use m_setup
 
     end subroutine
 
+    subroutine sysio_bash(cmd,o_wait)
+        character(*) :: cmd
+        logical,optional :: o_wait
+
+        if(mpiworld%is_master) then
+            call execute_command_line(cmd,wait=either(o_wait,.true.,present(o_wait)))
+        endif
+
+    end subroutine
+
 end
 !     
 !     

@@ -18,8 +18,8 @@ ShotDec=batching
 ##########
 #Param=epsr-mur-sgma
 #Param=celerity-permeability
-Param=celerity-impedance
-#Param=celerity-impedance_pseudotime
+#Param=celerity-impedance
+Param=celerity-impedance_pseudotime
 #Param=velocities-density
 #Param=velocities-density_pseudotime
 #Param=velocities-impedance

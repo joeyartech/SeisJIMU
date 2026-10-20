@@ -457,6 +457,11 @@ endif
         endif
         endif
 
+if(index(setup%get_str('JOB',o_mandatory=1),'gradient')>0) then
+call mpiworld%final
+stop
+endif
+
         !save some RAM
         !call dealloc(correlate_gradient,m%energy)
 

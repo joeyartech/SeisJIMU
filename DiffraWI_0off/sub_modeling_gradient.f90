@@ -192,7 +192,7 @@ use m_resampler
     type(t_correlate) :: a0_star_u0, a_star_u
 
     real,dimension(:,:),allocatable :: tmp_dsyn, gmwindow
-    real,dimension(:,:),allocatable :: dadj_refl
+    real,dimension(:,:),allocatable :: dadj_refl, dres
 
     ! character(:),allocatable :: s_job
     ! real,dimension(:,:),allocatable :: Wdres
@@ -206,6 +206,52 @@ use m_resampler
     fobj%diving=0.
 
     call alloc(correlate_gradient,m%nz,m%nx,m%ny,ppg%ngrad)    
+
+
+if(setup%get_bool('IF_PREMODELING',o_default='F')) then !if additional modeling is required..
+    do i=1,shls%nshots_per_processor
+    
+        call shot%init(shls%yield(i))
+        call shot%read_from_data
+        call shot%set_var_time
+        call shot%set_var_space(index(ppg%info,'FDSG')>0)
+
+        call hud('Modeling Shot# '//shot%sindex)
+        
+        call cb%init(ppg%nbndlayer)
+        call cb%project
+        call ppg%check_discretization
+        call ppg%init
+        call ppg%init_abslayer
+
+        call hud('----  Solving A(m)u=s  ----')
+        call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
+        call ppg%forward(fld_u)
+        call fld_u%acquire;  call shot%write('Ru_',shot%dsyn)
+
+    enddo
+
+    call mpiworld%barrier
+    
+    if(mpiworld%is_master) then
+        call hud('Invoking L2_flatten_slope.py')
+        call sysio_bash('OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 '// &
+        'python3 L2_flatten_slope.py '//dir_out//' Ru_Shot')
+
+        open(12,file=dir_out//'dres.bin',access='direct',recl=4*shot%nrcv*shot%nt)
+        read(12,rec=1)dres
+        close(12)
+
+        ! call wei%update
+        ! fobj%reflection = L2sq(0.5, shot%nrcv*shot%nt, wei%weight, dres, shot%dt)
+        fobj%reflection = L2sq(0.5, shot%nrcv*shot%nt, wei%weight, dres, 1.)
+        
+    endif
+
+    call mpi_bcast([fobj%reflection],1,mpi_real,0,MPI_COMM_WORLD,mpiworld%ierr)
+
+endif
+
 
     call hud('-------------------------')
     call hud('     Update Vp model     ')
@@ -249,6 +295,12 @@ use m_resampler
 
             call compute_L2_slope()
 
+        case ('external')
+
+            open(13,file=dir_out//'dadj_'//shot%sindex//'.bin',access='direct',recl=4*shot%nrcv*shot%nt)
+            read(13,rec=1)shot%dadj
+            close(13)
+
         case default
             call error('No DNORM specified!')
 
@@ -286,6 +338,10 @@ use m_resampler
             fobj%diving =0.
             shot%dadj = -shot%dadj
 
+        case ('external')
+            fobj%diving =0.
+            shot%dadj = -shot%dadj
+        
         case default
             call error('No DNORM specified!')
 
@@ -583,6 +639,5 @@ contains
         pua = grad( Dp_ut ,2)/d2 - grad( Dp_ut*ux_ut ,1)/d1
 
     end function
-
 
 end subroutine
