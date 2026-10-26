@@ -5,6 +5,7 @@ use m_mpienv
     integer,parameter :: max_array_size=2147483647  !=huge(integer(kind=4))
 
     interface alloc
+        module procedure alloc_bool3
         module procedure alloc_int1_ubound
         module procedure alloc_int2_ubound
         module procedure alloc_real1_ubound
@@ -45,6 +46,31 @@ use m_mpienv
     end interface
     
     contains
+
+    subroutine alloc_bool3(a,n1,n2,n3,old2,oif_protect,o_init)
+        integer n1,n2,n3
+        logical,dimension(:,:,:),allocatable :: a
+        logical,dimension(:,:,:),optional :: old2
+        logical,optional :: oif_protect
+        logical,optional :: o_init
+        
+        if(n1<1.or.n1>max_array_size) then
+            if(mpiworld%is_master) write(*,*) 'ERROR: invalid required array size! n1=',n1
+            error stop
+        endif
+         
+        if (allocated(a)) then
+            if(either(oif_protect,.false.,present(oif_protect))) return
+
+            if(present(old2)) then
+                old2=a
+            endif
+            deallocate(a)
+        endif
+
+        allocate(a(n1,n2,n3),source=either(o_init,.false.,present(o_init)))
+        
+    end subroutine
     
     subroutine alloc_int1_ubound(a,n1,old2,oif_protect,o_init)
         integer n1

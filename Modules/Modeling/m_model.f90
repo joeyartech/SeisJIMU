@@ -195,7 +195,7 @@ use m_smoother_laplacian_sparse
         call alloc(self%ibathy,self%nx,self%ny)
 
         !freeze zone
-        allocate(self%is_freeze_zone(self%nz,self%nx,self%ny),source=.false.)
+        call alloc(self%is_freeze_zone,self%nz,self%nx,self%ny)
 
         !check file bathymetry or topography
         file=setup%get_file('FILE_BATHYMETRY','FILE_BATHY')

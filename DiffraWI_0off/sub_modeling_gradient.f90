@@ -207,51 +207,56 @@ use m_resampler
 
     call alloc(correlate_gradient,m%nz,m%nx,m%ny,ppg%ngrad)    
 
+    if(setup%get_bool('IF_PREMODELING',o_default='F')) then !if additional modeling is required..
 
-if(setup%get_bool('IF_PREMODELING',o_default='F')) then !if additional modeling is required..
-    do i=1,shls%nshots_per_processor
-    
-        call shot%init(shls%yield(i))
-        call shot%read_from_data
-        call shot%set_var_time
-        call shot%set_var_space(index(ppg%info,'FDSG')>0)
-
-        call hud('Modeling Shot# '//shot%sindex)
+        do i=1,shls%nshots_per_processor
         
-        call cb%init(ppg%nbndlayer)
-        call cb%project
-        call ppg%check_discretization
-        call ppg%init
-        call ppg%init_abslayer
+            call shot%init(shls%yield(i))
+            call shot%read_from_data
+            call shot%set_var_time
+            call shot%set_var_space(index(ppg%info,'FDSG')>0)
 
-        call hud('----  Solving A(m)u=s  ----')
-        call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
-        call ppg%forward(fld_u)
-        call fld_u%acquire;  call shot%write('Ru_',shot%dsyn)
+            call hud('Modeling Shot# '//shot%sindex)
+            
+            call cb%init(ppg%nbndlayer)
+            call cb%project
+            call ppg%check_discretization
+            call ppg%init
+            call ppg%init_abslayer
 
-    enddo
+            call hud('----  Solving A(m)u=s  ----')
+            call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
+            call ppg%forward(fld_u)
+            call fld_u%acquire;  call shot%write('Ru_',shot%dsyn)
 
-    call mpiworld%barrier
-    
-    if(mpiworld%is_master) then
-        call hud('Invoking L2_flatten_slope.py')
-        call sysio_bash('OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 '// &
-        'python3 L2_flatten_slope.py '//dir_out//' Ru_Shot')
+        enddo
 
-        open(12,file=dir_out//'dres.bin',access='direct',recl=4*shot%nrcv*shot%nt)
-        read(12,rec=1)dres
-        close(12)
-
-        ! call wei%update
-        ! fobj%reflection = L2sq(0.5, shot%nrcv*shot%nt, wei%weight, dres, shot%dt)
-        fobj%reflection = L2sq(0.5, shot%nrcv*shot%nt, wei%weight, dres, 1.)
+        call mpiworld%barrier
         
+        if(mpiworld%is_master) then
+        if(setup%get_str('DATA_NORM','DNORM',o_default='L2_grad')=='external') then
+
+            ! s_cmd='python3 '//setup%get_str('SCRIPT',o_mandatory=.true.)
+            call sysio_cmd('OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 '// &
+                'python3 '//setup%get_str('SCRIPT'), &
+                o_catch=.true.)
+
+            call alloc(dres,shot%nt,shls%nshots_2consider)
+            open(12,file=dir_out//'dres.bin',access='direct',recl=4*shls%nshots_2consider*shot%nt)
+            read(12,rec=1)dres
+            close(12)
+
+            ! call wei%update
+            ! fobj%reflection = L2sq(0.5, shot%nrcv*shot%nt, wei%weight, dres, shot%dt)    
+            fobj%reflection = 0.5*sum( dres**2 )
+            call hud('fobj%reflection = '//num2str(fobj%reflection))
+
+        endif
+        endif
+
+        call mpi_bcast([fobj%reflection],1,mpi_real,0,MPI_COMM_WORLD,mpiworld%ierr)
+
     endif
-
-    call mpi_bcast([fobj%reflection],1,mpi_real,0,MPI_COMM_WORLD,mpiworld%ierr)
-
-endif
-
 
     call hud('-------------------------')
     call hud('     Update Vp model     ')
@@ -278,8 +283,6 @@ endif
         call ppg%init_field(fld_u,name='fld_u');    call fld_u%ignite
         call ppg%forward(fld_u)
         call fld_u%acquire;  call shot%write('Ru_',shot%dsyn)
-
-        call mpiworld%barrier
 
         call hud('----  Computing reflection obj func & dadj  ----')
         ! call sepa%update
@@ -320,8 +323,6 @@ endif
         call ppg%init_field(fld_u0,name='fld_u0');    call fld_u0%ignite
         call ppg%forward(fld_u0)
         call fld_u0%acquire(o_seismo=shot%dsyn_aux);  call shot%write('Ru0_',shot%dsyn_aux)
-
-        call mpiworld%barrier
 
         call ppg%init_field(fld_a,name='fld_a0',ois_adjoint=.true.)
 

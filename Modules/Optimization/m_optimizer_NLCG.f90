@@ -78,7 +78,8 @@ use m_optimizer_common
             ! ls%alphaR=huge(1.)
             !ls%alpha=ls%alpha0 !reinitialize alpha in each iterate may help convergence for LBFGS method..
             !linesearcher finds steplength
-            call ls%search(.false.,iterate,curr,pert,gradient_history)
+            ! call ls%search(.false.,iterate,curr,pert,gradient_history)
+            call ls%search(setup%get_bool('REINIT_ALPHA',o_default='F'),iterate,curr,pert,gradient_history)
             
             select case(ls%result)
                 case('success')

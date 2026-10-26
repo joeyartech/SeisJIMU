@@ -124,7 +124,8 @@ use m_empirical
         real,dimension(:,:,:,:),allocatable,optional :: o_x,o_xprior,o_g
 
         real,dimension(:,:,:),allocatable :: v_t !velocity model in pseudotime domain
-        real,dimension(:,:,:),allocatable :: tmp_imp, tmp_cel, tmp_gimp, tmp_gcel, tmp
+        real,dimension(:,:,:),allocatable :: tmp_cel, tmp_gimp, tmp_gcel, tmp
+        real,dimension(:,:,:),allocatable :: tmp_imp, tmp_imp0, tmp_imp_t, tmp_imp0_t
 
         !c⁻² = εμ ; η² = (cμ)² = μ/ε ==>  
         !ε = 1/(ηc) ; μ = η/c
@@ -152,21 +153,30 @@ use m_empirical
                 ! call empirical_m2x('velocities-density')
 
             else !x->m, t->z
-                ! if(i_cel>0) then
+
+                call m%read
+                tmp_cel = r_c0/sqrt(m%epsr*m%mur)
+                tmp_imp = sqrt( (r_mu0*m%mur )/(r_eps0*m%epsr ) )
+                tmp_imp0= sqrt( (r_mu0*m%mur0)/(r_eps0*m%epsr0) )
+                call pseudotime_convert('z->t',tmp_imp ,tmp_imp_t ,tmp_cel)
+                call pseudotime_convert('z->t',tmp_imp0,tmp_imp0_t,tmp_cel)
                 
                 !first convert velocity
                 v_t=o_x(:,:,:,i_cel)*self%pars(i_cel)%range +self%pars(i_cel)%min
                 call pseudotime_convert('t->z',v_t,tmp_cel)
+
+                call pseudotime_convert('t->z',tmp_imp_t, tmp_imp ,v_t)
+                call pseudotime_convert('t->z',tmp_imp0_t,tmp_imp0,v_t)
                 
-                tmp_imp =  sqrt( (r_mu0*m%mur)/(r_eps0*m%epsr) )
+                !tmp_imp =  sqrt( (r_mu0*m%mur)/(r_eps0*m%epsr) )
                 m%epsr = 1/(tmp_imp*tmp_cel) /r_eps0
                 m%mur  =    tmp_imp/tmp_cel  /r_mu0
 
                 if(allocated(m%epsr0).and.allocated(m%mur0)) then
                     call hud('transform m%epsr0 m%mur0 too')
-                    tmp_imp =  sqrt( (r_mu0*m%mur0)/(r_eps0*m%epsr0) )
-                    m%epsr0 = 1/(tmp_imp*tmp_cel) /r_eps0
-                    m%mur0  =    tmp_imp/tmp_cel  /r_mu0
+                    ! tmp_imp =  sqrt( (r_mu0*m%mur0)/(r_eps0*m%epsr0) )
+                    m%epsr0 = 1/(tmp_imp0*tmp_cel) /r_eps0
+                    m%mur0  =    tmp_imp0/tmp_cel  /r_mu0
                 endif
 
                 ! if(i_imp>0) then

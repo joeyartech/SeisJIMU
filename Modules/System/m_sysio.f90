@@ -122,12 +122,21 @@ use m_setup
 
     end subroutine
 
-    subroutine sysio_bash(cmd,o_wait)
+    subroutine sysio_cmd(cmd,o_wait,o_catch)
         character(*) :: cmd
-        logical,optional :: o_wait
+        logical,optional :: o_wait, o_catch
+
+        call hud('Call '//cmd//' ...')
 
         if(mpiworld%is_master) then
-            call execute_command_line(cmd,wait=either(o_wait,.true.,present(o_wait)))
+            call execute_command_line(cmd,wait=either(o_wait,.true.,present(o_wait)),exitstat=ierr)
+
+            if(present(o_catch)) then
+            if(o_catch.eqv..true. .and. ierr/=0) then
+                call error('sysio_cmd returned with error!')
+            endif
+            endif
+
         endif
 
     end subroutine
