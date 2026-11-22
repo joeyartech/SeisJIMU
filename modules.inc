@@ -7,6 +7,7 @@
 #WaveEq=AC2nd
 #WaveEq=AC
 WaveEq=VisAC2nd
+WaveEq=VisAC2nd_split
 #WaveEq=AC_VTI
 #WaveEq=PSV
 Solver=FDSG

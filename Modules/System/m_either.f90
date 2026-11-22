@@ -5,6 +5,8 @@ module m_either
         module procedure :: either2_ints
         module procedure :: either2_real
         module procedure :: either2_reals
+        module procedure :: either2_cmplx
+        module procedure :: either2_cmplxs
         module procedure :: either2_str
         module procedure :: either2_bool
     end interface
@@ -58,6 +60,30 @@ module m_either
         endif
     end function
     
+    function either2_cmplx(r1,r2,switch) result(res)
+        complex,optional   :: r1
+        complex,intent(in) :: r2
+        logical,intent(in) :: switch
+        complex :: res
+        if(switch) then
+            res=r1
+        else
+            res=r2
+        endif
+    end function
+
+    function either2_cmplxs(r1,r2,switch) result(res)
+        complex,dimension(:),optional   :: r1
+        complex,dimension(:),intent(in) :: r2
+        logical,intent(in) :: switch
+        complex,dimension(:),allocatable :: res
+        if(switch) then
+            allocate(res,source=r1)
+        else
+            allocate(res,source=r2)
+        endif
+    end function
+
     function either2_str(s1,s2,switch) result(res)
         character(*),optional   :: s1
         character(*),intent(in) :: s2
